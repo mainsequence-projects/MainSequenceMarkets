@@ -15,6 +15,12 @@ provider reference `migrations:migration` below is replaced by
 Amended by [ADR 0045](0045-squashed-initial-schema-and-namespaced-packages.md): the revision IDs and applied history it keeps unchanged are
 replaced by one `0018_initial_schema` revision in 2.1.0.
 
+Amended in 2.2.6: the platform does not inject `request.state.user`. The
+application installs the SDK request identity with
+`install_request_identity(app)` in `create_app()`, which sets
+`request.state.user` after verifying the caller; see
+[the FastAPI documentation](../fast_api/v1/index.md).
+
 ## Context
 
 Main Sequence SDK 9 no longer contains MetaTables. Table resources, the

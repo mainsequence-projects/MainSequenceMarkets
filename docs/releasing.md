@@ -129,6 +129,89 @@ rebuilds the image, runs the `migrate-markets` Job and redeploys the API. Pushes
 `main` happen only through release merges, so the `main` deployment follows
 stable releases.
 
+### Upgrading the migration client
+
+The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and
+`requirements.txt` select 0.1.33. After changing the dependency, run
+`mainsequence code-repository sync --path .`, refresh the MetaTables-owned
+guidance with `metatables copy-metatables-skills --path .`, and run the checks
+above. Keep the provider identity, version table, and applied revisions unchanged.
+
+The candidate image uses the shared `upgrade_application()` runner. It retains
+the batched inspections and 300-second discovery budget introduced in 0.1.31.
+The updated runner also sends changed, non-empty authored table and column
+metadata during finalization, even without a new Alembic revision. That payload
+requires the matching MetaTables API; the updated API also fixes SQLite
+multi-batch downgrade finalization. The Job enables INFO phase timings and must run even when Alembic is
+already at head: catalog reconciliation is not optional. The workflow remains
+image → migration Job → API deployment, all from the same candidate image.
+
+Deploy the shared MetaTables API as well to receive its server-side inspection,
+unchanged-contract, and startup improvements. A client-only upgrade cannot
+change an older deployed API. Verify image preparation, successful migration
+finalization, and API rollout separately; a push or an `already current` Alembic
+revision alone is not proof of deployment success. See
+[Migration diagnostics](knowledge/msm/migrations/index.md#migration-diagnostics-and-repeated-runs).
+
+### MetaTables access in each Environment
+
+!!! warning "Required in every Environment"
+    An Organization admin must run `scripts/bootstrap_metatables_access.py` for an
+    Environment before ms-markets can be deployed there. Without it:
+
+    - the `migrate-markets` Job fails with `403` `table_not_editable` or
+      `namespace_not_writable` (a MetaTables API before 0.1.27 answers
+      `422 MetaTable is not editable`). The error's `caller_user_uid` is the
+      workload User missing from the Team;
+    - the API rollout is blocked and no release becomes active.
+
+    Run it before the first deployment to a new Environment, and again whenever
+    the platform recreates the Job or the release.
+
+This is the model MetaTables 0.1.27 prescribes: in each Environment, one platform
+Team owns an application's tables and its workload Users are the Team's members
+(see the vendored `metatables-migrations` skill).
+
+The `migrate-markets` Job and the `markets-api` release run as their own workload
+Users, which start with no grants. The workflow gives both `view` on the MetaTables
+repository (`access.branches`), so they can find the Environment's MetaTables API.
+A workflow cannot grant MetaTables table access, so an Organization admin runs
+`scripts/bootstrap_metatables_access.py` once per Environment. Run it from a
+checkout of the branch deployed there: `development` for the development
+Environment, `main` for Production.
+
+```bash
+uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access --dry-run
+uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access
+```
+
+The script names the Team after the checkout's Environment (`ms-markets-development`,
+`ms-markets-production`). It:
+
+- creates the Team if it doesn't exist;
+- adds the workload Users of the Job and release declared in the workflow;
+- creates the `mainsequence.markets` namespace if it is missing;
+- grants the Team Writer on the namespace.
+
+Tables in that namespace inherit the grant, including the ones the migration
+registers later. Once `msm.alembic_version` is registered, the script checks each
+workload User's effective access to it.
+
+Re-running the script changes only what is missing. Run it again whenever the
+platform recreates the Job or the release, because the new workload User is not
+in the Team.
+
+A workload User exists only after the workload's first deployment. In an
+Environment where the Job has not run yet:
+
+1. Run the script, then push. The Job's first run fails, because its workload User
+   is not in the Team yet.
+2. Run the script again.
+3. Run the Job with `mainsequence code-repository jobs run <JOB_UID>`.
+
+The API rolls out on the next push to the branch, because the CLI cannot retry a
+blocked deployment.
+
 ## Failure recovery
 
 Before upload, failed checks publish nothing. Correct the problem on

@@ -89,7 +89,21 @@ metatables --local migrations upgrade --provider ledger.migrations:migration
 The local API must already be running; `--local` selects its connection, so inspect
 runtime status to verify the database actually selected in Settings.
 
-Python setup code can call `metatables.upgrade_application("ledger.migrations:migration")`.
+Applications and libraries use the same public import in their migration Job or
+explicit setup function:
+
+```python
+from metatables import upgrade_application
+
+result = upgrade_application("ledger.migrations:migration")
+```
+
+The shared runner automatically uses the installed client's table inventories and
+the API's batched finalization. No separate batching import or option is needed.
+Keep this call in the explicit migration lifecycle, rather than executing it when
+a library is imported. See [migration timings](deploy-application-migrations.md#migration-timings)
+for diagnostics and the client/API updates needed to receive these optimizations.
+
 For current and downgrade, use `metatables.migrations.runner.run_migration` with
 `operation="current"` or `operation="downgrade", revision="0001"`.
 

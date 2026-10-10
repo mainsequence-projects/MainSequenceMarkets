@@ -32,6 +32,48 @@
 > Reconciliation still records each table's cascade targets, but only so the
 > [impact pre-flight](0016-impact-preflight.md) can show their effects.
 
+> Amendment (2026-10-09): On PostgreSQL and TimescaleDB, a catalog change applies
+> only what it changed. Reconciliation used to rebuild every role, re-inspect every
+> table and re-secure every routine on each change, all under the catalog lock, so
+> one registration could hold the lock for minutes and stop every other request.
+> Now a change:
+>
+> - re-inspects the policies of the tables it changed, plus the tables whose
+>   recorded cascade targets they affect;
+> - rebuilds only roles that are new or whose definition changed, and grants or
+>   revokes only the memberships and privileges that differ from the applied
+>   manifest;
+> - re-secures routines only when the owned schemas, routines or `PUBLIC` grants
+>   changed since the last sweep.
+>
+> The full sweep still runs when the runtime DataSource changes, at initialization
+> (the migration Job of every deployment) and from the admin repair action. Those
+> are when grants changed outside MetaTables are repaired, not on every catalog
+> change. MySQL and SQL Server keep the full sweep on every change.
+
+> Amendment (2026-10-10): [ADR 0014](0014-main-sequence-release-jobs-and-production-migrations.md#conditional-system-bootstrap-2026-10-10-amendment)
+> replaces the unconditional deployment sweep on PostgreSQL/TimescaleDB with
+> fresh native-security and login validation under the security-state lock.
+> Every deployment still checks table policies. Unchanged security evidence uses
+> incremental grant application and one conditional write of the complete
+> manifest; drift, credential rotation, pending state or missing evidence retains
+> full repair. An explicit admin repair remains a full sweep. A routine catalog
+> update must not establish a new native baseline for unverified outside drift.
+
+> Amendment (2026-10-09): [ADR 0022](0022-concurrent-requests-and-connection-reuse.md)
+> reuses login-role connections within a pod, only by the login role that opened them
+> and never through `SET ROLE`; no session state carries over from one use to the next.
+
+> Amendment (2026-10-09, [MetaTables #50](https://github.com/mainsequence-projects/MetaTables/issues/50)):
+> Application migrations use the shared `metatables` login ([ADR 0013](0013-application-owned-migrations.md)),
+> whose `"$user"` schema is the catalog. The invariant that they cannot accidentally create
+> tables in the catalog therefore rests on the migration connection, not on a separate login:
+>
+> - the connection is pinned to `search_path=public`, and the client verifies that path;
+> - the API refuses a provider whose tables are in `metatables`.
+>
+> This guards against accidents, not misuse: the login keeps its privileges.
+
 
 Date: 2026-09-29
 
@@ -299,8 +341,12 @@ and [MySQL implicit commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-co
 - Physical table names become visible to explorer users.
 - Cascading foreign keys are allowed. Tables that reference a table never change
   who may write it.
-- Team membership reaches the database at the pace of the existing one-hour
-  platform-fact cache.
+- Team membership reaches the database on the caller's next query. Each SQL
+  admission compares the caller's current Teams with the ones its role was last
+  given and reconciles the roles first when they differ. A hosted caller's Teams
+  come from its signed assertion on every request
+  ([ADR 0017](0017-hosted-request-identity.md), 2026-10-05 amendment); only the
+  developer's own facts in Local and developer mode are cached for up to an hour.
 
 ## Implementation
 

@@ -1,6 +1,6 @@
 ---
 name: metatables-migrations
-description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
+description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, the Team that owns an application's tables in each Environment, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
 ---
 
 # MetaTables client application migrations
@@ -31,7 +31,10 @@ Read `docs/client/define-and-migrate-tables.md`,
 `src/metatables/examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
 models, select a provider, author and apply a revision with the client, then
 finalize catalog bindings through the API. Use the
-[table skill](../metatables-meta-tables/SKILL.md) for contract design.
+[table skill](../metatables-meta-tables/SKILL.md) for contract design. The catalog
+sync in `metatables migrations upgrade` also copies changed table descriptions,
+labels and column metadata to existing tables; a metadata-only change needs no
+revision (see the [table discovery skill](../metatables-table-discovery/SKILL.md)).
 
 Check `docs/reference/capabilities.md` and `metatables migrations --help` before
 promising a command. The API's own catalog migrations are a separate history: a
@@ -47,11 +50,24 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
 1. **Develop locally.** Author the revision and apply it to verified local SQLite
    with the [local development skill](../metatables-local-development/SKILL.md).
 2. **Commit the revision with the code that needs it.**
-3. **Deploy.** The application's `.mainsequence/workflows/` file declares a
+3. **Give a Team the tables.** Before the first hosted migration in each
+   Environment, the application's tables need an owning Team: one platform Team
+   per Environment (for example `ledger-development`), whose members are the
+   migration Job's workload User and the workload User of every resource that
+   reads or writes the tables. An Organization admin creates, in that
+   Environment, each namespace the provider registers tables in, and grants the
+   Team Writer on it. Recommend one namespace per application, owned by its Team;
+   it is not required (see "Namespaces and applications" in
+   `docs/security/ownership-and-sharing.md`).
+   Tell the user these steps; they are made in the platform and in MetaTables
+   Security, not in the repository.
+4. **Deploy.** The application's `.mainsequence/workflows/` file declares a
    migration Job that calls `upgrade_application` for each provider, in
-   dependency order, from the candidate image. Every deployed resource that reads
-   or writes the tables (FastAPI, `harness_agent` and others) has a deploy step
-   with `needs: [migrate]`. A failed migration blocks the rollout.
+   dependency order, from the candidate image. The Job and every resource that
+   uses MetaTables declare `access.branches: [{repository: MetaTables, level: view}]`.
+   Every deployed resource that reads or writes the tables (FastAPI,
+   `harness_agent` and others) has a deploy step with `needs: [migrate]`. A failed
+   migration blocks the rollout.
 
 Rules:
 
@@ -66,6 +82,13 @@ Rules:
   during and after a failed rollout. Add first; drop or rename in a later release.
 - Redeploying an older image does not roll back the schema. Downgrade is never a
   deployment step.
+- Tables belong to the Team, never to one workload User. Workload Users change
+  with each Environment and each recreated Job; a new one needs Team membership
+  only. Do not ask for direct table grants to a workload User, and do not run the
+  Job as an Organization admin to get around a refusal.
+- A table registered in a namespace the caller already writes gets no grant of
+  its own; the namespace's Writers own it. The Team needs Writer on every
+  namespace the provider uses.
 
 ## Source and runtime context
 
@@ -167,11 +190,42 @@ API Writer checks govern connection admission and provider catalog operations.
 The client reserves catalog entries, runs Alembic, closes its physical connection,
 and finalizes contracts through the API. Treat connection material as private.
 
-Python code can call `metatables.upgrade_application("ledger.migrations:migration")`;
-`src/metatables/examples/scripts/setup_metatables.py` shows the pattern, and the
-deployment migration Job uses the same call. Remove the retired
+Applications and consuming libraries use the same public Python entry point in
+an explicit setup function or deployment migration Job:
+
+```python
+from metatables import upgrade_application
+
+result = upgrade_application("ledger.migrations:migration")
+```
+
+`src/metatables/examples/scripts/setup_metatables.py` shows the pattern. Keep
+migration execution out of a library's import-time side effects. Remove the retired
 `application_migration_providers` setting and use Python references instead of aliases.
 Application migration histories remain separate from API system migrations.
+
+## Repeated runs and migration performance
+
+Use the shared `upgrade_application` path for every provider. Table-inventory and
+physical-inspection batching are automatic in the client/API implementation; no
+separate batching import, private backend helper or opt-in flag is needed.
+An unchanged Alembic revision still reconciles physical contracts and refreshes
+table descriptions, labels and column metadata. Do not skip finalization based
+only on `migrated=False` or equal revision heads: missing/unreadable tables must
+still fail, and only explicit removals may delete a catalog binding.
+
+For a slow migration, read the "Migration timings" section in
+`docs/client/deploy-application-migrations.md`. Enable INFO logging for
+`metatables.migrations.runner` to see preparation, database setup, table checks,
+Alembic, finalization and total duration. The API logs inspection and total time
+per finalization batch. Measure these separately from platform job scheduling
+and workflow coordination before attributing the delay to schema validation.
+
+Check the installed client and deployed API versions. Client optimizations need
+a package update and application image rebuild; API batching needs a shared API
+deployment. After installing a release containing the changes, refresh copied
+skills with `metatables copy-metatables-skills --path /path/to/application`.
+This command copies guidance; Python imports alone do not refresh it.
 
 ## Lifecycle invariants
 
@@ -202,14 +256,42 @@ Read `docs/operations/recovery-and-observability.md`.
   another install overwrote it. Move the provider as the
   [legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md) describes;
   do not edit files in `site-packages`.
-- If reservation fails, compare provider scope and physical identities before
-  changing code. Do not create a second catalog row for the same table.
+- If reservation fails with `namespace_not_writable` or `table_not_editable`
+  (403), the caller lacks Writer through the owning Team. Add the
+  `caller_user_uid` from the error to the Team with Writer on the namespace, or,
+  when the namespace or Team is missing, set them up as in step 3. A table
+  registered before the Team existed may have only a retired workload User as
+  Writer; an Organization admin grants the Team Writer on its namespace. Do not
+  change code or physical names to get around it.
+- If reservation fails otherwise, compare provider scope and physical identities
+  before changing code. Do not create a second catalog row for the same table.
 - If Alembic succeeds but finalization fails, physical DDL may already be
   committed. Inspect every per-table result and the actual schema before
   retrying.
 - Inspect partial DDL before retrying, especially on engines without transactional
   DDL. A finalization-only failure can be retried without reapplying committed
   revisions. Client DDL has no API executor journal.
+- Finalization sends at most 10 tables per request, the version table first, and
+  reports `Finalizing MetaTables 11-20 of 62.` for larger providers (client 0.1.28
+  and later). A run that stops partway leaves earlier batches active; rerun the
+  same upgrade to finalize the rest.
+- If the migration connection is refused with `provider_tables_misplaced`, provider
+  tables sit in the `metatables` catalog schema (MetaTables #50). Don't stamp, rerun or
+  hand-edit revisions. An administrator moves or drops those tables, then rerun.
+- If it is refused with `provider_tables_owner_unreachable`, the tables belong to a
+  retired role, named in `owners`. A database administrator runs
+  `REASSIGN OWNED BY <role> TO mt_owner;` in that database, then rerun.
+- If the client refuses because the connection "resolves unqualified names" outside the
+  default schema, it isn't the connection MetaTables issued. Use that connection, or set
+  `search_path` to the default schema.
+- If finalization reports `physical_table_missing`, a current table is absent and nothing
+  named it as removed. Its catalog binding is kept; check `other_schemas` and where your
+  revisions created it. Client 0.1.29 and later name tables removed from the models or
+  dropped by the run, such as on downgrade. Older clients fail this way after a removal or
+  downgrade, so upgrade the client.
+- `physical_table_inaccessible` means the table exists, but the MetaTables login can't
+  read all its columns or use its owner. Fix ownership or privileges; the stored contract
+  is kept.
 - Destructive catalog deletion is not migration recovery and never bypasses
   schema-management protection.
 
@@ -217,5 +299,6 @@ Read `docs/operations/recovery-and-observability.md`.
 
 Verify provider scope and placement, revision content, the selected environment
 connection, repeat execution, and final active bindings. Check that the deployment
-workflow runs the migration Job before every resource that uses the tables. Report
+workflow runs the migration Job before every resource that uses the tables, and
+that each Environment has its owning Team with the Job's workload User. Report
 separately what was checked offline and what was exercised against a configured API.

@@ -123,6 +123,9 @@ frontend/API debugging. Its **Markets: Full Stack** configuration runs
 origin. The development wrapper admits ports 3010 and 5173 for both `localhost` and `127.0.0.1`;
 the deployed `api.main:app` surface is not mutated. The launcher leaves
 `MSM_AUTO_REGISTER_NAMESPACE` unset in accordance with the local runtime bootstrap contract.
+Locally, request identity checks every request's `Authorization: Bearer` token against
+`MAINSEQUENCE_ENDPOINT/api/v1/users/me/`, so the frontend must send the signed-in user's token;
+a request without one receives `401`.
 
 ## Platform Deployment
 
@@ -152,6 +155,12 @@ image, and `deploy_api` deploys the API with `needs: [migrate]`. A failed
 migration blocks the rollout and the previous release keeps serving; see
 [Hosted Deployments](../../knowledge/msm/migrations/index.md#hosted-deployments).
 
+!!! warning "Required before deploying to an Environment"
+    The Job and the API run as their own workload Users. They can't migrate or
+    use the ms-markets tables until an Organization admin runs
+    `scripts/bootstrap_metatables_access.py` for that Environment; see
+    [MetaTables access in each Environment](../../releasing.md#metatables-access-in-each-environment).
+
 Publish repository changes with a plain `git push` of the tracked branch; the
 workflow files decide what deploys. The tracked `main` branch changes only through
 release pull requests from `development`; see [Releasing](../../releasing.md). Since Main Sequence SDK 9.0.5,
@@ -164,17 +173,25 @@ push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.5,<10` and `mainsequence-metatable>=0.1.18,<0.2` without
+`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.33,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
-extraction hard cut, while the project lock and exported runtime requirements
-select the exact releases validated for this repository. Do not replace the
+extraction hard cut and the SDK request identity that the platform's current
+caller assertions require (SDK 9.0.18 and later), while the project lock and exported runtime requirements
+select the exact releases validated for this repository. MetaTables 0.1.33 retains
+batched migration inspections and a five-minute migration API discovery budget,
+and refreshes changed authored metadata at unchanged revisions. Metadata
+finalization requires the corresponding shared MetaTables API update. Do not replace the
 published dependencies with machine-local `[tool.uv.sources]` path overrides.
 
-The SDK 9 request identity contract applies to authenticated routes: handlers
-read the platform-injected `request.state.user` (canonical `uid` and optional
-`username`). The Index routes derive their actor from that state and treat a
-request without it as anonymous; route code does not parse authentication
-headers or bind SDK request-header context variables.
+`create_app()` installs the SDK request identity with
+`install_request_identity(app)`; the platform launcher refuses to serve an
+application without it. It authenticates every request before its handler: a
+hosted request by the gateway's signed caller assertion, a local request by its
+Bearer token. Handlers read the verified caller from `request.state.user` (a
+`RequestUserIdentity` with the canonical `uid`, `team_uids` and
+`is_organization_admin`) or `User.get_logged_user()`. The Index routes derive
+their actor, including its Teams, from that identity; route code does not parse
+authentication headers or bind SDK request-header context variables.
 
 ## API Discoverability
 

@@ -132,6 +132,11 @@ statistics refresh (even though it uses GET), and receipt reconciliation do not
 automatically replay after uncertain failures. SDK authentication and one
 credential refresh remain; SDK and HTTP adapter write retry loops are bypassed.
 
+Capacity answers are the exception: 429 `transfer_capacity_exceeded` and 503
+`database_connections_busy` mean the API was at capacity and no statement ran.
+Retry any request after `Retry-After`, including SQL and writes; the client does
+so automatically only for safe reads.
+
 Exceptions are available in `metatables.transfer`: `TransferLimitError`,
 `TransferDeadlineError`, `TransferRetryExhausted`, `TransferConflictError`, and
 `TransferOutcomeUnknown`. Deterministic authorization/validation errors retain

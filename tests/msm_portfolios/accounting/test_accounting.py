@@ -17,6 +17,7 @@ from msm_portfolios.accounting import (
     PortfolioAccountingConfiguration,
     canonical_lifecycle_model_configuration,
     project_cash_flows,
+    project_portfolio_values,
     project_state,
 )
 from msm_portfolios.configuration import (
@@ -163,9 +164,7 @@ def test_portfolio_engine_configuration_serializes_its_runtime_dependencies() ->
             initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
             position_valuation_model_instance=MarketPriceValuationModel(),
         ),
-        signal_weights_instance=(
-            build.backtesting_weights_configuration.signal_weights_instance
-        ),
+        signal_weights_instance=(build.backtesting_weights_configuration.signal_weights_instance),
         rebalance_strategy_instance=strategy,
     ).model_dump(mode="json")
 
@@ -567,6 +566,7 @@ def test_strategy_execution_price_and_revision_drive_partial_execution() -> None
         initial_state_time_index="2026-01-02T08:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(),
     )
+
     def calculate(execution_bars):
         return PortfolioEngine.calculate_backtest(
             portfolio_identifier="time-weighted-price",
@@ -580,8 +580,7 @@ def test_strategy_execution_price_and_revision_drive_partial_execution() -> None
     ledger = calculate(bars)
     position_rows = ledger[ledger["record_kind"] == "position_delta"]
     summary = ledger[
-        (ledger["event_type"] == "execution")
-        & (ledger["record_kind"] == "valuation_summary")
+        (ledger["event_type"] == "execution") & (ledger["record_kind"] == "valuation_summary")
     ].iloc[-1]
 
     assert position_rows.iloc[-1]["price"] == pytest.approx(80.0)
@@ -593,9 +592,12 @@ def test_strategy_execution_price_and_revision_drive_partial_execution() -> None
         "bar-2-corrected"
     )
     revised_ledger = calculate(revised_bars)
-    assert position_rows.iloc[-1]["source_revision"] != revised_ledger[
-        revised_ledger["record_kind"] == "position_delta"
-    ].iloc[-1]["source_revision"]
+    assert (
+        position_rows.iloc[-1]["source_revision"]
+        != revised_ledger[revised_ledger["record_kind"] == "position_delta"].iloc[-1][
+            "source_revision"
+        ]
+    )
 
 
 def test_ledger_storage_and_model_graph_are_additive() -> None:
@@ -637,9 +639,7 @@ def test_accounting_state_restarts_from_the_canonical_ledger() -> None:
         valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-01-01T10:00:00Z",
-        valuation_model=MarketPriceValuationModel(
-            maximum_staleness=dt.timedelta(days=10)
-        ),
+        valuation_model=MarketPriceValuationModel(maximum_staleness=dt.timedelta(days=10)),
     )
 
     pd.testing.assert_frame_equal(restored.state.positions, result["positions"])
@@ -649,9 +649,7 @@ def test_accounting_state_restarts_from_the_canonical_ledger() -> None:
         restored.state.execution_progress,
         result["execution_progress"],
     )
-    assert restored.ledger["event_digest"].tolist() == result["ledger"][
-        "event_digest"
-    ].tolist()
+    assert restored.ledger["event_digest"].tolist() == result["ledger"]["event_digest"].tolist()
 
 
 def test_state_projection_keeps_explicit_closed_rows() -> None:
@@ -678,6 +676,7 @@ def test_canonical_ledger_rejects_tampered_event_record() -> None:
 def test_existing_ledger_allows_exact_retry_and_blocks_unimplemented_correction() -> None:
     ledger = build_example()["ledger"]
     _validate_replay_against_existing(ledger, ledger.copy())
+    assert _new_ledger_tail(ledger, ledger.copy()).empty
     corrected = ledger.copy()
     event_identifier = corrected.loc[
         corrected["event_type"] == "entitlement", "event_identifier"
@@ -688,6 +687,82 @@ def test_existing_ledger_allows_exact_retry_and_blocks_unimplemented_correction(
 
     with pytest.raises(NotImplementedError, match="tail replay"):
         _validate_replay_against_existing(ledger, corrected)
+
+
+def _restore_example_ledger(ledger: pd.DataFrame) -> PortfolioAccounting:
+    return PortfolioAccounting.from_ledger(
+        ledger=ledger,
+        portfolio_identifier="mock-eur-stock-portfolio",
+        valuation_asset_identifier="USD",
+        initial_nav=1_000.0,
+        initial_state_time_index="2026-01-01T10:00:00Z",
+        valuation_model=MarketPriceValuationModel(maximum_staleness=dt.timedelta(days=10)),
+    )
+
+
+@pytest.mark.parametrize(
+    "validate",
+    [
+        normalize_portfolio_event_ledger_frame,
+        _restore_example_ledger,
+        project_state,
+        project_cash_flows,
+        lambda ledger: project_portfolio_values(ledger, initial_nav=1_000.0),
+    ],
+)
+def test_ledger_rejects_same_economic_record_at_another_timestamp(validate) -> None:
+    ledger = build_example()["ledger"]
+    duplicate = ledger.iloc[[0]].copy()
+    duplicate["time_index"] += pd.Timedelta(days=1)
+    corrupt = pd.concat([ledger, duplicate], ignore_index=True)
+
+    with pytest.raises(ValueError, match="duplicate economic record identities"):
+        validate(corrupt)
+
+
+def test_publication_rejects_duplicate_economic_identity_in_old_or_new_history() -> None:
+    ledger = build_example()["ledger"]
+    duplicate = ledger.iloc[[0]].copy()
+    duplicate["time_index"] += pd.Timedelta(days=1)
+    corrupt = pd.concat([ledger, duplicate], ignore_index=True)
+
+    for existing, calculated in [(ledger, corrupt), (corrupt, ledger), (None, corrupt)]:
+        with pytest.raises(ValueError, match="duplicate economic record identities"):
+            _validate_replay_against_existing(existing, calculated)
+
+
+@pytest.mark.parametrize(
+    "validate", [normalize_portfolio_event_ledger_frame, _restore_example_ledger]
+)
+def test_ledger_rejects_one_event_revision_split_across_timestamps(validate) -> None:
+    ledger = build_example()["ledger"]
+    ledger.loc[0, "time_index"] += pd.Timedelta(minutes=1)
+
+    with pytest.raises(ValueError, match="event revision spans multiple time_index"):
+        validate(ledger)
+
+
+def test_exact_revision_cannot_move_to_another_timestamp() -> None:
+    ledger = build_example()["ledger"]
+    shifted = ledger.copy()
+    identifier = shifted.loc[shifted["event_type"] == "entitlement", "event_identifier"].iloc[0]
+    mask = shifted["event_identifier"] == identifier
+    shifted.loc[mask, "time_index"] += pd.Timedelta(minutes=1)
+    from msm_portfolios.accounting import event_digest
+
+    shifted.loc[mask, "event_digest"] = event_digest(shifted.loc[mask])
+    with pytest.raises(ValueError, match="Exact replay changed canonical event records"):
+        _validate_replay_against_existing(ledger, shifted)
+
+
+def test_economic_record_identity_is_scoped_by_portfolio() -> None:
+    ledger = build_example()["ledger"]
+    other = ledger.copy()
+    other["portfolio_identifier"] = "another-portfolio"
+    # These are read projections; publication additionally verifies each digest.
+    combined = pd.concat([ledger, other], ignore_index=True)
+    cash = project_cash_flows(combined).reset_index()
+    assert set(cash["portfolio_identifier"]) == {"mock-eur-stock-portfolio", "another-portfolio"}
 
 
 def test_incremental_ledger_tail_equals_the_full_backtest() -> None:

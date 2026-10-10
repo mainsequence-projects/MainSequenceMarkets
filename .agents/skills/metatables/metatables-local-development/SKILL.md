@@ -1,6 +1,6 @@
 ---
 name: metatables-local-development
-description: "Develop and test applications using the installed MetaTables client against local SQLite before returning to the intended environment database. Covers project/API/Admin setup, runtime verification, isolated fixtures, application-owned migrations and switching back after verification. Excludes MetaTables client/API implementation and hosted frontend deployment."
+description: "Develop and test applications using the installed MetaTables client against local SQLite before returning to the intended environment database. Covers project/API/Admin setup, runtime verification, isolated fixtures, application-owned migrations and returning to the environment after verification. Excludes MetaTables client/API implementation and hosted frontend deployment."
 ---
 
 # Local-first MetaTables application development
@@ -25,17 +25,17 @@ Three controls have different meanings:
 
 - `local_mode_available: true` permits local development; it does not select the
   current database. `metatables init --local` prepares this configuration.
-- `metatables serve --local` starts the API in Local mode. Add `--admin` to run
-  the existing Vite development frontend. Admin Settings can subsequently switch
-  that running API to Hosted without changing its loopback address.
-- Global `metatables --local ...` and `configure_local_client()` select the
-  project's running API connection. They do not force its database back to Local.
+- `metatables serve --local` starts the laptop's one local API, always in Local
+  mode. Add `--admin` to run the existing Vite development frontend. Running it in
+  another project while the API is up reports the running API and exits.
+- Global `metatables --local ...` and `configure_local_client()` select that
+  running API from any checkout.
 
 Before migrations or a batch of test writes, inspect the API's actual runtime.
 A loopback URL, a local token, a test namespace or an updater hash is not proof of
 storage isolation. Require `local_mode: true`; after initialization also require
 `dialect: sqlite` and the expected local runtime DataSource. If these disagree,
-stop the mutating work and select Local in Settings or restart with `serve --local`.
+stop the mutating work and restart with `serve --local`.
 Do not retry against automatic hosted discovery when a local connection fails.
 
 ## One local runtime per laptop
@@ -131,8 +131,8 @@ Run pure contract/frame checks first, then the smallest useful API integration
 case: apply the reviewed provider, seed a small fixture, execute the query or
 producer, read and assert its output, and repeat to verify the intended incremental
 or idempotent behavior. For a persistence claim, restart and read existing rows
-before seeding again. Recheck runtime state after any restart or mode/source change;
-do not switch modes while tests or producers are running.
+before seeding again. Recheck runtime state after any restart or source change;
+do not change the runtime source while tests or producers are running.
 
 Local storage persists across launches, and other projects' tables and fixtures share
 the same runtime. A new branch or project does not create a fresh test database. Use
@@ -153,11 +153,11 @@ Revisions need no SQLite variants: column and constraint changes run through Ale
 batch mode. Only raw PostgreSQL SQL must check `op.get_bind().dialect.name`. Do not use the shared environment database as the default
 integration-test fixture.
 
-## Finish verification and switch back
+## Finish verification and return to the environment
 
 Record what passed, the runtime/DataSource used, and any engine-specific work still
 unverified. Commit the reviewed application code and its migration revisions together;
-local rows, catalog UIDs, credentials and fixture data are not promoted by a switch.
+local rows, catalog UIDs, credentials and fixture data are never promoted.
 The application's deployment workflow applies those revisions to the hosted runtime
 before the code rolls out; see the [migrations skill](../metatables-migrations/SKILL.md)
 and `docs/client/deploy-application-migrations.md`. Add the migration Job if the
@@ -165,20 +165,15 @@ workflow lacks one.
 
 When returning to the environment is part of the requested workflow:
 
-1. Finish local tests and stop active writers. In Admin **Settings → Runtime mode**,
-   inspect the displayed hosted environment and use **Switch to Hosted**. Hosted
-   opens the runtime database the API's deployment declares, through the same
-   Environment Secret; there is no DataSource to choose and the launcher never
-   migrates it. This changes the API worker and database; it does not copy or merge
-   the local database. Leave local capability enabled if the developer needs to
-   switch back later.
+1. Finish local tests and stop active writers. The local API stays Local; it has
+   no switch to Hosted. Reach the environment through its deployed API: start a
+   fresh client process without `--local` or `configure_local_client()`, following
+   the installation guide's hosted endpoint selection, and use the deployed Admin
+   for hosted data. Remove only transport overrides introduced for local work.
 2. Re-read runtime status and verify `local_mode: false`, the intended verified
    hosted environment, the expected DataSource and readiness. `migration_required`
-   means the branch has system migrations the deployed API does not have yet; it
-   clears once that code is deployed. The same local
-   connection command still reaches this supervised API; its `--local` flag alone
-   does not prove SQLite. If the switch fails and the old worker is restored,
-   report the actual mode instead of claiming the switch succeeded.
+   means the deployed API's database has pending system migrations; its deployment
+   applies them.
 3. Restart application/test client processes and resolve catalog bindings again.
    Do not reuse local table UIDs or already-bound updater instances against the
    environment database. Do not apply application revisions from this session;
@@ -187,10 +182,6 @@ When returning to the environment is part of the requested workflow:
    requested scope; passing local tests is not itself a request to seed fixtures
    or run backfills.
 
-If the user instead wants to connect to a separately deployed API, follow the
-installation guide's hosted endpoint selection. Restore prior connection settings
-and start a fresh client process without `configure_local_client()`; remove only
-transport overrides introduced for local work. Do not redirect the SDK platform
-endpoint, invent `serve --hosted`, or use an environment-variable runtime toggle.
-A task limited to local development can finish with verified local results and
-clear remaining steps, without switching the runtime or modifying hosted data.
+Do not redirect the SDK platform endpoint, invent `serve --hosted`, or use an
+environment-variable runtime toggle. A task limited to local development can finish
+with verified local results and clear remaining steps, without modifying hosted data.

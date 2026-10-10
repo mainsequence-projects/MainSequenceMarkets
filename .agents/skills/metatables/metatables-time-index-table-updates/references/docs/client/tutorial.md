@@ -87,7 +87,7 @@ These are system migrations only. The tutorial's application migrations run
 in the application's Python process through the client in both modes:
 
 ```bash
-python -m metatables.examples.scripts.setup_metatables --development-client .local/development-client.json
+python -m metatables.examples.scripts.setup_metatables --development-client ~/.local/share/metatables/server.json
 ```
 
 Omit `--development-client` to use hosted deployment discovery. The application

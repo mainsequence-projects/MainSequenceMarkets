@@ -14,7 +14,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -564,15 +563,10 @@ class PortfolioEventLedgerStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             }
         ],
     }
-    __table_args__ = (
-        UniqueConstraint(
-            "portfolio_identifier",
-            "event_identifier",
-            "event_revision",
-            "record_identifier",
-            name="uq_portfolio_event_ledger_economic_record",
-        ),
-    )
+    # The mixin enforces the full time-first grain. An additional unique
+    # constraint without time_index prevents TimescaleDB hypertable creation.
+    # Cross-time economic identity is checked by the canonical ledger validator
+    # and replay comparison, not by another database constraint or table.
 
     time_index: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),

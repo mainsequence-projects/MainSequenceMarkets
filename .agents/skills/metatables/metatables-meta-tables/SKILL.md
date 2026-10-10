@@ -64,10 +64,12 @@ are fingerprints, not table identity. See `docs/concepts/identity-and-scope.md`.
 ## SQLAlchemy contract rules
 
 Use `src/metatables/examples/tables.py` as the tested pattern. Declare an explicit
-application-prefixed physical name with `schema_table_name(app, concept)`, a
-stable logical identifier, and an intention-rich `__metatable_description__`.
-Give columns useful `info={"label": ..., "description": ...}` metadata. Explain
-row grain and downstream meaning rather than repeating types.
+application-prefixed physical name with `schema_table_name(app, concept)` and a
+stable logical identifier. Write the table description, labels and every column's
+`info={"label": ..., "description": ...}` by the rules in the
+[table discovery skill](../metatables-table-discovery/SKILL.md), which is
+authoritative for that metadata. Before authoring a new table, search for an
+existing one with that skill.
 
 Keep foreign keys and indexes in SQLAlchemy metadata. Reference explicit physical
 names using `ForeignKey`/`ForeignKeyConstraint`; do not ask users to hand-author
@@ -126,8 +128,9 @@ access; row/time limits and transaction handling remain in the API. Refer to the
 query guide for engine-specific statement/batch behavior. Application DDL belongs
 to the separate migration-provider workflow.
 
-Column search is supported. Description search, search-index refresh, and
-legacy convenience sharing/label actions are not supported API workflows.
+To find tables, use `MetaTable.search` as described in the
+[table discovery skill](../metatables-table-discovery/SKILL.md). Legacy convenience
+sharing/label actions are not supported API workflows.
 Use `get_access`, `set_access` and `revoke_access` for supported Reader/Writer
 sharing. Labels can be changed through the documented table PATCH path. Authorization is
 owned by the API catalog; see `docs/concepts/permissions-namespaces-labels.md`.
@@ -175,3 +178,7 @@ for restart recovery. On an uncertain outcome, inspect `upload_receipt()` before
 resubmitting; do not assign a fresh key to bypass uncertainty. Administrator
 reconciliation requires verified physical evidence. This workflow uses the Main
 Sequence API and has no Artifact or temporary-URL dependency.
+
+A 429 `transfer_capacity_exceeded` or 503 `database_connections_busy` means the
+API was at capacity and nothing ran. Retry after `Retry-After`, including SQL and
+writes; it is not an uncertain outcome.

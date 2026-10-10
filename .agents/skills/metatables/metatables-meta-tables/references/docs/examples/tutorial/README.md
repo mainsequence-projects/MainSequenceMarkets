@@ -32,7 +32,7 @@ so the API can execute the reviewed tutorial on a hosted deployment too.
 
 Open the MetaTables Python project and start **MetaTables: API (18473) + Admin
 (19473)**. This launcher reads `configuration.yaml`, where
-`local_mode_available: true` enables switching storage modes in Admin Settings.
+`local_mode_available: true` enables the Local runtime.
 
 Select an example launch:
 
@@ -55,10 +55,9 @@ script itself only creates/migrates tables. To run
 and prints the API target without reading tables. There are no input prompts.
 
 The API/Admin launcher writes its current endpoint and private process token to
-the ignored `.local/development-client.json` with permissions `0600`, and removes
+`~/.local/share/metatables/server.json` with permissions `0600`, and removes
 it on shutdown. The local example reads it before importing the SDK. The connection
-works with either Local or Hosted storage selected in Settings, including custom
-API ports. Restart an older API/Admin launch once to create this connection file.
+works with custom API ports. Restart an older API/Admin launch once to create this connection file.
 
 The configuration runs `python -m metatables.examples.tutorial` using the project's `.venv`,
 and prints its selected step and API endpoint in the Debug Console.
@@ -70,7 +69,7 @@ python -m metatables.examples.tutorial update --prepare-data --root returns
 python -m metatables.examples.tutorial update --prepare-data --root volatility
 ```
 
-Add `--development-client .local/development-client.json` to use the running local
+Add `--development-client ~/.local/share/metatables/server.json` to use the running local
 launcher, or omit it for hosted discovery.
 
 `DailyReturns` declares `RecordedPrices` as a dependency. `RollingVolatility`
@@ -118,7 +117,7 @@ the new revision. The API does not load tutorial code.
 To run migration setup alone from the repository root:
 
 ```bash
-python -m metatables.examples.scripts.setup_metatables --development-client .local/development-client.json
+python -m metatables.examples.scripts.setup_metatables --development-client ~/.local/share/metatables/server.json
 ```
 
 For a hosted deployment, omit `--development-client`; normal endpoint discovery

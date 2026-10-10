@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1250" viewBox="0 0 1180 1250" role="img" aria-labelledby="title description">
+  <title id="title">MetaTables local client experience</title>
+  <desc id="description">Install MetaTables, sign in, and initialize project configuration. Launch the local API with Admin. Reuse installed Admin source; download only if missing. Reuse ready Node dependencies; run npm ci only if needed. Start the API and Vite development server, open Admin, explicitly initialize system tables or reuse an initialized database, apply approved application migrations, then write and read data. Later launches reuse Admin, dependencies, and the persistent database.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52657d"/>
+    </marker>
+    <marker id="download-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b66a17"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; fill: #182b43; }
+      .heading { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 18px; fill: #52657d; }
+      .label { font-size: 20px; font-weight: 650; text-anchor: middle; }
+      .detail { font-size: 17px; fill: #425875; text-anchor: middle; }
+      .branch { font-size: 16px; fill: #425875; font-weight: 650; }
+      .code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 17px; text-anchor: middle; }
+      .box { fill: #ffffff; stroke: #c4d0df; stroke-width: 2; }
+      .decision { fill: #edf5ff; stroke: #4275b1; stroke-width: 2; }
+      .reuse { fill: #eff9f4; stroke: #559277; stroke-width: 2; }
+      .prepare { fill: #fff7e9; stroke: #cb903f; stroke-width: 2; }
+      .line { fill: none; stroke: #52657d; stroke-width: 2.2; marker-end: url(#arrow); }
+      .download { fill: none; stroke: #b66a17; stroke-width: 2.2; marker-end: url(#download-arrow); }
+    </style>
+  </defs>
+  <rect width="1180" height="1250" rx="20" fill="#f5f8fc"/>
+  <text x="42" y="49" class="heading">MetaTables · Local client experience</text>
+  <text x="42" y="80" class="subtitle">ADR 0011 · Implemented local CLI workflow · Existing API + Vite development server</text>
+
+  <rect x="300" y="111" width="580" height="81" rx="14" class="box"/>
+  <text x="590" y="142" class="label">Install MetaTables and sign in</text>
+  <text x="590" y="172" class="code">metatables init --local</text>
+  <text x="70" y="140" class="branch">PROJECT SETUP</text>
+  <path d="M590 192 V216" class="line"/>
+
+  <rect x="300" y="218" width="580" height="64" rx="14" class="box"/>
+  <text x="590" y="257" class="code">metatables serve --local --admin</text>
+  <path d="M590 282 V312" class="line"/>
+
+  <path d="M590 315 L750 385 L590 455 L430 385 Z" class="decision"/>
+  <text x="590" y="378" class="label">Required Admin source</text>
+  <text x="590" y="403" class="label">already installed?</text>
+  <path d="M430 385 H360" class="download"/>
+  <text x="369" y="371" class="branch">No</text>
+  <rect x="45" y="339" width="313" height="92" rx="14" class="prepare"/>
+  <text x="201" y="373" class="label">Download source once</text>
+  <text x="201" y="400" class="detail">Pinned Admin repository revision</text>
+  <path d="M201 431 V484 H590 V506" class="line"/>
+  <path d="M590 455 V506" class="line"/>
+  <text x="608" y="482" class="branch">Yes · reuse, no download</text>
+
+  <path d="M590 509 L750 579 L590 649 L430 579 Z" class="decision"/>
+  <text x="590" y="572" class="label">Node dependencies</text>
+  <text x="590" y="597" class="label">ready?</text>
+  <path d="M750 579 H819" class="download"/>
+  <text x="774" y="564" class="branch">No</text>
+  <rect x="822" y="533" width="313" height="92" rx="14" class="prepare"/>
+  <text x="978" y="569" class="code">npm ci</text>
+  <text x="978" y="597" class="detail">Keep the downloaded source</text>
+  <path d="M978 625 V679 H590 V712" class="line"/>
+  <path d="M590 649 V712" class="line"/>
+  <text x="365" y="677" class="branch">Yes · reuse dependencies</text>
+
+  <text x="70" y="748" class="branch">EACH LAUNCH</text>
+  <rect x="300" y="715" width="580" height="85" rx="14" class="reuse"/>
+  <text x="590" y="747" class="label">Start API + Vite development server</text>
+  <text x="590" y="777" class="detail">API :18473 · Admin :19473 · Publish private client connection</text>
+  <path d="M590 800 V826" class="line"/>
+
+  <rect x="300" y="829" width="580" height="67" rx="14" class="box"/>
+  <text x="590" y="857" class="label">Open Admin and connect Python clients</text>
+  <text x="590" y="882" class="detail">Admin Settings is available before database initialization</text>
+  <path d="M590 896 V922" class="line"/>
+
+  <rect x="300" y="925" width="580" height="78" rx="14" class="box"/>
+  <text x="590" y="955" class="label">Explicitly initialize system tables when needed</text>
+  <text x="590" y="983" class="detail">Admin Settings or CLI · Reuse an initialized database</text>
+  <path d="M590 1003 V1029" class="line"/>
+
+  <rect x="300" y="1032" width="580" height="70" rx="14" class="box"/>
+  <text x="590" y="1061" class="label">Apply approved application migrations</text>
+  <text x="590" y="1086" class="detail">Client submits a provider alias · API executes its head</text>
+  <path d="M590 1102 V1128" class="line"/>
+
+  <rect x="300" y="1131" width="580" height="66" rx="14" class="reuse"/>
+  <text x="590" y="1158" class="label">Write rows → read results → inspect in Admin</text>
+  <text x="590" y="1182" class="detail">Application and system data persist across restarts</text>
+
+  <text x="590" y="1230" class="detail">Next launch: reuse Admin source, reuse ready dependencies, reopen the selected database.</text>
+</svg>

@@ -14,7 +14,7 @@ Organization admin status comes from the platform through the SDK.
 | Enter the application and browse permitted resources | Yes | Yes |
 | Create or register a table in an available DataSource | Yes | Yes |
 | Configure, validate, disable, or remove DataSources | No | Yes |
-| Select runtime mode or the runtime DataSource where supported | No | Yes |
+| Select the runtime DataSource where supported | No | Yes |
 | Initialize or upgrade MetaTables system tables in Local Settings (Hosted: the deployment's migration Job) | No | Yes |
 | Destroy a local runtime database through Settings | No | Yes |
 | Change application-wide Settings and security policies | No | Yes |
@@ -22,7 +22,8 @@ Organization admin status comes from the platform through the SDK.
 
 Creation checks the selected DataSource's storage access mode and the table's
 lifecycle requirements. The table and its creator's Writer grant are recorded
-together. Re-registering an existing table cannot give another caller ownership.
+together, unless the namespace already makes the creator a Writer. Re-registering
+an existing table cannot give another caller ownership.
 
 Initial runtime setup must check the platform admin fact before the application
 grant tables exist. Configuring a pending database does not make the first caller

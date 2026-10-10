@@ -67,8 +67,8 @@ coordinate scope. A missing cutoff requires explicit coordinate scope. It update
 statistics after physical execution. No completely unbounded delete is accepted
 through this action.
 
-Description/vector search and explicit search-index refresh are unavailable.
-Column search works over visible catalog column metadata. See the generated
+Table search and column search work over visible catalog metadata; see
+[table search](tables-and-migrations.md#table-search). See the generated
 [HTTP reference](reference.md) and [capabilities](../reference/capabilities.md) for
 exact paths and evidence classifications.
 

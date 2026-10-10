@@ -41,7 +41,9 @@ choices, first-run/backfill bounds, and whether identity must be preserved from
 the task and existing code. Clarify only unresolved choices that change the
 published contract. Keep storage description, namespace, identifier, cadence,
 columns, and FK/index metadata on the authoring model, not the updater config.
-Use intention-rich table and column descriptions; see `src/metatables/examples/tables.py`.
+Write table and column descriptions by the rules in the
+[table discovery skill](../metatables-table-discovery/SKILL.md); see
+`src/metatables/examples/tables.py`.
 
 Migrate and bind the output class before constructing the producer. Pass explicit
 `config` and `output_table`; do not create/register tables inside `update()`.
@@ -122,3 +124,7 @@ for restart recovery. On an uncertain outcome, inspect `upload_receipt()` before
 resubmitting; do not assign a fresh key to bypass uncertainty. Administrator
 reconciliation requires verified physical evidence. This workflow uses the Main
 Sequence API and has no Artifact or temporary-URL dependency.
+
+A 429 `transfer_capacity_exceeded` or 503 `database_connections_busy` means the
+API was at capacity and nothing ran. Retry after `Retry-After`, an upload with the
+same operation UUID; it is not an uncertain outcome.

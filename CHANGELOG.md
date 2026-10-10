@@ -7,6 +7,142 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.6] - 2026-10-10
+
+### Added
+
+- `scripts/bootstrap_metatables_access.py` gives the deployment's workload Users
+  Writer on the `mainsequence.markets` MetaTables namespace in one Environment, for
+  an Organization admin to run once from a checkout of `development` or `main`.
+  It creates the Team `ms-markets-<environment>` from the checkout's Environment
+  name, adds the migration Job's and FastAPI release's workload Users from the
+  deployment workflow, creates the namespace if it is missing and grants the Team
+  Writer on it. Every other grant is kept, and `--dry-run` only reports. Without
+  this grant the migration Job could not register tables. In `development` it got
+  `422 MetaTable is not editable` on `msm.alembic_version`, which a previous runtime
+  identity had registered. See [MetaTables#43](https://github.com/mainsequence-projects/MetaTables/issues/43)
+  and "MetaTables access in each Environment" in `docs/releasing.md`.
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.33,<0.2`; the lock and runtime export
+  select 0.1.33, while Main Sequence remains 9.0.19. The shared migration runner
+  batches table inventories and inspections and waits up to 300 seconds for a
+  waking API, addressing the 30-second discovery timeout in the failed Markets
+  deployment ([MetaTables#55](https://github.com/mainsequence-projects/MetaTables/pull/55)).
+  Server-side batching, unchanged-contract write avoidance, and startup
+  improvements also require deployment of the updated shared MetaTables API.
+- The upgraded migration runner carries changed, non-empty authored table and
+  column metadata through finalization at an unchanged Alembic revision. Empty
+  values preserve existing catalog metadata and equal-valued reruns avoid
+  catalog writes. The matching API update is required for this payload; it also
+  fixes SQLite schema reflection during multi-batch downgrade finalization
+  ([MetaTables#59](https://github.com/mainsequence-projects/MetaTables/pull/59)).
+- The migration Job exposes the shared runner's INFO phase timings, always
+  reconciles the catalog even at head, and propagates failures to block rollout.
+  Provider identity, version-table binding, and applied revisions are unchanged.
+- Refreshed the MetaTables-owned skills and guide snapshots to 0.1.33; aligned
+  migration documentation, release guidance, tutorial, and print-only example.
+- Requires `mainsequence-metatable>=0.1.29,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.29. Changes in MetaTables 0.1.29
+  ([MetaTables#52](https://github.com/mainsequence-projects/MetaTables/pull/52)):
+  - Hosted migrations no longer create application tables in the `metatables`
+    catalog schema. The migration connection pins `search_path=public`, the
+    client checks it, and the PostgreSQL version table is always schema-qualified
+    ([MetaTables#50](https://github.com/mainsequence-projects/MetaTables/issues/50)).
+    The first ms-markets migration in `development`, on 2026-10-03, had created
+    all its tables in `metatables`, so every later migration found its version
+    table at head, ran no DDL and failed finalization. MetaTables removed those
+    tables, so the next deployment creates them in `public`.
+  - Before issuing a migration connection, the API refuses misplaced provider
+    tables with `provider_tables_misplaced`.
+  - Finalization deletes a catalog binding only for a table the client names as
+    removed. It no longer drops the bindings of current tables it can't find.
+  - The vendored MetaTables agent skills are refreshed to 0.1.29.
+- Requires `mainsequence-metatable>=0.1.28,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.28. Changes in MetaTables 0.1.28
+  ([MetaTables#49](https://github.com/mainsequence-projects/MetaTables/pull/49)):
+  - The client finalizes at most 10 tables per request, the Alembic version
+    table first. A rerun of the migration Job finalizes whatever an
+    interrupted run left. Finalizing all 62 ms-markets tables in one request
+    ran past the hosted request limit, so the migration could never finish
+    ([MetaTables#46](https://github.com/mainsequence-projects/MetaTables/issues/46)).
+  - The hosted API reuses connections and serves concurrent requests on more
+    resources, so a long request no longer leaves it refusing connections
+    ([MetaTables#45](https://github.com/mainsequence-projects/MetaTables/issues/45)).
+  - A busy API answers `503` `database_connections_busy` with `Retry-After`;
+    nothing ran, and the call can be retried.
+  - The vendored MetaTables agent skills are refreshed to 0.1.28.
+- Requires `mainsequence-metatable>=0.1.27,<0.2`; the lock and exported
+  `requirements.txt` select 0.1.27. Changes in MetaTables 0.1.27
+  ([MetaTables#44](https://github.com/mainsequence-projects/MetaTables/pull/44)):
+  - One platform Team per Environment owns an application's tables, with the
+    application's workload Users as members. This is what
+    `scripts/bootstrap_metatables_access.py` sets up.
+  - A table registered in a namespace the caller already writes gets no grant of
+    its own.
+  - A refused registration answers `403` `table_not_editable` or
+    `namespace_not_writable`, with the caller's User UID.
+  - The vendored MetaTables agent skills are refreshed to 0.1.27. The
+    `metatables-migrations` skill makes the per-Environment Team a deployment
+    step.
+- Requires `mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.26,<0.2`;
+  the lock and exported `requirements.txt` select `mainsequence` 9.0.19 and
+  `mainsequence-metatable` 0.1.26. MetaTables 0.1.24 and later require
+  `mainsequence[mcp]>=9.0.19` and always install `fastembed`, so `onnxruntime`,
+  `tokenizers`, `huggingface-hub` and `mcp` are new runtime dependencies (about
+  100 MB installed). The API does not import them at startup. No ms-markets
+  code uses an API that changed in this range.
+- The local MetaTables API is now one per laptop. After upgrading, restart
+  `metatables serve --local` and apply the local system migration
+  `0011_table_search` (`metatables --local runtime upgrade`); projects on
+  MetaTables 0.1.21 or earlier then fail against the shared local file.
+- Every request to the Markets API is authenticated before its handler (see
+  Fixed). A local request must send the signed-in user's
+  `Authorization: Bearer` token, which is checked against
+  `MAINSEQUENCE_ENDPOINT`; without one it receives `401`.
+- Refreshed the Main Sequence SDK agent skills and the managed `AGENTS.md`
+  block to 9.0.19, and the MetaTables agent skills to 0.1.26. The 0.1.18
+  MetaTables skills said registered foreign keys must use `RESTRICT` or
+  `NO ACTION`; 0.1.26 allows any referential action, including the cascades
+  ms-markets declares.
+
+### Fixed
+
+- Repair the portfolio event ledger's TimescaleDB-incompatible non-time unique
+  constraint through forward migration `0019`, preserving applied `0018`, all
+  existing rows, and full-grain uniqueness. Canonical publication, restart, and
+  projections reject duplicate economic record identities across timestamps
+  and event revisions split across times. Exact retries remain idempotent.
+- Align ADR 0042, accounting and migration documentation, the portfolio tutorial,
+  and the offline dividend/FX example with the storage and validation boundary.
+- The Markets API installs the SDK request identity with
+  `install_request_identity(app)` in `create_app()`. The platform launcher
+  refuses to serve an application that does not install it, and SDK releases
+  before 9.0.18 reject the platform's current caller assertions. Handlers read
+  the verified caller from `request.state.user`, which the platform never
+  injected, so the Index routes treated every hosted request as anonymous.
+- The Index actor takes its Teams from the request identity's `team_uids`. It
+  read `organization_teams`, which a request identity does not have, so an
+  HTTP caller's Teams were always empty.
+- The `markets-api` release and the `migrate-markets` Job declare
+  `access.branches` view on the MetaTables repository in the deployment
+  workflow, and the platform grants it to their workload Users on every push.
+  They run as their own workload Users, and MetaTables API discovery failed
+  without that access: "No visible FastAPI deployment named 'metatables'",
+  then "Cannot verify the Environment of every visible API deployment".
+- `msm_portfolios.utils.get_portfolios_logger()` returns the logger bound with
+  `sub_application="portfolios"`. It discarded the result of `.bind()` and
+  returned the unbound SDK logger, so `msm_portfolios.utils.logger` and the
+  `msm_portfolios.configuration` logger never carried the binding.
+- `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` runs the
+  dynamic Alembic revision and upgrade through the `metatables migrations` CLI.
+  It invoked `python -m mainsequence migrations ...`, which the SDK no longer
+  provides, so schema preparation failed unless `--check-only` was set.
+- Removed a stray module-level developer note from
+  `msm_portfolios/configuration.py` that referenced the retired SDK
+  `data_publishing` skill by a local absolute path.
+
 ## [2.2.5] - 2026-10-04
 
 ### Fixed

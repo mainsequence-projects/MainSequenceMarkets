@@ -183,6 +183,7 @@ class PortfolioAccounting:
             )
         if flat.empty:
             raise ValueError("Cannot reconstruct accounting state from an empty ledger.")
+        _validate_ledger_record_identities(flat)
         portfolios = set(flat["portfolio_identifier"].astype(str))
         if portfolios != {accounting.portfolio_identifier}:
             raise ValueError(
@@ -348,9 +349,7 @@ class PortfolioAccounting:
         for candidates in candidates_by_model.values():
             if not candidates.empty:
                 times.update(pd.DatetimeIndex(candidates["time_index"]))
-        times = {
-            timestamp for timestamp in times if timestamp >= self.initial_state_time_index
-        }
+        times = {timestamp for timestamp in times if timestamp >= self.initial_state_time_index}
         if calculation_end is not None:
             horizon = _utc_timestamp(calculation_end)
             times = {timestamp for timestamp in times if timestamp <= horizon}
@@ -576,9 +575,7 @@ class PortfolioAccounting:
                 "state_schema_version": int(row.get("state_schema_version") or 1),
                 "extension_payload": _required_text(row, "extension_payload"),
             }
-        for row in event[event["record_kind"] == "execution_progress"].to_dict(
-            orient="records"
-        ):
+        for row in event[event["record_kind"] == "execution_progress"].to_dict(orient="records"):
             state_identifier = _required_text(row, "state_identifier")
             self._state.execution_progress[state_identifier] = {
                 "state_identifier": state_identifier,
@@ -914,6 +911,26 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
+
+
+def _validate_ledger_record_identities(frame: pd.DataFrame) -> None:
+    """Reject economic-record duplication independently of the storage timestamp."""
+    if frame.empty:
+        return
+    event_keys = ["portfolio_identifier", "event_identifier", "event_revision"]
+    if frame.duplicated(subset=[*event_keys, "record_identifier"]).any():
+        raise ValueError(
+            "Portfolio event ledger contains duplicate economic record identities "
+            "independent of time_index."
+        )
+    event_times = frame.assign(time_index=pd.to_datetime(frame["time_index"], utc=True))
+    if (
+        event_times.groupby(event_keys, sort=False, dropna=False)["time_index"]
+        .nunique(dropna=False)
+        .ne(1)
+        .any()
+    ):
+        raise ValueError("Portfolio event ledger event revision spans multiple time_index values.")
 
 
 def event_digest(records: pd.DataFrame) -> str:

@@ -16,7 +16,7 @@ from msm_portfolios.accounting import (
     project_portfolio_values,
     project_state,
 )
-from msm_portfolios.data_nodes import PortfolioEngine
+from msm_portfolios.data_nodes import PortfolioEngine, normalize_portfolio_event_ledger_frame
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     InstrumentExecutionSpec,
@@ -161,6 +161,19 @@ def build_example() -> dict[str, pd.DataFrame]:
 
 def main() -> None:
     result = build_example()
+    ledger = result["ledger"]
+    normalized = normalize_portfolio_event_ledger_frame(ledger)
+    pd.testing.assert_frame_equal(normalized, normalize_portfolio_event_ledger_frame(ledger.copy()))
+    duplicate = ledger.iloc[[0]].copy()
+    duplicate["time_index"] = pd.to_datetime(duplicate["time_index"], utc=True) + pd.Timedelta(
+        days=1
+    )
+    try:
+        normalize_portfolio_event_ledger_frame(pd.concat([ledger, duplicate], ignore_index=True))
+    except ValueError as exc:
+        print(f"Cross-time duplicate rejected: {exc}")
+    else:
+        raise AssertionError("A duplicate economic record must not pass ledger validation.")
     summaries = result["ledger"].query("record_kind == 'valuation_summary'")
     print("Event-level USD NAV and recognized P&L:")
     print(

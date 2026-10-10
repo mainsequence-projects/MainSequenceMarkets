@@ -110,8 +110,8 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.18,<0.2` with
-`mainsequence>=9.0.5,<10`. The client exposes `AlembicMetaTableMigration`,
+The implementation requires `mainsequence-metatable>=0.1.33,<0.2` with
+`mainsequence>=9.0.19,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where
 `metatables --local migrations upgrade --provider msm_migrations:migration head`
@@ -122,3 +122,11 @@ registry, version-table binding, revision IDs, and applied revision history.
 The 2.1.0 squash into `0018_initial_schema` is a separate, one-time replacement
 of the history; see
 [ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).
+
+The shared `metatables.upgrade_application(...)` lifecycle automatically batches
+table inventories and physical inspection. Migration API discovery waits up to
+300 seconds for a waking or restarting API; ordinary client calls retain their
+30-second budget. No private batching helper, timeout override, custom retry
+loop, or new revision is needed. An unchanged revision still finalizes catalog
+contracts and checks for missing tables. See
+[Migration diagnostics](../migrations/index.md#migration-diagnostics-and-repeated-runs).

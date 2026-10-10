@@ -266,6 +266,10 @@ authentication mechanisms are unchanged.
 
 ### Amendment: bounded platform-fact caching (2026-09-29)
 
+Hosted admission no longer looks up or caches User facts; it reads them from the
+caller assertion ([ADR 0017](0017-hosted-request-identity.md), 2026-10-05
+amendment). The cache below now serves the developer's admission only.
+
 This amendment replaces the requirement to fetch User facts on every request.
 Repeated User and Environment lookups added seconds to ordinary table reads and
 runtime initialization without changing their results.
@@ -306,6 +310,79 @@ Acceptance includes startup reuse, repeated and concurrent requests, isolation
 between callers and runtimes, fixed expiry, revocation after expiry, failed
 refresh without stale access, live catalog grant revocation, and Admin request
 sharing with independent cancellation.
+
+### Amendment: principals as the caller sees them (2026-10-06)
+
+Since platform ADR-0048 the hosted API calls the platform as its own workload
+User, which starts with no teams and no grants. Its directory reads saw almost no
+one, so the hosted sharing panel offered no principals and refused grants to people
+and Teams. Deployed Jobs, FastAPI releases and Agents also call MetaTables as
+their own workload Users, which need to be granted like people.
+
+- **Reads as the caller.** Every directory read (sharing candidates, principal
+  validation, names of granted principals and Team members) runs inside the SDK's
+  `reads_as_caller()`. That call presents the caller assertion the request arrived
+  with, and the platform answers with what the caller may see. Local and
+  developer runtimes have no assertion; their SDK session already belongs to the
+  developer.
+- **Workload Users are `user` principals.** Writers and admins grant them like
+  people. `GET /security/principals/?search=` finds people by email or name,
+  workloads by their Job, release or Agent name, and Teams, within the caller's
+  directory. A grant by UID (`workload_user_uid` from the Job, release or Agent)
+  needs no search. A workload User has no name of its own: it is labelled by its
+  Job, release or Agent name (`workload_name`) when the caller can view that
+  workload, otherwise by its kind and UID. An inactive one, whose workload was
+  deleted, cannot be granted.
+- **A workload's manager grants it.** As in platform ADR-0048 section 5, a person
+  who manages a workload (the platform's `managed_by_caller`) may grant it Reader
+  on a table they can read, and lower or remove that grant, without being a
+  Writer. Any other change still needs a Writer or an admin.
+- **Effective access for another User.** That User's Teams are the members of
+  each Team granted on the table or its namespace that the caller can see. The
+  preview lists any granted Team it could not read in `unreadable_team_uids`.
+- The SDK requirement becomes `mainsequence>=9.0.14,<10`, the first SDK with
+  `reads_as_caller()`, the User `search` filter, `managed_by_caller`,
+  `workload_name` and Team members that may be workload Users.
+
+### Amendment: Teams own application tables (2026-10-09)
+
+Since platform ADR-0048 every Job, release and Agent runs as its own workload
+User. Each Environment, and each recreated Job, has a new one. A table's creator
+grant tied the table to the workload User that first registered it, so the next
+identity of the same application could not re-register its own tables
+([#43](https://github.com/mainsequence-projects/MetaTables/issues/43)).
+
+- **A Team owns an application's tables.** Before an application's first
+  migration in an Environment, an Organization admin grants a platform Team Writer
+  on each namespace the application's tables are registered in, creating any that
+  don't exist. The application's migration Job and every workload User that reads
+  or writes its tables are members of that Team. One namespace per application is
+  recommended, not enforced: MetaTables authorizes identities and has no trusted
+  fact about which project a caller runs, so any Writer of a namespace may
+  register tables in it from any project.
+  Use one Team per Environment, so that one Environment's workloads are not
+  Writers in another. A new workload User needs Team membership only; the tables
+  keep their owner.
+- **No creator grant under a namespace Writer.** Registering a new table into a
+  namespace where the caller is already a Writer, directly or through a Team, adds
+  no creator grant: the namespace's Writers control the table. Otherwise the
+  creator still receives Writer, including an admin registering into a namespace
+  where they have no grant, so no table starts without a Writer.
+- **Creator attribution is a column.** `meta_table.created_by_user_uid` records
+  who registered each table and grants nothing. System migration
+  `0012_table_creator` adds it and fills it from each table's first self-granted
+  Writer in the grant history.
+- **Refusals say how to recover.** Registration refusals are 403s with a `code`:
+  `table_not_editable` for an existing table the caller cannot edit,
+  `namespace_not_writable` for a namespace that is missing or that the caller
+  cannot write. Both name the caller's User UID and the recovery: add it to the
+  Team with Writer on the namespace, or ask an Organization admin. The table's
+  namespace is named when the caller requested it or can read the table; its
+  Writers are listed only when the caller can read the table.
+
+Tables whose only Writer is a replaced identity are recovered the same way: an
+admin grants the application's Team Writer on their namespace. There is no admin
+bypass and no automatic adoption.
 
 ## Superseded behavior and preserved boundaries
 
@@ -360,6 +437,9 @@ schema baseline/recreation policy remains governed by ADR 0001.
   resources through counts, search, lineage, or error details.
 - A Writer can grant/revoke Reader and Writer access only on tables they control.
   Re-registering an existing table never grants the caller ownership.
+- A new member of a Team with Writer on a table's namespace registers and migrates
+  that existing table; a caller outside it is refused with a recovery path that
+  reveals nothing it cannot read.
 - Team changes and namespace revocation/moves change effective access under the
   documented freshness rules; independent grants remain visible and effective.
 - Non-admins cannot manage DataSources, runtime selection, system migrations,

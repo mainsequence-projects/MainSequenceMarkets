@@ -205,6 +205,14 @@ the event-level summary rows: entitlement recognizes income once; the later
 cash receipt has zero recognized P&L because it only exchanges receivable state
 for settled cash.
 
+The same example also normalizes an exact retry and rejects a duplicated
+economic record moved to another timestamp. Keep economic identity stable;
+changing time alone is not a new event. Hosted publication compares the complete
+event revision with existing digests before adding a ledger tail. Apply provider
+head (including `0019`) through the local migration command or the hosted
+deployment Job before attaching these tables; never bypass validation with raw
+SQL ledger writes.
+
 To see the user-extension boundary, run:
 
 ```bash

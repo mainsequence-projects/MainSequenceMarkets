@@ -22,11 +22,19 @@ does not change the provider key `msm:<namespace>` or the
 `ms_markets__alembic_version` table. See
 [ADR 0044](../../../ADR/0044-namespaced-migration-provider-package.md).
 
-Since 2.1.0 the history is one revision, `0018_initial_schema`, which replaces
+Since 2.1.0 the history starts at `0018_initial_schema`, which replaces
 `0001`–`0017` without reusing their IDs. A database left at any of those
 revisions fails with an unknown-revision error: downgrade it to `base` with
 2.0.x installed, then apply 2.1.0 from empty. See
 [ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).
+
+Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra
+unique constraint that omitted the TimescaleDB partition key. The full-grain
+unique index and existing rows remain intact; the accounting engine validates
+cross-time economic identities. This is a forward repair, including when `0018`
+committed but hypertable/catalog finalization failed. Do not rewrite or stamp
+the applied revision. Once the ledger is a hypertable, TimescaleDB rejects a
+downgrade restoring the old non-time constraint; use a forward repair instead.
 
 ## Admin Commands
 
@@ -59,6 +67,51 @@ This repository's `.mainsequence/workflows/ms-markets-api.yaml` builds the image
 `metatables.upgrade_application("msm_migrations:migration")`; a database already
 at head is left unchanged, and a failure blocks the API rollout while the
 previous release keeps serving.
+
+### Migration diagnostics and repeated runs
+
+The minimum client is MetaTables 0.1.33. `upgrade_application()` automatically
+uses fresh table inventories and batched physical inspections; PostgreSQL
+reflection is batched by schema. Finalization requests remain bounded to ten
+tables each, with the version table first. No batching option or project-specific
+runner is required.
+
+Discovery during a migration waits up to 300 seconds for MetaTables to wake or
+finish replacing its pods. Ordinary client calls retain a 30-second discovery
+budget. A discovery failure still fails the Job and blocks deployment.
+
+`jobs/migrate_markets.py` enables INFO logging for `metatables.migrations.runner`.
+Its logs separate preparation, database setup, table checks, Alembic execution,
+catalog finalization, and total time. Measure these separately from platform
+scheduling and workflow coordination; do not log migration connection responses
+or credentials.
+
+An already-current revision **still runs catalog reconciliation**, including
+missing-table checks and description, label, and column metadata refresh. Do not
+skip the Job or finalization because `migrated=False`. If DDL committed but
+finalization failed, inspect the actual schema and per-table errors, then rerun
+the same migration through a new deployment. Do not stamp, rewrite applied
+revisions, or downgrade to recover catalog state.
+
+The runner carries changed, non-empty authored table descriptions, labels, and
+column descriptions, labels, and logical names in each finalization batch. An
+unchanged revision can therefore refresh catalog metadata without new DDL.
+Empty or absent metadata preserves existing values; fresh physical inspection
+still owns types, keys, indexes, and nullability. Equal-valued reruns avoid
+catalog writes. This payload requires the matching MetaTables API update, which
+also corrects SQLite schema reflection for multi-batch downgrades.
+
+Client improvements require an updated application image. API-side batching,
+unchanged-contract write avoidance, and startup optimizations require the shared
+MetaTables API to be deployed with that release too. Update matching guidance
+with `metatables copy-metatables-skills --path .` after updating the client.
+
+!!! warning "Required: MetaTables access for the deployment"
+    The migration Job runs as its own workload User, which has no MetaTables
+    grants until an Organization admin runs `scripts/bootstrap_metatables_access.py`
+    for that Environment. Until then every hosted migration fails and the API is not
+    deployed; see
+    [MetaTables access in each Environment](../../../releasing.md#metatables-access-in-each-environment).
 
 The ms-markets schema is owned and migrated only by this repository's
 deployment. An application that installs ms-markets to read or write its tables
