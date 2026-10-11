@@ -34,7 +34,9 @@ def main() -> None:
     print("It re-owns ordinary tables before conversion, without new grants or row loss.")
     print("After a committed 0020 and failed finalization, repair the API and rerun this Job.")
     print("FastAPI startup uses the same 300s discovery scope for both runtime attachments.")
-    print("Attachment failures stop startup; normal request budgets stay unchanged.")
+    print("Startup retries explicit temporary auth/wake errors within one 300s budget.")
+    print("Invalid auth, permissions, schema, or persistent errors stop startup.")
+    print("Normal request budgets stay unchanged.")
     print("INFO logs from metatables.migrations.runner report each phase's elapsed time.")
     print("Consumers migrate only their own providers, not the ms-markets provider.")
 

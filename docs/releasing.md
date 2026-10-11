@@ -170,6 +170,12 @@ canonical and pricing runtime attachments. Discovery during shared-API wake or
 rollout previously exhausted the ordinary 30-second budget. Attachment errors
 still fail startup; the scope ends before normal request serving.
 
+Startup retries the gateway’s explicit `503 authentication_unavailable` response
+and temporary MetaTables deployment unavailability within one 300-second budget.
+Each attempt performs read-only attachment with a fresh endpoint scope. Authentication
+`401`, permission `403`, schema errors, and other server failures propagate immediately;
+persistent temporary failures also stop startup. Normal requests do not use this retry.
+
 ### Upgrading the migration client
 
 The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and

@@ -30,6 +30,12 @@ The hosted FastAPI app attaches its canonical and pricing runtimes inside one
 Environment's shared MetaTables API to wake without shortening the wait to
 30 seconds. Attachment failures still stop startup; request budgets stay unchanged.
 
+Startup retries the gateway’s explicit `503 authentication_unavailable` response
+and temporary MetaTables deployment unavailability within one 300-second budget.
+Each attempt performs read-only attachment with a fresh endpoint scope. Authentication
+`401`, permission `403`, schema errors, and other server failures propagate immediately;
+persistent temporary failures also stop startup. Normal requests do not use this retry.
+
 ## Runtime setup
 
 Production code normally initializes the required market MetaTables during
