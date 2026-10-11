@@ -30,6 +30,9 @@ def main() -> None:
     print("Changed non-empty authored metadata refreshes without a new Alembic revision.")
     print("Empty metadata preserves existing values; equal-valued reruns avoid catalog writes.")
     print("Metadata finalization also requires the matching shared MetaTables API update.")
+    print("Legacy TimescaleDB finalization requires shared MetaTables API >=0.1.34.")
+    print("It re-owns ordinary tables before conversion, without new grants or row loss.")
+    print("After a committed 0020 and failed finalization, repair the API and rerun this Job.")
     print("INFO logs from metatables.migrations.runner report each phase's elapsed time.")
     print("Consumers migrate only their own providers, not the ms-markets provider.")
 

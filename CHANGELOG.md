@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.9] - 2026-10-11
+
+### Changed
+
+- Document the shared MetaTables API 0.1.34 dependency for finalizing the
+  populated legacy TimescaleDB schema after the committed `0020` upgrade. Its
+  ownership-before-conversion repair preserves rows without adding internal
+  schema grants. Retry through the hosted migration Job; client requirements,
+  applied Alembic revisions, and development tables remain unchanged.
+
 ## [2.2.8] - 2026-10-11
 
 ### Fixed
