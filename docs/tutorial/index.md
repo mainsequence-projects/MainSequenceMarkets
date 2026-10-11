@@ -38,6 +38,8 @@ descriptions, labels, and column metadata refresh during finalization without a
 new revision; empty values preserve existing metadata. The shared MetaTables API
 must support that payload too. See
 [Migrations](../knowledge/msm/migrations/index.md) for the workflow and timing logs.
+The hosted Job explicitly allows 300 seconds for a waking MetaTables API;
+an unavailable deployment or a schema/catalog failure still blocks rollout.
 
 ## Installing MS Markets Agent Skills
 

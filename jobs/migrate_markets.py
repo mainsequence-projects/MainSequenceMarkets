@@ -9,6 +9,7 @@ import logging
 import sys
 
 from metatables import upgrade_application
+from metatables.endpoint import api_endpoint_scope
 
 PROVIDERS = ("msm_migrations:migration",)
 
@@ -24,6 +25,9 @@ for provider in PROVIDERS:
     print(f"Applying and reconciling {provider}", flush=True)
     # Always run the shared lifecycle, even at head: catalog finalization and
     # missing-table checks are still required. Exceptions must fail this Job.
-    result = upgrade_application(provider)
+    # Pin the Environment's API for this lifecycle and allow its runtime to wake.
+    # Schema and catalog failures still propagate and block the API rollout.
+    with api_endpoint_scope(discovery_timeout=300):
+        result = upgrade_application(provider)
     state = "migrated" if result["migrated"] else "already current"
     print(f"{provider}: {result['revision']} ({state}) on {result['data_source_uid']}", flush=True)

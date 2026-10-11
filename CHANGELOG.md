@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.8] - 2026-10-11
+
+### Fixed
+
+- Give the hosted migration Job an explicit 300-second MetaTables discovery
+  scope, so waking APIs receive the documented migration wait budget instead
+  of the ordinary 30 seconds. Schema and catalog errors still fail the Job;
+  the data-preserving `0017` bridge and applied revisions stay unchanged.
+
 ## [2.2.7] - 2026-10-11
 
 ### Fixed

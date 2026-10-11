@@ -86,9 +86,12 @@ reflection is batched by schema. Finalization requests remain bounded to ten
 tables each, with the version table first. No batching option or project-specific
 runner is required.
 
-Discovery during a migration waits up to 300 seconds for MetaTables to wake or
-finish replacing its pods. Ordinary client calls retain a 30-second discovery
-budget. A discovery failure still fails the Job and blocks deployment.
+The hosted Job wraps `upgrade_application` in
+`api_endpoint_scope(discovery_timeout=300)`, explicitly allowing up to 300 seconds
+for a waking MetaTables deployment. Ordinary client calls retain a 30-second
+discovery budget. A deployment reported as unavailable, a discovery failure,
+or a schema/catalog failure still fails the Job and blocks deployment. Verify
+the Environment's MetaTables deployment is ready before restarting a failed workflow.
 
 `jobs/migrate_markets.py` enables INFO logging for `metatables.migrations.runner`.
 Its logs separate preparation, database setup, table checks, Alembic execution,
