@@ -129,6 +129,30 @@ rebuilds the image, runs the `migrate-markets` Job and redeploys the API. Pushes
 `main` happen only through release merges, so the `main` deployment follows
 stable releases.
 
+### Legacy 0017 compatibility
+
+Release 2.2.7 bridges populated PostgreSQL databases at `0017` to `0020` in
+place. `0018` and `0019` remain unchanged, and development at either revision
+also reaches `0020`. Never reset, downgrade, or stamp a production database to
+recover from the retired-history error. See
+[the migration guide](knowledge/msm/migrations/index.md) and
+[ADR 0046](ADR/0046-legacy-0017-schema-bridge.md).
+
+In addition to the service-free checks, run the original-history regression
+against an empty disposable PostgreSQL database on localhost:
+
+```bash
+MS_MARKETS_LEGACY_TEST_POSTGRES_URL=postgresql+psycopg2://localhost/markets_migration_test \
+  uv run --frozen --all-extras pytest -q tests/msm/maintenance/test_legacy_schema_migration.py
+```
+
+Confirm the development migration succeeds and its API remains healthy before
+merging into `main`. After the Production workflow, verify the Job's preserved
+row counts/checksums and successful catalog finalization, the active API revision,
+and delegated requests from both static sites to their own environment APIs.
+A failed guard blocks rollout; investigate the drift or overlong values instead
+of bypassing the check. The bridge's new revisions are forward-only.
+
 ### Upgrading the migration client
 
 The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and

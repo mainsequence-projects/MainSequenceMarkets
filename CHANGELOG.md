@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.7] - 2026-10-11
+
+### Fixed
+
+- Restore a forward upgrade for populated PostgreSQL databases at the retired
+  `0017` head, which blocked the Production API rollout. A compatibility anchor
+  and merge revision `0020` join that history with development's `0018`/`0019`
+  without changing those applied revisions or replacing application tables.
+- Validate all 62 application table column contracts before reconciliation;
+  refuse overlong identifiers, bound only ten known legacy string columns, and
+  verify locked tables' row counts and checksums remain unchanged. Extra tables
+  and columns are preserved. Already-bounded development needs no alterations.
+- Add original-history PostgreSQL data-preservation and failure regressions,
+  fresh/development upgrade checks, and matching migration guide, release
+  instructions, ADR 0046, tutorial, and print-only lifecycle example.
+
 ## [2.2.6] - 2026-10-10
 
 ### Added

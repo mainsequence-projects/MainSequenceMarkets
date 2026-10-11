@@ -151,7 +151,11 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
 def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     versions_root = resources.files("msm_migrations").joinpath("versions", "mainsequence_markets")
     revisions = sorted(item.name for item in versions_root.iterdir() if item.name[:4].isdigit())
-    assert revisions == ["0018_initial_schema.py", "0019_ledger_hypertable_uniqueness.py"]
+    assert revisions == [
+        "0017_legacy_schema_anchor.py", "0018_initial_schema.py",
+        "0019_ledger_hypertable_uniqueness.py", "0020_expected_columns.json",
+        "0020_merge_legacy_schema.py",
+    ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
     )

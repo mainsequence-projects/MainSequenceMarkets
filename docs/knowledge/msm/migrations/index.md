@@ -22,11 +22,21 @@ does not change the provider key `msm:<namespace>` or the
 `ms_markets__alembic_version` table. See
 [ADR 0044](../../../ADR/0044-namespaced-migration-provider-package.md).
 
-Since 2.1.0 the history starts at `0018_initial_schema`, which replaces
-`0001`–`0017` without reusing their IDs. A database left at any of those
-revisions fails with an unknown-revision error: downgrade it to `base` with
-2.0.x installed, then apply 2.1.0 from empty. See
-[ADR 0045](../../../ADR/0045-squashed-initial-schema-and-namespaced-packages.md).
+Since 2.1.0 fresh databases start at `0018_initial_schema`. Release 2.2.7
+restores recognition of the retired `0017` head through a compatibility anchor
+and merge revision `0020`. A populated PostgreSQL database at `0017` upgrades
+in place; databases at `0018` or `0019` reach the same head. Applied revisions
+`0018` and `0019`, provider identity, and version-table binding are unchanged.
+
+The bridge validates all 62 application tables and their column contracts.
+Only ten known, formerly unbounded identifier columns may differ. It refuses
+values longer than 255 characters before bounding those columns, locks affected
+tables against writes, and verifies row counts and row multiset checksums before
+and after the change. Extra tables and columns remain intact. Already-current
+development columns need no alteration. No reset, downgrade, or manual stamp is
+needed. Revisions `0001`–`0016` remain unsupported; investigate those separately.
+The bridge is forward-only. See
+[ADR 0046](../../../ADR/0046-legacy-0017-schema-bridge.md).
 
 Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra
 unique constraint that omitted the TimescaleDB partition key. The full-grain

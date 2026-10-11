@@ -1,0 +1,2170 @@
+{
+  "ms_markets__assettype": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__indextype": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "index_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__ordereventsts": {
+    "event_time": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "order_identifier": {
+      "type": "VARCHAR",
+      "nullable": false
+    },
+    "order_status": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "event_metadata": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfoliometadata": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    }
+  },
+  "ms_markets__rebalancestrategymetadata": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "rebalance_strategy_uid": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "rebalance_strategy_description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "configuration_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__accountgroup": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "group_name": {
+      "type": "VARCHAR(100)",
+      "nullable": true
+    },
+    "group_description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__account": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "account_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "is_paper": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "account_is_active": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "account_group_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "holdings_data_node_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__asset": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "asset_type": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    }
+  },
+  "ms_markets__assetcategorymembership": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "category_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    }
+  },
+  "ms_markets__assetcategory": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__assetcurrentpricingdetails": {
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "instrument_type": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "instrument_dump": {
+      "type": "JSON",
+      "nullable": false
+    },
+    "pricing_details_date": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "serialization_format": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "pricing_package_version": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__assetpricingdetailsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "instrument_dump": {
+      "type": "JSONB",
+      "nullable": false
+    },
+    "instrument_type": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "serialization_format": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "pricing_package_version": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__assetsnapshotsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "name": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "ticker": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "exchange_code": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "asset_ticker_group_id": {
+      "type": "VARCHAR",
+      "nullable": true
+    }
+  },
+  "ms_markets__bondassetdetails": {
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "issuer_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "currency_asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "issue_date": {
+      "type": "DATE",
+      "nullable": false
+    },
+    "maturity_date": {
+      "type": "DATE",
+      "nullable": true
+    },
+    "status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    }
+  },
+  "ms_markets__issuer": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__calendar": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "calendar_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "timezone": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "source": {
+      "type": "VARCHAR(128)",
+      "nullable": true
+    },
+    "source_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "valid_from": {
+      "type": "DATE",
+      "nullable": false
+    },
+    "valid_to": {
+      "type": "DATE",
+      "nullable": false
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__calendardate": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "calendar_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "local_date": {
+      "type": "DATE",
+      "nullable": false
+    },
+    "is_business_day": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "is_holiday": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "is_weekend": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "is_early_close": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "holiday_name": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__calendarevent": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "calendar_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "event_date": {
+      "type": "DATE",
+      "nullable": true
+    },
+    "event_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "event_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "event_label": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "target_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "target_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "target_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__calendarsession": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "calendar_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "local_date": {
+      "type": "DATE",
+      "nullable": false
+    },
+    "session_label": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "opens_at": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "closes_at": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "timezone": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "is_primary": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__currencyspotassetdetails": {
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "base_currency_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "quote_currency_uid": {
+      "type": "UUID",
+      "nullable": false
+    }
+  },
+  "ms_markets__curve": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "curve_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "currency_code": {
+      "type": "VARCHAR(16)",
+      "nullable": true
+    },
+    "quote_side": {
+      "type": "VARCHAR(32)",
+      "nullable": true
+    },
+    "interpolation_method": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "compounding": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__curvebuildingdetails": {
+    "curve_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "builder_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "quote_convention": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "rate_unit": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "day_counter_code": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "calendar_code": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "interpolation_method": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "compounding": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "compounding_frequency": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "extrapolation_policy": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "bootstrap_method": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "builder_payload": {
+      "type": "JSON",
+      "nullable": true
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__discountcurvests": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "curve_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "curve": {
+      "type": "VARCHAR",
+      "nullable": false
+    },
+    "key_nodes": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__externalpricests": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "open_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "open": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "high": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "low": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "close": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "volume": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "trade_count": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "vwap": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "interpolated": {
+      "type": "BOOLEAN",
+      "nullable": true
+    }
+  },
+  "ms_markets__futureassetdetails": {
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "kind": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "underlying_index_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "quote_unit": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "settlement_asset": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "margin_asset": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "settlement_model": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "settlement_method": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "contract_size": {
+      "type": "NUMERIC(38, 18)",
+      "nullable": false
+    },
+    "contract_unit": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "expires_at": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "settles_at": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__index": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "index_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "calculation_method": {
+      "type": "VARCHAR(16)",
+      "nullable": false
+    },
+    "value_format": {
+      "type": "VARCHAR(16)",
+      "nullable": false
+    },
+    "value_suffix": {
+      "type": "VARCHAR(32)",
+      "nullable": true
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__indexconventiondetails": {
+    "index_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "index_family": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "convention_dump": {
+      "type": "JSON",
+      "nullable": false
+    },
+    "serialization_format": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__indexdatasetavailability": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "index_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "meta_table_uid": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "cadence": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "population_state": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "row_count": {
+      "type": "INTEGER",
+      "nullable": true
+    },
+    "earliest_time_index": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "latest_time_index": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "reconciled_at": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "error_code": {
+      "type": "VARCHAR(128)",
+      "nullable": true
+    },
+    "error_message": {
+      "type": "VARCHAR(1024)",
+      "nullable": true
+    }
+  },
+  "ms_markets__indexfixingsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "index_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "rate": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    }
+  },
+  "ms_markets__indexformuladefinition": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "index_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "version": {
+      "type": "INTEGER",
+      "nullable": false
+    },
+    "status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "valid_from": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "valid_to": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "formula": {
+      "type": "TEXT",
+      "nullable": false
+    },
+    "alignment_policy": {
+      "type": "VARCHAR(16)",
+      "nullable": false
+    },
+    "alignment_parameters_json": {
+      "type": "JSON",
+      "nullable": true
+    },
+    "missing_data_policy": {
+      "type": "VARCHAR(16)",
+      "nullable": false
+    },
+    "definition_hash": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__interpolatedpricests": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "open_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "open": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "high": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "low": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "close": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "volume": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "trade_count": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "vwap": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "interpolated": {
+      "type": "BOOLEAN",
+      "nullable": true
+    }
+  },
+  "ms_markets__openfigiassetdetails": {
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "figi": {
+      "type": "VARCHAR(12)",
+      "nullable": true
+    },
+    "composite": {
+      "type": "VARCHAR(12)",
+      "nullable": true
+    },
+    "share_class": {
+      "type": "VARCHAR(12)",
+      "nullable": true
+    },
+    "isin": {
+      "type": "VARCHAR(12)",
+      "nullable": true
+    },
+    "ticker": {
+      "type": "VARCHAR(50)",
+      "nullable": true
+    },
+    "name": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "exchange_code": {
+      "type": "VARCHAR(50)",
+      "nullable": true
+    },
+    "security_type": {
+      "type": "VARCHAR(50)",
+      "nullable": true
+    },
+    "security_type_2": {
+      "type": "VARCHAR(50)",
+      "nullable": true
+    },
+    "security_market_sector": {
+      "type": "VARCHAR(50)",
+      "nullable": true
+    },
+    "security_description": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "unique_id": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "unique_id_fut_opt": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "raw_payload": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfolio": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "calendar_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "published_index_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "portfolio_weights_data_node_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "signal_weights_data_node_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "signal_uid": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "portfolio_data_node_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "backtest_table_price_column_name": {
+      "type": "VARCHAR(20)",
+      "nullable": false
+    }
+  },
+  "ms_markets__signalmetadata": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "signal_uid": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "signal_description": {
+      "type": "TEXT",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfoliocalendareventsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "calendar_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "session_label": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "event_type": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "local_date": {
+      "type": "VARCHAR(10)",
+      "nullable": false
+    }
+  },
+  "ms_markets__pricingmarketdataset": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "set_key": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__pricingmarketdatasetbinding": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "market_data_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "concept_key": {
+      "type": "VARCHAR(128)",
+      "nullable": false
+    },
+    "data_node_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "storage_table_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__pricingmarketdatasetcurvebinding": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "market_data_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "binding_key": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "role_key": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "selector_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "selector_key": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "quote_side": {
+      "type": "VARCHAR(32)",
+      "nullable": true
+    },
+    "curve_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "priority": {
+      "type": "INTEGER",
+      "nullable": false
+    },
+    "status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "metadata": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__signalweightsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "signal_uid": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "signal_weight": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    }
+  },
+  "ms_markets__accountholdingsset": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "account_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "source_data_node_uid": {
+      "type": "UUID",
+      "nullable": true
+    }
+  },
+  "ms_markets__accountallocationmodel": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "allocation_model_name": {
+      "type": "VARCHAR(100)",
+      "nullable": false
+    },
+    "allocation_model_description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__accounttargetallocation": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "account_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "account_allocation_model_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "is_active": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__indexformulainput": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "definition_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "component_index_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "meta_table_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "observable": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    }
+  },
+  "ms_markets__indexvaluests": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "index_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "value": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "definition_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "observation_status": {
+      "type": "VARCHAR(32)",
+      "nullable": true
+    },
+    "source_as_of": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__ordermanager": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "target_account_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "target_time": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "order_received_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "execution_end": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "status": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfolioanalyticsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "analysis_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "close": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "return": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "source_time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "period_start": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "period_end": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    }
+  },
+  "ms_markets__portfoliocashflowsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "cash_flow_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "ledger_state_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "event_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "cash_flow_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "amount": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "valuation_amount": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "valuation_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfolioeventledgerts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "event_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "event_revision": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "record_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "observed_at": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "event_type": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "event_status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "phase": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "event_sequence": {
+      "type": "BIGINT",
+      "nullable": false
+    },
+    "record_sequence": {
+      "type": "BIGINT",
+      "nullable": false
+    },
+    "event_record_count": {
+      "type": "INTEGER",
+      "nullable": false
+    },
+    "event_digest": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "source_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "source_revision": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "model_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "model_version": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "supersedes_event_revision": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "causal_event_identifiers": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "input_state_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "ledger_state_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "terms_version": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "valuation_references": {
+      "type": "TEXT",
+      "nullable": false
+    },
+    "record_kind": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "position_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "obligation_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "state_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "balance_role": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "quantity_delta": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "quantity_unit": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "amount_delta": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "amount_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "price": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "price_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "eligible_quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "recognized_pnl": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "nav_before": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "nav_after": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "valuation_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "state_schema_version": {
+      "type": "INTEGER",
+      "nullable": true
+    },
+    "extension_payload": {
+      "type": "TEXT",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfoliogroup": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "display_name": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "description": {
+      "type": "TEXT",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfoliogroupmembership": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "portfolio_group_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "portfolio_uid": {
+      "type": "UUID",
+      "nullable": false
+    }
+  },
+  "ms_markets__portfoliorebalancestatets": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "rebalance_intent_id": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "target_signal_time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "event_source": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "execution_status": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "target_weight": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "weight_before": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "weight_after": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "executed_weight_delta": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "remaining_weight_delta": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "execution_price": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "executed_quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "executed_notional": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "observed_volume": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "observed_available_liquidity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "strategy_state": {
+      "type": "TEXT",
+      "nullable": false
+    }
+  },
+  "ms_markets__portfoliostatets": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "state_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "ledger_state_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "originating_event_identifier": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "state_kind": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "balance_role": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "quantity_unit": {
+      "type": "VARCHAR(64)",
+      "nullable": true
+    },
+    "value": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "valuation_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "is_closed": {
+      "type": "BOOLEAN",
+      "nullable": false
+    },
+    "extension_payload": {
+      "type": "TEXT",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfoliosts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "close": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "return": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "calculated_close": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "close_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  },
+  "ms_markets__portfolioweightsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "portfolio_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "weight": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "weight_before": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "price_current": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "price_before": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "volume_current": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "volume_before": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    }
+  },
+  "ms_markets__tradests": {
+    "trade_time": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "trade_identifier": {
+      "type": "VARCHAR",
+      "nullable": false
+    },
+    "account_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "order_identifier": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "trade_side": {
+      "type": "BIGINT",
+      "nullable": true
+    },
+    "quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "price": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "commission": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "commission_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "settlement_cost": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "settlement_asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "comments": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "venue_metadata": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__virtualfund": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "unique_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "account_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "target_portfolio_uid": {
+      "type": "UUID",
+      "nullable": false
+    }
+  },
+  "ms_markets__accountholdingsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "account_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "holdings_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "is_trade_snapshot": {
+      "type": "BOOLEAN",
+      "nullable": true
+    },
+    "quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "direction": {
+      "type": "SMALLINT",
+      "nullable": false
+    },
+    "target_trade_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "extra_details": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__ordersts": {
+    "order_time": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "order_identifier": {
+      "type": "VARCHAR",
+      "nullable": false
+    },
+    "account_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "order_manager_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "order_remote_id": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "client_order_id": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "order_type": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "order_side": {
+      "type": "BIGINT",
+      "nullable": true
+    },
+    "quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "status": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "filled_quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "filled_price": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "expires_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "limit_price": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "time_in_force": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "comments": {
+      "type": "VARCHAR",
+      "nullable": true
+    },
+    "venue_metadata": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__positionset": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "account_target_allocation_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "position_set_time": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "source": {
+      "type": "VARCHAR(255)",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSON",
+      "nullable": true
+    }
+  },
+  "ms_markets__virtualfundholdingsset": {
+    "uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "virtual_fund_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "source_account_holdings_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    }
+  },
+  "ms_markets__targetpositionsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "position_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "target_type": {
+      "type": "VARCHAR(32)",
+      "nullable": false
+    },
+    "target_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "portfolio_uid": {
+      "type": "UUID",
+      "nullable": true
+    },
+    "weight_notional_exposure": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "constant_notional_exposure": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "single_asset_quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": true
+    },
+    "metadata_json": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  },
+  "ms_markets__virtualfundholdingsts": {
+    "time_index": {
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    "virtual_fund_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "asset_identifier": {
+      "type": "VARCHAR(255)",
+      "nullable": false
+    },
+    "virtual_fund_holdings_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "source_account_holdings_set_uid": {
+      "type": "UUID",
+      "nullable": false
+    },
+    "allocated_quantity": {
+      "type": "DOUBLE PRECISION",
+      "nullable": false
+    },
+    "allocation_strategy": {
+      "type": "VARCHAR(64)",
+      "nullable": false
+    },
+    "direction": {
+      "type": "SMALLINT",
+      "nullable": false
+    },
+    "target_trade_time": {
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    "extra_details": {
+      "type": "JSONB",
+      "nullable": true
+    }
+  }
+}

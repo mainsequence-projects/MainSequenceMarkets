@@ -55,3 +55,5 @@ Recommended sections:
 - [0002. Command Center Adapter Discovery](fast_api/v1/0002-command-center-adapter-discovery.md)
 - [0003. Fixed Income Pricer API](fast_api/v1/0003-fixed-income-pricer-api.md)
 - [0004. Reusable Delete Impact Contract](fast_api/v1/0004-delete-impact-contract.md)
+
+- [0046. Preserve The Populated Legacy 0017 Schema](0046-legacy-0017-schema-bridge.md)
