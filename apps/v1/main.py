@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
@@ -8,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
-from metatables.endpoint import api_endpoint_scope
+from mainsequence.client.exceptions import ServerError
+from metatables.endpoint import ApiResolutionError, api_endpoint_scope
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -161,12 +165,31 @@ API_TAG_GROUPS = [
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Startup can overlap a shared API rollout or wake. Pin the Environment's
-    # endpoint for both attachments and allow the same bounded wait as the Job.
-    # Attachment errors still fail startup; requests retain their normal budget.
-    with api_endpoint_scope(discovery_timeout=300):
-        ensure_apps_v1_runtime()
-        ensure_apps_v1_pricing_runtime()
+    deadline = time.monotonic() + 300
+    while True:
+        try:
+            # These attachments only read migrated tables. Each attempt pins
+            # the Environment endpoint; successful attachments are cached.
+            with api_endpoint_scope(discovery_timeout=max(0.1, deadline - time.monotonic())):
+                ensure_apps_v1_runtime()
+                ensure_apps_v1_pricing_runtime()
+            break
+        except (ServerError, ApiResolutionError) as exc:
+            temporary_auth = (
+                isinstance(exc, ServerError)
+                and exc.status_code == 503
+                and isinstance(exc.payload, dict)
+                and exc.payload.get("code") == "authentication_unavailable"
+            )
+            temporary_wake = (
+                type(exc) is ApiResolutionError
+                and str(exc) == "MetaTables deployment is unavailable; check its deployment status."
+            )
+            remaining = deadline - time.monotonic()
+            if not (temporary_auth or temporary_wake) or remaining <= 0:
+                raise
+            logging.getLogger(__name__).warning("Temporary MetaTables startup unavailability; retrying attachment")
+            await asyncio.sleep(min(5, remaining))
     yield
 
 

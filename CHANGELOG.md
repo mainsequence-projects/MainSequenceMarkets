@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.10] - 2026-10-11
+
+### Fixed
+
+- Retry read-only API startup attachment after explicit temporary gateway authentication
+  or MetaTables wake failures within one 300-second budget. Production previously exited
+  on the first transient `503`; invalid credentials, permissions, schema errors, and
+  persistent failures still prevent startup. Normal request behavior is unchanged.
+
 ## [2.2.9] - 2026-10-11
 
 ### Fixed
