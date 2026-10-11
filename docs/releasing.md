@@ -161,8 +161,11 @@ The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and
 guidance with `metatables copy-metatables-skills --path .`, and run the checks
 above. Keep the provider identity, version table, and applied revisions unchanged.
 
-The candidate image uses the shared `upgrade_application()` runner. It retains
-the batched inspections and 300-second discovery budget introduced in 0.1.31.
+The candidate image uses the shared `upgrade_application()` runner and batched
+inspections. The Job explicitly wraps the runner in
+`api_endpoint_scope(discovery_timeout=300)` for a waking MetaTables API; ordinary
+client discovery defaults to 30 seconds. Check that the Environment's MetaTables
+deployment is ready before restarting a workflow that failed during discovery.
 The updated runner also sends changed, non-empty authored table and column
 metadata during finalization, even without a new Alembic revision. That payload
 requires the matching MetaTables API; the updated API also fixes SQLite
