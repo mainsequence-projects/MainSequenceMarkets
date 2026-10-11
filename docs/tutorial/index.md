@@ -26,6 +26,11 @@ helpers for time-indexed facts).
    been finalized. A consuming project uses the schema owned by the ms-markets
    deployment and migrates only its own providers.
 
+A populated PostgreSQL schema at the legacy `0017` head upgrades in place to
+`0020` with 2.2.7 or later. Development at `0018` or `0019` reaches the same head.
+Do not reset or stamp the old database; the bridge validates its columns and
+preserves rows. Overlong identifiers fail safely for a separate forward repair.
+
 Run `python examples/msm/platform/metatable_migration_lifecycle.py` for a safe,
 print-only walkthrough. The shared runner batches inspections automatically and
 reconciles the catalog even at the current revision. Changed, non-empty authored

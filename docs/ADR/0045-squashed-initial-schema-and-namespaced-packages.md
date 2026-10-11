@@ -14,6 +14,10 @@ Amends ADRs [0034](0034-command-center-asset-monitor-helpers.md),
 [0043](0043-sdk-9-metatables-client-hard-cut.md), and withdraws the 2.0.2
 CHANGELOG promise that revisions `0001`–`0017` stay unchanged.
 
+The legacy upgrade policy below is superseded by
+[ADR 0046](0046-legacy-0017-schema-bridge.md) in 2.2.7: Production was found
+with a populated `0017` schema, which must be preserved.
+
 ## Context
 
 No MetaTables runtime holds an applied ms-markets history; `0001`–`0017` only
@@ -39,11 +43,10 @@ MetaTables local SQLite runtime (#15). The wheel also still installed top-level
 
 ## Consequences
 
-- A database at any of `0001`–`0017` fails with Alembic's unknown-revision error.
-  For a local runtime, with 2.0.x still installed, run
-  `metatables --local migrations downgrade base --provider msm_migrations:migration`,
-  then install 2.1.0 and upgrade from empty. Hosted environments are migrated
-  only by the deployment workflow's migration Job.
+- The original release rejected `0001`–`0017`. Production later proved the
+  assumption above false: its populated database remained at `0017`.
+  Release 2.2.7 provides the forward bridge in ADR 0046. Do not reset that
+  database or stamp its version. Earlier legacy heads require separate analysis.
 - Imports of `cli` and `command_center` change to `msm_cli` and
   `msm_command_center`.
 - Later schema changes are new revisions after `0018`. MetaTables generates them
