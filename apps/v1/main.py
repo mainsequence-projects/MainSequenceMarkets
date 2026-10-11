@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
+from metatables.endpoint import api_endpoint_scope
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -160,8 +161,12 @@ API_TAG_GROUPS = [
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    ensure_apps_v1_runtime()
-    ensure_apps_v1_pricing_runtime()
+    # Startup can overlap a shared API rollout or wake. Pin the Environment's
+    # endpoint for both attachments and allow the same bounded wait as the Job.
+    # Attachment errors still fail startup; requests retain their normal budget.
+    with api_endpoint_scope(discovery_timeout=300):
+        ensure_apps_v1_runtime()
+        ensure_apps_v1_pricing_runtime()
     yield
 
 

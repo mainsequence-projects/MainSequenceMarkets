@@ -3,6 +3,15 @@
 The local `apps/v1` FastAPI app exposes the migrated public asset registry
 surface for this repository.
 
+## Startup
+
+The deployment migration Job must finalize application tables before the API
+starts. FastAPI attaches the canonical and pricing runtimes in one
+`api_endpoint_scope(discovery_timeout=300)`, selected from its Environment. This
+bounded startup wait tolerates a waking or replacing shared MetaTables API;
+attachment errors still fail startup. The scope closes before serving requests,
+which keep their normal discovery budgets. Startup performs no schema migration.
+
 ## Scope
 
 This API is intentionally thin:

@@ -106,6 +106,18 @@ finalization failed, inspect the actual schema and per-table errors, then rerun
 the same migration through a new deployment. Do not stamp, rewrite applied
 revisions, or downgrade to recover catalog state.
 
+
+Legacy TimescaleDB finalization also requires the shared **MetaTables API
+0.1.34** ownership-before-conversion repair. On TimescaleDB 2.10.2, converting
+a populated ordinary table and then reassigning it fails when the API login
+lacks `CREATE` on `_timescaledb_internal`. The API now transfers the ordinary
+table first, then converts it with `migrate_data`, in one transaction. This
+requires no new grant or application revision. If `0020` committed but
+finalization failed, deploy the repaired shared API and rerun the hosted Job at
+head; keep all existing application data and applied revisions. An already
+current development hypertable keeps its owner and rows. This is a server
+requirement; the Markets migration client remains 0.1.33.
+
 The runner carries changed, non-empty authored table descriptions, labels, and
 column descriptions, labels, and logical names in each finalization batch. An
 unchanged revision can therefore refresh catalog metadata without new DDL.

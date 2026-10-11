@@ -48,6 +48,18 @@ Hosted execution remains the candidate image's migration Job, followed by API
 rollout only after successful catalog finalization. No local session runs hosted
 DDL. Both new revisions reject downgrade; future corrections use new revisions.
 
+
+Legacy TimescaleDB finalization also requires the shared **MetaTables API
+0.1.34** ownership-before-conversion repair. On TimescaleDB 2.10.2, converting
+a populated ordinary table and then reassigning it fails when the API login
+lacks `CREATE` on `_timescaledb_internal`. The API now transfers the ordinary
+table first, then converts it with `migrate_data`, in one transaction. This
+requires no new grant or application revision. If `0020` committed but
+finalization failed, deploy the repaired shared API and rerun the hosted Job at
+head; keep all existing application data and applied revisions. An already
+current development hypertable keeps its owner and rows. This is a server
+requirement; the Markets migration client remains 0.1.33.
+
 ## Validation
 
 The PostgreSQL regression fixture is a schema-only dump of the original `0017`

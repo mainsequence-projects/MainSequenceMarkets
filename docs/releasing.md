@@ -153,6 +153,23 @@ and delegated requests from both static sites to their own environment APIs.
 A failed guard blocks rollout; investigate the drift or overlong values instead
 of bypassing the check. The bridge's new revisions are forward-only.
 
+
+Legacy TimescaleDB finalization also requires the shared **MetaTables API
+0.1.34** ownership-before-conversion repair. On TimescaleDB 2.10.2, converting
+a populated ordinary table and then reassigning it fails when the API login
+lacks `CREATE` on `_timescaledb_internal`. The API now transfers the ordinary
+table first, then converts it with `migrate_data`, in one transaction. This
+requires no new grant or application revision. If `0020` committed but
+finalization failed, deploy the repaired shared API and rerun the hosted Job at
+head; keep all existing application data and applied revisions. An already
+current development hypertable keeps its owner and rows. This is a server
+requirement; the Markets migration client remains 0.1.33.
+
+FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
+canonical and pricing runtime attachments. Discovery during shared-API wake or
+rollout previously exhausted the ordinary 30-second budget. Attachment errors
+still fail startup; the scope ends before normal request serving.
+
 ### Upgrading the migration client
 
 The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and

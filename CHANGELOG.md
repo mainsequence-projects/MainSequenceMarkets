@@ -7,6 +7,23 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.9] - 2026-10-11
+
+### Fixed
+
+- Give FastAPI startup an explicit 300-second MetaTables discovery scope for
+  canonical and pricing runtime attachment. A waking shared API previously
+  exhausted the ordinary 30-second budget and failed development rollout.
+  Startup still propagates attachment errors; normal request budgets are unchanged.
+
+### Changed
+
+- Document the shared MetaTables API 0.1.34 dependency for finalizing the
+  populated legacy TimescaleDB schema after the committed `0020` upgrade. Its
+  ownership-before-conversion repair preserves rows without adding internal
+  schema grants. Retry through the hosted migration Job; client requirements,
+  applied Alembic revisions, and development tables remain unchanged.
+
 ## [2.2.8] - 2026-10-11
 
 ### Fixed

@@ -25,6 +25,11 @@ See [Migrations](../knowledge/msm/migrations/index.md)
 for the package registry, MetaTables Alembic provider, upgrade flow, schema
 finalization, and runtime attachment lifecycle.
 
+The hosted FastAPI app attaches its canonical and pricing runtimes inside one
+`api_endpoint_scope(discovery_timeout=300)` during startup. This permits the
+Environment's shared MetaTables API to wake without shortening the wait to
+30 seconds. Attachment failures still stop startup; request budgets stay unchanged.
+
 ## Runtime setup
 
 Production code normally initializes the required market MetaTables during
