@@ -9,6 +9,13 @@ and this project follows versioned releases.
 
 ## [2.2.9] - 2026-10-11
 
+### Fixed
+
+- Give FastAPI startup an explicit 300-second MetaTables discovery scope for
+  canonical and pricing runtime attachment. A waking shared API previously
+  exhausted the ordinary 30-second budget and failed development rollout.
+  Startup still propagates attachment errors; normal request budgets are unchanged.
+
 ### Changed
 
 - Document the shared MetaTables API 0.1.34 dependency for finalizing the

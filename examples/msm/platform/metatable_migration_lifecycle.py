@@ -33,6 +33,8 @@ def main() -> None:
     print("Legacy TimescaleDB finalization requires shared MetaTables API >=0.1.34.")
     print("It re-owns ordinary tables before conversion, without new grants or row loss.")
     print("After a committed 0020 and failed finalization, repair the API and rerun this Job.")
+    print("FastAPI startup uses the same 300s discovery scope for both runtime attachments.")
+    print("Attachment failures stop startup; normal request budgets stay unchanged.")
     print("INFO logs from metatables.migrations.runner report each phase's elapsed time.")
     print("Consumers migrate only their own providers, not the ms-markets provider.")
 

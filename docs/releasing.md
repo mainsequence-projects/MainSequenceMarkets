@@ -165,6 +165,11 @@ head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
 requirement; the Markets migration client remains 0.1.33.
 
+FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
+canonical and pricing runtime attachments. Discovery during shared-API wake or
+rollout previously exhausted the ordinary 30-second budget. Attachment errors
+still fail startup; the scope ends before normal request serving.
+
 ### Upgrading the migration client
 
 The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and
