@@ -20,8 +20,8 @@ MetaTable registration:
 - `metatables.migrations.metadata_for_models`
 - `metatables.migrations.run_mainsequence_alembic_env`
 - the `metatables migrations ... --provider <package>.migrations:migration` CLI
-- the `metatables-migrations` and `metatables-upgrade-legacy-app` skills that
-  `metatables copy-metatables-skills` installs under `.agents/skills/metatables/`
+- the `metatables-migrations` skill that `metatables copy-metatables-skills`
+  installs under `.agents/skills/metatables/`
 - the project-local migration provider, when the project defines one
 
 This skill does not own schema migration commands, migration engines, registry
@@ -51,7 +51,7 @@ Before changing project extension migration wiring, inspect:
 
 1. `.agents/skills/metatables/metatables-migrations/SKILL.md` and its
    `references/docs/client/define-and-migrate-tables.md`
-2. `.agents/skills/metatables/metatables-upgrade-legacy-app/SKILL.md` when the
+2. `.agents/skills/mainsequence/maintenance/metatables_transition/SKILL.md` when the
    project still imports `mainsequence.meta_tables` or calls
    `mainsequence migrations`
 3. `metatables migrations --help` for the installed client's command shape

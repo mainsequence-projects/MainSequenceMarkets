@@ -163,7 +163,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client remains 0.1.33.
+requirement; the Markets migration client requirement is separate (currently 0.1.35).
 
 FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
 canonical and pricing runtime attachments. Discovery during shared-API wake or
@@ -178,8 +178,8 @@ persistent temporary failures also stop startup. Normal requests do not use this
 
 ### Upgrading the migration client
 
-The project requires `mainsequence-metatable>=0.1.33,<0.2`; `uv.lock` and
-`requirements.txt` select 0.1.33. After changing the dependency, run
+The project requires `mainsequence-metatable>=0.1.35,<0.2`; `uv.lock` and
+`requirements.txt` select 0.1.35. After changing the dependency, run
 `mainsequence code-repository sync --path .`, refresh the MetaTables-owned
 guidance with `metatables copy-metatables-skills --path .`, and run the checks
 above. Keep the provider identity, version table, and applied revisions unchanged.
