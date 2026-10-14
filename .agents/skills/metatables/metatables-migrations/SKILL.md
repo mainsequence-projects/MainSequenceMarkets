@@ -12,10 +12,6 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-For upgrading older client imports, SQL scopes or provider integration, use the
-[legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md). This skill
-covers authoring and running application schema revisions.
-
 In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
 this skill's `references/` directory. The client CLI bundles the matching version's
 guides and examples there, including their linked documents. In the MetaTables
@@ -253,9 +249,9 @@ Read `docs/operations/recovery-and-observability.md`.
   its module resolves to with
   `python -c "import importlib.util as u; print(u.find_spec('migrations').origin)"`,
   replacing `migrations` with the provider module. A shared module name means
-  another install overwrote it. Move the provider as the
-  [legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md) describes;
-  do not edit files in `site-packages`.
+  another install overwrote it. Move the provider under an application-owned
+  module (see [Provider placement](#provider-placement)), preserving its provider
+  identity and applied revision history. Do not edit files in `site-packages`.
 - If reservation fails with `namespace_not_writable` or `table_not_editable`
   (403), the caller lacks Writer through the owning Team. Add the
   `caller_user_uid` from the error to the Team with Writer on the namespace, or,

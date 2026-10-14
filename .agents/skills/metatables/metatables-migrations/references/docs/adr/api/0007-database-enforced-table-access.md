@@ -200,7 +200,7 @@ Client upgrade clarification, 2026-10-01: removing `MetaTableOperationScopeTable
 select a DataSource and remove scope-only helpers and checks; they must not rebuild
 this layer through client SQL parsing or per-query catalog lookups. Table lifecycle
 registration remains separate. The [legacy application upgrade guide](../../client/upgrade-legacy-app.md)
-and packaged `metatables-upgrade-legacy-app` skill document the conversion.
+documents the conversion.
 
 The API removes every check of what the SQL means:
 

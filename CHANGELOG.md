@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.35,<0.2`; the lock and runtime export select
+  0.1.35. Its copied MetaTables skills are refreshed, which drops the retired
+  `metatables-upgrade-legacy-app` skill.
+
 ## [2.2.10] - 2026-10-11
 
 ### Fixed

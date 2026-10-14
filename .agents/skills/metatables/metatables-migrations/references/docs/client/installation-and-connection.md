@@ -88,8 +88,8 @@ metatables --json copy-metatables-skills --path /path/to/application
 `metatables` does not copy skills.
 
 The destination is `<application>/.agents/skills/metatables/`. It contains the
-local development, table, application migration, table discovery, time-index updater and legacy
-application upgrade skills, with matching
+local development, table, application migration, table discovery and time-index
+updater skills, with matching
 guide/example snapshots in each skill's `references/` folder. The installed client
 version is recorded in `PINNED_FROM.txt`. Skills for API implementation or
 MetaTables project development are outside this bundle.
@@ -103,11 +103,6 @@ Running the command again replaces the whole `metatables` namespace: folders the
 installed client does not ship, including any added there, are removed. Keep the
 application's own skills in another `.agents/skills/` namespace; the copy never
 changes it.
-
-Use `metatables-upgrade-legacy-app` when replacing older MainSequence/MetaTables
-imports, declared SQL scopes or API-owned application migration setup. The
-[legacy application upgrade guide](upgrade-legacy-app.md) explains the current
-DataSource contract and includes before/after repository compiler examples.
 
 Use `metatables-local-development` to guide application work from local setup
 through verification and an explicit return to the intended environment. It

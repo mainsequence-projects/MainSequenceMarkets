@@ -118,9 +118,7 @@ There is no declared table list: `MetaTableOperationScopeTable`,
 `MetaTableOperationScope` and `scope_tables` were intentionally removed. Do not
 recreate them, add per-query registration checks, or parse SQL to enforce a client
 scope. Use existing physical bindings in SQLAlchemy models. Registration and
-schema evolution belong to their lifecycle workflows. For older applications,
-use the [legacy upgrade skill](../metatables-upgrade-legacy-app/SKILL.md) and
-`docs/client/upgrade-legacy-app.md`.
+schema evolution belong to their lifecycle workflows.
 
 `operation="select"` selects read execution; the other labels select write
 execution. The label does not classify the SQL. Database permissions enforce
