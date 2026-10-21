@@ -7,11 +7,53 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [2.2.11] - 2026-10-21
+
 ### Changed
 
-- Requires `mainsequence-metatable>=0.1.35,<0.2`; the lock and runtime export select
-  0.1.35. Its copied MetaTables skills are refreshed, which drops the retired
-  `metatables-upgrade-legacy-app` skill.
+- Requires `mainsequence>=9.0.29,<10` and `mainsequence-metatable>=0.1.51,<0.2`; the
+  lock and exported `requirements.txt` select `mainsequence` 9.0.30,
+  `mainsequence-metatable` 0.1.51 and, through them, `mcp` 2.3.0. SDK 9.0.24 and
+  earlier refuse the platform's identity-only caller assertions, so the Markets API,
+  locked at 9.0.19, answered `401` to every signed request; SDK 9.0.25 and 9.0.26 raise
+  when code reads the request identity's `team_uids`; and MetaTables clients before
+  0.1.51 fail on SDK 9.0.30. This release adds no Alembic revision.
+- The deployment workflow uses workflow API `3.0.0`, the only version the platform
+  accepts: `markets-api` and `migrate-markets` declare `policy: reader` on the
+  MetaTables branch, the conversion of their former `level: view`.
+- MetaTables access follows its namespace and table roles (MetaTables ADR 0024). On
+  `mainsequence.markets` the `migrate-markets` Job holds `editor`, the `markets-api`
+  release `data_writer`, and a person or a people-only Team `owner`; the namespace's
+  owners grant these in each Environment. The release, migration and FastAPI guides
+  and the packaged `metatable_migrations` skill describe them, with the roles consuming
+  projects need: `editor` for migration Jobs that register tables in
+  `mainsequence.markets`, table `editor` on their outputs plus `data_viewer` for
+  updater producers, `data_writer` for row writers and `data_viewer` for readers.
+- `IndexActor.team_uids` is deprecated and empty for HTTP callers, because caller
+  assertions name no Teams. The Index actor never reads the request identity's
+  `team_uids`; an SDK `User` still contributes its `organization_teams`. No Index
+  operation authorizes by Team.
+- Canonical Index dataset discovery no longer reports `can_edit=True` to the user who
+  registered the table, because registering grants no MetaTables role by itself.
+  `can_edit` is `None`; the platform checks edit access when a change runs.
+- `get_openfigi_api_key()` raises `OpenFigiConfigurationError` naming `value_reader` on
+  `OPEN_FIGI_API_KEY` when the caller may not read the Secret's value. Its
+  missing-Secret message also says that a Secret is hidden from a caller without a
+  policy on it. A deployment that calls OpenFIGI declares
+  `secrets: [{name: OPEN_FIGI_API_KEY, policy: value_reader}]`.
+- Test fixtures sign identity-only caller assertions, and a test checks that an
+  assertion listing `team_uids`, for the caller or for a requester, is refused.
+- Refreshed the copied Main Sequence SDK skills to 9.0.30 and the MetaTables skills to
+  0.1.51 (0.1.35 dropped the retired `metatables-upgrade-legacy-app` skill), and removed
+  the retired managed block from `AGENTS.md`: `mainsequence code-repository update` no
+  longer exists.
+
+### Removed
+
+- `scripts/bootstrap_metatables_access.py` and its tests. It called Team bulk-member
+  and MetaTables Reader/Writer routes that no longer exist, and roles replace its Team
+  Writer model. `mainsequence.markets` exists in the development and Production
+  Environments, and its owner grants the roles above.
 
 ## [2.2.10] - 2026-10-11
 

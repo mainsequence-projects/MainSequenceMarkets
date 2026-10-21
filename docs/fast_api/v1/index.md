@@ -145,7 +145,7 @@ It contains no route, schema, service, or runtime logic.
 
 The release is managed by
 `.mainsequence/workflows/ms-markets-api.yaml`. The declaration uses workflow API
-`2.3.0`, retains three release revisions for rollback, and its
+`3.0.0`, retains three release revisions for rollback, and its
 automatic-redeployment policy deploys every pushed commit of the tracked branch
 (`tag_regex: null`). The backend resolves the verified image for
 the exact eligible commit, so the workflow must not contain a
@@ -164,10 +164,15 @@ image, and `deploy_api` deploys the API with `needs: [migrate]`. A failed
 migration blocks the rollout and the previous release keeps serving; see
 [Hosted Deployments](../../knowledge/msm/migrations/index.md#hosted-deployments).
 
-!!! warning "Required before deploying to an Environment"
-    The Job and the API run as their own workload Users. They can't migrate or
-    use the ms-markets tables until an Organization admin runs
-    `scripts/bootstrap_metatables_access.py` for that Environment; see
+Both workloads declare the `reader` policy on the MetaTables branch
+(`access.branches`), which lets them find the Environment's MetaTables API.
+
+!!! warning "Required in every Environment"
+    The Job and the API run as their own workload Users. The Job migrates the
+    ms-markets tables only with the `editor` role on the `mainsequence.markets`
+    MetaTables namespace, and the API reads and writes their rows with
+    `data_writer`. The namespace's owners grant these roles in each Environment;
+    workflow entries can't. See
     [MetaTables access in each Environment](../../releasing.md#metatables-access-in-each-environment).
 
 Publish repository changes with a plain `git push` of the tracked branch; the
@@ -182,24 +187,31 @@ push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` 2.x package therefore declares
-`mainsequence>=9.0.19,<10` and `mainsequence-metatable>=0.1.35,<0.2` without
+`mainsequence>=9.0.29,<10` and `mainsequence-metatable>=0.1.51,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
-extraction hard cut and the SDK request identity that the platform's current
-caller assertions require (SDK 9.0.18 and later), while the project lock and exported runtime requirements
-select the exact releases validated for this repository. MetaTables 0.1.35 retains
-batched migration inspections and a five-minute migration API discovery budget,
-and refreshes changed authored metadata at unchanged revisions. Metadata
-finalization requires the corresponding shared MetaTables API update. Do not replace the
-published dependencies with machine-local `[tool.uv.sources]` path overrides.
+extraction hard cut, the identity-only caller assertions the platform signs (SDK
+9.0.27 and later; 9.0.25 and 9.0.26 are excluded), and a MetaTables client that
+works with SDK 9.0.30 and knows the namespace and table roles (0.1.51), while the
+project lock and exported runtime requirements select the exact releases validated
+for this repository: `mainsequence` 9.0.30 and `mainsequence-metatable` 0.1.51.
+MetaTables 0.1.51 retains batched migration inspections and a five-minute migration
+API discovery budget, and refreshes changed authored metadata at unchanged
+revisions. Metadata finalization requires the corresponding shared MetaTables API
+update. Do not replace the published dependencies with machine-local
+`[tool.uv.sources]` path overrides.
 
 `create_app()` installs the SDK request identity with
 `install_request_identity(app)`; the platform launcher refuses to serve an
 application without it. It authenticates every request before its handler: a
 hosted request by the gateway's signed caller assertion, a local request by its
 Bearer token. Handlers read the verified caller from `request.state.user` (a
-`RequestUserIdentity` with the canonical `uid`, `team_uids` and
-`is_organization_admin`) or `User.get_logged_user()`. The Index routes derive
-their actor, including its Teams, from that identity; route code does not parse
+`RequestUserIdentity` with the canonical `uid` and `is_organization_admin`) or
+`User.get_logged_user()`. The platform's caller assertions carry only those two
+facts, for the caller and for a requester; an assertion that lists `team_uids` is
+refused with `401`. Membership is checked on demand with
+`RequestUserIdentity.in_teams()`, which no Markets route needs. The Index routes
+derive their actor from that identity's `uid`; the deprecated
+`IndexActor.team_uids` stays empty for HTTP callers. Route code does not parse
 authentication headers or bind SDK request-header context variables.
 
 ## API Discoverability

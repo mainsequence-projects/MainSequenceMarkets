@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-metatable-migrations
-description: Use this skill when an ms-markets project extension needs MetaTables-managed migration wiring. MetaTable migrations are handled by the metatables client (mainsequence-metatable); this skill only covers project table/spec refresh through after_register_metatables.
+description: Use this skill when an ms-markets project extension needs MetaTables-managed migration wiring, or when a workload needs MetaTables roles on the `mainsequence.markets` namespace. MetaTable migrations are handled by the metatables client (mainsequence-metatable); this skill covers project table/spec refresh through after_register_metatables and the roles that the ms-markets deployment and consuming projects need.
 ---
 
 # Main Sequence Markets MetaTable Migration Extensions
@@ -70,22 +70,76 @@ ms-markets schema is migrated only by the ms-markets deployment's
 tables does not apply `msm_migrations:migration`; its own migration Job applies
 only its own providers. Do not migrate at application startup.
 
-Required in every Environment: the `migrate-markets` Job and the `markets-api`
-release run as their own workload Users, which have no MetaTables grants until an
-Organization admin runs `scripts/bootstrap_metatables_access.py` from a checkout
-of the branch deployed there. The script creates the Team that owns the tables in
-that Environment (`ms-markets-<environment>`), as
-`.agents/skills/metatables/metatables-migrations/SKILL.md` prescribes. Without it the
-Job fails with `403` `table_not_editable` or `namespace_not_writable` (`422 MetaTable
-is not editable` from a MetaTables API before 0.1.27), and the API is not deployed.
-Do not work around a failed migration by changing revisions or table definitions,
-asking for direct table grants or running the Job as an admin. Check the Job run
-logs, then have an admin run the bootstrap. `docs/releasing.md` ("MetaTables access
-in each Environment") has the steps.
 The MetaTables API needs no provider code, allowlist, or
 `application_migration_providers` alias. Keep the provider package, namespace,
 model registry, version-table binding, revision IDs, and applied revision
 history when upgrading the client.
+
+## MetaTables Access
+
+Access to the ms-markets tables follows the MetaTables namespace and table roles
+(MetaTables ADR 0024, copied with the MetaTables skills under
+`.agents/skills/metatables/metatables-migrations/references/docs/adr/api/0024-namespace-and-table-access-roles.md`).
+Every ms-markets table is in the `mainsequence.markets` namespace, and a role on the
+namespace covers every table in it, including tables registered later. Workloads run
+as their own workload Users: they never grant roles, are never `owner`, and get no
+MetaTables role from a workflow entry. The workflow's
+`access.branches: [{repository: MetaTables, policy: reader}]` only lets them find the
+Environment's MetaTables API.
+
+In each Environment, the ms-markets deployment's principals hold these roles on
+`mainsequence.markets`:
+
+| Principal | Role |
+| --- | --- |
+| `migrate-markets` (migration Job) | `editor` |
+| `markets-api` (FastAPI release) | `data_writer` |
+| a person, or a Team of people only | `owner` |
+
+Where `mainsequence.markets` predates roles, an Organization admin granted its first
+owner once, and its owners grant every other role. In an Environment where it does
+not exist yet, the first `migrate-markets` run creates it and gets `editor`; the
+people who manage that Job then grant the API `data_writer` and an owner. Nobody
+creates the namespace before the push.
+
+A workload without a role can't see the tables: `msm.start_engine` then fails at
+startup because they look unregistered, so that workload's rollout fails and only
+the next push deploys it.
+
+A project that installs ms-markets and uses these tables asks an owner of
+`mainsequence.markets` for the smallest role each of its workloads needs, in each
+Environment. Ask before the project's push when the workload already exists. A
+workload the push creates gets its role right after it, and the next push deploys
+it if it attaches the tables at startup.
+
+| Consumer workload | Role on `mainsequence.markets` |
+| --- | --- |
+| Migration Job that registers its own tables in `mainsequence.markets` | `editor` on the namespace |
+| Updater producer that writes an ms-markets table | table `editor` on each output table, plus `data_viewer` on the namespace for its inputs |
+| Row writer (asset or OpenFIGI registration, categories, calendars, Index rows) | `data_writer` |
+| Reader | `data_viewer` |
+
+Prefer table `editor` for producers: namespace `editor` also allows deleting every
+table in the namespace. The project's own tables belong in its own namespace, which
+its first migration creates (see `.agents/skills/metatables/metatables-migrations/SKILL.md`).
+
+Refusals name what is missing:
+
+- `namespace_access_required` (403) when a migration Job registers into
+  `mainsequence.markets`: the Job's workload User (`caller_user_uid`) lacks
+  `tables.create` there, for example after the platform recreated the Job. An owner
+  grants it `editor`, then the Job runs again.
+- `table_not_editable`: the caller lacks `tables.update` on an existing table. An
+  owner of the table or of the namespace grants `editor`.
+- A refused row read or write in a running workload: it lacks `data_viewer` or
+  `data_writer`. Its requests succeed from the next one after the grant, with no
+  redeployment.
+
+Do not work around a refusal by changing revisions, table definitions or physical
+names, by putting grants in a Job or in application code, or by running the Job as an
+Organization admin. Check the Job run logs, then ask an owner of
+`mainsequence.markets` for the role. "MetaTables access in each Environment" in the
+ms-markets `docs/releasing.md` lists the grants for its own deployment.
 
 ## Expected Project Pattern
 

@@ -17,7 +17,7 @@ helpers for time-indexed facts).
 
 ### Prepare the schema before starting runtime code
 
-1. Install the locked dependencies, including MetaTables 0.1.35 or later.
+1. Install the locked dependencies, including MetaTables 0.1.51 or later.
 2. For local ms-markets schema development, verify the local MetaTables runtime
    and use `metatables --local migrations upgrade --provider msm_migrations:migration head`.
    For a hosted environment, the ms-markets deployment's migration Job applies

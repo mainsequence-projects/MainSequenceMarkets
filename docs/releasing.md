@@ -163,7 +163,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.35).
+requirement; the Markets migration client requirement is separate (currently 0.1.51).
 
 FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
 canonical and pricing runtime attachments. Discovery during shared-API wake or
@@ -178,11 +178,15 @@ persistent temporary failures also stop startup. Normal requests do not use this
 
 ### Upgrading the migration client
 
-The project requires `mainsequence-metatable>=0.1.35,<0.2`; `uv.lock` and
-`requirements.txt` select 0.1.35. After changing the dependency, run
-`mainsequence code-repository sync --path .`, refresh the MetaTables-owned
-guidance with `metatables copy-metatables-skills --path .`, and run the checks
-above. Keep the provider identity, version table, and applied revisions unchanged.
+The project requires `mainsequence>=9.0.29,<10` and
+`mainsequence-metatable>=0.1.51,<0.2`; `uv.lock` and `requirements.txt` select
+`mainsequence` 9.0.30 and `mainsequence-metatable` 0.1.51. Move the SDK and the
+client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.51
+itself requires SDK 9.0.29 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
+which raise on the request identity's Teams. After changing the dependency, run
+`mainsequence code-repository sync --path .`, refresh the MetaTables-owned guidance
+with `metatables copy-metatables-skills --path .`, and run the checks above. Keep the
+provider identity, version table, and applied revisions unchanged.
 
 The candidate image uses the shared `upgrade_application()` runner and batched
 inspections. The Job explicitly wraps the runner in
@@ -205,62 +209,65 @@ revision alone is not proof of deployment success. See
 
 ### MetaTables access in each Environment
 
-!!! warning "Required in every Environment"
-    An Organization admin must run `scripts/bootstrap_metatables_access.py` for an
-    Environment before ms-markets can be deployed there. Without it:
-
-    - the `migrate-markets` Job fails with `403` `table_not_editable` or
-      `namespace_not_writable` (a MetaTables API before 0.1.27 answers
-      `422 MetaTable is not editable`). The error's `caller_user_uid` is the
-      workload User missing from the Team;
-    - the API rollout is blocked and no release becomes active.
-
-    Run it before the first deployment to a new Environment, and again whenever
-    the platform recreates the Job or the release.
-
-This is the model MetaTables 0.1.27 prescribes: in each Environment, one platform
-Team owns an application's tables and its workload Users are the Team's members
-(see the vendored `metatables-migrations` skill).
-
 The `migrate-markets` Job and the `markets-api` release run as their own workload
-Users, which start with no grants. The workflow gives both `view` on the MetaTables
-repository (`access.branches`), so they can find the Environment's MetaTables API.
-A workflow cannot grant MetaTables table access, so an Organization admin runs
-`scripts/bootstrap_metatables_access.py` once per Environment. Run it from a
-checkout of the branch deployed there: `development` for the development
-Environment, `main` for Production.
+Users. The workflow gives both the `reader` policy on the MetaTables branch
+(`access.branches`), so they can find the Environment's MetaTables API. Their access
+to the ms-markets tables is a MetaTables role on the `mainsequence.markets` namespace
+(MetaTables ADR 0024). A role on the namespace covers every table in it, including
+tables registered later. Workflow entries don't grant MetaTables roles and workloads
+never grant them: the namespace's owners do, in the namespace's **Access** panel of
+that Environment's MetaTables Admin or with `grant_role`.
 
-```bash
-uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access --dry-run
-uv run --frozen --all-extras python -m scripts.bootstrap_metatables_access
-```
+| Principal | Role on `mainsequence.markets` | Why |
+| --- | --- | --- |
+| `migrate-markets` workload User | `editor` | registers and migrates the ms-markets tables |
+| `markets-api` workload User | `data_writer` | reads and writes rows; never migrates, deletes or shares tables |
+| a person, or a Team of people only | `owner` | decides who has access; a workload is never an owner |
 
-The script names the Team after the checkout's Environment (`ms-markets-development`,
-`ms-markets-production`). It:
+Without `editor`, the Job's registration fails with `403` `namespace_access_required`
+(`table_not_editable` for an existing table), naming its workload User as
+`caller_user_uid`; the API rollout is blocked and the previous release keeps serving.
+Without a role on the namespace, the API can't attach its tables at startup, so its
+rollout fails and only the next push deploys it. A running API whose role is missing
+has its MetaTables requests refused; they succeed from the next request after the
+grant, with no redeployment.
 
-- creates the Team if it doesn't exist;
-- adds the workload Users of the Job and release declared in the workflow;
-- creates the `mainsequence.markets` namespace if it is missing;
-- grants the Team Writer on the namespace.
+**Where the namespace exists.** `mainsequence.markets` predates roles in the
+development and Production Environments, so no migration creates it there. When
+roles arrived, an Organization admin granted it a first owner, and the old Team
+Writer binding became `editor` for every member of that Team, `markets-api`
+included. The owner keeps the Job's `editor` and lowers the API: grant the API's
+workload User `data_writer`, then take it out of the Team that holds `editor`.
 
-Tables in that namespace inherit the grant, including the ones the migration
-registers later. Once `msm.alembic_version` is registered, the script checks each
-workload User's effective access to it.
+**In a new Environment.** Nobody creates the namespace before the push. The first
+`migrate-markets` run registers the tables, which creates `mainsequence.markets` and
+grants the Job `editor`. The people who manage the Job then manage the namespace's
+access: they grant `markets-api` `data_writer`, and `owner` to themselves or to a
+Team they belong to, so the namespace keeps an owner when the Job is recreated. The
+API's first rollout there fails at startup because it has no role yet; push again
+after the grant.
 
-Re-running the script changes only what is missing. Run it again whenever the
-platform recreates the Job or the release, because the new workload User is not
-in the Team.
+**When the platform recreates the Job or the release**, its new workload User has no
+role. With direct bindings, an owner grants the role again; with a Team that holds
+the role, add the new workload User to the Team. The Job can then be run again, but a
+blocked API rollout resumes only with the next push to the branch.
 
-A workload User exists only after the workload's first deployment. In an
-Environment where the Job has not run yet:
+**Consumers.** An application that uses the ms-markets tables gets its roles in each
+Environment from an owner of `mainsequence.markets`:
 
-1. Run the script, then push. The Job's first run fails, because its workload User
-   is not in the Team yet.
-2. Run the script again.
-3. Run the Job with `mainsequence code-repository jobs run <JOB_UID>`.
+| Consumer workload | Role |
+| --- | --- |
+| Migration Job that registers tables in `mainsequence.markets` | `editor` on the namespace |
+| Updater producer that writes an ms-markets table | table `editor` on each output table, plus `data_viewer` on the namespace |
+| Row writer (assets, OpenFIGI details, categories, calendars, Index rows) | `data_writer` on the namespace |
+| Reader | `data_viewer` on the namespace |
 
-The API rolls out on the next push to the branch, because the CLI cannot retry a
-blocked deployment.
+Prefer table `editor` for producers: namespace `editor` would also let them delete
+every table in the namespace. Grant before the consumer's push when its workload
+already exists. A workload the push creates gets its role right after it; if it
+attaches ms-markets tables at startup (`msm.start_engine`), its first rollout fails
+until then and the next push deploys it. A consumer keeps its own tables in its own
+namespace, which its first migration creates.
 
 ## Failure recovery
 

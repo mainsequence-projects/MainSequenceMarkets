@@ -80,7 +80,7 @@ previous release keeps serving.
 
 ### Migration diagnostics and repeated runs
 
-The minimum client is MetaTables 0.1.35. `upgrade_application()` automatically
+The minimum client is MetaTables 0.1.51. `upgrade_application()` automatically
 uses fresh table inventories and batched physical inspections; PostgreSQL
 reflection is batched by schema. Finalization requests remain bounded to ten
 tables each, with the version table first. No batching option or project-specific
@@ -116,7 +116,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.35).
+requirement; the Markets migration client requirement is separate (currently 0.1.51).
 
 The runner carries changed, non-empty authored table descriptions, labels, and
 column descriptions, labels, and logical names in each finalization batch. An
@@ -131,11 +131,13 @@ unchanged-contract write avoidance, and startup optimizations require the shared
 MetaTables API to be deployed with that release too. Update matching guidance
 with `metatables copy-metatables-skills --path .` after updating the client.
 
-!!! warning "Required: MetaTables access for the deployment"
-    The migration Job runs as its own workload User, which has no MetaTables
-    grants until an Organization admin runs `scripts/bootstrap_metatables_access.py`
-    for that Environment. Until then every hosted migration fails and the API is not
-    deployed; see
+!!! warning "Required: MetaTables roles for the deployment"
+    The migration Job runs as its own workload User and needs the `editor` role on
+    the `mainsequence.markets` namespace; the API needs `data_writer`. These are
+    MetaTables roles, not workflow entries. In each Environment the namespace's
+    owners grant them, or, where the Job's first run created the namespace, the
+    people who manage the Job. Without `editor` the Job's registration fails with
+    `namespace_access_required` and the API is not deployed; see
     [MetaTables access in each Environment](../../../releasing.md#metatables-access-in-each-environment).
 
 The ms-markets schema is owned and migrated only by this repository's
