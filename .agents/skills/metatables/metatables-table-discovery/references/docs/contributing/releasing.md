@@ -31,6 +31,16 @@ Development releases are selected explicitly:
 python -m pip install --pre mainsequence-metatable
 ```
 
+## Access rule changes
+
+A deployment does not apply a change to how MetaTables computes access; the daily
+security check, or an administrator running it, does
+([ADR 0023](../adr/api/0023-daily-security-check.md)). Access rules are `plan()`, the
+table policy checks, the grant and revoke statements, routine securing and the owner
+role in `src/metatables/api/backend/backends/`. Label a pull request that changes them
+`access-rules`. `.github/release.yml` lists such pull requests under "Access rule
+changes: run the security check after deploying" in the generated release notes.
+
 ## Release prerequisites
 
 MetaTables and the Main Sequence SDK use the MIT License. Package metadata
@@ -56,6 +66,8 @@ The minimum and lockfile now select published SDK `9.0.19`. SDK 9.0.14 is the fi
 caller and to name workloads
 ([ADR 0002](../adr/api/0002-application-administration-and-table-ownership.md)).
 SDK 9.0.10 is the first whose `User` reads workload User rows.
+The repository requires SDK 9.0.26, whose request identity asks Team membership on
+demand with `in_teams()` (SDK #225); caller assertions stop carrying Team UIDs.
 SDK 9.0.9 is the first whose request identity exposes the caller's signed Team UIDs
 and admin flag; hosted admission needs them to admit workload Users
 ([#37](https://github.com/mainsequence-projects/MetaTables/issues/37)). SDK 9.0.4 is the first

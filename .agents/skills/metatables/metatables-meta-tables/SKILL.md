@@ -58,7 +58,7 @@ contract. Preserve the user's existing authorization and scope.
 
 A UID is catalog identity. An optional identifier is unique in the connected catalog.
 A physical binding is DataSource + schema + table name. A catalog
-namespace groups resources and grants; it is not a SQL schema. Contract hashes
+namespace groups tables for access: a role on it applies to every table in it. It is not a SQL schema. Contract hashes
 are fingerprints, not table identity. See `docs/concepts/identity-and-scope.md`.
 
 ## SQLAlchemy contract rules
@@ -109,7 +109,7 @@ revisions; do not recompute identity from columns or rewrite applied history.
 Read `docs/client/query-and-mutate.md` and `src/metatables/examples/query.py`. Use
 `compile_sqlalchemy_statement` with bound parameters. The request sends SQL and
 selects one DataSource; the API executes as the authenticated user, and the
-selected database backend enforces Reader/Writer permissions on the tables
+selected database backend enforces the caller's roles (`data_viewer` reads, `data_writer` and above write) on the tables
 actually touched. The API does not parse SQL for authorization. The compiler can
 resolve DataSource and dialect from the selected runtime; supply both explicitly
 for offline compilation. Preserve execution mode, row limits and timeouts.
@@ -129,14 +129,18 @@ to the separate migration-provider workflow.
 To find tables, use `MetaTable.search` as described in the
 [table discovery skill](../metatables-table-discovery/SKILL.md). Legacy convenience
 sharing/label actions are not supported API workflows.
-Use `get_access`, `set_access` and `revoke_access` for supported Reader/Writer
-sharing. Labels can be changed through the documented table PATCH path. Authorization is
-owned by the API catalog; see `docs/concepts/permissions-namespaces-labels.md`.
+Use `get_access`, `grant_role`, `revoke_role`, `allowed_actions` and `explain` on a
+table or `Namespace` for roles (`metadata_viewer`, `data_viewer`, `data_writer`,
+`editor`, `owner`); `Namespace.create(name)` makes the caller its owner. Registering a
+table into a missing namespace also creates it: a person gets `owner`, a workload `editor`
+(see the [migrations skill](../metatables-migrations/SKILL.md)). Labels can be
+changed through the documented table PATCH path. Authorization is owned by the API
+catalog; see `docs/security/ownership-and-sharing.md`.
 
 Updater output rollback uses `TimeIndexMetaTable.delete_after_date` with an
 inclusive time cutoff and explicit dimension/coordinate scope when appropriate.
 A null cutoff requires a scope. Do not replace that workflow with ad hoc SQL.
-Deletion/cascade requires edit access, relevant protection checks, and explicit
+Deletion/cascade requires `tables.delete` (`editor`), relevant protection checks, and explicit
 cascade intent; it is not an administrator-role bypass or migration repair.
 
 Before a destructive action, or to show impact in an application UI, call
@@ -144,12 +148,12 @@ Before a destructive action, or to show impact in an application UI, call
 The API returns whether the caller may run it, every blocker, and a graph of
 affected tables, foreign-key effects and reading updates; render that result
 rather than re-deriving foreign-key or permission rules in the client. Cascading
-foreign keys are allowed. Write on a table depends only on its own grants; the
+foreign keys are allowed. Write on a table depends only on its own roles; the
 cascade effects in the result are information, never a reason the action is blocked.
 
 On a TimescaleDB DataSource, time-index tables are hypertables. Their compression
 and retention policies are set only through `TimeIndexMetaTable.set_timescale_policies`
-(Writer) and read with `get_timescale_policies`. Do not add policies to table
+(`tables.update`, `editor`) and read with `get_timescale_policies`. Do not add policies to table
 contracts or Alembic revisions; to keep them in code, call the client from a
 bootstrap Job. Retention permanently drops older chunks, including backfills.
 

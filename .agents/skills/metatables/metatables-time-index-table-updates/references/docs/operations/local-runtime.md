@@ -203,7 +203,8 @@ metatables credentials remove-unused CREDENTIAL_UUID --database /absolute/path/m
 ```
 
 Pass `--configuration /absolute/path/configuration.yaml` for a different deployment
-configuration. These commands require an authenticated platform admin. Import is
+configuration. These commands require a signed-in SDK session, not the platform admin
+flag: the local catalog and its keys belong to the operator. Import is
 only for existing local references from the previous SDK-backed implementation;
 it reads the supported SDK in its valid hosted context, preserves UUIDs, validates
 affected enabled connections, and commits atomically. It never deletes SDK Secrets.

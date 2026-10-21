@@ -1,5 +1,15 @@
 # ADR 0002: Application administration and table ownership
 
+> Amendment (2026-10-20): In Local mode the operator, the SDK identity running the local
+> API, is the Organization admin of that runtime whatever their platform flag. A local
+> SQLite runtime, its catalog and its credentials belong to that one person, so admin
+> admission below applies to hosted runtimes only.
+
+> Amendment (2026-10-19): [ADR 0024](0024-namespace-and-table-access-roles.md) replaces Reader/Writer
+> with roles (`metadata_viewer`, `data_viewer`, `data_writer`, `editor`, `owner`) checked as actions.
+> Any person creates a namespace and owns it, namespace owners grant on it instead of
+> Security, and Organization admins hold every action, data included.
+
 > Amendment (2026-10-01): [ADR 0013](0013-application-owned-migrations.md) establishes application-owned
 > client Alembic execution using the configured environment connection. Its DDL
 > privileges belong to the environment database role. It supersedes this ADR's

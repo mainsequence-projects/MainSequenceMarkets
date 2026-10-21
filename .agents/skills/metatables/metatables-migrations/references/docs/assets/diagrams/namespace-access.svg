@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1240" height="740" viewBox="0 0 1240 740" role="img" aria-labelledby="ns-title ns-desc">
   <title id="ns-title">Namespaces are access groups, not application boundaries</title>
-  <desc id="ns-desc">In one Environment, the workload Users of the prices application are members of the Team prices-development, which is Writer on namespace prices. The workload Users of the trading application are members of trading-development, which is Writer on namespace trading and Reader on namespace prices. Registering a table in a namespace requires Writer on it or admin. Reading or writing a table requires a grant on the table or its namespace, checked by the API and by the database. Which project's tables go in which namespace is not checked.</desc>
+  <desc id="ns-desc">In one Environment, the workload Users of the prices application are members of the Team prices-development, which holds editor on namespace prices. The workload Users of the trading application are members of trading-development, which holds editor on namespace trading and data_viewer on namespace prices. Creating a table in a namespace requires tables.create on it (editor or owner) or admin. Reading or writing a table requires a role on the table or its namespace, checked by the API and by the database. Which project's tables go in which namespace is not checked.</desc>
   <style>
     .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -47,7 +47,7 @@
   <text x="396" y="203" class="sans small">Team</text>
 
   <path d="M 610 187 L 758 187" class="writer"/>
-  <text x="684" y="178" class="sans label" fill="#c2410c" text-anchor="middle">Writer</text>
+  <text x="684" y="178" class="sans label" fill="#c2410c" text-anchor="middle">editor</text>
 
   <rect x="760" y="128" width="440" height="128" rx="12" class="ns"/>
   <text x="780" y="153" class="sans small">namespace</text>
@@ -71,10 +71,10 @@
   <text x="396" y="433" class="sans small">Team</text>
 
   <path d="M 610 425 L 758 425" class="writer"/>
-  <text x="684" y="448" class="sans label" fill="#c2410c" text-anchor="middle">Writer</text>
+  <text x="684" y="448" class="sans label" fill="#c2410c" text-anchor="middle">editor</text>
 
   <path d="M 610 403 C 680 403, 690 262, 758 248" class="reader"/>
-  <text x="702" y="318" class="sans label" fill="#1d4ed8">Reader</text>
+  <text x="702" y="318" class="sans label" fill="#1d4ed8">data_viewer</text>
   <text x="702" y="334" class="sans small">every current and</text>
   <text x="702" y="349" class="sans small">future prices table</text>
 
@@ -91,16 +91,16 @@
   <!-- checks -->
   <rect x="40" y="540" width="373" height="170" rx="12" class="box"/>
   <text x="58" y="570" class="sans tag" fill="#15803d">ENFORCED</text>
-  <text x="58" y="596" class="sans head">Registering a table in a namespace</text>
-  <text x="58" y="622" class="sans note">The caller must be a Writer of the namespace,</text>
+  <text x="58" y="596" class="sans head">Creating a table in a namespace</text>
+  <text x="58" y="622" class="sans note">The caller needs tables.create (editor, owner),</text>
   <text x="58" y="642" class="sans note">directly or through a Team, or an admin.</text>
-  <text x="58" y="662" class="sans note">Otherwise: 403 namespace_not_writable.</text>
-  <text x="58" y="682" class="sans note">A Writer's new table gets no grant of its own.</text>
+  <text x="58" y="662" class="sans note">Otherwise: 403 namespace_access_required.</text>
+  <text x="58" y="682" class="sans note">The new table gets no binding of its own.</text>
 
   <rect x="433" y="540" width="373" height="170" rx="12" class="box"/>
   <text x="451" y="570" class="sans tag" fill="#15803d">ENFORCED</text>
   <text x="451" y="596" class="sans head">Reading or writing a table</text>
-  <text x="451" y="622" class="sans note">A grant on the table or on its namespace,</text>
+  <text x="451" y="622" class="sans note">A role on the table or on its namespace,</text>
   <text x="451" y="642" class="sans note">to the caller or one of its Teams. Checked</text>
   <text x="451" y="662" class="sans note">by the API and by the caller's own role in</text>
   <text x="451" y="682" class="sans note">the database.</text>
@@ -108,7 +108,7 @@
   <rect x="826" y="540" width="374" height="170" rx="12" class="box"/>
   <text x="844" y="570" class="sans tag" fill="#b91c1c">NOT ENFORCED</text>
   <text x="844" y="596" class="sans head">Which project uses which namespace</text>
-  <text x="844" y="622" class="sans note">Any Writer of prices can register tables there</text>
+  <text x="844" y="622" class="sans note">Any editor of prices can create tables there</text>
   <text x="844" y="642" class="sans note">from any project. A project may use several</text>
   <text x="844" y="662" class="sans note">namespaces or share one. One namespace per</text>
   <text x="844" y="682" class="sans note">application is a recommendation.</text>

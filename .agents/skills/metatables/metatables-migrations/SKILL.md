@@ -1,6 +1,6 @@
 ---
 name: metatables-migrations
-description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, the Team that owns an application's tables in each Environment, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
+description: "Create and evolve managed application tables through Alembic migration providers with the installed MetaTables Python client. Covers provider scope and placement, scaffolding, revision authoring, local execution, the deployment-workflow migration Job for hosted runtimes, the namespace and roles that give the Job access in each Environment, and reservation or finalization failures. Excludes API catalog migrations, client-library implementation, API/server changes and repository tooling."
 ---
 
 # MetaTables client application migrations
@@ -46,24 +46,42 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
 1. **Develop locally.** Author the revision and apply it to verified local SQLite
    with the [local development skill](../metatables-local-development/SKILL.md).
 2. **Commit the revision with the code that needs it.**
-3. **Give a Team the tables.** Before the first hosted migration in each
-   Environment, the application's tables need an owning Team: one platform Team
-   per Environment (for example `ledger-development`), whose members are the
-   migration Job's workload User and the workload User of every resource that
-   reads or writes the tables. An Organization admin creates, in that
-   Environment, each namespace the provider registers tables in, and grants the
-   Team Writer on it. Recommend one namespace per application, owned by its Team;
-   it is not required (see "Namespaces and applications" in
-   `docs/security/ownership-and-sharing.md`).
-   Tell the user these steps; they are made in the platform and in MetaTables
-   Security, not in the repository.
-4. **Deploy.** The application's `.mainsequence/workflows/` file declares a
+3. **Deploy.** The application's `.mainsequence/workflows/` file declares a
    migration Job that calls `upgrade_application` for each provider, in
    dependency order, from the candidate image. The Job and every resource that
-   uses MetaTables declare `access.branches: [{repository: MetaTables, level: view}]`.
+   uses MetaTables declare `access.branches: [{repository: MetaTables, policy: reader}]`
+   (workflow API `3.0.0`; the platform refuses `2.3.0` files and `level:` entries).
    Every deployed resource that reads or writes the tables (FastAPI,
    `harness_agent` and others) has a deploy step with `needs: [migrate]`. A failed
-   migration blocks the rollout.
+   migration blocks the rollout. Pushing the file creates the Job's and the other
+   resources' workload Users before any step runs. The first migration in an
+   Environment registers the provider's tables; a namespace they name that does not
+   exist yet is created by that registration, and the Job gets `editor` on it.
+   Nothing is created by hand and no Organization admin is needed: do not tell the
+   user to create the namespace before the push.
+4. **Grant the other workloads, and an owner.** Follow "Give the Job access" in
+   `docs/client/deploy-application-migrations.md`, in each Environment. A person who
+   manages the Job in the platform manages the namespace's access: they grant
+   `data_writer` to resources that only read and write rows, in the namespace's Access
+   panel (find a workload by its Job or release name) or with `grant_role` and its
+   `workload_user_uid`. Until then those resources' requests are refused; they succeed
+   on the next request after the grant, with no redeployment, so do not redeploy or
+   change code for that. They also grant `owner` to themselves or to a Team they belong
+   to, so the namespace keeps an owner when the Job is recreated: their authority
+   follows the workload User that created the namespace, and a recreated Job runs as a
+   new one. Managing the Job gives no access to the namespace's tables until they grant
+   themselves a role. A Team holding the roles with the workloads as members is
+   optional; it saves granting again when a Job or release is recreated.
+
+   Step 4 is the person's action, made in MetaTables, not in the repository. Tell the
+   user the step; with their explicit go-ahead you may run `grant_role` from their
+   session against the target Environment. Never put grants in the migration Job:
+   workloads are refused. If the namespace name is already taken, the first run stops
+   with `namespace_access_required`; an owner grants the Job `editor`, or the
+   application uses another namespace. A namespace created before ADR 0024 has no
+   owner until an Organization admin grants one. Recommend one namespace per
+   application; it is not required (see "Namespaces and applications" in
+   `docs/security/ownership-and-sharing.md`).
 
 Rules:
 
@@ -78,13 +96,14 @@ Rules:
   during and after a failed rollout. Add first; drop or rename in a later release.
 - Redeploying an older image does not roll back the schema. Downgrade is never a
   deployment step.
-- Tables belong to the Team, never to one workload User. Workload Users change
-  with each Environment and each recreated Job; a new one needs Team membership
-  only. Do not ask for direct table grants to a workload User, and do not run the
-  Job as an Organization admin to get around a refusal.
-- A table registered in a namespace the caller already writes gets no grant of
-  its own; the namespace's Writers own it. The Team needs Writer on every
-  namespace the provider uses.
+- Tables belong to their namespace's roles, never to one workload User. A table
+  created in a namespace gets no binding of its own. Workloads cannot create tables
+  outside a namespace (`namespace_required`). Workload Users change with each
+  Environment and each recreated Job: a direct role needs granting again, a Team
+  only membership. Do not run the Job as an Organization admin to get around a
+  refusal.
+- The Job needs `editor` on every namespace the provider uses; resources that only
+  read and write rows need `data_writer`.
 
 ## Source and runtime context
 
@@ -182,7 +201,7 @@ branch on `op.get_bind().dialect.name`.
 The client imports and executes application revisions, using the connection
 resolved for the selected environment. Environment operators supply the database
 login's DDL privileges. MetaTables does not mint migration roles or sandbox DDL.
-API Writer checks govern connection admission and provider catalog operations.
+API `tables.migrate` checks govern connection admission and provider catalog operations.
 The client reserves catalog entries, runs Alembic, closes its physical connection,
 and finalizes contracts through the API. Treat connection material as private.
 
@@ -252,13 +271,13 @@ Read `docs/operations/recovery-and-observability.md`.
   another install overwrote it. Move the provider under an application-owned
   module (see [Provider placement](#provider-placement)), preserving its provider
   identity and applied revision history. Do not edit files in `site-packages`.
-- If reservation fails with `namespace_not_writable` or `table_not_editable`
-  (403), the caller lacks Writer through the owning Team. Add the
-  `caller_user_uid` from the error to the Team with Writer on the namespace, or,
-  when the namespace or Team is missing, set them up as in step 3. A table
-  registered before the Team existed may have only a retired workload User as
-  Writer; an Organization admin grants the Team Writer on its namespace. Do not
-  change code or physical names to get around it.
+- If reservation fails with `namespace_access_required` (403), the namespace already
+  exists: it is taken, or the Job was recreated with a new workload User. An owner the
+  error lists, or a manager of the workload that created the namespace, grants the
+  `caller_user_uid` `editor`, or adds it to a Team that holds it, then the Job is
+  re-run. With `namespace_required`, set the table's namespace. With
+  `table_not_editable`, an owner of the table or its namespace grants `editor`. Do
+  not change code or physical names to get around it.
 - If reservation fails otherwise, compare provider scope and physical identities
   before changing code. Do not create a second catalog row for the same table.
 - If Alembic succeeds but finalization fails, physical DDL may already be
@@ -296,5 +315,6 @@ Read `docs/operations/recovery-and-observability.md`.
 Verify provider scope and placement, revision content, the selected environment
 connection, repeat execution, and final active bindings. Check that the deployment
 workflow runs the migration Job before every resource that uses the tables, and
-that each Environment has its owning Team with the Job's workload User. Report
+that in each Environment the Job's workload User holds `editor` on its namespaces, the
+other resources hold the roles they need, and a person or Team holds `owner`. Report
 separately what was checked offline and what was exercised against a configured API.

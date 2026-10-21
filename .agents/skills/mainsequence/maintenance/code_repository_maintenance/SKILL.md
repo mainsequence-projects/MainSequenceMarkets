@@ -1,6 +1,6 @@
 ---
 name: mainsequence-code-repository-maintenance
-description: Maintain an existing Main Sequence CodeRepository checkout using the SDK-version-matched CLI. Use for inspecting repository state, building or repairing .venv, refreshing local authentication, performing explicitly requested SDK, skill, or AGENTS.md updates, refreshing dependency files with CodeRepository sync, publishing changes with Git, or diagnosing a partially completed maintenance workflow.
+description: Maintain an existing Main Sequence CodeRepository checkout using the SDK-version-matched CLI. Use for inspecting repository state, building or repairing .venv, refreshing local authentication, performing explicitly requested SDK or skill updates, refreshing dependency files with CodeRepository sync, publishing changes with Git, or diagnosing a partially completed maintenance workflow.
 ---
 
 # Main Sequence CodeRepository Maintenance
@@ -11,27 +11,27 @@ authentication, scaffold, and Git behavior. Select and sequence commands here;
 do not reproduce their Python implementation or replace them with ad hoc shell
 workflows.
 
+Use this skill directly for the current checkout and the requested maintenance
+task. No prior routing skill or platform catalog is required.
+
 ## Preserve The Boundary
 
 Own:
 
 - local CodeRepository inspection and maintenance sequencing;
-- `.venv`, SDK, managed skill, `AGENTS.md`, dependency sync, and Git publishing
+- `.venv`, SDK, managed skill, dependency sync, and Git publishing
   workflows;
 - precondition checks, explicit approval gates, and partial-failure diagnosis.
 
 Do not own:
 
-- platform ontology or CodeRepository Blueprint design;
 - domain implementation for data packages, APIs, jobs, or releases;
 - backend repository reconciliation;
 - MCP authorization policy, OAuth token storage, or access-token extraction;
 - repository-owned skills outside `.agents/skills/mainsequence/`.
 
-Route architecture changes to `code_repository_design`, implementation routing to
-`sdk_code_repository_execution`, and failure classification to
-`maintenance/bug_auditor` when diagnosis extends beyond the maintenance
-workflow itself.
+For an unexplained failure, consult `maintenance/bug_auditor` when deeper
+diagnosis is needed. This is an optional handoff, not a maintenance prerequisite.
 
 The local identity contract is Git-native. The containing repository remote,
 attached branch, and exact HEAD commit select the platform CodeRepository and
@@ -45,21 +45,23 @@ fall back to credential claims or injected CodeRepositoryBranch values.
 
 ## Inspect Before Changing State
 
-1. Read `AGENTS.md` and the relevant repository skills.
+1. Follow repository instructions, including `AGENTS.md` when present. Consult
+   domain-specific instructions only when relevant to the requested operation.
+   The SDK never scaffolds or edits repository `AGENTS.md`.
 2. Confirm the repository root and the user's requested maintenance outcome.
-3. Inspect code repository and Git state:
+3. Inspect SDK and Git state:
 
    ```bash
-   mainsequence code-repository current --debug --json
    mainsequence code-repository sdk-status --path . --json
    git status --short
    ```
 
-   The `code-repository current` result must report the logical `code_repository_uid`, current
-   `git_branch`, `code_repository_branch_uid`, and `code_repository_branch_status=resolved`.
-   Treat a detached checkout, unresolved repository, or unresolved/unregistered
-   Git branch as a maintenance preflight failure before any
-   mutating workflow.
+   Before branch-owned platform operations, also inspect
+   `mainsequence code-repository current --debug --json` and require the current
+   Git branch, `code_repository_branch_uid`, and
+   `code_repository_branch_status=resolved`.
+   Local environment and skill updates do not require a registered platform
+   branch or a signed-in session.
 
 4. Separate existing user changes from changes created by the maintenance
    task. Never assume every uncommitted file belongs to the current task.
@@ -162,24 +164,25 @@ mainsequence code-repository update-sdk --path . --dry-run
 mainsequence code-repository update-sdk --path .
 ```
 
-`update-sdk` updates the lock and local environment. It does not publish the
-working tree or authorize a managed-skill or `AGENTS.md` refresh. Report any
-resulting pin mismatch and run those updates only when the user explicitly
-requests them.
+`update-sdk` updates the lock and local environment, then runs the newly
+installed SDK's skill copier in a fresh process against the same repository.
+It replaces SDK-owned skills, removes retired ones, and updates their sentinel.
+It does not refresh platform skills or `AGENTS.md`, or publish the working tree.
+If copying fails, the command fails but the SDK remains upgraded; report that
+partial result and use the printed refresh command to retry after addressing
+the failure. On success, reload this maintenance skill before continuing.
 
 Do not automatically commit or push an SDK update unless the user also asked
 to publish the CodeRepository changes.
 
-## Refresh Managed Skills And Instructions
+## Refresh SDK Skills And Instructions
 
-Run either managed-scaffold command only when the user explicitly requests that
-specific update. When both are requested, refresh the SDK-owned skills first,
-then update the managed Main Sequence block in
-`AGENTS.md`:
+SDK instructions and domain skills are one versioned bundle. Outside the
+refresh included in `update-sdk`, run this command only when the user explicitly
+requests a skill update:
 
 ```bash
 uv run --offline mainsequence code-repository update-agent-skills --path .
-uv run --offline mainsequence code-repository update AGENTS.md --path .
 ```
 
 Verify `.agents/skills/mainsequence/PINNED_FROM.txt` after success:
@@ -193,6 +196,13 @@ The SDK owns the whole `mainsequence` namespace. Copying it requires no login
 or platform access and deletes obsolete folders, including retired table
 workflow skills. Do not preserve old or platform-owned content in that folder.
 The installed `metatables` package owns table workflows in its own namespace.
+
+A missing or mismatched sentinel is a condition to report, not permission to
+update. The same applies to other libraries' sentinels. The `mainsequence` CLI
+does not manage `.agents/skills/ms_tau_sdk/`; its owner refreshes that namespace
+with `uv run ms-tau skills sync --path .` when requested. Keep repository-owned
+`AGENTS.md` as written, including any older managed blocks. Removing such a
+block is a separate repository edit requested by its owner.
 
 When the user requests platform skills, use the separate authenticated command:
 
@@ -308,7 +318,7 @@ second:
 
 ```yaml
 # .mainsequence/workflows/api-production.yaml
-api_version: "2.3.0"
+api_version: "3.0.0"
 name: api-production
 scope:
   environments: [production]
@@ -325,7 +335,7 @@ resources:
 
 ```yaml
 # .mainsequence/workflows/api-development.yaml
-api_version: "2.3.0"
+api_version: "3.0.0"
 name: api-development
 scope:
   environments: [development]  # the development Environment's exact name
@@ -415,7 +425,7 @@ Never rerun an entire mutating workflow blindly.
 
 ## Validate And Report
 
-Run only repository-relevant validation discovered from `AGENTS.md`, repository
+Run only repository-relevant validation discovered from existing repository instructions,
 documentation, and the changed files. Report:
 
 - the maintenance routine performed;

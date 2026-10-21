@@ -154,7 +154,7 @@ key, the time index and the identity dimensions.
   table is published.
 - `__metatable_namespace__` is the owning application or source, not a SQL schema.
   Its description (one or two sentences about the application or source) is
-  written once by the namespace's Writer; do not repeat it in table descriptions.
+  written once by someone with `editor` on the namespace; do not repeat it in table descriptions.
 
 ### Time-index tables, in addition
 
