@@ -15,13 +15,16 @@ before anything that uses the tables rolls out. See
    [Local storage](local-storage.md).
 2. **Commit the revision with the code that needs it.** Applied revisions are
    immutable; every later schema change is a new revision.
-3. **Give a Team the tables.** Before the first hosted migration in each
-   Environment, set up the Team that owns the application's tables
-   ([below](#give-the-job-access-through-a-team)).
-4. **Deploy.** The application's workflow runs its migration Job from the
-   candidate image, then deploys the resources that read or write the tables.
+3. **Deploy.** The application's workflow runs its migration Job from the
+   candidate image, then deploys the resources that read or write the tables. The
+   first deployment to an Environment creates the application's namespace there and
+   gives the Job `editor` on it.
+4. **Grant the other workloads.** Someone who manages the migration Job grants the
+   resources that read and write rows their roles on the namespace
+   ([below](#give-the-job-access)). Nobody creates the namespace by hand, and no
+   Organization admin is needed.
 
-Hosted runtimes are migrated only by step 4. Do not run `metatables migrations
+Hosted runtimes are migrated only by step 3. Do not run `metatables migrations
 upgrade` or `downgrade` against a hosted API from a developer machine or agent
 session. Do not migrate at application startup either: several pods would race,
 and a failure would not stop the rollout.
@@ -73,7 +76,7 @@ for provider in ("ledger.migrations:migration",):
 Gate the deployments on it in `.mainsequence/workflows/<application>.yaml`:
 
 ```yaml
-api_version: "2.3.0"
+api_version: "3.0.0"
 name: ledger
 resources:
   - key: ledger-api
@@ -109,29 +112,67 @@ Give every other deployed resource that reads or writes the tables, such as a
 `harness_agent`, its own deploy step with `needs: [migrate]`. Validate the file
 against the branch's workflow template before committing it.
 
-## Give the Job access through a Team
+## Give the Job access
 
-The Job runs as its own workload User, and each Environment, and each recreated
-Job, has a new one. A table owned by one workload User is lost to the next, so the
-application's tables belong to a platform Team instead:
+The Job runs as its own workload User. A workload never grants roles and never creates
+a table outside a namespace ([ADR 0024](../adr/api/0024-namespace-and-table-access-roles.md)).
+It creates its namespace by registering its first table there:
 
-1. **Create one Team per Environment** for the application, for example
-   `ledger-development` and `ledger-production`. A shared Team would make one
-   Environment's workloads Writers in another.
-2. **Add the workload Users.** Add the migration Job's workload User, and the
-   workload User of every resource that reads or writes the tables (FastAPI
-   release, Agent, other Jobs). Each resource's `workload_user_uid` names it.
-3. **Grant the Team its namespaces.** For each namespace the tables are
-   registered in, an Organization admin creates it in that Environment's
-   MetaTables if it doesn't exist yet, under **Security** or with
-   `POST /security/namespaces/`, and grants the Team Writer on it
-   (`PUT /namespaces/{uid}/permissions`). Every table registered in the namespace
-   inherits the grant. One namespace per application is the recommended layout,
-   not a rule; see
-   [Namespaces and applications](../security/ownership-and-sharing.md#namespaces-and-applications).
+1. **Push the workflow file.** Applying it creates the Job, the FastAPI release and
+   their workload Users before any step runs.
+2. **The first migration creates the namespace.** When a provider's tables name a
+   namespace that does not exist in this Environment, the Job's registration creates
+   it and grants the Job `editor`. The namespace records the Job as its creating
+   workload. Later runs and new tables need nothing more.
+3. **Grant the other workloads, and an owner.** The people who manage the Job in the
+   platform manage the namespace's access. In that Environment's Admin, open the
+   namespace's **Access** panel, find each workload by its Job or release name, and
+   grant `data_writer` to every resource that only reads and writes rows, such as the
+   FastAPI release. Grant `owner` to yourself or to a Team you belong to, so the
+   namespace keeps an owner if the Job is recreated. From Python, pass each resource's
+   `workload_user_uid`, which the Main Sequence SDK returns on the Job and the
+   ResourceRelease. The FastAPI's requests are refused until then, and succeed on the
+   next request after the grant, with no redeployment.
 
-The Job also needs platform `view` on the Environment's `metatables` release and
-its branch to discover the API; declare it on the Job:
+Repeat step 3 in every Environment, done by someone who manages the Job there: each
+Environment has its own MetaTables and its own workload Users.
+
+```python
+from metatables import Namespace
+
+ledger = next(n for n in Namespace.filter(search="ledger") if n.name == "ledger")
+ledger.grant_role(api_workload_user_uid, "data_writer")       # step 3
+ledger.grant_role(your_user_uid, "owner")
+```
+
+Managing the Job lets you manage the namespace's access only: it gives you no access
+to its tables until you grant yourself a role.
+
+**Optionally, a Team.** Grant the roles to a Team you belong to instead of to the
+workload Users, and add the workload Users to that Team: any person can create a Team
+and, as its owner, add workloads they can view. A recreated Job or release then needs
+only Team membership, not a new grant. One Team can hold the roles in every Environment:
+Teams are Organization-wide, and a workload reaches only its own Environment's
+MetaTables. People in the Team receive the same roles, so leave it once the workloads
+are in if you should not hold them yourself.
+
+**A name that is already taken.** If the namespace already exists, created by another
+application, by a person or before this change, the first migration stops with
+`namespace_access_required`. An owner of that namespace grants the Job `editor`, or the
+application uses another namespace. A person may still create a namespace in advance,
+with **Create namespace** in the Admin or `Namespace.create("ledger")`, and grant the
+Job `editor`; nothing requires it.
+
+**Namespaces created before roles.** A namespace from before ADR 0024 has no owner: its
+former Writers hold `editor`. An Organization admin grants someone `owner` on it once;
+from then on that owner manages it.
+
+One namespace per application is the recommended layout, not a rule; see
+[Namespaces and applications](../security/ownership-and-sharing.md#namespaces-and-applications).
+
+The Job also needs the platform's `reader` policy on the MetaTables branch, which
+gives it `viewer` on the branch's `metatables` release, to discover the API. Declare it
+on the Job (workflow API `3.0.0`):
 
 ```yaml
   - key: migrate-ledger
@@ -142,29 +183,32 @@ its branch to discover the API; declare it on the Job:
     access:
       branches:
         - repository: MetaTables
-          level: view
+          policy: reader
 ```
 
 `upgrade_application()` waits up to five minutes for the API to wake or finish
 replacing its pods before it fails with `ApiResolutionError`; other client calls
-wait 30 seconds.
+wait 30 seconds. Within the same budget, the runtime-context request is retried
+while the API answers 502, 503 or 504, for example while it cannot yet verify
+callers; the final error keeps the API's last detail.
 
 Team membership takes effect on the workload's next request, in the catalog and in
-the database. When a workload User changes, add the new one to the Team; nothing
-in MetaTables changes. A table registered in a namespace the caller already
-writes gets no grant of its own, so the Team stays its only owner.
+the database.
 
 ### When registration is refused
 
-- **`namespace_not_writable`**: the namespace does not exist in this Environment,
-  or the caller is not its Writer. Do steps 1 to 3 for the `caller_user_uid` the
-  error names.
-- **`table_not_editable`**: the table is already registered and the caller is not
-  its Writer. Add the `caller_user_uid` to the Team with Writer on the table's
-  namespace. When the table was registered before the Team existed, its only
-  Writer may be a workload User that no longer runs: an Organization admin
-  grants the Team Writer on the namespace, and the table inherits it. The error
-  lists the table's Writers when the caller can read the table.
+- **`namespace_access_required`**: the namespace already exists, but the
+  `caller_user_uid` the error names lacks `tables.create` on it. The error lists the
+  namespace's owners when the caller can see the namespace. One of them, or a manager
+  of the workload that created the namespace, grants it `editor`. A recreated Job gets
+  this too: its new workload User has no role yet.
+- **`namespace_required`**: a workload tried to create a table outside any namespace.
+  Set the table's namespace.
+- **`table_not_editable`**: the table already exists and the caller lacks
+  `tables.update` on it. An owner of the table or its namespace grants `editor`.
+
+After the grant, re-run the Job. Do not run the Job as an Organization admin
+or change physical names to get around a refusal.
 
 ## What the Job guarantees
 
@@ -177,8 +221,8 @@ writes gets no grant of its own, so the Team stays its only owner.
 - The Job finds the Environment's MetaTables API the same way any client does
   ([installation and connection](installation-and-connection.md)). That API must
   be deployed with its system migrations applied; otherwise the Job fails. Its
-  workload User needs Writer, through the Team above, on every namespace the
-  provider registers tables in.
+  workload User needs `editor`, directly or through a Team, on every existing
+  namespace the provider creates tables in; a namespace it creates gives it `editor`.
 
 ## Keep each release compatible with the previous one
 

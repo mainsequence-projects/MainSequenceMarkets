@@ -57,7 +57,7 @@ excluded from this workflow.
 
 ## Read rows and refresh definitions
 
-Readers and Writers can open the table's **Rows** tab. External DataSources also
+Anyone with `data_viewer` or above can open the table's **Rows** tab. External DataSources also
 provide a registered table/view picker in their **Query builder** tab. Python
 uses the same bounded endpoint:
 
@@ -73,7 +73,7 @@ page = table.read_rows(
 )
 print(page["rows"])
 
-# Requires Writer access; refreshes metadata only.
+# Requires tables.update (editor); refreshes metadata only.
 table.introspect()
 ```
 
@@ -82,7 +82,7 @@ Supported scalar predicates are `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `in`, and
 include ISO date/time strings and base64 binary values. Reads default to 100 rows,
 are capped at 1,000 rows and 8 MiB, and never accept SQL fragments, joins, or
 caller-supplied physical names. New physical columns remain hidden until refresh.
-The Rows tab's **Refresh definition from source** action requires Writer access.
+The Rows tab's **Refresh definition from source** action requires `tables.update`.
 Pagination over changing data or without a unique ordering is not a stable snapshot.
 
 External reads use the registered source account after checking MetaTable or

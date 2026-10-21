@@ -30,7 +30,13 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("9.0.1") not in requirement.specifier
     assert Version("9.0.5") not in requirement.specifier
     assert Version("9.0.18") not in requirement.specifier
-    assert Version("9.0.19") in requirement.specifier
+    assert Version("9.0.19") not in requirement.specifier
+    # 9.0.25/26 raise on `team_uids`, and 9.0.29 brought access policies.
+    assert Version("9.0.25") not in requirement.specifier
+    assert Version("9.0.26") not in requirement.specifier
+    assert Version("9.0.28") not in requirement.specifier
+    assert Version("9.0.29") in requirement.specifier
+    assert Version("9.0.30") in requirement.specifier
     assert Version("9.99.0") in requirement.specifier
     assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
@@ -42,7 +48,13 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.30") not in requirement.specifier
     assert Version("0.1.31") not in requirement.specifier
     assert Version("0.1.32") not in requirement.specifier
-    assert Version("0.1.33") in requirement.specifier
+    assert Version("0.1.33") not in requirement.specifier
+    assert Version("0.1.34") not in requirement.specifier
+    assert Version("0.1.35") not in requirement.specifier
+    # 0.1.46 brought roles, 0.1.47's client is broken, and 0.1.20-0.1.50 break on SDK 9.0.30.
+    assert Version("0.1.47") not in requirement.specifier
+    assert Version("0.1.50") not in requirement.specifier
+    assert Version("0.1.51") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

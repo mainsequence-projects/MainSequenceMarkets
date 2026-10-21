@@ -80,7 +80,7 @@ the Job resolve the declaration and its Secret.
 ## Development schema baseline
 
 The system schema starts at `0001_initial`, followed by `0002_security_model`
-for Reader/Writer grants, live namespace inheritance, and audit history, then
+for roles on tables and namespaces, live namespace inheritance, and audit history, then
 `0003_run_log_capture` for nullable run capture references and
 `0004_historical_run_graphs` for root membership, idempotent admission and saved
 execution graphs. Log bodies remain in

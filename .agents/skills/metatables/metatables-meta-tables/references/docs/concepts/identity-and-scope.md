@@ -20,9 +20,10 @@ TimescaleDB, MySQL or MSSQL runtime DataSource their deployment declares, for bo
 roles; the deployment's migration Job initializes it. Local Settings initializes or
 selects the SQLite file. Both use the same bootstrap operation.
 
-The SDK supplies trusted User identity, active Team UIDs, Organization admin status,
+The SDK supplies trusted User identity, membership answers for the Teams MetaTables
+grants name, Organization admin status,
 and independent Git source facts. MetaTables owns workspace identity and
-Reader/Writer table/namespace grants. It does not store an independent membership
+role bindings on tables and namespaces. It does not store an independent membership
 registry or replicate platform Organization policy. See the implemented
 [Security model](../security/index.md) for administration, sharing, and revocation.
 
@@ -49,6 +50,6 @@ physical name. It is distinct from the ordinary provider-based authoring path.
 
 Provider reconciliation resolves by DataSource UID, physical schema, and physical
 table name, then validates provider and lifecycle state. Do not use an optional
-identifier as a substitute for this binding. Readers can resolve an existing
+identifier as a substitute for this binding. Anyone with `tables.get` can resolve an existing
 time-index table by UID, identifier, or explicit physical identity, with the
 connected catalog and resource visibility checks still applied.

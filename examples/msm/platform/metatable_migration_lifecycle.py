@@ -24,7 +24,7 @@ def main() -> None:
 
     print("\nHosted: candidate image -> jobs/migrate_markets.py -> API rollout")
     print(f"The Job calls metatables.upgrade_application({PROVIDER!r}) on every deployment.")
-    print("MetaTables >=0.1.33 batches inspections; the Job explicitly allows 300s to wake.")
+    print("MetaTables >=0.1.35 batches inspections; the Job explicitly allows 300s to wake.")
     print("It uses api_endpoint_scope(discovery_timeout=300); failures still stop rollout.")
     print("At head, catalog reconciliation still runs; migrated=False is not a skip signal.")
     print("Changed non-empty authored metadata refreshes without a new Alembic revision.")

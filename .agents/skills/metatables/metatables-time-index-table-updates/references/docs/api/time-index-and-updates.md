@@ -21,8 +21,8 @@ output-table filter:
 The API also exposes table-scoped reads at
 `GET /meta-tables/{table_uid}/updates?limit=25&offset=0` and
 `/time-index-meta-tables/{table_uid}/updates`. These scoped routes
-accept a trailing slash without redirecting. A Reader on the output table can
-list its producers; Writer access is unnecessary for this read. Each result uses
+accept a trailing slash without redirecting. Anyone with `tables.get` on the output table
+can list its producers; this read needs no write action. Each result uses
 the same update projection as `/time-index-table-updates/`, including the nested
 output table, execution details, configuration, source-code reference and labels.
 The page includes `count`, `results`, `next`, and `previous`, with deterministic
@@ -80,10 +80,10 @@ time index when it is finalized or created, unless its storage layout sets
 `capabilities.timescale_policies: true`. TimescaleDB 2.11 or later is required.
 
 TimescaleDB stores the policies as background jobs; MetaTables keeps no copy.
-`GET /meta-tables/{table_uid}/timescale-policies/` (Reader) returns
+`GET /meta-tables/{table_uid}/timescale-policies/` (`tables.get`) returns
 `eligibility`, both policies, the derived compression settings (segment by the
 identity dimensions, order by time descending), compression stats and the table's
-jobs. `PUT` on the same path (Writer, read-write DataSource) replaces both
+jobs. `PUT` on the same path (`tables.update`, read-write DataSource) replaces both
 policies:
 
 ```json
@@ -126,7 +126,7 @@ filters, limits and unfinished/older-history behavior.
 run's invocation into one time-ordered page, skipping attempts whose output table
 the caller cannot read; a run without a saved graph is its own invocation.
 `GET /time-index-table-updates/{update_uid}/logs/` reads a bounded set of recent
-runs for that updater. All three require Reader access to the selected output
+runs for that updater. All three require `tables.get` on the selected output
 table and return the same structured rows, cursor and availability contract.
 Optional `run_uid` selects one run on the update route and one attempt of the
 invocation on the invocation route. No route accepts filesystem paths or

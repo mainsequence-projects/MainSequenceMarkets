@@ -80,7 +80,7 @@ MetaTables owns catalog grants, resource authorization, table contracts,
 SQL execution, schema lifecycle, update orchestration, and local storage engines.
 
 The [Security model](../security/index.md) separates application administration
-from Reader/Writer table ownership. The platform supplies current admin and Team
+from roles on namespaces and tables. The platform supplies current admin and Team
 facts through the SDK; MetaTables evaluates its own grants with live namespace
 inheritance. The API enforces the same rules in both runtimes.
 

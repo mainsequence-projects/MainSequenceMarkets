@@ -101,6 +101,14 @@ application migrations and other engines are unchanged. If the DataSource later
 uses a different login, existing jobs keep running as the old one until the
 tables are reassigned.
 
+Managed finalization transfers ownership of an ordinary table to the API login
+before converting it, in the same transaction. Converting first and then
+reassigning a populated hypertable tries to reassign its internal chunks;
+TimescaleDB 2.10.2 rejects that when the login lacks `CREATE` on
+`_timescaledb_internal`. The corrected order requires no new grant and migrates
+existing rows in place. Conversion failure rolls ownership back; an already
+current hypertable keeps its owner and data.
+
 Each policy change is recorded in the `physical_operation` journal as
 `timescale_policy`, with the requesting User. System migration
 `0009_timescale_policies` adds that kind, drops `time_index_table.partition_strategy`

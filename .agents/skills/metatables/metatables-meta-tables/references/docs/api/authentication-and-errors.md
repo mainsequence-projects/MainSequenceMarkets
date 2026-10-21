@@ -1,7 +1,7 @@
 # Authentication and errors
 
 The [Security model](../security/index.md) defines application administration,
-Reader/Writer ownership, live namespace inheritance, and sharing endpoints.
+roles on namespaces and tables, live namespace inheritance, and access endpoints.
 
 ## Hosted requests
 
@@ -22,11 +22,13 @@ other SDK mode. Once it is installed, every route not declared in the deployment
 MetaTables declares no anonymous route. A hosted API started without that
 configuration installs nothing, and admission rejects every caller.
 
-The assertion also carries the caller's active Team UIDs and admin flag, which
-the SDK exposes on `User.get_logged_user()`. Admission uses them as signed and
-performs no User lookup, so workload Users, such as applications and Jobs that run
-as their own User, are admitted like people. Each request's assertion states
-current facts, so hosted facts are not cached. The API evaluates table/namespace
+The assertion also carries the caller's admin flag, which the SDK exposes on
+`User.get_logged_user()`. Admission uses it as signed and performs no User lookup,
+so workload Users, such as applications and Jobs that run as their own User, are
+admitted like people. Team membership is asked of the platform with `in_teams()`,
+only for the Teams MetaTables grants name, and reused for 24 hours; writes use an
+answer at most a minute old, and credential, deletion and permission requests ask
+at once. When the platform cannot answer, the request fails with 503. The API evaluates table/namespace
 grants in its runtime database. User and Team facts remain platform-owned; no local
 membership registry is used. This adds no authentication mechanism.
 

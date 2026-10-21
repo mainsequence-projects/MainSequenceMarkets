@@ -8,8 +8,7 @@ scope classes are intentional removals, not missing features to recreate.
 Install the target client and its compatible SDK in the application's Python
 environment using [installation and connection](installation-and-connection.md).
 Refresh the matching agent guidance with `metatables copy-metatables-skills`.
-The `metatables-upgrade-legacy-app` skill covers this upgrade; the
-`metatables-migrations` skill covers application Alembic schema changes.
+The `metatables-migrations` skill covers application Alembic schema changes.
 
 ## Identify the old interfaces
 

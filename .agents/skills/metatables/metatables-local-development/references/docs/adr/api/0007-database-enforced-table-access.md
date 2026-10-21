@@ -1,5 +1,10 @@
 # ADR 0007: Enforce table grants in the database
 
+> Amendment (2026-10-19): [ADR 0024](0024-namespace-and-table-access-roles.md) keeps the two
+> privilege sets: `data_viewer` maps to Reader's `SELECT`, `data_writer`, `editor` and `owner`
+> to Writer's privileges, and `metadata_viewer` to none. An admin group role holds write
+> privileges on every managed table; admins' login roles are its members.
+
 > Amendment (2026-10-01): [ADR 0013](0013-application-owned-migrations.md) establishes application-owned
 > client Alembic execution using the configured environment connection. Its DDL
 > privileges belong to the environment database role. It supersedes this ADR's
@@ -59,6 +64,26 @@
 > manifest; drift, credential rotation, pending state or missing evidence retains
 > full repair. An explicit admin repair remains a full sweep. A routine catalog
 > update must not establish a new native baseline for unverified outside drift.
+
+> Amendment (2026-10-15, [MetaTables #66](https://github.com/mainsequence-projects/MetaTables/issues/66)):
+> On PostgreSQL/TimescaleDB, deployment and the admin repair compare what
+> MetaTables' roles actually hold with the plan and change only what differs. One
+> query reads those roles' attributes, memberships and grants on the database,
+> on schemas and on relations the login owns or the plan names; table policies
+> are read in one query as well. Statements go out in batches, one round trip
+> each. This replaces the native-security fingerprint, which hashed every object
+> the shared login owns and so changed with any application table, column, index
+> or new data, and the full repair that revoked every grant and granted it back.
+> TimescaleDB's internal schemas are never read or changed: chunks inherit their
+> hypertable's grants. Schema `USAGE` and `CONNECT` are granted only where the
+> login may grant them. Login passwords are set again only on credential
+> rotation, failed login validation, pending or uninitialized state.
+
+> Amendment (2026-10-15, [ADR 0023](0023-daily-security-check.md)): The full sweep
+> no longer runs in every deployment's migration Job. It runs as a daily Job, which
+> administrators can also start from the Admin; the admin repair that paused caller
+> SQL is removed. A deployment runs it only on first setup or after system migrations,
+> so grants changed outside MetaTables are repaired within a day.
 
 > Amendment (2026-10-09): [ADR 0022](0022-concurrent-requests-and-connection-reuse.md)
 > reuses login-role connections within a pod, only by the login role that opened them
@@ -200,7 +225,7 @@ Client upgrade clarification, 2026-10-01: removing `MetaTableOperationScopeTable
 select a DataSource and remove scope-only helpers and checks; they must not rebuild
 this layer through client SQL parsing or per-query catalog lookups. Table lifecycle
 registration remains separate. The [legacy application upgrade guide](../../client/upgrade-legacy-app.md)
-and packaged `metatables-upgrade-legacy-app` skill document the conversion.
+documents the conversion.
 
 The API removes every check of what the SQL means:
 

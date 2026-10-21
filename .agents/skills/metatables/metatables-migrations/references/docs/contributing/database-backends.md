@@ -57,7 +57,7 @@ Shared routes and operation services depend on `DatabaseBackend` and its
 `catalog`, `tables`, `access` and `sql` interfaces. New driver imports and physical adapter
 imports in those layers fail `python -m scripts.check_boundaries`.
 
-The access contract runs the same Reader/Writer, Team and namespace grant,
+The access contract runs the same role, Team and namespace binding,
 revocation, rollback, catalog isolation, timeout, triggered-write and foreign-key
 scenarios on every engine. Engine-specific cases exercise PostgreSQL privileged
 routines and column-grant drift, PostgreSQL initialization with `CREATEROLE` and
@@ -67,7 +67,7 @@ handshake must work for newly created caller accounts, as these tests verify.
 
 
 The relation-import suite runs discovery, dry-run, strict/partial import,
-foreign-key expansion, idempotent identity reuse, view reads, Writer refresh,
+foreign-key expansion, idempotent identity reuse, view reads, editor refresh,
 revocation, Python client transport, and catalog-only unregistration. It tests
 external accounts with actual SELECT-only privileges as well as privileged
 accounts configured read-only. An execution listener rejects physical writes,

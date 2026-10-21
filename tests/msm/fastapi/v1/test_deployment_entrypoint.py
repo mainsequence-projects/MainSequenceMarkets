@@ -17,7 +17,7 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
     workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.yaml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
-    assert workflow["api_version"] == "2.3.0"
+    assert workflow["api_version"] == "3.0.0"
     assert workflow["name"] == "mainsequence-markets-fastapi"
 
     resources = {resource["key"]: resource for resource in workflow["resources"]}
@@ -70,7 +70,9 @@ def test_main_fastapi_workflow_grants_metatables_access_to_its_workloads() -> No
     workflow_path = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.yaml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
+    # `reader` on the MetaTables branch lets each workload find the Environment's MetaTables
+    # API; its roles on the `mainsequence.markets` namespace are MetaTables grants.
     for resource in workflow["resources"]:
         assert resource["access"] == {
-            "branches": [{"repository": "MetaTables", "level": "view"}]
+            "branches": [{"repository": "MetaTables", "policy": "reader"}]
         }, resource["key"]

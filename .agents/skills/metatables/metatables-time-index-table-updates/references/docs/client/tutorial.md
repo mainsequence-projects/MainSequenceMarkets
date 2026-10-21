@@ -101,9 +101,9 @@ The [provider](../examples/tutorial/migrations/__init__.py),
 [initial revision](../examples/tutorial/migrations/versions/metatables_market_tutorial/0001_create_market_tutorial_tables.py)
 are the reviewed code executed by the client. Review them alongside
 [the migration boundary](define-and-migrate-tables.md). Every `seed`, `update`, and
-`read` command runs migration setup first, requiring Writer access to each existing
+`read` command runs migration setup first, requiring `editor` on each existing
 provider table. VS Code launches also use `--prepare-data` to seed and run producers
-before reading. An independent `TimeIndexTableRef` reader needs Reader access only
+before reading. An independent `TimeIndexTableRef` reader needs `data_viewer` only
 and does not run setup. Preview works immediately without an API.
 
 The additive [volatility revision](../examples/tutorial/migrations/versions/metatables_market_tutorial/0002_create_rolling_volatility.py)

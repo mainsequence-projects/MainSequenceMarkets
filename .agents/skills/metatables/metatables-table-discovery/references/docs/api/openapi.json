@@ -1,21 +1,35 @@
 {
   "components": {
     "schemas": {
-      "Assignments": {
+      "AccessChanges": {
         "additionalProperties": false,
+        "description": "Grants and revokes applied together, against the revision the caller read.",
         "properties": {
-          "edit": {
-            "$ref": "#/components/schemas/Principals"
+          "grant": {
+            "items": {
+              "$ref": "#/components/schemas/RoleGrant"
+            },
+            "maxItems": 500,
+            "title": "Grant",
+            "type": "array"
           },
-          "view": {
-            "$ref": "#/components/schemas/Principals"
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          },
+          "revoke": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalRef"
+            },
+            "maxItems": 500,
+            "title": "Revoke",
+            "type": "array"
           }
         },
         "required": [
-          "view",
-          "edit"
+          "revision"
         ],
-        "title": "Assignments",
+        "title": "AccessChanges",
         "type": "object"
       },
       "AuthoredColumnMetadata": {
@@ -1859,9 +1873,20 @@
         "title": "MySQLSourceCreate",
         "type": "object"
       },
-      "NamespaceInput": {
+      "NamespaceCreate": {
         "additionalProperties": false,
         "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
@@ -1872,7 +1897,7 @@
         "required": [
           "name"
         ],
-        "title": "NamespaceInput",
+        "title": "NamespaceCreate",
         "type": "object"
       },
       "NamespacePage": {
@@ -2266,29 +2291,28 @@
         "title": "PostgreSQLSourceCreate",
         "type": "object"
       },
-      "Principals": {
+      "PrincipalRef": {
         "additionalProperties": false,
         "properties": {
-          "teams": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 500,
-            "title": "Teams",
-            "type": "array"
+          "principal_kind": {
+            "enum": [
+              "user",
+              "team"
+            ],
+            "title": "Principal Kind",
+            "type": "string"
           },
-          "users": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 500,
-            "title": "Users",
-            "type": "array"
+          "principal_uid": {
+            "format": "uuid",
+            "title": "Principal Uid",
+            "type": "string"
           }
         },
-        "title": "Principals",
+        "required": [
+          "principal_kind",
+          "principal_uid"
+        ],
+        "title": "PrincipalRef",
         "type": "object"
       },
       "Query": {
@@ -3057,6 +3081,42 @@
         "title": "ReservationRequest",
         "type": "object"
       },
+      "RoleGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "principal_kind": {
+            "enum": [
+              "user",
+              "team"
+            ],
+            "title": "Principal Kind",
+            "type": "string"
+          },
+          "principal_uid": {
+            "format": "uuid",
+            "title": "Principal Uid",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "metadata_viewer",
+              "data_viewer",
+              "data_writer",
+              "editor",
+              "owner"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_kind",
+          "principal_uid",
+          "role"
+        ],
+        "title": "RoleGrant",
+        "type": "object"
+      },
       "RuntimeBootstrapDescriptor": {
         "properties": {
           "active": {
@@ -3419,24 +3479,6 @@
           "configuration"
         ],
         "title": "RuntimeSourceInput",
-        "type": "object"
-      },
-      "SharingUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "assignments": {
-            "$ref": "#/components/schemas/Assignments"
-          },
-          "revision": {
-            "title": "Revision",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assignments",
-          "revision"
-        ],
-        "title": "SharingUpdate",
         "type": "object"
       },
       "SourcePage": {
@@ -5023,9 +5065,29 @@
         "summary": "Hello"
       }
     },
+    "/access/roles/": {
+      "get": {
+        "description": "Object types, actions, roles and their texts (ADR 0024).",
+        "operationId": "access_roles_access_roles__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Access Roles",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
     "/caller/": {
       "get": {
-        "description": "Who this request runs as: the User, Teams and admin flag the API admitted, named\nthrough the platform directory as that User sees it.\n\nHosted, the identity comes from the platform-signed caller assertion (ADR 0017);\nLocal and developer runtimes admit the developer's own SDK session.",
+        "description": "Who this request runs as: the User, Teams and admin flag the API admitted, named\nthrough the platform directory as that User sees it.\n\nHosted, the identity comes from the platform-signed caller assertion (ADR 0017),\nand the Teams are those MetaTables grants name that the caller belongs to (SDK\n#225); Local and developer runtimes admit the developer's own SDK session.",
         "operationId": "admitted_caller_caller__get",
         "responses": {
           "200": {
@@ -6913,9 +6975,9 @@
         ]
       }
     },
-    "/meta-tables/{uid}/effective-access/": {
+    "/meta-tables/{uid}/access/": {
       "get": {
-        "operationId": "effective_access_meta_tables__uid__effective_access__get",
+        "operationId": "table_access_meta_tables__uid__access__get",
         "parameters": [
           {
             "in": "path",
@@ -6925,40 +6987,6 @@
               "format": "uuid",
               "title": "Uid",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "user_uid",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "User Uid"
-            }
-          },
-          {
-            "in": "query",
-            "name": "without_grant_uid",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Without Grant Uid"
             }
           }
         ],
@@ -6982,54 +7010,15 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Effective Access",
+        "summary": "Table Access",
         "tags": [
           "Security"
         ]
       }
     },
-    "/meta-tables/{uid}/permissions": {
-      "get": {
-        "operationId": "table_permissions_meta_tables__uid__permissions_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "uid",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Uid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Table Permissions",
-        "tags": [
-          "Security"
-        ]
-      },
-      "put": {
-        "operationId": "set_table_permissions_meta_tables__uid__permissions_put",
+    "/meta-tables/{uid}/access/changes/": {
+      "post": {
+        "operationId": "change_table_access_meta_tables__uid__access_changes__post",
         "parameters": [
           {
             "in": "path",
@@ -7046,7 +7035,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SharingUpdate"
+                "$ref": "#/components/schemas/AccessChanges"
               }
             }
           },
@@ -7072,7 +7061,115 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Set Table Permissions",
+        "summary": "Change Table Access",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
+    "/meta-tables/{uid}/access/explain/": {
+      "get": {
+        "operationId": "explain_table_access_meta_tables__uid__access_explain__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_uid",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Table Access",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
+    "/meta-tables/{uid}/access/me/": {
+      "get": {
+        "operationId": "table_access_me_meta_tables__uid__access_me__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Table Access Me",
         "tags": [
           "Security"
         ]
@@ -7152,6 +7249,46 @@
         "tags": [
           "Namespaces"
         ]
+      },
+      "post": {
+        "description": "Any person creates a namespace whose name is free and becomes its owner (ADR 0024).",
+        "operationId": "create_namespace_namespaces__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Namespace",
+        "tags": [
+          "Namespaces"
+        ]
       }
     },
     "/namespaces/{namespace_uid}/": {
@@ -7197,7 +7334,7 @@
         ]
       },
       "patch": {
-        "description": "Describe the namespace's application or source; its Writers and admins may edit it.",
+        "description": "Describe the namespace's application or source; needs namespaces.update.",
         "operationId": "patch_namespace_namespaces__namespace_uid___patch",
         "parameters": [
           {
@@ -7342,9 +7479,9 @@
         ]
       }
     },
-    "/namespaces/{uid}/permissions": {
+    "/namespaces/{uid}/access/": {
       "get": {
-        "operationId": "namespace_permissions_namespaces__uid__permissions_get",
+        "operationId": "namespace_access_namespaces__uid__access__get",
         "parameters": [
           {
             "in": "path",
@@ -7377,13 +7514,15 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Namespace Permissions",
+        "summary": "Namespace Access",
         "tags": [
           "Security"
         ]
-      },
-      "put": {
-        "operationId": "set_namespace_permissions_namespaces__uid__permissions_put",
+      }
+    },
+    "/namespaces/{uid}/access/changes/": {
+      "post": {
+        "operationId": "change_namespace_access_namespaces__uid__access_changes__post",
         "parameters": [
           {
             "in": "path",
@@ -7400,7 +7539,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SharingUpdate"
+                "$ref": "#/components/schemas/AccessChanges"
               }
             }
           },
@@ -7426,7 +7565,115 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Set Namespace Permissions",
+        "summary": "Change Namespace Access",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
+    "/namespaces/{uid}/access/explain/": {
+      "get": {
+        "operationId": "explain_namespace_access_namespaces__uid__access_explain__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_uid",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Namespace Access",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
+    "/namespaces/{uid}/access/me/": {
+      "get": {
+        "operationId": "namespace_access_me_namespaces__uid__access_me__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Namespace Access Me",
         "tags": [
           "Security"
         ]
@@ -7709,6 +7956,26 @@
         ]
       }
     },
+    "/security/checks/": {
+      "post": {
+        "description": "Run the full security check now; caller SQL keeps running (ADR 0023).\n\nHosted starts the daily check Job and answers 202; its outcome appears in the\npermission state when it finishes. Local runs the check in this request.",
+        "operationId": "run_security_check_now_security_checks__post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Security Check Now",
+        "tags": [
+          "Security"
+        ]
+      }
+    },
     "/security/database-permissions/": {
       "get": {
         "description": "Read durable permission/admission state without resolving Secrets or repairing grants.",
@@ -7724,45 +7991,6 @@
           }
         },
         "summary": "Database Permission Status",
-        "tags": [
-          "Security"
-        ]
-      }
-    },
-    "/security/namespaces/": {
-      "post": {
-        "operationId": "create_namespace_security_namespaces__post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NamespaceInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Namespace",
         "tags": [
           "Security"
         ]
@@ -7806,26 +8034,6 @@
           }
         },
         "summary": "Principal Search",
-        "tags": [
-          "Security"
-        ]
-      }
-    },
-    "/security/reconcile/": {
-      "post": {
-        "description": "Repair native grants; a failed repair leaves SQL admission disabled.",
-        "operationId": "reconcile_database_permissions_security_reconcile__post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Reconcile Database Permissions",
         "tags": [
           "Security"
         ]

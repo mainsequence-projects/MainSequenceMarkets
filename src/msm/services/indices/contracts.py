@@ -17,7 +17,13 @@ class IndexServiceModel(BaseModel):
 class IndexActor(IndexServiceModel):
     user_uid: str = Field(min_length=1, max_length=255)
     username: str | None = None
-    team_uids: tuple[str, ...] = ()
+    team_uids: tuple[str, ...] = Field(
+        default=(),
+        deprecated=(
+            "IndexActor.team_uids is deprecated and will be removed in a future major release. "
+            "No Index operation reads it, and a request identity names no Teams."
+        ),
+    )
 
 
 class IndexListRequest(IndexServiceModel):

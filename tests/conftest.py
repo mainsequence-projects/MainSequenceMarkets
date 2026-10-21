@@ -63,7 +63,6 @@ class GatewayCallerAssertions(CallerAssertionVerifier):
             "iat": now,
             "nbf": now,
             "exp": now + 120,
-            "team_uids": [],
             "is_organization_admin": False,
             **claims,
         }
