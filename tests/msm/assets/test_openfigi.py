@@ -40,6 +40,29 @@ def test_get_openfigi_api_key_reports_missing_mainsequence_secret(monkeypatch) -
     message = str(exc_info.value)
     assert "OPEN_FIGI_API_KEY needs to be set" in message
     assert "www.main-sequence.app/app/main_sequence_workbench/secrets" in message
+    assert "`value_reader` on OPEN_FIGI_API_KEY" in message
+
+
+def test_get_openfigi_api_key_names_value_reader_when_the_value_is_refused(monkeypatch) -> None:
+    from mainsequence.client.exceptions import PermissionDeniedError
+
+    refusal = PermissionDeniedError(
+        "You do not have permission to perform this action.",
+        payload={"required_action": "read_value", "granting_policies": ["value_reader"]},
+    )
+
+    def refused_secret(secret_name: str):
+        raise refusal
+
+    monkeypatch.setattr(openfigi, "_get_mainsequence_secret", refused_secret)
+
+    with pytest.raises(openfigi.OpenFigiConfigurationError) as exc_info:
+        openfigi.get_openfigi_api_key()
+
+    message = str(exc_info.value)
+    assert "`value_reader` on OPEN_FIGI_API_KEY" in message
+    assert "secrets: [{name: OPEN_FIGI_API_KEY, policy: value_reader}]" in message
+    assert exc_info.value.__cause__ is refusal
 
 
 def test_get_openfigi_api_key_reports_secret_without_value(monkeypatch) -> None:

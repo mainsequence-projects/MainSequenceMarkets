@@ -11,7 +11,11 @@ from sqlalchemy.types import Uuid
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
 from msm.data_nodes.indices.storage import configured_index_values_storage
 from msm.models import IndexTable
-from msm.services.indices import IndexRelationshipProvider, discover_canonical_datasets
+from msm.services.indices import (
+    IndexActor,
+    IndexRelationshipProvider,
+    discover_canonical_datasets,
+)
 from msm.services.indices import catalog as catalog_service
 
 
@@ -34,10 +38,8 @@ def test_formula_input_mapper_exposes_exact_public_source_binding() -> None:
     assert result.observable == "settlement_price"
 
 
-def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(monkeypatch) -> None:
-    storage_model = configured_index_values_storage(cadence="1d")
-    meta_table_uid = uuid.uuid4()
-    fake_meta_table = SimpleNamespace(
+def _fake_canonical_meta_table(storage_model, *, meta_table_uid: uuid.UUID) -> SimpleNamespace:
+    return SimpleNamespace(
         uid=meta_table_uid,
         identifier=storage_model.__metatable_identifier__,
         namespace="mainsequence.markets",
@@ -60,6 +62,12 @@ def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(mon
         created_by_user_uid=str(uuid.uuid4()),
         registration=None,
     )
+
+
+def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(monkeypatch) -> None:
+    storage_model = configured_index_values_storage(cadence="1d")
+    meta_table_uid = uuid.uuid4()
+    fake_meta_table = _fake_canonical_meta_table(storage_model, meta_table_uid=meta_table_uid)
     monkeypatch.setattr(
         catalog_service.TimeIndexMetaTable,
         "filter_by_body",
@@ -74,6 +82,26 @@ def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(mon
     assert datasets[0].physical_table_name == storage_model.__table__.name
     assert datasets[0].foreign_keys[0].source_column == "index_identifier"
     assert datasets[0].foreign_keys[0].target_column == "unique_identifier"
+
+
+def test_canonical_dataset_access_does_not_infer_edit_from_the_registering_user(
+    monkeypatch,
+) -> None:
+    storage_model = configured_index_values_storage(cadence="1d")
+    fake_meta_table = _fake_canonical_meta_table(storage_model, meta_table_uid=uuid.uuid4())
+    monkeypatch.setattr(
+        catalog_service.TimeIndexMetaTable,
+        "filter_by_body",
+        lambda **kwargs: [fake_meta_table],
+    )
+    registering_user = IndexActor(user_uid=fake_meta_table.created_by_user_uid)
+
+    (dataset,) = discover_canonical_datasets(actor=registering_user)
+
+    # MetaTables roles decide edit access; registering a table grants nothing by itself.
+    assert dataset.access.can_view is True
+    assert dataset.access.can_edit is None
+    assert dataset.access.reason == "Edit access is rechecked by the platform at mutation time."
 
 
 def test_extension_provider_rejects_column_name_without_foreign_key() -> None:

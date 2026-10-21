@@ -10,20 +10,19 @@ from .contracts import IndexActor
 def actor_from_user(user: Any) -> IndexActor:
     """Build the actor from a request identity or an SDK `User`.
 
-    A request identity carries `team_uids`; an SDK `User` lists its
-    `organization_teams`.
+    Only the UID identifies the actor; no Index operation authorizes by Team.
+    A request identity names no Teams, because the platform's caller assertions
+    carry only the caller and its Organization-admin flag, so its actor has
+    empty `team_uids`. An SDK `User` still lists its `organization_teams`.
     """
 
     user_uid = getattr(user, "uid", None)
     if user_uid in (None, ""):
         raise RuntimeError("Authenticated platform user has no UID")
-    teams = getattr(user, "team_uids", None)
-    if teams is None:
-        teams = getattr(user, "organization_teams", None)
     team_uids = tuple(
         sorted(
             str(uid)
-            for team in (teams or ())
+            for team in (getattr(user, "organization_teams", None) or ())
             if (uid := team if isinstance(team, str) else getattr(team, "uid", None))
             not in (None, "")
         )
