@@ -27,7 +27,7 @@ cachetools==7.1.4
     #   mainsequence
     #   mainsequence-metatable
     #   ms-markets
-certifi==2026.5.20
+certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
@@ -198,7 +198,7 @@ pandas==3.0.3
     #   ms-markets
 pillow==12.2.0
     # via fastembed
-pip==26.1.2
+pip==26.2.2
     # via ms-markets
 platformdirs==4.10.0
     # via mainsequence-metatable
