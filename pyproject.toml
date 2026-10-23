@@ -33,6 +33,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "certifi>=2026.10.19",
   "alembic>=1.18.4",
   "cachetools",
   "fastapi>=0.136.3",
@@ -40,7 +41,7 @@ dependencies = [
   "mainsequence-metatable>=0.1.35,<0.2",
   "numpy",
   "pandas",
-  "pip>=26.1.1",
+  "pip>=26.2.2",
   "psycopg2>=2.9.12",
   "pydantic",
   "pytz",
