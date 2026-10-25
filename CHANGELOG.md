@@ -14,7 +14,8 @@ and this project follows versioned releases.
   Markets API as the application boundary: provider-owned namespaces and
   sidecars, a contracts package with a remote row backend, and contract-plus-
   instances for portfolio and signal time series catalogued by Markets. Its
-  migration path step 1 is implemented in this release as described below;
+  migration path step 1 is implemented in this release as described below,
+  except per-service ownership and Team scoping policy, which is still open;
   the packaging split (step 2) and the provider and consumer moves (steps 3
   and 4) are not.
 - `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS` are storage
@@ -38,7 +39,6 @@ and this project follows versioned releases.
   verifies each declared table against the contract; reconciliation aggregates
   each instance once for all of its portfolios and records unreadable
   instances as `unavailable`.
-
 - `apps.v1.identity` adds `acting_identity()`, the one place the Markets API
   decides whom a request acts for: `User.get_requester()` on a requester-bound
   call, `User.get_logged_user()` otherwise, never both, and `None` outside a

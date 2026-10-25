@@ -10,8 +10,9 @@ table roles (`owner`, `editor`, `data_writer`, `data_viewer`, `metadata_viewer`)
 replace the Reader and Writer vocabulary used below; the grant boundaries this
 ADR draws are unchanged by that rename, and implementation uses the role names.
 
-Migration path step 1 is implemented on `development` (see "Implementation
-notes" at the end). Steps 2 to 4 are not.
+Migration path step 1 is implemented on `development` except per-service
+ownership and Team scoping policy, which is still open (see "Implementation
+notes" at the end). Steps 2 to 4 are not implemented.
 
 It builds on [ADR 0008](0008-metatable-table-and-api-model-split.md) (row
 objects separate from table declarations), [ADR 0030](0030-explicit-portfolio-price-source-dependency.md)
@@ -238,9 +239,10 @@ Under this ADR:
   its encrypted key columns and Alpaca's migration provider are unchanged. The
   encrypted columns are the reason the sidecar must stay Alpaca-owned: only a
   process holding the Alpaca keyring can open them.
-- `Account.upsert` and the active-flag update go through Markets routes for
-  account create and update, which do not exist yet. The holdings snapshot
-  uses the existing `addAccountHoldings` route. Atomicity is unchanged; a
+- `Account.upsert` and the active-flag update go through the Markets account
+  create and update routes, `POST /api/v1/account/` and
+  `PATCH /api/v1/account/{uid}/`. The holdings snapshot uses the existing
+  `addAccountHoldings` route. Atomicity is unchanged; a
   composite register route on Markets could later make it better than today.
 - The list query pages on the sidecar, which already duplicates `is_paper`
   and the unique identifier, and hydrates core columns with one batch lookup
