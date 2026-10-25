@@ -22,6 +22,7 @@ from msm_portfolios.time_index import (
     compute_signal_uid,
 )
 from msm_portfolios.time_index.base import _isoformat_dates_and_times
+from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalanceStateStorage
 from msm_portfolios.time_index.portfolios.storage import (
     PortfoliosStorage,
     PortfolioWeightsStorage,
@@ -35,6 +36,7 @@ from tests.identity.test_pinned_identities import (
 
 WEIGHTS_TABLE_UID = "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e"
 PORTFOLIOS_TABLE_UID = "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"
+REBALANCE_TABLE_UID = "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a"
 
 
 class SessionSignalConfiguration(PortfolioConfigBaseModel):
@@ -82,6 +84,8 @@ def test_portfolio_updaters_with_execution_windows_get_a_stable_update_hash(name
         _built_updaters() as updaters,
         _bound(PortfolioWeightsStorage, WEIGHTS_TABLE_UID),
         _bound(PortfoliosStorage, PORTFOLIOS_TABLE_UID),
+        # Every storage the updaters touch is bound, so nothing reaches a MetaTables backend.
+        _bound(PortfolioRebalanceStateStorage, REBALANCE_TABLE_UID),
     ):
         weights = PortfolioWeights(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
         portfolios = PortfoliosUpdater(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
