@@ -11,7 +11,10 @@ the same hook supplies the value.
 
 The requester is only present because the ``markets-api`` resource declares
 ``acts_for_requester: true`` in ``.mainsequence/workflows/ms-markets-api.yaml``;
-a caller-bound call still returns the caller.
+a caller-bound call still returns the caller. Only an Organization admin can
+enable that declaration: it takes effect only when the person who pushes the
+workflow file is an Organization admin, and otherwise the resource fails before
+it deploys.
 """
 
 from __future__ import annotations

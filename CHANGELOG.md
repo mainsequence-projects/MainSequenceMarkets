@@ -74,7 +74,9 @@ and this project follows versioned releases.
 - The `markets-api` resource in `.mainsequence/workflows/ms-markets-api.yaml`
   declares `acts_for_requester: true`, so the platform signs the person an
   application works for into the caller assertion and the API acts for that
-  requester (ADR 0047, decision 3). Caller-bound calls are unchanged.
+  requester (ADR 0047, decision 3). Caller-bound calls are unchanged. The
+  declaration takes effect only when an Organization admin pushes it; a push by
+  anyone else makes the `markets-api` resource fail before it deploys.
 
 ### Changed
 
