@@ -57,7 +57,10 @@ Names and module paths are part of persisted identities:
    uids use `*storage_table_uid`: `storage_table_uid` on pricing market-data
    bindings, `holdings_storage_table_uid` on accounts and
    `source_storage_table_uid` on account holdings sets. API fields use the same
-   names.
+   names. When this was decided, no production account or account holdings set
+   stored a value in either account column, so naming them as table uids
+   changes no data; `msm rename-preflight account-uids` checks other
+   Environments.
 3. **Identities.** MetaTables' `update_hash` rotates once, in 3.0.0. Identities
    that ms-markets derives do not: `msm.identity` maps every moved class path
    back to its pre-rename path, and every nested updater's hash to the hash it

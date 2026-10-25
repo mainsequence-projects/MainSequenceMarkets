@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Breaking release 3.0.0. It renames the DataNode vocabulary to the MetaTables
+time-index terms: packages, updater and configuration classes, and UID fields
+that now name the identity they hold. See
+[ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)
+and [Upgrading To 3.0](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3/).
+Every pre-3.0 name keeps working through 3.x with a `DeprecationWarning`.
+Producers built from a moved class get a new `update_hash` once; signal,
+portfolio and strategy identities do not change. Dependent packages declare
+`ms-markets>=3,<4`.
+
 ### Added
 
 - [ADR 0047](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0047-markets-api-application-boundary/)
