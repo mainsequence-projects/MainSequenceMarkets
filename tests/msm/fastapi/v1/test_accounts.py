@@ -2621,13 +2621,13 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
 def _account_payload(account_uid: uuid.UUID) -> dict[str, object]:
     return {
         "uid": str(account_uid),
-        "unique_identifier": "alpaca-paper-1",
-        "account_name": "Alpaca paper",
+        "unique_identifier": "broker-paper-1",
+        "account_name": "Broker paper",
         "is_paper": True,
         "account_is_active": False,
         "account_group_uid": None,
         "holdings_data_node_uid": None,
-        "metadata_json": {"provider": "alpaca"},
+        "metadata_json": {"provider": "broker"},
     }
 
 
@@ -2646,16 +2646,16 @@ def test_create_account_returns_created_row(monkeypatch) -> None:
     response = TestClient(app).post(
         "/api/v1/account/",
         json={
-            "unique_identifier": "alpaca-paper-1",
-            "account_name": "Alpaca paper",
-            "metadata_json": {"provider": "alpaca"},
+            "unique_identifier": "broker-paper-1",
+            "account_name": "Broker paper",
+            "metadata_json": {"provider": "broker"},
         },
     )
 
     assert response.status_code == 201
     assert response.json() == _account_payload(account_uid)
     assert isinstance(captured["payload"], AccountCreate)
-    assert captured["payload"].unique_identifier == "alpaca-paper-1"
+    assert captured["payload"].unique_identifier == "broker-paper-1"
     assert captured["payload"].is_paper is True
 
 

@@ -20,9 +20,9 @@ OTHER_UID = "22222222-2222-2222-2222-222222222222"
 def _sidecar(uid: str = SIDECAR_UID, *, target: str = AccountTable.__table__.name, join: str = "account_uid"):
     return SimpleNamespace(
         uid=uid,
-        identifier="alpaca-connectors.AlpacaAccountDetails",
-        namespace="alpaca-connectors",
-        physical_table_name="alpaca_connectors__acct_alpaca",
+        identifier="my-provider.ProviderAccountDetails",
+        namespace="my-provider",
+        physical_table_name="my_provider__acct_provider",
         physical_schema="public",
         columns=[{"name": join}, {"name": "is_paper"}, {"name": "api_key_id"}],
         foreign_keys=[
@@ -47,7 +47,7 @@ def test_resolve_includes_requires_a_single_column_fk_to_the_core_uid() -> None:
         meta_table_lookup=lambda uids: [_sidecar(), _sidecar(OTHER_UID, join="owner_uid")],
     )
     assert [item.join_column for item in resolved] == ["account_uid", "owner_uid"]
-    assert resolved[0].physical_table_name == "alpaca_connectors__acct_alpaca"
+    assert resolved[0].physical_table_name == "my_provider__acct_provider"
     assert resolved[0].physical_schema is None
     assert resolved[0].columns == ("account_uid", "is_paper", "api_key_id")
 
@@ -81,7 +81,7 @@ def test_read_sidecar_rows_reads_each_sidecar_once_and_keys_by_core_uid(monkeypa
     hydrated = includes.read_sidecar_rows(object(), core_uids=[first, second, third], includes=[sidecar])
 
     assert len(statements) == 1
-    assert "alpaca_connectors__acct_alpaca" in statements[0]
+    assert "my_provider__acct_provider" in statements[0]
     assert "account_uid IN" in statements[0]
     assert hydrated[str(first)] == {SIDECAR_UID: {"account_uid": str(first), "is_paper": True, "api_key_id": "0102"}}
     assert hydrated[str(second)][SIDECAR_UID]["is_paper"] is False
@@ -92,7 +92,7 @@ def test_read_sidecar_rows_wraps_backend_failures(monkeypatch) -> None:
     monkeypatch.setattr(includes, "compile_markets_statement", lambda statement, **_kwargs: statement)
 
     def denied(_operation, **_kwargs):
-        raise PermissionError("missing data_viewer on alpaca-connectors.AlpacaAccountDetails")
+        raise PermissionError("missing data_viewer on my-provider.ProviderAccountDetails")
 
     monkeypatch.setattr(includes, "execute_markets_operation", denied)
     (sidecar,) = includes.resolve_sidecar_includes([SIDECAR_UID], core_model=AccountTable, meta_table_lookup=lambda _u: [_sidecar()])

@@ -56,8 +56,8 @@ def test_rows_by_uids_issues_one_in_filter_and_keeps_request_order(monkeypatch) 
             "apps.v1.routers.accounts.get_accounts_by_uids",
             {
                 "uid": str(uuid.uuid4()),
-                "unique_identifier": "alpaca-paper-1",
-                "account_name": "Alpaca paper",
+                "unique_identifier": "broker-paper-1",
+                "account_name": "Broker paper",
                 "is_paper": True,
                 "account_is_active": True,
                 "account_group_uid": None,
@@ -70,7 +70,7 @@ def test_rows_by_uids_issues_one_in_filter_and_keeps_request_order(monkeypatch) 
             "apps.v1.routers.portfolios.get_portfolios_by_uids",
             {
                 "uid": str(uuid.uuid4()),
-                "unique_identifier": "alpaca-etf-tracker",
+                "unique_identifier": "equity-tracker",
                 "calendar_uid": str(uuid.uuid4()),
                 "published_index_uid": None,
                 "portfolio_weights_data_node_uid": None,

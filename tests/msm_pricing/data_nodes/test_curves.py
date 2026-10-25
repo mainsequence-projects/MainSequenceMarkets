@@ -486,18 +486,18 @@ def test_curve_key_nodes_reject_legacy_scalar_source_fields(legacy_field: str) -
 
 
 def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
-    def validate_valmer_key_nodes(value, *, row, curve_identifier):
+    def validate_provider_key_nodes(value, *, row, curve_identifier):
         assert curve_identifier == "mxn_tiie_discount"
         assert row["metadata_json"] == {"source_snapshot": "mock"}
         validated = []
         for node in value:
             if node.get("quote_type") != "clean_price":
-                raise ValueError("Valmer key nodes must use clean_price quotes.")
-            validated.append({**node, "validated_by": "valmer"})
+                raise ValueError("Provider key nodes must use clean_price quotes.")
+            validated.append({**node, "validated_by": "provider"})
         return validated
 
     node = object.__new__(DiscountCurvesNode)
-    node.set_key_nodes_validator(validate_valmer_key_nodes)
+    node.set_key_nodes_validator(validate_provider_key_nodes)
 
     normalized = node._normalize_builder_frame(
         pd.DataFrame(
@@ -538,7 +538,7 @@ def test_discount_curves_node_supports_runtime_key_nodes_validator() -> None:
                 "quote": 99.25,
                 "quote_type": "clean_price",
                 "quote_unit": "price_per_100",
-                "validated_by": "valmer",
+                "validated_by": "provider",
             }
         ]
     ]

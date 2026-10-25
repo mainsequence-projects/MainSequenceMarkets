@@ -1573,9 +1573,9 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
 def _catalog_state(portfolio_uid: uuid.UUID) -> dict[str, object]:
     return {
         "portfolio_uid": str(portfolio_uid),
-        "portfolio_identifier": "alpaca-etf-tracker",
-        "values_meta_table_uid": "alpaca-values",
-        "weights_meta_table_uid": "alpaca-weights",
+        "portfolio_identifier": "equity-tracker",
+        "values_meta_table_uid": "provider-values",
+        "weights_meta_table_uid": "provider-weights",
         "signal_meta_table_uid": None,
         "population_state": "populated",
         "row_count": 12,
@@ -1655,7 +1655,7 @@ def test_multi_portfolio_weights_frame_route_passes_snapshot_selection(monkeypat
 def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(monkeypatch) -> None:
     from apps.v1.services import portfolios as portfolio_service
 
-    first, second = _portfolio_row(), {**_portfolio_row(), "unique_identifier": "ibkr-income"}
+    first, second = _portfolio_row(), {**_portfolio_row(), "unique_identifier": "income-fund"}
     monkeypatch.setattr(portfolio_service, "_get_runtime", lambda: SimpleNamespace(context="ctx"))
     monkeypatch.setattr(
         portfolio_service,
@@ -1671,7 +1671,7 @@ def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(mon
         return [
             {"portfolio_uid": uuid.UUID(first["uid"]), "portfolio_identifier": "example-sleeve",
              "time_index": now - dt.timedelta(days=1), "close": 1.0, "return": 0.0},
-            {"portfolio_uid": uuid.UUID(second["uid"]), "portfolio_identifier": "ibkr-income",
+            {"portfolio_uid": uuid.UUID(second["uid"]), "portfolio_identifier": "income-fund",
              "time_index": now, "close": 2.0, "return": 0.1},
         ]
 
@@ -1689,8 +1689,8 @@ def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(mon
     weights = portfolio_service.get_portfolios_weights_frame(uids=[first["uid"]], weights_date=now)
 
     # One read for both portfolios, through the catalog-aware service with the API runtime context.
-    assert values_calls == [(["example-sleeve", "ibkr-income"], {"start": None, "end": None, "repository_context": "ctx"})]
-    assert [row["portfolio_identifier"] for row in values.rows] == ["ibkr-income"]
+    assert values_calls == [(["example-sleeve", "income-fund"], {"start": None, "end": None, "repository_context": "ctx"})]
+    assert [row["portfolio_identifier"] for row in values.rows] == ["income-fund"]
     assert values.rows[0]["portfolio_uid"] == second["uid"]
     assert values.rows[0]["time_index"] == now.isoformat()
     assert values.source.context["portfolio_uids"] == [first["uid"], second["uid"]]
@@ -1714,12 +1714,12 @@ def test_register_portfolio_datasets_route_returns_catalog_state(monkeypatch) ->
 
     response = TestClient(app).post(
         f"/api/v1/portfolio/{portfolio_uid}/datasets/",
-        json={"values_meta_table_uid": "alpaca-values", "weights_meta_table_uid": "alpaca-weights"},
+        json={"values_meta_table_uid": "provider-values", "weights_meta_table_uid": "provider-weights"},
     )
 
     assert response.status_code == 201
     assert response.json()["population_state"] == "populated"
-    assert response.json()["values_meta_table_uid"] == "alpaca-values"
+    assert response.json()["values_meta_table_uid"] == "provider-values"
     assert captured["uid"] == str(portfolio_uid)
     assert isinstance(captured["payload"], PortfolioDatasetRegistrationRequest)
     assert captured["payload"].reconcile is True

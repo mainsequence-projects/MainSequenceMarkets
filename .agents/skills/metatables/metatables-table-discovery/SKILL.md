@@ -48,7 +48,7 @@ time-index tables. Both accept the list filters (`namespace`, `labels__in`,
   measure. `bond prices`, `fx spot rates`, `portfolio positions`. Not a question,
   not SQL, not a physical table name.
 - Run two to four variants before concluding anything: a synonym (`sovereign
-  debt`), a market or vendor term (`M Bonos`, `CETES`, `Valmer`), and column words
+  debt`), a market or vendor term (`M Bonos`, `CETES`, a vendor name), and column words
   (`clean price`, `yield`).
 
 ### Read the results
@@ -98,7 +98,7 @@ English, in this order:
    Bonos, Udibonos and CETES)". Always include the plain English noun even when a
    vendor term is standard: keyword search matches words, and "Bonos" does not
    match "bond".
-3. **Source and coverage.** Who produces it and from what: "from the Valmer daily
+3. **Source and coverage.** Who produces it and from what: "from the vendor's daily
    price vector".
 4. **Timing,** for time-index tables: when rows arrive, in words: "published after
    the Mexican market close".
@@ -141,7 +141,7 @@ key, the time index and the identity dimensions.
 - Two to six labels, lowercase and hyphenated: `fixed-income`.
 - Draw them from these facets: domain or asset class (`fixed-income`, `fx`,
   `equities`, `accounting`), geography (`mexico`, `global`), data kind (`prices`,
-  `reference-data`, `positions`, `transactions`, `risk`), and source (`valmer`,
+  `reference-data`, `positions`, `transactions`, `risk`), and source (`vendor`,
   `banxico`) when the source is not the namespace.
 - Reuse labels you see on existing tables in search results instead of creating
   near-duplicates (`fixed_income` next to `fixed-income`).
@@ -150,7 +150,7 @@ key, the time index and the identity dimensions.
 ### Identifier and namespace
 
 - `__metatable_identifier__` is `<namespace>.<concept>` in full words:
-  `valmer.mx_sovereign_bond_prices`. It is identity and never changes after the
+  `vendor.mx_sovereign_bond_prices`. It is identity and never changes after the
   table is published.
 - `__metatable_namespace__` is the owning application or source, not a SQL schema.
   Its description (one or two sentences about the application or source) is
@@ -181,12 +181,12 @@ class Base(DeclarativeBase):
 
 
 class SovereignBondPrice(PlatformTimeIndexMetaTable, Base):
-    __tablename__ = schema_table_name("valmer", "mx_sovereign_bond_prices")
-    __metatable_namespace__ = "valmer"
-    __metatable_identifier__ = "valmer.mx_sovereign_bond_prices"
+    __tablename__ = schema_table_name("vendor", "mx_sovereign_bond_prices")
+    __metatable_namespace__ = "vendor"
+    __metatable_identifier__ = "vendor.mx_sovereign_bond_prices"
     __metatable_description__ = (
         "One row per ISIN per valuation date. End-of-day prices and yields of "
-        "Mexican government bonds (M Bonos, Udibonos and CETES) from the Valmer "
+        "Mexican government bonds (M Bonos, Udibonos and CETES) from the vendor's "
         "daily price vector, published after the Mexican market close."
     )
     __metatable_labels__ = ["fixed-income", "mexico", "prices"]
@@ -221,7 +221,7 @@ class SovereignBondPrice(PlatformTimeIndexMetaTable, Base):
     yield_to_maturity: Mapped[float | None] = mapped_column(
         Float, nullable=True,
         info={"label": "Yield to maturity",
-              "description": "Annual yield to maturity in percent; null when Valmer publishes no yield."},
+              "description": "Annual yield to maturity in percent; null when the vendor publishes no yield."},
     )
 ```
 

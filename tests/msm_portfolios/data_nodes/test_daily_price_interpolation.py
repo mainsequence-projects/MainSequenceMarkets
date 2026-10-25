@@ -16,7 +16,7 @@ def test_daily_interpolation_derives_open_time_when_source_omits_it() -> None:
     market_close = pd.Timestamp("2026-09-04T20:00:00Z")
     source = pd.DataFrame(
         {
-            "asset_identifier": ["ALPACA::asset"],
+            "asset_identifier": ["PROVIDER::asset"],
             "open": [100.0],
             "high": [102.0],
             "low": [99.0],
@@ -53,7 +53,7 @@ def test_daily_interpolation_preserves_microsecond_timestamp_columns() -> None:
     timestamp_dtype = "datetime64[us, UTC]"
     source = pd.DataFrame(
         {
-            "asset_identifier": ["ALPACA::asset"],
+            "asset_identifier": ["PROVIDER::asset"],
             "open_time": pd.array([market_open], dtype=timestamp_dtype),
             "first_trade_time": pd.array([market_open], dtype=timestamp_dtype),
             "last_trade_time": pd.array([market_close], dtype=timestamp_dtype),
@@ -105,7 +105,7 @@ def test_intraday_interpolation_preserves_microsecond_timestamp_columns() -> Non
     timestamp_dtype = "datetime64[us, UTC]"
     source = pd.DataFrame(
         {
-            "asset_identifier": ["ALPACA::asset", "ALPACA::asset"],
+            "asset_identifier": ["PROVIDER::asset", "PROVIDER::asset"],
             "open_time": pd.array(
                 [market_open, first_close],
                 dtype=timestamp_dtype,

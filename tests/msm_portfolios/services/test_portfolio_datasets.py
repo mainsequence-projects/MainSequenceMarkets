@@ -105,22 +105,22 @@ def test_register_verifies_contract_tables_and_reconciles(monkeypatch) -> None:
     growth = _portfolio("growth", signal_uid="growth-signal")
     store = _Store([growth])
     store.install(monkeypatch)
-    store.aggregates["alpaca_connectors__portfoliosts__alpaca"] = [
+    store.aggregates["my_provider__portfoliosts__main"] = [
         {"portfolio_identifier": "growth", "row_count": 7, "earliest_time_index": NOW - dt.timedelta(days=6),
          "latest_time_index": NOW}
     ]
     tables = {
-        "values-uid": _meta_table("values-uid", physical="alpaca_connectors__portfoliosts__alpaca"),
+        "values-uid": _meta_table("values-uid", physical="my_provider__portfoliosts__main"),
         "weights-uid": _meta_table(
             "weights-uid",
-            physical="alpaca_connectors__portfolioweightsts__alpaca",
+            physical="my_provider__portfolioweightsts__main",
             columns=["time_index", "portfolio_identifier", "asset_identifier", "weight", "weight_before",
                      "price_current", "price_before", "volume_current", "volume_before", "extra"],
             index_names=["time_index", "portfolio_identifier", "asset_identifier"],
         ),
         "signal-uid": _meta_table(
             "signal-uid",
-            physical="alpaca_connectors__signalweightsts__alpaca",
+            physical="my_provider__signalweightsts__main",
             columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
             index_names=["time_index", "signal_uid", "asset_identifier"],
         ),
@@ -160,7 +160,7 @@ def test_register_verifies_contract_tables_and_reconciles(monkeypatch) -> None:
         {"model": SignalMetadataTable, "uid": store.updates[0]["uid"], "meta_table_uid": "signal-uid"}
     ]
     assert "GROUP BY" in store.aggregate_sql[0]
-    assert "alpaca_connectors__portfoliosts__alpaca" in store.aggregate_sql[0]
+    assert "my_provider__portfoliosts__main" in store.aggregate_sql[0]
 
 
 def test_register_rejects_missing_or_incompatible_tables(monkeypatch) -> None:
@@ -202,22 +202,22 @@ def test_reconcile_groups_portfolios_by_values_table_and_skips_uncatalogued(monk
         _portfolio("growth"), _portfolio("balanced"), _portfolio("income"), _portfolio("legacy")
     )
     catalog = [
-        {"uid": uuid.uuid4(), "portfolio_uid": growth["uid"], "values_meta_table_uid": "alpaca",
-         "weights_meta_table_uid": "alpaca-w", "signal_meta_table_uid": None},
-        {"uid": uuid.uuid4(), "portfolio_uid": balanced["uid"], "values_meta_table_uid": "alpaca",
+        {"uid": uuid.uuid4(), "portfolio_uid": growth["uid"], "values_meta_table_uid": "provider-a",
+         "weights_meta_table_uid": "provider-a-w", "signal_meta_table_uid": None},
+        {"uid": uuid.uuid4(), "portfolio_uid": balanced["uid"], "values_meta_table_uid": "provider-a",
          "weights_meta_table_uid": None, "signal_meta_table_uid": None},
-        {"uid": uuid.uuid4(), "portfolio_uid": income["uid"], "values_meta_table_uid": "ibkr",
+        {"uid": uuid.uuid4(), "portfolio_uid": income["uid"], "values_meta_table_uid": "provider-b",
          "weights_meta_table_uid": None, "signal_meta_table_uid": None},
     ]
     store = _Store([growth, balanced, income, legacy], catalog)
     store.install(monkeypatch)
-    store.aggregates["alpaca__portfoliosts"] = [
+    store.aggregates["provider_a__portfoliosts"] = [
         {"portfolio_identifier": "growth", "row_count": 3, "earliest_time_index": NOW, "latest_time_index": NOW},
     ]
-    store.aggregate_errors["ibkr__portfoliosts"] = PermissionError("no data_viewer role")
+    store.aggregate_errors["provider_b__portfoliosts"] = PermissionError("no data_viewer role")
     tables = {
-        "alpaca": _meta_table("alpaca", physical="alpaca__portfoliosts"),
-        "ibkr": _meta_table("ibkr", physical="ibkr__portfoliosts"),
+        "provider-a": _meta_table("provider-a", physical="provider_a__portfoliosts"),
+        "provider-b": _meta_table("provider-b", physical="provider_b__portfoliosts"),
     }
 
     result = reconcile_portfolio_dataset_availability(
@@ -227,14 +227,14 @@ def test_reconcile_groups_portfolios_by_values_table_and_skips_uncatalogued(monk
         meta_table_lookup=lambda uids: [tables[uid] for uid in uids],
     )
 
-    # One aggregate per instance, not per portfolio; both Alpaca portfolios share one statement.
+    # One aggregate per instance, not per portfolio; both provider A portfolios share one statement.
     assert len(store.aggregate_sql) == 2
-    alpaca_sql = next(sql for sql in store.aggregate_sql if "alpaca__portfoliosts" in sql)
-    assert "'growth'" in alpaca_sql and "'balanced'" in alpaca_sql
+    provider_a_sql = next(sql for sql in store.aggregate_sql if "provider_a__portfoliosts" in sql)
+    assert "'growth'" in provider_a_sql and "'balanced'" in provider_a_sql
     states = {state.portfolio_identifier: state for state in result.states}
     assert states["growth"].population_state == "populated"
     assert states["growth"].row_count == 3
-    assert states["growth"].weights_meta_table_uid == "alpaca-w"
+    assert states["growth"].weights_meta_table_uid == "provider-a-w"
     assert states["balanced"].population_state == "compatible_empty"
     assert states["balanced"].row_count == 0
     assert states["income"].population_state == "unavailable"
@@ -258,7 +258,7 @@ def test_list_states_returns_catalog_rows_without_reconciling(monkeypatch) -> No
     growth = _portfolio("growth")
     store = _Store(
         [growth],
-        [{"uid": uuid.uuid4(), "portfolio_uid": growth["uid"], "values_meta_table_uid": "alpaca",
+        [{"uid": uuid.uuid4(), "portfolio_uid": growth["uid"], "values_meta_table_uid": "provider-a",
           "weights_meta_table_uid": None, "signal_meta_table_uid": None,
           "population_state": "unavailable", "row_count": None, "earliest_time_index": None,
           "latest_time_index": None, "reconciled_at": NOW, "error_code": "not_reconciled",

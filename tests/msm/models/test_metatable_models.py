@@ -196,14 +196,14 @@ def test_markets_mixin_applies_environment_namespace_suffix(monkeypatch) -> None
 
 
 def test_extension_metatable_can_override_storage_app() -> None:
-    class BinanceMarketsMetaTableMixin(MarketsMetaTableMixin):
+    class ProviderMarketsMetaTableMixin(MarketsMetaTableMixin):
         __abstract__ = True
-        __markets_storage_app__ = "binance_spot"
+        __markets_storage_app__ = "my_provider"
 
-    class BinanceSpotAccountDetailsTable(BinanceMarketsMetaTableMixin, MarketsBase):
-        __metatable_identifier__ = "test.BinanceSpotAccountDetails"
+    class ProviderAccountDetailsTable(ProviderMarketsMetaTableMixin, MarketsBase):
+        __metatable_identifier__ = "test.ProviderAccountDetails"
         __metatable_description__ = (
-            "Project-local Binance spot account details keyed by AssetTable uid "
+            "Project-local provider account details keyed by AssetTable uid "
             "for extension storage app tests."
         )
 
@@ -214,23 +214,23 @@ def test_extension_metatable_can_override_storage_app() -> None:
             nullable=False,
         )
 
-    assert markets_table_storage_app(BinanceSpotAccountDetailsTable) == "binance_spot"
-    assert markets_table_storage_app(BinanceSpotAccountDetailsTable.__table__) == "binance_spot"
-    assert BinanceSpotAccountDetailsTable.__metatable_identifier__ == (
-        "test.BinanceSpotAccountDetails"
+    assert markets_table_storage_app(ProviderAccountDetailsTable) == "my_provider"
+    assert markets_table_storage_app(ProviderAccountDetailsTable.__table__) == "my_provider"
+    assert ProviderAccountDetailsTable.__metatable_identifier__ == (
+        "test.ProviderAccountDetails"
     )
-    assert BinanceSpotAccountDetailsTable.__table__.name == markets_table_name(
-        "binance_spot",
-        "test.BinanceSpotAccountDetails",
+    assert ProviderAccountDetailsTable.__table__.name == markets_table_name(
+        "my_provider",
+        "test.ProviderAccountDetails",
     )
 
 
 def test_extension_time_index_storage_can_override_storage_app() -> None:
-    class BinanceSpotBarsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-        __markets_storage_app__ = "binance_spot"
-        __metatable_identifier__ = "test.BinanceSpotBarsTS"
+    class ProviderBarsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+        __markets_storage_app__ = "my_provider"
+        __metatable_identifier__ = "test.ProviderBarsTS"
         __metatable_description__ = (
-            "Project-local Binance spot bars keyed by time and asset identifier "
+            "Project-local provider bars keyed by time and asset identifier "
             "for extension storage app tests."
         )
         __time_index_name__: ClassVar[str] = "time_index"
@@ -242,21 +242,21 @@ def test_extension_time_index_storage_can_override_storage_app() -> None:
         )
         asset_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    assert markets_table_storage_app(BinanceSpotBarsStorage) == "binance_spot"
-    assert markets_table_storage_app(BinanceSpotBarsStorage.__table__) == "binance_spot"
-    assert BinanceSpotBarsStorage.__metatable_identifier__ == "test.BinanceSpotBarsTS"
-    assert BinanceSpotBarsStorage.__table__.name == markets_table_name(
-        "binance_spot",
-        "test.BinanceSpotBarsTS",
+    assert markets_table_storage_app(ProviderBarsStorage) == "my_provider"
+    assert markets_table_storage_app(ProviderBarsStorage.__table__) == "my_provider"
+    assert ProviderBarsStorage.__metatable_identifier__ == "test.ProviderBarsTS"
+    assert ProviderBarsStorage.__table__.name == markets_table_name(
+        "my_provider",
+        "test.ProviderBarsTS",
     )
 
 
 def test_extension_storage_app_keeps_environment_namespace_suffix(monkeypatch) -> None:
     monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
 
-    class NamespacedBinanceSpotTable(MarketsMetaTableMixin, MarketsBase):
-        __markets_storage_app__ = "binance_spot"
-        __metatable_identifier__ = "NamespacedBinanceSpot"
+    class NamespacedProviderTable(MarketsMetaTableMixin, MarketsBase):
+        __markets_storage_app__ = "my_provider"
+        __metatable_identifier__ = "NamespacedProvider"
         __metatable_description__ = (
             "Environment scoped extension table used to verify custom app "
             "physical table names with namespace suffixes."
@@ -264,8 +264,8 @@ def test_extension_storage_app_keeps_environment_namespace_suffix(monkeypatch) -
 
         uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
 
-    assert NamespacedBinanceSpotTable.__table__.name == (
-        "binance_spot__namespacedbinancespot__mainsequence_examples"
+    assert NamespacedProviderTable.__table__.name == (
+        "my_provider__namespacedprovider__mainsequence_examples"
     )
 
 

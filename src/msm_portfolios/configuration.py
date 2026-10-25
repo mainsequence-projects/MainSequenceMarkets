@@ -109,7 +109,7 @@ class MarketsTimeSeries(PortfolioConfigBaseModel):
     """
 
     unique_identifier: str = Field(
-        default="alpaca_1d_bars",
+        default="provider_1d_bars",
         description=(
             "Unique identifier of the MarketsTimeSeries to use as a price source "
             "(e.g., 'provider_1d_bars')."

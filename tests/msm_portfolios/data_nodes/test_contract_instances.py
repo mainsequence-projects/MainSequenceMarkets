@@ -42,7 +42,7 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 )
 def test_instances_share_the_contract_schema_under_a_provider_namespace(factory, contract, core):
     instance = factory(
-        instance_key="alpaca", namespace="alpaca-connectors", storage_app="alpaca_connectors"
+        instance_key="main", namespace="my-provider", storage_app="my_provider"
     )
 
     assert issubclass(instance, PlatformTimeIndexMetaTable)
@@ -55,20 +55,20 @@ def test_instances_share_the_contract_schema_under_a_provider_namespace(factory,
         column.name for column in core.__table__.columns
     ]
     assert instance.__table__.name == contract_instance_table_name(
-        contract, "alpaca", storage_app="alpaca_connectors"
+        contract, "main", storage_app="my_provider"
     )
-    assert instance.__table__.name.startswith("alpaca_connectors__")
-    assert instance.__metatable_identifier__ == f"alpaca-connectors.{contract}.alpaca"
-    assert instance.metatable_identifier() == f"alpaca-connectors.{contract}.alpaca"
-    assert instance.__metatable_namespace__ == "alpaca-connectors"
+    assert instance.__table__.name.startswith("my_provider__")
+    assert instance.__metatable_identifier__ == f"my-provider.{contract}.main"
+    assert instance.metatable_identifier() == f"my-provider.{contract}.main"
+    assert instance.__metatable_namespace__ == "my-provider"
     assert instance.__table__.info == {
-        "namespace": "alpaca-connectors",
-        "identifier": f"alpaca-connectors.{contract}.alpaca",
-        "markets_storage_app": "alpaca_connectors",
+        "namespace": "my-provider",
+        "identifier": f"my-provider.{contract}.main",
+        "markets_storage_app": "my_provider",
     }
     assert instance.__metatable_extra_hash_components__ == {
         "storage_contract": contract,
-        "instance_key": "alpaca",
+        "instance_key": "main",
     }
     unique = [index for index in instance.__table__.indexes if index.unique]
     assert [[column.name for column in index.columns] for index in unique] == [

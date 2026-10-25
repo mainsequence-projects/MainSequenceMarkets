@@ -783,8 +783,8 @@ def test_curve_discount_curve_nodes_explain_missing_latest_observation(monkeypat
         classmethod(
             lambda cls, uid: Curve(
                 uid=curve_uid,
-                unique_identifier="VALMER_TIIE_28",
-                display_name="Valmer TIIE 28 zero curve",
+                unique_identifier="PROVIDER_TIIE_28",
+                display_name="Provider TIIE 28 zero curve",
                 curve_type="discount",
             )
         ),
@@ -841,7 +841,7 @@ def test_curve_discount_curve_nodes_explain_missing_latest_observation(monkeypat
 
     message = str(exc_info.value)
     assert "No discount-curve data has been published" in message
-    assert "VALMER_TIIE_28" in message
+    assert "PROVIDER_TIIE_28" in message
     assert "pricing market-data set 'default'" in message
     assert f"bound TimeIndexTableUpdater {data_node_uid}" in message
     assert "has no latest ms_markets__discountcurvests observation" in message

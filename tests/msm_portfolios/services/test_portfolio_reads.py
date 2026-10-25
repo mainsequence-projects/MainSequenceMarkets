@@ -27,9 +27,9 @@ from msm_portfolios.services import (
 
 GROWTH_UID = uuid.uuid4()
 INCOME_UID = uuid.uuid4()
-ALPACA_VALUES = "alpaca-values-table"
-ALPACA_WEIGHTS = "alpaca-weights-table"
-IBKR_VALUES = "ibkr-values-table"
+PROVIDER_A_VALUES = "provider-a-values-table"
+PROVIDER_A_WEIGHTS = "provider-a-weights-table"
+PROVIDER_B_VALUES = "provider-b-values-table"
 NOW = dt.datetime(2026, 1, 31, tzinfo=dt.UTC)
 
 
@@ -232,7 +232,7 @@ def test_catalog_resolution_joins_portfolio_catalog_and_signal_metadata() -> Non
     executor = _Recorder(
         catalog_rows=[
             {
-                **_catalog_row("growth", portfolio_uid=GROWTH_UID, values=ALPACA_VALUES),
+                **_catalog_row("growth", portfolio_uid=GROWTH_UID, values=PROVIDER_A_VALUES),
                 "signal_uid": "growth-signal",
                 "signal_metadata_meta_table_uid": "signal-table-from-metadata",
             }
@@ -243,7 +243,7 @@ def test_catalog_resolution_joins_portfolio_catalog_and_signal_metadata() -> Non
 
     assert set(resolved) == {"growth"}
     assert resolved["growth"].portfolio_uid == GROWTH_UID
-    assert resolved["growth"].values_meta_table_uid == ALPACA_VALUES
+    assert resolved["growth"].values_meta_table_uid == PROVIDER_A_VALUES
     assert resolved["growth"].weights_meta_table_uid is None
     # The catalog's signal table wins; SignalMetadata.meta_table_uid is the fallback.
     assert resolved["growth"].signal_meta_table_uid == "signal-table-from-metadata"
@@ -269,7 +269,7 @@ def test_portfolio_without_catalog_row_falls_back_to_core_tables_without_reader(
 
 def test_multi_portfolio_values_read_each_instance_once_and_merge_with_core_rows() -> None:
     frames = {
-        ALPACA_VALUES: _FakeReader(
+        PROVIDER_A_VALUES: _FakeReader(
             [
                 {"time_index": NOW, "portfolio_identifier": "growth", "close": 101.0, "return": 0.01,
                  "calculated_close": 101.0, "close_time": NOW, "provider_only": "ignored"},
@@ -282,7 +282,7 @@ def test_multi_portfolio_values_read_each_instance_once_and_merge_with_core_rows
             ],
             index_names=["time_index", "portfolio_identifier"],
         ),
-        IBKR_VALUES: _FakeReader(
+        PROVIDER_B_VALUES: _FakeReader(
             [
                 {"time_index": NOW, "portfolio_identifier": "income", "close": 7.0, "return": 0.03,
                  "calculated_close": 7.0, "close_time": NOW},
@@ -294,9 +294,9 @@ def test_multi_portfolio_values_read_each_instance_once_and_merge_with_core_rows
     core_uid = uuid.uuid4()
     executor = _Recorder(
         catalog_rows=[
-            _catalog_row("growth", portfolio_uid=GROWTH_UID, values=ALPACA_VALUES),
-            _catalog_row("balanced", portfolio_uid=balanced_uid, values=ALPACA_VALUES),
-            _catalog_row("income", portfolio_uid=INCOME_UID, values=IBKR_VALUES),
+            _catalog_row("growth", portfolio_uid=GROWTH_UID, values=PROVIDER_A_VALUES),
+            _catalog_row("balanced", portfolio_uid=balanced_uid, values=PROVIDER_A_VALUES),
+            _catalog_row("income", portfolio_uid=INCOME_UID, values=PROVIDER_B_VALUES),
             _catalog_row("legacy", portfolio_uid=core_uid),
         ],
         core_rows={
@@ -322,11 +322,11 @@ def test_multi_portfolio_values_read_each_instance_once_and_merge_with_core_rows
     )
 
     # Each instance is read once, with both of its portfolios in one filter.
-    assert sorted(requested) == [ALPACA_VALUES, IBKR_VALUES]
-    assert frames[ALPACA_VALUES].calls[0]["dimension_filters"] == {
+    assert sorted(requested) == [PROVIDER_A_VALUES, PROVIDER_B_VALUES]
+    assert frames[PROVIDER_A_VALUES].calls[0]["dimension_filters"] == {
         "portfolio_identifier": ["growth", "balanced"]
     }
-    assert frames[ALPACA_VALUES].calls[0]["columns"] == [
+    assert frames[PROVIDER_A_VALUES].calls[0]["columns"] == [
         "time_index", "portfolio_identifier", "close", "return", "calculated_close", "close_time",
     ]
     # The core table was read once, only for the uncatalogued portfolio.
@@ -356,7 +356,7 @@ def test_multi_portfolio_values_latest_only_and_limit_apply_across_instances() -
         index_names=["time_index", "portfolio_identifier"],
     )
     executor = _Recorder(
-        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, values=ALPACA_VALUES)]
+        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, values=PROVIDER_A_VALUES)]
     )
 
     rows = portfolio_values(
@@ -380,7 +380,7 @@ def test_latest_portfolio_weights_reads_catalogued_instance_by_last_observation(
         index_names=["time_index", "portfolio_identifier", "asset_identifier"],
     )
     executor = _Recorder(
-        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, weights=ALPACA_WEIGHTS)]
+        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, weights=PROVIDER_A_WEIGHTS)]
     )
 
     rows = latest_portfolio_weights("growth", executor=executor, dataset_reader=lambda _uid: reader)
@@ -403,7 +403,7 @@ def test_latest_portfolio_weights_as_of_and_exact_read_catalogued_instance() -> 
         index_names=["time_index", "portfolio_identifier", "asset_identifier"],
     )
     executor = _Recorder(
-        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, weights=ALPACA_WEIGHTS)]
+        catalog_rows=[_catalog_row("growth", portfolio_uid=GROWTH_UID, weights=PROVIDER_A_WEIGHTS)]
     )
 
     as_of = latest_portfolio_weights(
