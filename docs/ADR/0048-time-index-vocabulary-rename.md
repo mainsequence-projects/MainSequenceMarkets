@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted. Shipped in three releases: 3.0.0 renames the code and adds the new
-UID columns, 3.1.0 reads the new columns, and 4.0.0 removes the old names and
-columns. Amends [ADR 0043](0043-sdk-9-metatables-client-hard-cut.md) with one
-exception: a deprecation window for the renamed import paths and fields.
+Accepted. Ships in four releases: 3.0.0 renames the code and adds the new UID
+columns, 3.1.0 reads the new columns, 4.0.0 removes the old names and stops
+writing the old columns, and 4.1.0 drops them. Amends
+[ADR 0043](0043-sdk-9-metatables-client-hard-cut.md) with one exception: a
+deprecation window for the renamed import paths and fields.
 
 ## Context
 
@@ -83,8 +84,15 @@ Names and module paths are part of persisted identities:
    - 3.1.0, revision `0023`: once no writer older than 3.0 remains, copy old
      values into new columns where they differ, make `storage_table_uid` NOT
      NULL, and read the new columns while still writing both.
-   - 4.0.0, revision `0024`: once no reader older than 3.1 remains, drop the old
-     columns and their index. The downgrade re-adds them from the new columns.
+   - 4.0.0, revision `0024`: once no reader older than 3.1 remains, stop mapping
+     and writing the old columns, and make `data_node_uid` nullable so inserts
+     without it succeed. The downgrade copies the new values back and restores
+     NOT NULL.
+   - 4.1.0, revision `0025`: once no process older than 4.0 remains, drop the
+     old columns and their index. Every 3.x model maps the old columns, so its
+     reads and writes fail once they are gone. Dropping them in 4.0.0, whose
+     migration runs as soon as it deploys, would break every 3.x process still
+     running. The downgrade re-adds them from the new columns.
 6. **Guards.** `tests/identity/test_pinned_identities.py` pins table names and
    identifiers, updater and configuration class paths, MetaTables and
    pre-rename update hashes, `signal_uid`, portfolio configuration hashes,
@@ -103,6 +111,6 @@ Names and module paths are part of persisted identities:
   history stays readable and ledger replay keeps matching.
 - Consumer code keeps working through 3.x with deprecation warnings. Imports
   and field names must move before 4.0.0.
-- 3.1.0 and 4.0.0 depend on the versions running in every Environment, not on
-  the code alone.
+- 3.1.0, 4.0.0 and 4.1.0 depend on the versions running in every Environment,
+  not on the code alone.
 - `msm.identity` stays after 4.0.0.

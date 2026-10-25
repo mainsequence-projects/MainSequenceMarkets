@@ -99,7 +99,7 @@ portfolio and strategy identities do not change. Dependent packages declare
   records the rename of the DataNode vocabulary to the MetaTables time-index
   terms: package and class names, UID columns named after the identity they
   hold, a 3.x deprecation window, and expand-then-contract column migrations
-  across 3.0.0, 3.1.0 and 4.0.0.
+  across 3.0.0, 3.1.0, 4.0.0 and 4.1.0.
 - `msm.identity` keeps the identities ms-markets derives stable when an updater
   or configuration class moves. `compute_signal_uid`,
   `compute_portfolio_configuration_hash` and the new

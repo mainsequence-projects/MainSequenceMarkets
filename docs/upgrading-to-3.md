@@ -57,7 +57,7 @@ msm rename-preflight rotation my_project.pipelines:updaters
 
 ## Release Order
 
-The UID columns move in three steps, because each needs every Environment to
+The UID columns move in four steps, because each needs every Environment to
 have upgraded first:
 
 1. **3.0.0** adds the new columns (revision `0022`), writes both names and reads
@@ -65,9 +65,12 @@ have upgraded first:
    or pricing bindings.
 2. **3.1.0** copies late 2.x writes and reads the new columns (revision
    `0023`). Release it only when no 2.x writer remains in any Environment.
-3. **4.0.0** drops the pre-3.0 columns and names (revision `0024`). Release it
-   only when no project older than 3.1 reads these tables, and after the scan is
-   clean everywhere.
+3. **4.0.0** removes the pre-3.0 names and stops writing the pre-3.0 columns
+   (revision `0024`). Release it only when no project older than 3.1 reads
+   these tables, and after the scan is clean everywhere.
+4. **4.1.0** drops the pre-3.0 columns (revision `0025`). Release it only when
+   no project older than 4.0 uses these tables, because every 3.x release
+   still selects and writes them.
 
 To check what the stored account UIDs hold, run
 `msm rename-preflight account-uids` with the Markets runtime attached.

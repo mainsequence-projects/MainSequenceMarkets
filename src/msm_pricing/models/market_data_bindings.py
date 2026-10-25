@@ -178,7 +178,7 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
             "description": (
                 "Pre-3.0 copy of storage_table_uid. ms-markets 3.x writes both "
                 "columns and reads this one until every writer runs 3.x; "
-                "ms-markets 4.0 drops it."
+                "ms-markets 4.0 stops writing it and 4.1 drops it."
             ),
         },
     )
