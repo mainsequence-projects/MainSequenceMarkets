@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import uuid
 from typing import Annotated, Any
 
 import metatables.updaters.configuration as update_configuration
+from msm.identity import stable_identity_payload
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -60,6 +63,18 @@ def canonical_rebalance_strategy_configuration(
             for name, dependency in sorted(rebalance_strategy.declared_dependencies().items())
         }
     return canonical
+
+
+def compute_strategy_revision(rebalance_strategy: Any) -> str:
+    """Return the rebalance strategy revision recorded on portfolio ledger events."""
+
+    payload = stable_identity_payload(
+        canonical_rebalance_strategy_configuration(rebalance_strategy),
+        sources=[rebalance_strategy],
+    )
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def _rebalance_strategy_payload(rebalance_strategy: Any) -> dict[str, Any]:

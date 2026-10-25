@@ -85,6 +85,20 @@ and this project follows versioned releases.
   `signal_uid` and portfolio configuration hash of fixed library and
   application signal configurations. Changing a pinned value is a deliberate
   identity rotation and belongs in this changelog.
+- [ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)
+  records the rename of the DataNode vocabulary to the MetaTables time-index
+  terms: package and class names, UID columns named after the identity they
+  hold, a 3.x deprecation window, and expand-then-contract column migrations
+  across 3.0.0, 3.1.0 and 4.0.0.
+- `msm.identity` keeps the identities ms-markets derives stable when an updater
+  or configuration class moves. `compute_signal_uid`,
+  `compute_portfolio_configuration_hash` and the new
+  `msm_portfolios.configuration.compute_strategy_revision` (which the portfolio
+  engine now uses for ledger events) map moved class paths and nested updater
+  hashes back to their pre-rename values before hashing. No class has moved
+  yet, so every identity is unchanged; the pinned identity tests now also cover
+  real updaters built offline, nested updater hashes, strategy revisions,
+  factory-built storage tables and a simulated class move.
 
 ### Changed
 

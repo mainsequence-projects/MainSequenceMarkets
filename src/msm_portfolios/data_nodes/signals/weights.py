@@ -8,6 +8,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 import metatables.updaters.configuration as update_configuration
+from msm.identity import stable_identity_payload
 
 from ..base import (
     AssetScopedPortfolioCanonicalDataNode,
@@ -447,7 +448,7 @@ def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
 
 def compute_signal_uid(signal: Any) -> str:
     """Compute the deterministic Portfolios `signal_uid` for a signal producer."""
-    payload = canonical_signal_configuration(signal)
+    payload = stable_identity_payload(canonical_signal_configuration(signal), sources=[signal])
     _update_hash, remote_identity_hash = update_configuration.hash_signature(payload)
     return remote_identity_hash
 

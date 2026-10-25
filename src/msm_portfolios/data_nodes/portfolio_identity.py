@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 import metatables.updaters.configuration as update_configuration
+from msm.identity import stable_identity_payload
 
 from .base import _drop_excluded_keys
 from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS
@@ -24,7 +25,10 @@ def canonical_portfolio_configuration(
 
 def compute_portfolio_configuration_hash(portfolio_configuration: Any) -> str:
     """Compute the deterministic identity hash for a Portfolios portfolio config."""
-    payload = canonical_portfolio_configuration(portfolio_configuration)
+    payload = stable_identity_payload(
+        canonical_portfolio_configuration(portfolio_configuration),
+        sources=[portfolio_configuration],
+    )
     _update_hash, remote_identity_hash = update_configuration.hash_signature(payload)
     return remote_identity_hash
 

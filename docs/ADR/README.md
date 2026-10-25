@@ -46,6 +46,7 @@ Recommended sections:
 - [0045. Squashed Initial Schema And Namespaced Packages](0045-squashed-initial-schema-and-namespaced-packages.md)
 - [0046. Preserve The Populated Legacy 0017 Schema](0046-legacy-0017-schema-bridge.md)
 - [0047. Markets API As The Application Boundary](0047-markets-api-application-boundary.md)
+- [0048. Rename DataNode To The MetaTables Time-Index Vocabulary](0048-time-index-vocabulary-rename.md)
 
 ## Command Center Decisions
 

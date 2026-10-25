@@ -457,9 +457,9 @@ class _CoordinatedExecutionSimulator:
             events=event_frame,
             observed_inputs=observed_inputs,
         )
-        from msm_portfolios.configuration import canonical_rebalance_strategy_configuration
+        from msm_portfolios.configuration import compute_strategy_revision
 
-        self._strategy_revision = _digest(canonical_rebalance_strategy_configuration(strategy))
+        self._strategy_revision = compute_strategy_revision(strategy)
         model = strategy.execution_model_instance
         if model is None:
             raise ValueError(

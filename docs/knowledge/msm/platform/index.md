@@ -21,6 +21,8 @@ Platform utilities answer these questions:
 - `migrations`: the MetaTables Alembic provider and package-owned model registry.
 - `msm.settings`: shared markets constants such as the canonical asset identity
   dimension.
+- `msm.identity`: keeps the identities ms-markets derives stable when an updater
+  or configuration class moves; see [Identity Stability](#identity-stability).
 - `msm.data_nodes.accounts`: account holdings DataNodes.
 - `msm.data_nodes.assets`: asset-specific TimeIndexTableUpdater package, including
   `AssetSnapshot` and shared asset-indexed behavior in
@@ -56,6 +58,29 @@ directly.
 See [MetaTable Registration](meta_table_registration.md) for runtime attachment
 and model registration concepts. See [Migrations](../migrations/index.md) for
 the admin-owned schema creation and evolution workflow.
+
+### Identity Stability
+
+Several persisted identities are derived from class import paths. MetaTables
+hashes each updater's and each configuration class's `{module, qualname}` into
+the producer's `update_hash`. ms-markets hashes class paths into `signal_uid`,
+the portfolio configuration hash and the rebalance strategy revision. The
+strategy revision also includes the `update_hash` of each declared dependency,
+and it is part of every ledger event revision that replay compares.
+
+`compute_signal_uid`, `compute_portfolio_configuration_hash` and
+`compute_strategy_revision` pass their payload through
+`msm.identity.stable_identity_payload` before hashing. It maps moved class paths
+back to their pre-rename paths (`PRE_RENAME_MODULES` and
+`PRE_RENAME_CLASS_NAMES`) and replaces each nested updater's hash with
+`pre_rename_update_hash(...)`, so a package rename leaves these identities
+unchanged. MetaTables' own `update_hash` is not covered: a moved updater gets a
+new `TimeIndexTableUpdate` record on its first run and continues from its output
+table's last observation.
+
+`tests/identity/test_pinned_identities.py` pins each of these identities, the
+physical table names and the updater class paths. Changing a pinned value is an
+identity rotation; make it only on purpose and record it in the changelog.
 
 The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a
