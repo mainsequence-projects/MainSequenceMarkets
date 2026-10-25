@@ -48,8 +48,8 @@ def test_payloads_reject_different_values_under_both_names() -> None:
         )
 
 
-def test_rows_read_the_pre_3_0_column_while_2_x_writers_exist() -> None:
-    # A 2.x writer updated only the pre-3.0 column after revision 0022 copied it.
+def test_rows_read_the_current_column_once_revision_0023_ran() -> None:
+    # Revision 0023 copied late 2.x writes, so a differing pre-3.0 value is stale.
     row = Account.model_validate(
         _account_row(
             holdings_storage_table_uid=STORAGE_TABLE_UID,
@@ -57,8 +57,8 @@ def test_rows_read_the_pre_3_0_column_while_2_x_writers_exist() -> None:
         )
     )
 
-    assert row.holdings_storage_table_uid == PRE_3_0_STORAGE_TABLE_UID
-    assert row.model_dump()["holdings_data_node_uid"] == PRE_3_0_STORAGE_TABLE_UID
+    assert row.holdings_storage_table_uid == STORAGE_TABLE_UID
+    assert row.model_dump()["holdings_data_node_uid"] == STORAGE_TABLE_UID
 
 
 def test_rows_built_from_one_name_carry_both_and_warn_on_the_old_attribute() -> None:

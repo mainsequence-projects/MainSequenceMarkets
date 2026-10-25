@@ -64,7 +64,8 @@ have upgraded first:
    the pre-3.0 columns. Upgrade every project that writes accounts, portfolios
    or pricing bindings.
 2. **3.1.0** copies late 2.x writes and reads the new columns (revision
-   `0023`). Release it only when no 2.x writer remains in any Environment.
+   `0023`). Release it only when no 2.x writer remains in any Environment;
+   after it, a 2.x writer can no longer create pricing bindings.
 3. **4.0.0** removes the pre-3.0 names and stops writing the pre-3.0 columns
    (revision `0024`). Release it only when no project older than 3.1 reads
    these tables, and after the scan is clean everywhere.

@@ -48,11 +48,12 @@ def mirror_renamed_columns(
     return payload
 
 
-READ_PRE_3_0_COLUMNS = True
-"""Read each renamed UID column under its pre-3.0 name (ADR 0048).
+READ_PRE_3_0_COLUMNS = False
+"""Whether reads take each renamed UID column under its pre-3.0 name (ADR 0048).
 
-2.x writers update only the pre-3.0 column, so ms-markets 3.0 treats it as the
-source of truth. ms-markets 3.1 reads the current column once every writer runs 3.x.
+ms-markets 3.0 read the pre-3.0 column, because 2.x writers updated only that one.
+Revision ``0023`` copied their late writes, so ms-markets 3.1 reads the current
+column. It still writes both for 3.0 readers.
 """
 
 

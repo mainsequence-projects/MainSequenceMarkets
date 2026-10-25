@@ -158,10 +158,9 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Pricing market-data concept key, such as discount_curves.",
         },
     )
-    storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
+    storage_table_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        # Nullable until revision 0023 has copied every pre-3.0 row (ADR 0048).
-        nullable=True,
+        nullable=False,
         info={
             "label": "Storage Table UID",
             "description": (

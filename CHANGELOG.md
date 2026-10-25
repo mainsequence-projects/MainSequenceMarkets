@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Release 3.1.0 reads the identity-named UID columns that 3.0.0 added
+([ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)).
+Deploy it only when no project older than 3.0 writes accounts, portfolios or
+pricing bindings in any Environment.
+
+### Changed
+
+- Revision `0023` copies every pre-3.0 UID value that a 2.x writer changed
+  after revision `0022`, NULL included, into its identity-named column, and
+  makes `PricingMarketDataSetBinding.storage_table_uid` NOT NULL. Its downgrade
+  makes the column nullable again and keeps the copied values.
+- Rows, services and HTTP responses read `holdings_storage_table_uid`,
+  `source_storage_table_uid`, `storage_table_uid` and the portfolio
+  `*_table_update_uid` pointers from their own columns instead of the pre-3.0
+  ones. Writes still fill both columns, so 3.0 readers stay correct.
+
 ## [3.0.1] - 2026-10-27
 
 ### Removed
