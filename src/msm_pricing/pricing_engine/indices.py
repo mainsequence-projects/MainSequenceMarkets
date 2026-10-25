@@ -7,7 +7,7 @@ Core rule
 This module is PURE/BASE: it contains NO Constant names and NO back-compat fallbacks.
 
 You MUST register how to build each index via `register_index_spec(...)`
-(from your extended package, e.g. banxico.src) before calling `get_index(...)`.
+(from your own provider package) before calling `get_index(...)`.
 
 Usage
 -----

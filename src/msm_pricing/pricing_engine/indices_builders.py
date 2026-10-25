@@ -9,7 +9,7 @@ index specification and a small helper to build one.
 
 Country/provider-specific conventions (e.g. "MX calendar", TIIE/CETE defaults,
 curve-UID selection, etc.) should live next to the code that **registers** those
-indices (e.g. ``register_pricing_indices`` in the Banxico package).
+indices (e.g. a ``register_pricing_indices`` function in your provider package).
 
 Importantly:
 - This module does NOT resolve Constants (``_C.get_value``).

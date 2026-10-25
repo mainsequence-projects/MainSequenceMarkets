@@ -142,7 +142,7 @@ key, the time index and the identity dimensions.
 - Draw them from these facets: domain or asset class (`fixed-income`, `fx`,
   `equities`, `accounting`), geography (`mexico`, `global`), data kind (`prices`,
   `reference-data`, `positions`, `transactions`, `risk`), and source (`vendor`,
-  `banxico`) when the source is not the namespace.
+  `central-bank`) when the source is not the namespace.
 - Reuse labels you see on existing tables in search results instead of creating
   near-duplicates (`fixed_income` next to `fixed-income`).
 - Do not repeat the namespace or the cadence as a label.
