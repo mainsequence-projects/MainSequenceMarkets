@@ -232,7 +232,7 @@ That declaration lets the platform sign the person an application works for
 into the caller assertion; it is an ordinary workflow declaration pushed with
 the deployment. Until it is declared, every call is caller-bound and
 `acting_identity()` returns the caller, the calling application's workload
-User. The declaration is not in the repository yet; see the changelog.
+User. The declaration is in the repository's workflow file.
 
 ## API Discoverability
 

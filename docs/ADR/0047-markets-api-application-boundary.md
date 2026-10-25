@@ -376,10 +376,8 @@ Deviations and open items:
   every service one identity to authorize against, and the platform's own
   grants still apply to requester-bound reads.
 - `acts_for_requester: true` on the `markets-api` resource is required for a
-  requester to be present. It is an ordinary declaration in
-  `.mainsequence/workflows/ms-markets-api.yaml` pushed with the deployment;
-  this implementation does not edit the workflow file. Until then every call is
-  caller-bound.
+  requester to be present. It is declared in
+  `.mainsequence/workflows/ms-markets-api.yaml` and deploys with the branch.
 
 ### 2026-10-25: step 1, missing routes
 

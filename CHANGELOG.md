@@ -71,11 +71,10 @@ and this project follows versioned releases.
 - A design note for the contracts package split and `msm.client` (ADR 0047,
   decision 2) under `docs/planning/implementation_tasks/`; the README now
   describes `msm.client` as planned rather than shipped.
-- Pending workflow declaration: for requester-bound calls the `markets-api`
-  resource in `.mainsequence/workflows/ms-markets-api.yaml` must declare
-  `acts_for_requester: true`. This release does not change the workflow file;
-  until the declaration lands every call is caller-bound and the API acts for
-  the calling workload.
+- The `markets-api` resource in `.mainsequence/workflows/ms-markets-api.yaml`
+  declares `acts_for_requester: true`, so the platform signs the person an
+  application works for into the caller assertion and the API acts for that
+  requester (ADR 0047, decision 3). Caller-bound calls are unchanged.
 
 ### Changed
 

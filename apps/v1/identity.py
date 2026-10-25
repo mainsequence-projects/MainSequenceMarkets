@@ -9,10 +9,9 @@ registry table has an author or owner column yet, so the record is the API's
 structured audit log (logger ``apps.v1.identity``); when such a column exists
 the same hook supplies the value.
 
-The requester is only present when the ``markets-api`` resource declares
-``acts_for_requester: true`` in ``.mainsequence/workflows/ms-markets-api.yaml``.
-Until then every call is caller-bound and ``acting_identity()`` returns the
-caller.
+The requester is only present because the ``markets-api`` resource declares
+``acts_for_requester: true`` in ``.mainsequence/workflows/ms-markets-api.yaml``;
+a caller-bound call still returns the caller.
 """
 
 from __future__ import annotations
