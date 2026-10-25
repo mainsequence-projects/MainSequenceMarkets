@@ -64,6 +64,9 @@ and this project follows versioned releases.
   `POST /api/v1/portfolio/datasets/reconcile/` for the portfolio dataset
   catalog. All are registered in the Command Center adapter contract; the
   mutating ones record the acting identity.
+- A design note for the contracts package split and `msm.client` (ADR 0047,
+  decision 2) under `docs/planning/implementation_tasks/`; the README now
+  describes `msm.client` as planned rather than shipped.
 - Pending operator action: for requester-bound calls the `markets-api`
   resource in `.mainsequence/workflows/ms-markets-api.yaml` must declare
   `acts_for_requester: true`, which only an Organization admin may push. This

@@ -56,7 +56,9 @@ Main package areas:
   contracts
 - `msm.constants`: static built-in keys such as asset type constants used across
   applications and examples
-- `msm.client`: client-facing Main Sequence market models and API wrappers
+- `msm.client`: planned typed HTTP client over the Markets API with a remote
+  row backend (ADR 0047, decision 2); not shipped yet. Consumers use `msm.api`
+  today
 - `msm.data_nodes`: market TimeIndexTableUpdater contracts, including account holdings,
   execution events, asset snapshots, and asset pricing details
 - `msm.api.execution`: order managers, target quantities, orders, events,
