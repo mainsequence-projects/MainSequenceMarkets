@@ -175,6 +175,9 @@ portfolio and strategy identities do not change. Dependent packages declare
   `dataset_reader` for tests. The portfolio values, weights and signal-weight
   API routes use these reads. The `apps/v1` runtimes attach
   `PortfolioDatasetAvailability`.
+- ms-markets requires `mainsequence-metatable>=0.1.57,<0.2` (was `>=0.1.51`).
+  0.1.57 is the first MetaTables release that computes the `update_hash` of an
+  updater whose configuration holds a `datetime.date` or `datetime.time`.
 
 ### Deprecated
 
@@ -220,10 +223,10 @@ portfolio and strategy identities do not change. Dependent packages declare
   `VolumeParticipation` and `TrailingAverageDailyVolumeParticipation`. The
   canonical signal, portfolio and rebalance strategy payloads carry these values
   as ISO strings. Configurations that hashed before keep their identities, and
-  rebalance strategy revisions do not change. MetaTables still cannot compute
-  the `update_hash` of an updater whose configuration holds one of these values,
-  so `PortfolioWeights` and `PortfoliosUpdater` still raise the same `TypeError`
-  for a portfolio that uses one of these strategies.
+  rebalance strategy revisions do not change. With MetaTables 0.1.57, which
+  ms-markets now requires, `PortfolioWeights` and `PortfoliosUpdater` also
+  compute their `update_hash` for a portfolio that uses one of these
+  strategies, instead of raising the same `TypeError`.
 
 ## [2.2.12] - 2026-10-22
 

@@ -51,10 +51,12 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.33") not in requirement.specifier
     assert Version("0.1.34") not in requirement.specifier
     assert Version("0.1.35") not in requirement.specifier
-    # 0.1.46 brought roles, 0.1.47's client is broken, and 0.1.20-0.1.50 break on SDK 9.0.30.
+    # 0.1.46 brought roles, 0.1.47's client is broken, 0.1.20-0.1.50 break on SDK 9.0.30, and
+    # 0.1.57 is the first release that hashes updater configurations holding dates and times.
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
-    assert Version("0.1.51") in requirement.specifier
+    assert Version("0.1.56") not in requirement.specifier
+    assert Version("0.1.57") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
