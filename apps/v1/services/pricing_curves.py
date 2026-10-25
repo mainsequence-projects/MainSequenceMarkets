@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from apps.v1.identity import registry_write
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
@@ -71,6 +72,7 @@ def get_pricing_curve_delete_impact(
     return DeleteImpactResponse.model_validate(response)
 
 
+@registry_write("pricing-curve", "delete")
 def delete_pricing_curve(
     *,
     uid: str,

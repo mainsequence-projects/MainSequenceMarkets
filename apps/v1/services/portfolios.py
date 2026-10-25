@@ -4,6 +4,7 @@ import datetime as dt
 import uuid
 from collections.abc import Mapping
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
@@ -127,6 +128,7 @@ def get_portfolio_values_frame(
     return TabularFrameResponse.model_validate(response)
 
 
+@registry_write("portfolio", "delete")
 def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     runtime = _get_runtime()
     deleted = _delete_portfolio_record(runtime.context, uid=uid)
@@ -135,6 +137,7 @@ def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     return PortfolioDeleteResponse.model_validate(deleted)
 
 
+@registry_write("portfolio", "cascade-delete")
 def cascade_delete_portfolio(*, uid: str) -> PortfolioCascadeDeleteResponse | None:
     runtime = _get_runtime()
     deleted = _cascade_delete_portfolio_record(runtime.context, uid=uid)
@@ -143,6 +146,7 @@ def cascade_delete_portfolio(*, uid: str) -> PortfolioCascadeDeleteResponse | No
     return PortfolioCascadeDeleteResponse.model_validate(deleted)
 
 
+@registry_write("portfolio", "delete:portfolio-weights")
 def delete_portfolio_weights(
     *,
     uid: str,
@@ -155,6 +159,7 @@ def delete_portfolio_weights(
     return PortfolioWeightsDeleteResponse.model_validate(response)
 
 
+@registry_write("portfolio", "bulk-delete")
 def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
     runtime = _get_runtime()
     response = _bulk_delete_portfolio_records(runtime.context, uids=uids)
@@ -192,6 +197,7 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightR
     )
 
 
+@registry_write("portfolio", "bulk-cascade-delete")
 def bulk_cascade_delete_portfolios(*, uids: list[str]) -> PortfolioBulkCascadeDeleteResponse:
     runtime = _get_runtime()
     response = _bulk_cascade_delete_portfolio_records(runtime.context, uids=uids)

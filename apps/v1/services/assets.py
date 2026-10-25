@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
 from apps.v1.schemas.common import FrontEndDetailSummary
 from msm.api.http import (
@@ -178,6 +179,7 @@ def get_asset_pricing_details(*, uid: str) -> AssetCurrentPricingDetailsResponse
     return AssetCurrentPricingDetailsResponse.model_validate(payload)
 
 
+@registry_write("asset", "delete")
 def delete_asset(*, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(_delete_asset_record(runtime.context, uid=uid))

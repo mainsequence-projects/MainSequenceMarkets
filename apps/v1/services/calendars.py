@@ -4,6 +4,7 @@ import datetime as dt
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSession
 from apps.v1.schemas.common import FrontEndDetailSummary
 
@@ -53,12 +54,14 @@ def get_calendar_summary(*, uid: str) -> FrontEndDetailSummary | None:
     return FrontEndDetailSummary.model_validate(summary)
 
 
+@registry_write("calendar", "create")
 def create_calendar(*, payload: Mapping[str, Any]) -> Calendar:
     runtime = _get_runtime()
     row = _create_calendar_record(runtime.context, **dict(payload))
     return Calendar.model_validate(row)
 
 
+@registry_write("calendar", "update")
 def update_calendar(*, uid: str, payload: Mapping[str, Any]) -> Calendar | None:
     runtime = _get_runtime()
     row = _update_calendar_record(runtime.context, uid=uid, **dict(payload))
@@ -67,6 +70,7 @@ def update_calendar(*, uid: str, payload: Mapping[str, Any]) -> Calendar | None:
     return Calendar.model_validate(row)
 
 
+@registry_write("calendar", "delete")
 def delete_calendar(*, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(_delete_calendar_record(runtime.context, uid=uid))
@@ -111,12 +115,14 @@ def get_calendar_date(*, calendar_uid: str, uid: str) -> CalendarDate | None:
     return CalendarDate.model_validate(row)
 
 
+@registry_write("calendar", "create:calendar-date")
 def create_calendar_date(*, calendar_uid: str, payload: Mapping[str, Any]) -> CalendarDate:
     runtime = _get_runtime()
     row = _create_calendar_date_record(runtime.context, calendar_uid=calendar_uid, **dict(payload))
     return CalendarDate.model_validate(row)
 
 
+@registry_write("calendar", "update:calendar-date")
 def update_calendar_date(
     *,
     calendar_uid: str,
@@ -135,11 +141,13 @@ def update_calendar_date(
     return CalendarDate.model_validate(row)
 
 
+@registry_write("calendar", "delete:calendar-date")
 def delete_calendar_date(*, calendar_uid: str, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(_delete_calendar_date_record(runtime.context, calendar_uid=calendar_uid, uid=uid))
 
 
+@registry_write("calendar", "bulk-upsert:calendar-dates")
 def bulk_upsert_calendar_dates(
     *,
     calendar_uid: str,
@@ -189,6 +197,7 @@ def get_calendar_session(*, calendar_uid: str, uid: str) -> CalendarSession | No
     return CalendarSession.model_validate(row)
 
 
+@registry_write("calendar", "create:calendar-session")
 def create_calendar_session(*, calendar_uid: str, payload: Mapping[str, Any]) -> CalendarSession:
     runtime = _get_runtime()
     row = _create_calendar_session_record(
@@ -199,6 +208,7 @@ def create_calendar_session(*, calendar_uid: str, payload: Mapping[str, Any]) ->
     return CalendarSession.model_validate(row)
 
 
+@registry_write("calendar", "update:calendar-session")
 def update_calendar_session(
     *,
     calendar_uid: str,
@@ -217,6 +227,7 @@ def update_calendar_session(
     return CalendarSession.model_validate(row)
 
 
+@registry_write("calendar", "delete:calendar-session")
 def delete_calendar_session(*, calendar_uid: str, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(
@@ -224,6 +235,7 @@ def delete_calendar_session(*, calendar_uid: str, uid: str) -> bool:
     )
 
 
+@registry_write("calendar", "bulk-upsert:calendar-sessions")
 def bulk_upsert_calendar_sessions(
     *,
     calendar_uid: str,
@@ -279,6 +291,7 @@ def get_calendar_event(*, calendar_uid: str, uid: str) -> CalendarEvent | None:
     return CalendarEvent.model_validate(row)
 
 
+@registry_write("calendar", "create:calendar-event")
 def create_calendar_event(*, calendar_uid: str, payload: Mapping[str, Any]) -> CalendarEvent:
     runtime = _get_runtime()
     row = _create_calendar_event_record(
@@ -289,6 +302,7 @@ def create_calendar_event(*, calendar_uid: str, payload: Mapping[str, Any]) -> C
     return CalendarEvent.model_validate(row)
 
 
+@registry_write("calendar", "update:calendar-event")
 def update_calendar_event(
     *,
     calendar_uid: str,
@@ -307,11 +321,13 @@ def update_calendar_event(
     return CalendarEvent.model_validate(row)
 
 
+@registry_write("calendar", "delete:calendar-event")
 def delete_calendar_event(*, calendar_uid: str, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(_delete_calendar_event_record(runtime.context, calendar_uid=calendar_uid, uid=uid))
 
 
+@registry_write("calendar", "bulk-upsert:calendar-events")
 def bulk_upsert_calendar_events(
     *,
     calendar_uid: str,

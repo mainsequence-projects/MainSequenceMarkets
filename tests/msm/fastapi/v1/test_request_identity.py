@@ -94,4 +94,5 @@ def test_a_requester_bound_assertion_without_teams_is_accepted(
     response = TestClient(app).get(DATASETS_ROUTE, headers={ASSERTION_HEADER: assertion})
 
     assert response.status_code == 200
-    assert len(received) == 1
+    # ADR 0047: a requester-bound call acts for the requester, never for the caller too.
+    assert received == [IndexActor(user_uid=REQUESTER_UID)]

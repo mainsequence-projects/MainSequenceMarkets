@@ -43,6 +43,7 @@ from msm.api.http import (
     TabularFrameResponse,
     resource_collection_response,
 )
+from apps.v1.identity import acting_identity
 from msm.services.indices import IndexActor, actor_from_user
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -50,12 +51,18 @@ index_type_router = APIRouter(prefix="/index-type", tags=["index"])
 
 
 def _request_actor(request: Request) -> IndexActor | None:
-    """Return the caller that request identity verified, or `None` on an unauthenticated request."""
+    """Return the identity the request acts for, or `None` on an unauthenticated request.
 
-    user = getattr(request.state, "user", None)
-    if user is None:
+    ADR 0047: the requester on a requester-bound call, the verified caller
+    otherwise, never both. ``request`` is kept so the dependency stays bound to
+    the request scope.
+    """
+
+    _ = request
+    identity = acting_identity()
+    if identity is None:
         return None
-    return actor_from_user(user)
+    return actor_from_user(identity)
 
 
 @index_type_router.get(

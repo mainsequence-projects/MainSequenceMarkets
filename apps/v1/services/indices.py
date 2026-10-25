@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
@@ -96,10 +97,12 @@ def get_index_type(*, index_type: str) -> IndexType | None:
     return IndexType.model_validate(rows[0]) if rows else None
 
 
+@registry_write("index", "create")
 def create_index(*, payload: IndexCreate) -> Index:
     return Index.create(payload)
 
 
+@registry_write("index", "update")
 def update_index(*, uid: str, payload: IndexUpdate) -> Index | None:
     if get_index(uid=uid) is None:
         return None
@@ -112,6 +115,7 @@ def get_index(*, uid: str) -> Index | None:
     return Index.model_validate(rows[0]) if rows else None
 
 
+@registry_write("index", "delete")
 def delete_index(*, uid: str) -> bool:
     from msm.services import delete_index_record
 

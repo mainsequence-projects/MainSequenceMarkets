@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
@@ -94,6 +95,7 @@ def get_account_holdings_by_fund(
     return AccountHoldingsByFundResponse.model_validate(snapshot)
 
 
+@registry_write("account", "add:account-holdings")
 def add_account_holdings(
     *,
     account_uid: str,
@@ -135,6 +137,7 @@ def get_account_target_positions(
     return AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
 
 
+@registry_write("account", "add:account-target-positions")
 def add_account_target_positions(
     *,
     account_uid: str,
