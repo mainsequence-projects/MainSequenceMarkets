@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- [ADR 0047](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0047-markets-api-application-boundary/)
+  proposes the
+  Markets API as the application boundary: provider-owned namespaces and
+  sidecars, a contracts package with a remote row backend, and contract-plus-
+  instances for portfolio and signal time series catalogued by Markets. It is
+  a proposal; nothing in it is implemented.
+
 ## [2.2.12] - 2026-10-22
 
 - Require certifi 2026.10.19 or newer so downstream installs receive the corrected

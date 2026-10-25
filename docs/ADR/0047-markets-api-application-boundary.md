@@ -1,0 +1,320 @@
+# 0047. Markets API As The Application Boundary
+
+## Status
+
+Proposed. Drafted 2026-10-25 from an analysis of this repository, the
+`markets-analytics` API, the `alpaca-connectors` application and the installed
+MetaTables and SDK contracts. Nothing in this ADR is implemented. The
+`development` branch has since moved to MetaTables 0.1.51, whose namespace and
+table roles (`owner`, `editor`, `data_writer`, `reader`) replace the Reader and
+Writer vocabulary used below; the grant boundaries this ADR draws are
+unchanged by that rename, and implementation must use the role names.
+
+It builds on [ADR 0008](0008-metatable-table-and-api-model-split.md) (row
+objects separate from table declarations), [ADR 0030](0030-explicit-portfolio-price-source-dependency.md)
+(explicit upstream references for portfolio inputs), [ADR 0037](0037-index-formula-and-custom-calculation-framework.md)
+and [ADR 0038](0038-index-user-api-and-fastapi-exploration.md) (Index datasets
+catalogued by table uid) and [ADR 0041](0041-installable-provider-http-toolkit.md)
+(installable HTTP contracts). It changes nothing in those decisions. It amends
+[ADR 0043](0043-sdk-9-metatables-client-hard-cut.md) in one respect: the row
+API gains a remote backend, so a consumer no longer needs the MetaTables client
+to use `msm.api`.
+
+## Context
+
+### Two surfaces that do not meet
+
+`ms-markets` ships two application surfaces:
+
+- The row API under `msm.api`. `Asset.filter()`, `Portfolio.get_by_uid()` and
+  the rest resolve the process runtime, compile a SQLAlchemy statement in
+  `msm.repositories.crud` and execute it through `MetaTable.execute_operation`.
+  The MetaTables client authenticates as the process: a developer locally, the
+  workload User when hosted.
+- The FastAPI application under `apps/v1`, deployed as the `markets-api`
+  release with 158 operations. It verifies the caller with
+  `install_request_identity` and then executes every query as its own
+  workload User. No service reads `User.get_logged_user()`; the only
+  caller-aware code is the Index actor, which sets a display hint.
+
+No application calls the second surface from code. The README advertises an
+`msm.client` package of client-facing wrappers; it does not exist. Every
+consumer uses the first surface, which makes it a MetaTables principal with
+grants on `mainsequence.markets`.
+
+### What consumers look like today
+
+`markets-analytics` imports `msm`, `msm_portfolios`, `msm_pricing` and
+`valmer_connectors`, attaches 28 MetaTables at startup, compiles raw SQL
+against ms-markets table classes in six service files and writes Index rows
+through the row API. Its workload User needs Reader on the whole
+`mainsequence.markets` and `valmer_connectors` namespaces, Writer on three
+Index tables and view on three repository branches. It pins
+`ms-markets[portfolios]==2.2.10` exactly because the imported table classes
+must match the schema the Markets migration Job applied. Its documentation
+states that it applies no per-user authorization.
+
+`alpaca-connectors` extends the ontology with sidecar tables and computes
+portfolios. Resolving its model classes shows that every table it declares,
+including `alpaca_connectors__acct_alpaca` and `alpaca_connectors__bars_1d_sip_all`,
+registers in the `mainsequence.markets` namespace, because the project mixin
+changes only the physical name prefix. Its operator guide therefore grants the
+Alpaca Team Writer on the whole `mainsequence.markets` namespace. The same
+pattern holds for Binance, Interactive Brokers, Valmer and the Mexico fund
+competition project: all five write Asset, Account, Portfolio, Index, Calendar
+or AssetCategory rows directly.
+
+### Why the current boundary is wrong
+
+- Access is table-shaped, not domain-shaped. Markets cannot say "this Team
+  sees these portfolios" or "only the author retires this formula". A Reader
+  grant on the namespace is all or nothing, and Writer on a table is full
+  control of it.
+- Audit loses the person. MetaTables records the consumer workload as the
+  actor of every read and write, never the user in the browser.
+- Schema coupling crosses deployments. Consumers must install the exact
+  release the Markets deployment migrated to and redeploy in lockstep.
+- The core time-index tables are multi-tenant. `PortfoliosTS`,
+  `PortfolioWeightsTS` and `SignalWeightsTS` hold rows from every provider,
+  partitioned by `portfolio_identifier` and `signal_uid`. MetaTables grants are
+  per table, so every provider that runs the portfolio engine needs Writer on
+  Markets tables. This, more than any sidecar, is why providers end up as
+  co-owners of the Markets namespace.
+- The Markets API carries no authority because nobody calls it, so it stays a
+  pass-through without policy. The two problems reinforce each other.
+
+The in-process design is right for one audience: the Markets deployment's own
+API, migration Job and DataNode Jobs, which must read and write the tables
+they own. The mistake is using that producer path as the integration surface
+for other applications.
+
+### What the platform already provides
+
+- MetaTables recommends one namespace per application, owned by a Team per
+  Environment, and enforces grants in the database as the caller's own role.
+- The SDK request identity carries the caller, its Teams and, on a
+  requester-bound call, the person the call works for. `acts_for_requester`
+  lets an application be authorized as that person; MetaTables honours the
+  requester on read-only query paths.
+- `metatables.endpoint` discovers a release by name in the caller's
+  Environment with `ResourceRelease.filter_admin` and obtains a bearer token
+  through `resolve_runtime_access`. That is a complete application-to-application
+  call mechanism, used today only to reach MetaTables.
+- `msm_portfolios` data nodes already accept any output table that matches the
+  storage contract (`output_table` in `msm_portfolios.data_nodes.base`), and
+  `configured_interpolated_prices_storage` already builds a contract-identical
+  table under a different physical name.
+- Index already catalogues datasets by table uid in
+  `IndexDatasetAvailabilityTable`, discovers them through
+  `TimeIndexMetaTable.filter_by_body`, and reads values by `meta_table_uid`.
+
+## Decision
+
+### 1. One owner per table, and the Markets API as the boundary for registries
+
+The ontology has three tiers with different rules:
+
+| Tier | Examples | Writer | Other applications |
+| --- | --- | --- | --- |
+| Shared registries | Asset, Account, Portfolio, Index, Calendar, AssetCategory, OrderManager | Markets, through its API | Read and write through the Markets API, or read as the person |
+| Time-index facts | portfolio values and weights, signal weights, bars, trades, holdings, curves | The producer, in its own namespace | Read by table uid, through the Markets API or as the person |
+| Extension-owned tables | provider account details, bar configurations, universes | The provider, in its own namespace | Through the provider's own API |
+
+The Markets API becomes the only way another application creates, updates or
+deletes a registry row. Direct MetaTables access to `mainsequence.markets` is
+reserved for the Markets deployment itself. No other Team is Writer on that
+namespace.
+
+### 2. A contracts package and a remote row backend
+
+Split the distribution along the ADR 0008 seam:
+
+- `ms-markets-contracts`: the Pydantic row and payload models under `msm.api`,
+  the HTTP contracts under `msm.api.http`, constants and the storage layout
+  contracts. No SQLAlchemy, no `metatables`, no QuantLib.
+- `ms-markets`: everything else, including models, repositories, migrations,
+  data nodes and the FastAPI application.
+
+Add `msm.client`, the package the README already names. It is a typed HTTP
+client over the `apps/v1` OpenAPI document that returns `msm.api` row models.
+It discovers the `markets-api` release in the caller's Environment and
+authenticates exactly as `metatables.endpoint` does for MetaTables. The row
+classes get a pluggable backend: `runtime`, the current compiled-SQL path, for
+the Markets deployment and producers; `remote`, the client, for every other
+application. `Portfolio.get_by_uid()` is the same call under both.
+
+Consumers depend on `ms-markets-contracts` with a `>=2,<3` range. The wire
+contract, not the table schema, is the compatibility promise.
+
+### 3. Authorization in the Markets API
+
+Every handler and service authorizes against one identity: the requester on a
+requester-bound call, the caller otherwise, never both. The `markets-api`
+resource declares `acts_for_requester: true`, which an Organization admin must
+push. Services enforce domain policy: ownership and Team scoping for
+portfolios, accounts, indexes and formula definitions, and application-level
+permissions such as "this application may register accounts". Writes keep
+running as the Markets workload, whose Writer grant is the single place writes
+are allowed; the API's policy decides who may trigger them.
+
+### 4. Provider-owned namespaces and sidecars
+
+Each provider registers its tables in its own catalog namespace, owned by a
+Team per Environment whose members are the provider's workloads. The existing
+project mixins must declare `__metatable_namespace__`; inheriting
+`mainsequence.markets` from `MarketsMetaTableMixin` is a defect of the current
+extension pattern and is withdrawn.
+
+A sidecar table keyed one-to-one by a core uid remains the extension
+mechanism, with these rules:
+
+- A physical foreign key to a core table is allowed and declares its delete
+  action. It is data integrity, not access; Markets' impact preflight and
+  related-table discovery depend on it.
+- A provider that wants Markets to hydrate its sidecar on registry reads
+  grants the Markets workload Reader on that table. The grant points from the
+  extension to the core, never the reverse.
+- Extension migrations reference core tables by physical name and the stable
+  `uid` column, as `examples/msm/indices/extension_owned_index_storage.py`
+  does with a metadata copy, instead of importing the core class. ms-markets
+  promises the uid column of each registry table as a stable contract.
+- Registries that several applications populate gain a `managed_by`
+  discriminator and an external reference, so "accounts of provider X" is a
+  core filter rather than a join.
+
+### 5. Contract plus instances for time series, with a Markets catalog
+
+`PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS` become storage
+contracts with any number of instances. ms-markets owns the contract: columns,
+dtypes, time index and index names. A provider owns its instances:
+`alpaca_connectors__portfoliosts` in the Alpaca namespace, migrated by the
+Alpaca provider, written by Alpaca's nodes with `output_table=`. The existing
+core tables remain the Markets-owned instance for portfolios Markets computes
+itself. A provider may add columns beyond the contract; Markets reads the
+contract columns and ignores the rest.
+
+Markets keeps the catalog. A `PortfolioDatasetAvailabilityTable`, mirroring
+the Index one, records for each portfolio the values table uid, the weights
+table uid, the signal table uid, population state and latest time. The
+provider registers these through the Markets API when it creates the
+portfolio and reconciles them after each run. `SignalMetadataTable` gains the
+same reference to its instance.
+
+The Markets read services resolve the table from the catalog and read it by
+uid through `TimeIndexTableRef`, filtered by `portfolio_identifier`. A request
+for several portfolios groups them by table uid, reads each table once and
+returns one `core.tabular_frame@v1` frame. The fan-out is bounded by the
+number of providers, not of portfolios. Comparing an Alpaca portfolio with an
+Interactive Brokers portfolio is therefore one call whose two sources happen
+to live in two namespaces.
+
+Who may read is a separate, narrow grant: the Markets workload gets Reader on
+each provider's time-series tables, or the call is requester-bound and the
+person's own grants apply. Ad hoc analysis across providers runs as the person
+with a `UNION ALL` over contract-identical tables.
+
+Markets may still compute portfolios for callers that have no provider. It is
+then one more producer writing its own instance. Nothing in this decision
+depends on Markets running an engine; signals, strategies and engines stay
+with providers, as `msm_portfolios` intends.
+
+## Worked example: the Alpaca Account
+
+Today `AlpacaAccountDetails` is a one-to-one sidecar on `ms_markets__account.uid`
+with cascade delete, registered in `mainsequence.markets`. Listing
+registrations compiles a join over both tables and runs it as the Alpaca
+workload. Registration runs `Account.upsert`, an upsert on the sidecar and a
+holdings snapshot as three separate MetaTables requests.
+
+Under this ADR:
+
+- The sidecar moves to the `alpaca-connectors` namespace. Its foreign key,
+  its encrypted key columns and Alpaca's migration provider are unchanged. The
+  encrypted columns are the reason the sidecar must stay Alpaca-owned: only a
+  process holding the Alpaca keyring can open them.
+- `Account.upsert` and the active-flag update go through Markets routes for
+  account create and update, which do not exist yet. The holdings snapshot
+  uses the existing `addAccountHoldings` route. Atomicity is unchanged; a
+  composite register route on Markets could later make it better than today.
+- The list query pages on the sidecar, which already duplicates `is_paper`
+  and the unique identifier, and hydrates core columns with one batch lookup
+  by uid. Adding `account_name` and the active flag to the sidecar removes the
+  join from the common path. Core-first listing with sidecar columns uses the
+  Markets `include` hydration with Alpaca's Reader grant.
+- Alpaca's Team drops Writer on `mainsequence.markets`.
+
+## Worked example: the Alpaca ETF tracking portfolio
+
+Today `build_alpaca_etf_tracking_portfolio` runs in an Alpaca Job and writes
+five time-index tables, all registered in `mainsequence.markets`: Alpaca bars
+and interpolated prices, which Alpaca migrates, and signal weights, portfolio
+values and portfolio weights, which are Markets' shared tables. It also upserts
+the Calendar and Portfolio rows. `PortfolioTable` has producer uid columns,
+but `portfolio_values()` in `msm_portfolios.services.portfolio_reads` selects
+from the fixed core table and ignores them.
+
+Under this ADR:
+
+- Alpaca declares `AlpacaPortfoliosStorage`, `AlpacaPortfolioWeightsStorage`
+  and `AlpacaSignalWeightsStorage` through a storage factory ms-markets
+  exposes for the three contracts, in the Alpaca namespace, migrated by the
+  Alpaca provider. Bars and interpolated prices move to that namespace too.
+- `AlpacaETFHoldingsSignal` and `PortfoliosDataNode` are bound to those
+  instances with `output_table=`. The signal, the strategy and the engine code
+  stay in the Alpaca repository.
+- The Portfolio row is created through the Markets API with the three table
+  uids, the calendar and the strategy configuration. After each run the Job
+  reconciles the portfolio dataset availability.
+- Alpaca's Team is Writer on `alpaca-connectors` only and grants the Markets
+  workload Reader on its three time-series tables.
+- `markets-analytics` obtains the portfolio values frame for any mix of
+  Alpaca and Interactive Brokers portfolios from one Markets route.
+
+## Migration path
+
+1. Markets API: add `acts_for_requester`, the acting-identity helper and
+   per-service policy; add account create and update, formula save, activate,
+   retire and preview, batch lookups by uid, `include` hydration and
+   multi-portfolio frames; add the portfolio dataset catalog and switch the
+   read services to it. Fix the README's `msm.client` line until the package
+   exists.
+2. Packaging: publish `ms-markets-contracts` and `msm.client` with the remote
+   row backend.
+3. Providers: declare their namespace in their mixins, move existing tables
+   with a namespace move, declare contract instances for portfolios and
+   signals, bind nodes to them, backfill from their own nodes, register the
+   catalog rows, and replace direct registry writes with API calls. Drop
+   Writer on `mainsequence.markets`.
+4. Consumers: switch `markets-analytics` route family by route family,
+   portfolio analytics first, then Index Studio, then holdings and fixed
+   income; remove `start_engine`, drop the namespace grants, and replace the
+   exact pin with the contracts range. New applications such as Hunch start
+   on the client and hold no tables.
+
+## Consequences
+
+- Grants become narrow and point one way: providers write their own
+  namespace; Markets reads what providers share with it; consumers hold no
+  table grants.
+- The person is the actor of registry writes and of requester-bound reads,
+  in both the Markets policy and the MetaTables audit.
+- Pure consumers stop depending on the MetaTables client and on the Markets
+  schema. Producers and extensions still move with the MetaTables client for
+  their own tables, which is unavoidable for table owners.
+- Markets takes on a versioned public contract, batch routes and policy code.
+  This is centralized work traded for lockstep churn across every consumer.
+- Reads that spanned one table may span several. The fan-out is bounded by
+  provider count and hidden behind one route.
+- Existing shared time-series tables keep serving Markets-computed portfolios;
+  provider rows in them are backfilled into provider instances once.
+- The row API has two backends until the runtime backend becomes internal to
+  the Markets deployment and its producers.
+
+## Non-goals
+
+- A generic SQL endpoint on the Markets API. It would recreate raw table
+  access over HTTP. Ad hoc cross-namespace queries run as the person through
+  MetaTables.
+- Row-level ownership inside shared tables. MetaTables grants are per table
+  by design; this ADR works with that rather than against it.
+- Moving signals, strategies or engines into Markets.
