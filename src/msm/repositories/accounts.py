@@ -55,6 +55,7 @@ from .crud import (
     build_get_model_by_uid_operation,
     build_search_model_operation,
     mirror_renamed_columns,
+    renamed_keyword,
 )
 
 
@@ -66,9 +67,16 @@ def build_create_account_operation(
     is_paper: bool = True,
     account_is_active: bool = False,
     account_group_uid: uuid.UUID | str | None = None,
-    holdings_data_node_uid: uuid.UUID | str | None = None,
+    holdings_storage_table_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
+    holdings_data_node_uid: uuid.UUID | str | None = None,
 ) -> MetaTableCompiledSQLOperation:
+    holdings_storage_table_uid = renamed_keyword(
+        holdings_storage_table_uid,
+        holdings_data_node_uid,
+        current="holdings_storage_table_uid",
+        previous="holdings_data_node_uid",
+    )
     statement = (
         insert(AccountTable)
         .values(
@@ -80,7 +88,7 @@ def build_create_account_operation(
                     "is_paper": is_paper,
                     "account_is_active": account_is_active,
                     "account_group_uid": account_group_uid,
-                    "holdings_data_node_uid": holdings_data_node_uid,
+                    "holdings_storage_table_uid": holdings_storage_table_uid,
                     "metadata_json": metadata_json,
                 },
             )
@@ -197,9 +205,16 @@ def build_update_account_operation(
     is_paper: bool | None = None,
     account_is_active: bool | None = None,
     account_group_uid: uuid.UUID | str | None = None,
-    holdings_data_node_uid: uuid.UUID | str | None = None,
+    holdings_storage_table_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
+    holdings_data_node_uid: uuid.UUID | str | None = None,
 ) -> MetaTableCompiledSQLOperation:
+    holdings_storage_table_uid = renamed_keyword(
+        holdings_storage_table_uid,
+        holdings_data_node_uid,
+        current="holdings_storage_table_uid",
+        previous="holdings_data_node_uid",
+    )
     values = mirror_renamed_columns(
         AccountTable,
         {
@@ -209,7 +224,7 @@ def build_update_account_operation(
                 "is_paper": is_paper,
                 "account_is_active": account_is_active,
                 "account_group_uid": account_group_uid,
-                "holdings_data_node_uid": holdings_data_node_uid,
+                "holdings_storage_table_uid": holdings_storage_table_uid,
                 "metadata_json": metadata_json,
             }.items()
             if value is not None

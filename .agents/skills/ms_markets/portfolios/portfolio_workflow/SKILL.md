@@ -285,8 +285,8 @@ Rules:
   coordinates in place or use raw SQL.
 - `PortfoliosUpdater.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
-  `PortfolioTable` row with `signal_uid`, `signal_weights_data_node_uid`,
-  `portfolio_weights_data_node_uid`, and `portfolio_data_node_uid`. Examples
+  `PortfolioTable` row with `signal_uid`, `signal_weights_table_update_uid`,
+  `portfolio_weights_table_update_uid`, and `portfolio_table_update_uid`. Examples
   should not perform this final pointer upsert manually.
 - Rerunning before a new execution event or valuation observation must return an
   empty incremental update. Job run time is never an economic timestamp.

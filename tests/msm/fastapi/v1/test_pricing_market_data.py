@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
@@ -26,13 +28,13 @@ def _binding_row(
     *,
     uid: uuid.UUID | None = None,
     market_data_set_uid: uuid.UUID | None = None,
-    data_node_uid: uuid.UUID | None = None,
+    storage_table_uid: uuid.UUID | None = None,
 ) -> PricingMarketDataSetBinding:
     return PricingMarketDataSetBinding(
         uid=uid or uuid.uuid4(),
         market_data_set_uid=market_data_set_uid or uuid.uuid4(),
         concept_key="discount_curves",
-        data_node_uid=data_node_uid or uuid.uuid4(),
+        storage_table_uid=storage_table_uid or uuid.uuid4(),
         storage_table_identifier="DiscountCurvesStorage",
         source="unit-test",
         metadata_json=None,
@@ -364,7 +366,7 @@ def test_pricing_market_data_binding_detail_returns_404_when_missing(monkeypatch
 
 
 def test_pricing_market_data_binding_resolve_wraps_source_resolution(monkeypatch) -> None:
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
     def fake_resolve(**kwargs):
@@ -372,7 +374,7 @@ def test_pricing_market_data_binding_resolve_wraps_source_resolution(monkeypatch
         return {
             "market_data_set": kwargs["market_data_set"],
             "concept_key": kwargs["concept_key"],
-            "data_node_uid": data_node_uid,
+            "storage_table_uid": storage_table_uid,
         }
 
     monkeypatch.setattr(
@@ -390,7 +392,8 @@ def test_pricing_market_data_binding_resolve_wraps_source_resolution(monkeypatch
     assert response.json() == {
         "market_data_set": "default",
         "concept_key": "discount_curves",
-        "data_node_uid": str(data_node_uid),
+        "storage_table_uid": str(storage_table_uid),
+        "data_node_uid": str(storage_table_uid),
     }
     assert captured == {"market_data_set": "default", "concept_key": "discount_curves"}
 
@@ -414,13 +417,43 @@ def test_pricing_market_data_binding_create_wraps_source_create(monkeypatch) -> 
         json={
             "market_data_set_uid": str(row.market_data_set_uid),
             "concept_key": "discount_curves",
-            "data_node_uid": str(row.data_node_uid),
+            "storage_table_uid": str(row.storage_table_uid),
         },
     )
 
     assert response.status_code == 201
     assert response.json()["uid"] == str(row.uid)
     assert captured["payload"]["market_data_set_uid"] == row.market_data_set_uid
+
+
+def test_pricing_market_data_binding_create_accepts_the_pre_3_0_field_name(monkeypatch) -> None:
+    row = _binding_row()
+    captured: dict[str, object] = {}
+
+    def fake_create(payload):
+        captured["payload"] = payload.model_dump()
+        return row
+
+    monkeypatch.setattr(
+        "apps.v1.routers.pricing_market_data.create_pricing_market_data_binding",
+        fake_create,
+    )
+
+    client = TestClient(app)
+    with pytest.warns(DeprecationWarning, match="data_node_uid is deprecated"):
+        response = client.post(
+            "/api/v1/pricing/market_data/bindings/",
+            json={
+                "market_data_set_uid": str(row.market_data_set_uid),
+                "concept_key": "discount_curves",
+                "data_node_uid": str(row.storage_table_uid),
+            },
+        )
+
+    assert response.status_code == 201
+    assert captured["payload"]["storage_table_uid"] == row.storage_table_uid
+    assert response.json()["storage_table_uid"] == str(row.storage_table_uid)
+    assert response.json()["data_node_uid"] == str(row.storage_table_uid)
 
 
 def test_pricing_market_data_binding_upsert_wraps_source_upsert(monkeypatch) -> None:
@@ -442,7 +475,7 @@ def test_pricing_market_data_binding_upsert_wraps_source_upsert(monkeypatch) -> 
         json={
             "market_data_set_uid": str(row.market_data_set_uid),
             "concept_key": "discount_curves",
-            "data_node_uid": str(row.data_node_uid),
+            "storage_table_uid": str(row.storage_table_uid),
         },
     )
 

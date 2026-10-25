@@ -100,7 +100,7 @@ the runtime should follow the persisted graph:
 
 The `DiscountCurvesUpdater` and `FixingRatesUpdater` locations used in this chain come
 from pricing market-data bindings; see [Market Data Sets](market_data_sets.md)
-for how the selected set resolves to a `data_node_uid`.
+for how the selected set resolves to a `storage_table_uid`.
 
 Runtime pricing reads the compressed `curve` payload. `key_nodes` is retained on
 the same curve observation row as compressed-at-rest construction provenance.

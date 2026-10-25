@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
+from apps.v1.schemas.common import RenamedResponseFields, pre_3_0_response_field
 
 
 def _curve_contract():
@@ -20,13 +21,15 @@ def _curve_contract():
 Curve = _curve_contract()
 
 
-class CurveDeleteStorageCleanup(BaseModel):
+class CurveDeleteStorageCleanup(RenamedResponseFields):
     model_config = ConfigDict(extra="ignore")
+    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uid": "data_node_uid"}
 
-    data_node_uid: UUID
+    storage_table_uid: UUID
     storage_table_identifier: str | None = None
     deleted_count: int = 0
     table_empty: bool | None = None
+    data_node_uid: UUID | None = pre_3_0_response_field("storage_table_uid")
 
 
 class CurveDeleteResponse(BaseModel):
@@ -106,13 +109,15 @@ class DiscountCurveMarketDataSet(BaseModel):
     display_name: str
 
 
-class DiscountCurveBinding(BaseModel):
+class DiscountCurveBinding(RenamedResponseFields):
     model_config = ConfigDict(extra="ignore")
+    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uid": "data_node_uid"}
 
     uid: UUID
     concept_key: str
-    data_node_uid: UUID
+    storage_table_uid: UUID
     storage_table_identifier: str | None = None
+    data_node_uid: UUID | None = pre_3_0_response_field("storage_table_uid")
 
 
 class DiscountCurveResponse(BaseModel):

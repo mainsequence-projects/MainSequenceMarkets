@@ -9,6 +9,12 @@ The pricing market-data route group is exposed under:
 The FastAPI layer is a resolver only. Row contracts and CRUD operations come
 from `msm_pricing.api`.
 
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries `storage_table_uid` also
+    repeats it under its pre-3.0 name `data_node_uid`, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+
 ## Discoverability
 
 ```text
@@ -135,7 +141,7 @@ Response:
       "uid": "6b8fd8e4-6748-423c-b9fb-fad522d6f150",
       "market_data_set_uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
       "concept_key": "discount_curves",
-      "data_node_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d",
+      "storage_table_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d",
       "storage_table_identifier": "DiscountCurvesStorage",
       "source": "example",
       "metadata_json": null
@@ -166,7 +172,7 @@ Response:
   "uid": "6b8fd8e4-6748-423c-b9fb-fad522d6f150",
   "market_data_set_uid": "7f958bbf-44cc-4cb9-ad19-b41b5aa28d60",
   "concept_key": "discount_curves",
-  "data_node_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d",
+  "storage_table_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d",
   "storage_table_identifier": "DiscountCurvesStorage",
   "source": "example",
   "metadata_json": null
@@ -183,7 +189,7 @@ Response:
 {
   "market_data_set": "default",
   "concept_key": "discount_curves",
-  "data_node_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d"
+  "storage_table_uid": "5f4d0bb8-36f0-44fc-a9fc-f42dd3ce7f2d"
 }
 ```
 

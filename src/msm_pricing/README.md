@@ -176,9 +176,9 @@ bindings for:
 ```text
 PricingMarketDataSet(set_key="default")
   -> PricingMarketDataSetBinding(concept_key="discount_curves")
-       data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
+       storage_table_uid = DiscountCurvesStorage.get_meta_table_uid()
   -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
-       data_node_uid = IndexFixingsStorage.get_meta_table_uid()
+       storage_table_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
 Those UIDs come from attached storage classes, not static namespace helpers.
@@ -204,7 +204,7 @@ market_data_set = PricingMarketDataSet.upsert(
 PricingMarketDataSetBinding.upsert(
     market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_uid=DiscountCurvesStorage.get_meta_table_uid(),
     storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 ```

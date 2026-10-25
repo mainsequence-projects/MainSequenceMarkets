@@ -182,7 +182,7 @@ from msm.services.accounts import apply_account_virtual_fund_allocation_plan
 node = VirtualFundHoldings(config=VirtualFundHoldings.default_config())
 frame = apply_account_virtual_fund_allocation_plan(
     plan,
-    data_node=node,
+    updater=node,
     run=True,
 )
 ```

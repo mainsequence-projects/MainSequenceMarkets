@@ -143,14 +143,14 @@ def resolve_pricing_market_data_binding(
     concept_key: str,
 ) -> dict[str, Any]:
     ensure_apps_v1_pricing_runtime()
-    data_node_uid = PricingMarketDataSetBinding.resolve_data_node_uid(
+    storage_table_uid = PricingMarketDataSetBinding.resolve_storage_table_uid(
         market_data_set=market_data_set,
         concept_key=concept_key,
     )
     return {
         "market_data_set": market_data_set,
         "concept_key": concept_key,
-        "data_node_uid": data_node_uid,
+        "storage_table_uid": storage_table_uid,
     }
 
 

@@ -299,13 +299,13 @@ PricingMarketDataSetCurveBinding.upsert_index_curve_selection(
 PricingMarketDataSetBinding.upsert(
     market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_uid=DiscountCurvesStorage.get_meta_table_uid(),
     storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 PricingMarketDataSetBinding.upsert(
     market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-    data_node_uid=IndexFixingsStorage.get_meta_table_uid(),
+    storage_table_uid=IndexFixingsStorage.get_meta_table_uid(),
     storage_table_identifier=IndexFixingsStorage.get_identifier(),
 )
 ```

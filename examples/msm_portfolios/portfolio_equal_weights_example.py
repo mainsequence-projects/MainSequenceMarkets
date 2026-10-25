@@ -374,13 +374,13 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
         "interpolated_prices_storage_cadence",
         result["interpolated_prices_storage_cadence"],
     )
-    print_detail("source_prices_data_node_uid", result["source_prices_node_uid"])
-    print_detail("interpolated_prices_data_node_uid", result["interpolated_prices_node_uid"])
-    print_detail("signal_weights_data_node_uid", result["signal_weights_node_uid"])
-    print_detail("calendar_events_data_node_uid", result["calendar_events_node_uid"])
-    print_detail("portfolio_rebalance_data_node_uid", result["portfolio_rebalance_node_uid"])
-    print_detail("portfolio_weights_data_node_uid", result["portfolio_weights_node_uid"])
-    print_detail("portfolio_values_data_node_uid", result["portfolio_values_node_uid"])
+    print_detail("source_prices_table_update_uid", result["source_prices_table_update_uid"])
+    print_detail("interpolated_prices_table_update_uid", result["interpolated_prices_table_update_uid"])
+    print_detail("signal_weights_table_update_uid", result["signal_weights_table_update_uid"])
+    print_detail("calendar_events_table_update_uid", result["calendar_events_table_update_uid"])
+    print_detail("portfolio_rebalance_table_update_uid", result["portfolio_rebalance_table_update_uid"])
+    print_detail("portfolio_weights_table_update_uid", result["portfolio_weights_table_update_uid"])
+    print_detail("portfolio_values_table_update_uid", result["portfolio_values_table_update_uid"])
     if not run_updaters:
         print_detail("updater_mode", "frames built locally; storage publication skipped")
 
@@ -468,8 +468,8 @@ def build_equal_weight_portfolio(
     print_step(5, "Publishing portfolio time-index-table outputs.")
     if run_updaters:
         source_bars_node.run(update_tree=False)
-        source_prices_node_uid = str(source_bars_node.table_update.uid)
-        print_detail("source_prices_data_node_uid", source_prices_node_uid)
+        source_prices_table_update_uid = str(source_bars_node.table_update.uid)
+        print_detail("source_prices_table_update_uid", source_prices_table_update_uid)
 
         portfolio_run_result = portfolio_values_node.run(
             update_tree=True,
@@ -477,41 +477,41 @@ def build_equal_weight_portfolio(
         )
         portfolio = portfolio_run_result["portfolio"]
 
-        interpolated_prices_node_uid = str(interpolated_prices_node.table_update.uid)
-        print_detail("interpolated_prices_data_node_uid", interpolated_prices_node_uid)
+        interpolated_prices_table_update_uid = str(interpolated_prices_node.table_update.uid)
+        print_detail("interpolated_prices_table_update_uid", interpolated_prices_table_update_uid)
 
-        signal_weights_node_uid = str(signal_weights_node.table_update.uid)
-        print_detail("signal_weights_data_node_uid", signal_weights_node_uid)
+        signal_weights_table_update_uid = str(signal_weights_node.table_update.uid)
+        print_detail("signal_weights_table_update_uid", signal_weights_table_update_uid)
 
-        calendar_events_node_uid = str(calendar_events_node.table_update.uid)
-        print_detail("calendar_events_data_node_uid", calendar_events_node_uid)
+        calendar_events_table_update_uid = str(calendar_events_node.table_update.uid)
+        print_detail("calendar_events_table_update_uid", calendar_events_table_update_uid)
 
         portfolio_weights_node = portfolio_values_node._canonical_portfolio_weights_node()
-        portfolio_rebalance_node_uid = str(
+        portfolio_rebalance_table_update_uid = str(
             portfolio_weights_node.portfolio_rebalance.table_update.uid
         )
-        print_detail("portfolio_rebalance_data_node_uid", portfolio_rebalance_node_uid)
+        print_detail("portfolio_rebalance_table_update_uid", portfolio_rebalance_table_update_uid)
 
-        portfolio_weights_node_uid = str(portfolio_weights_node.table_update.uid)
-        print_detail("portfolio_weights_data_node_uid", portfolio_weights_node_uid)
+        portfolio_weights_table_update_uid = str(portfolio_weights_node.table_update.uid)
+        print_detail("portfolio_weights_table_update_uid", portfolio_weights_table_update_uid)
 
-        portfolio_values_node_uid = str(portfolio_values_node.table_update.uid)
-        print_detail("portfolio_values_data_node_uid", portfolio_values_node_uid)
+        portfolio_values_table_update_uid = str(portfolio_values_node.table_update.uid)
+        print_detail("portfolio_values_table_update_uid", portfolio_values_table_update_uid)
     else:
-        print_detail("source_prices_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("interpolated_prices_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("signal_weights_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("calendar_events_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_rebalance_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_weights_data_node_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_values_data_node_uid", "skipped (--no-run-updaters)")
-        source_prices_node_uid = None
-        interpolated_prices_node_uid = None
-        signal_weights_node_uid = None
-        calendar_events_node_uid = None
-        portfolio_rebalance_node_uid = None
-        portfolio_weights_node_uid = None
-        portfolio_values_node_uid = None
+        print_detail("source_prices_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("interpolated_prices_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("signal_weights_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("calendar_events_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("portfolio_rebalance_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("portfolio_weights_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("portfolio_values_table_update_uid", "skipped (--no-run-updaters)")
+        source_prices_table_update_uid = None
+        interpolated_prices_table_update_uid = None
+        signal_weights_table_update_uid = None
+        calendar_events_table_update_uid = None
+        portfolio_rebalance_table_update_uid = None
+        portfolio_weights_table_update_uid = None
+        portfolio_values_table_update_uid = None
 
     print_step(6, "Portfolio row has current TimeIndexTableUpdater links.")
     print_detail("portfolio_uid", portfolio.uid)
@@ -532,13 +532,13 @@ def build_equal_weight_portfolio(
         "interpolated_prices_storage_uid": getattr(interpolated_prices_meta_table, "uid", None),
         "interpolated_prices_output_table": interpolated_prices_storage.__table__.name,
         "interpolated_prices_storage_cadence": interpolated_prices_storage.__cadence__,
-        "source_prices_node_uid": source_prices_node_uid,
-        "interpolated_prices_node_uid": interpolated_prices_node_uid,
-        "signal_weights_node_uid": signal_weights_node_uid,
-        "calendar_events_node_uid": calendar_events_node_uid,
-        "portfolio_rebalance_node_uid": portfolio_rebalance_node_uid,
-        "portfolio_weights_node_uid": portfolio_weights_node_uid,
-        "portfolio_values_node_uid": portfolio_values_node_uid,
+        "source_prices_table_update_uid": source_prices_table_update_uid,
+        "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
+        "signal_weights_table_update_uid": signal_weights_table_update_uid,
+        "calendar_events_table_update_uid": calendar_events_table_update_uid,
+        "portfolio_rebalance_table_update_uid": portfolio_rebalance_table_update_uid,
+        "portfolio_weights_table_update_uid": portfolio_weights_table_update_uid,
+        "portfolio_values_table_update_uid": portfolio_values_table_update_uid,
     }
     print_result_summary(result, run_updaters=run_updaters)
     return result

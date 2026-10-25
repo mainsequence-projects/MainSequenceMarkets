@@ -13,6 +13,7 @@ from msm.api.base import operation_result_rows
 from msm.models import AccountTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from msm.repositories.crud import renamed_column_value
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
 
@@ -114,7 +115,7 @@ def get_account_frontend_detail_summary(
     display_name = _string_or_empty(account_row.get("account_name"))
     is_paper = bool(account_row.get("is_paper", False))
     account_is_active = bool(account_row.get("account_is_active", False))
-    holdings_data_node_uid = _string_or_none(account_row.get("holdings_data_node_uid"))
+    holdings_storage_table_uid = _holdings_storage_table_uid(account_row)
 
     return {
         "entity": {
@@ -165,7 +166,9 @@ def get_account_frontend_detail_summary(
         },
         "summary_warning": None,
         "extensions": {
-            "holdings_data_node_uid": holdings_data_node_uid,
+            "holdings_storage_table_uid": holdings_storage_table_uid,
+            # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
+            "holdings_data_node_uid": holdings_storage_table_uid,
             "metadata_json": _mapping_or_none(account_row.get("metadata_json")),
         },
     }
@@ -337,9 +340,15 @@ def _build_account_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "account_name": _string_or_empty(row.get("account_name")),
         "is_paper": bool(row.get("is_paper", False)),
         "account_is_active": bool(row.get("account_is_active", False)),
-        "holdings_data_node_uid": _string_or_none(row.get("holdings_data_node_uid")),
+        "holdings_storage_table_uid": _holdings_storage_table_uid(row),
+        # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
+        "holdings_data_node_uid": _holdings_storage_table_uid(row),
         "metadata_json": _mapping_or_none(row.get("metadata_json")),
     }
+
+
+def _holdings_storage_table_uid(row: Mapping[str, Any]) -> str | None:
+    return _string_or_none(renamed_column_value(AccountTable, row, "holdings_storage_table_uid"))
 
 
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:

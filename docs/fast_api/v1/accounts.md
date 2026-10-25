@@ -5,17 +5,23 @@ account target-position assignment. Target-allocation candidate searches resolve
 valid asset and portfolio targets, and holdings read endpoints support both
 direct account snapshots and virtual-fund-grouped views.
 
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries `holdings_storage_table_uid` or `source_storage_table_uid` also
+    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
   - returns `command-center.resource_collection@v1`
   - exposes `GET /api/v1/account/discovery/`
   - `items` contains the library `msm.api.accounts.Account` contract:
     `uid`, `unique_identifier`, `account_name`, `is_paper`,
-    `account_is_active`, `holdings_data_node_uid`, and `metadata_json`
+    `account_is_active`, `holdings_storage_table_uid`, and `metadata_json`
 - `POST /api/v1/account/`
   - creates one `Account` identity row from the `msm.api.accounts.AccountCreate`
     payload (`unique_identifier`, `account_name`, `is_paper`,
-    `account_is_active`, `account_group_uid`, `holdings_data_node_uid`,
+    `account_is_active`, `account_group_uid`, `holdings_storage_table_uid`,
     `metadata_json`) and returns it with `201`
   - `409` when the row cannot be stored, for example a duplicate
     `unique_identifier`
@@ -44,7 +50,7 @@ direct account snapshots and virtual-fund-grouped views.
 - `PATCH /api/v1/account/{uid}/`
   - updates the mutable fields of one `Account` row from the
     `msm.api.accounts.AccountUpdate` payload (`account_name`, `is_paper`,
-    `account_is_active`, `account_group_uid`, `holdings_data_node_uid`,
+    `account_is_active`, `account_group_uid`, `holdings_storage_table_uid`,
     `metadata_json`); omitted fields are unchanged
   - `404` when the uid is unknown
 - `GET /api/v1/account/{uid}/summary/`

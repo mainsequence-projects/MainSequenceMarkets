@@ -195,13 +195,13 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if update_pointers:
             portfolio = self._update_portfolio_pointers(
                 portfolio=portfolio,
-                signal_weights_data_node_uid=self._required_table_update_uid(
+                signal_weights_table_update_uid=self._required_table_update_uid(
                     self.signal_weights, "signal weights"
                 ),
-                portfolio_weights_data_node_uid=self._required_table_update_uid(
+                portfolio_weights_table_update_uid=self._required_table_update_uid(
                     portfolio_weights, "portfolio weights"
                 ),
-                portfolio_data_node_uid=self._required_table_update_uid(self, "portfolio values"),
+                portfolio_table_update_uid=self._required_table_update_uid(self, "portfolio values"),
             )
         return {
             "portfolio_weights": portfolio_weights,
@@ -544,9 +544,9 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         self,
         *,
         portfolio: Any,
-        signal_weights_data_node_uid: str,
-        portfolio_weights_data_node_uid: str,
-        portfolio_data_node_uid: str,
+        signal_weights_table_update_uid: str,
+        portfolio_weights_table_update_uid: str,
+        portfolio_table_update_uid: str,
     ) -> Any:
         from msm.api.portfolios import Portfolio
 
@@ -563,10 +563,10 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             backtest_table_price_column_name=(
                 portfolio.backtest_table_price_column_name or self.valuation_column
             ),
-            signal_weights_data_node_uid=signal_weights_data_node_uid,
+            signal_weights_table_update_uid=signal_weights_table_update_uid,
             signal_uid=self._required_signal_uid(self.signal_weights),
-            portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
-            portfolio_data_node_uid=portfolio_data_node_uid,
+            portfolio_weights_table_update_uid=portfolio_weights_table_update_uid,
+            portfolio_table_update_uid=portfolio_table_update_uid,
         )
         self.target_portfolio = portfolio
         return portfolio

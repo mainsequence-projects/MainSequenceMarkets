@@ -864,13 +864,13 @@ class PricingValuationContext:
 
         return MSDataInterface(
             market_data_configuration={
-                "data_node_uids": {
+                "storage_table_uids": {
                     PRICING_CONCEPT_DISCOUNT_CURVES: self.market_data_bindings[
                         PRICING_CONCEPT_DISCOUNT_CURVES
-                    ].data_node_uid,
+                    ].storage_table_uid,
                     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: self.market_data_bindings[
                         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
-                    ].data_node_uid,
+                    ].storage_table_uid,
                 }
             }
         )

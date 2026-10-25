@@ -36,7 +36,7 @@ hides per-line resolver loops does not satisfy that decision.
 
 - [Market Data Sets](market_data_sets.md): first-class `PricingMarketDataSet`
   rows, concept bindings, default-binding seeding, the
-  `data_node_uid` vs `storage_table_identifier` boundary, and selecting
+  `storage_table_uid` vs `storage_table_identifier` boundary, and selecting
   `eod`/`live`/`risk_manager` sets.
 - [Instruments](instruments.md): the asset-to-instrument projection
   (`AssetCurrentPricingDetailsTable`, attach/load helpers) and the account and
@@ -152,10 +152,10 @@ relationship map:
                         │        ▼                              ▼
               +---------+----------------+      +-------------------------------------+
               | PricingMarketDataSet     |      | PricingMarketDataSetCurveBinding    |
-              | CurveBinding             |      | concept_key -> data_node_uid        |
+              | CurveBinding             |      | concept_key -> storage_table_uid    |
               | role_key, selector_type, |      |  (SOURCE: which storage table)      |
               | selector_key, quote_side |      +------------------+------------------+
-              |   -> curve_uid ──────────┘                         │ data_node_uid
+              |   -> curve_uid ──────────┘                         │ storage_table_uid
               | selector_key MAY hold an                           ▼
               | IndexTable.uid as a STRING                 selected storage table
               | (policy, not a table FK)                   (e.g. DiscountCurvesStorage)
@@ -165,7 +165,7 @@ relationship map:
 Read it as two questions answered by two different binding rows:
 
 - **Where do I read observations from?** `PricingMarketDataSetBinding`:
-  `(market_data_set, concept_key) -> data_node_uid -> storage table`.
+  `(market_data_set, concept_key) -> storage_table_uid -> storage table`.
 - **Which curve identity inside that storage do I use?**
   `PricingMarketDataSetCurveBinding`:
   `(market_data_set, role_key, selector_type, selector_key, quote_side) -> curve_uid`.

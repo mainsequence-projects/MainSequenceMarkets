@@ -24,6 +24,7 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
                     "is_paper": False,
                     "account_is_active": True,
                     "account_group_uid": None,
+                    "holdings_storage_table_uid": None,
                     "holdings_data_node_uid": None,
                     "metadata_json": None,
                 }
@@ -44,6 +45,7 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
                 "is_paper": False,
                 "account_is_active": True,
                 "account_group_uid": None,
+                "holdings_storage_table_uid": None,
                 "holdings_data_node_uid": None,
                 "metadata_json": None,
             }
@@ -104,6 +106,7 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
                     "is_paper": False,
                     "account_is_active": True,
                     "account_group_uid": None,
+                    "holdings_storage_table_uid": None,
                     "holdings_data_node_uid": None,
                     "metadata_json": {"source": "test"},
                 }
@@ -128,6 +131,7 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
                 "is_paper": False,
                 "account_is_active": True,
                 "account_group_uid": None,
+                "holdings_storage_table_uid": None,
                 "holdings_data_node_uid": None,
                 "metadata_json": {"source": "test"},
             }
@@ -182,6 +186,7 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
             },
             "summary_warning": None,
             "extensions": {
+                "holdings_storage_table_uid": None,
                 "holdings_data_node_uid": None,
                 "metadata_json": None,
             },
@@ -240,6 +245,7 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
         },
         "summary_warning": None,
         "extensions": {
+            "holdings_storage_table_uid": None,
             "holdings_data_node_uid": None,
             "metadata_json": None,
         },
@@ -2626,6 +2632,7 @@ def _account_payload(account_uid: uuid.UUID) -> dict[str, object]:
         "is_paper": True,
         "account_is_active": False,
         "account_group_uid": None,
+        "holdings_storage_table_uid": None,
         "holdings_data_node_uid": None,
         "metadata_json": {"provider": "broker"},
     }

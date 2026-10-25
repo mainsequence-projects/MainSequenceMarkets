@@ -47,6 +47,37 @@ def mirror_renamed_columns(
     return payload
 
 
+READ_PRE_3_0_COLUMNS = True
+"""Read each renamed UID column under its pre-3.0 name (ADR 0048).
+
+2.x writers update only the pre-3.0 column, so ms-markets 3.0 treats it as the
+source of truth. ms-markets 3.1 reads the current column once every writer runs 3.x.
+"""
+
+
+def renamed_column_value(model: type[MarketsBase], row: Mapping[str, Any], current: str) -> Any:
+    """Return the value of renamed UID column ``current`` from a row that may hold both names."""
+
+    previous = model.__renamed_columns__[current]
+    first, second = (previous, current) if READ_PRE_3_0_COLUMNS else (current, previous)
+    if first in row:
+        return row[first]
+    return row.get(second)
+
+
+def renamed_keyword(current_value: Any, previous_value: Any, *, current: str, previous: str) -> Any:
+    """Return the value passed as ``current=``, or as pre-3.0 ``previous=`` with a warning."""
+
+    if previous_value is None:
+        return current_value
+    from msm._deprecated_imports import warn_renamed
+
+    warn_renamed(f"{previous}=", f"{current}=")
+    if current_value is not None and not _same_value(current_value, previous_value):
+        raise TypeError(f"Pass {current}= or its pre-3.0 name {previous}=, not both.")
+    return previous_value
+
+
 def _same_value(left: Any, right: Any) -> bool:
     return left == right or (left is not None and right is not None and str(left) == str(right))
 

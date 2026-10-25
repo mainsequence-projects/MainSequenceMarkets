@@ -578,10 +578,10 @@ Portfolio identity, required calendar linkage, and optional published-index link
 | uid PK                      |                                  | uid PK                      |
 | unique_identifier unique    |                                  | unique_identifier unique    |
 | calendar_uid FK NOT NULL ---+----+                             | index_type                  |
-| portfolio_weights_data_node_uid |--> PortfolioWeights           +-----------------------------+
-| signal_weights_data_node_uid    |--> SignalWeights
+| portfolio_weights_table_update_uid |--> PortfolioWeights       +-----------------------------+
+| signal_weights_table_update_uid    |--> SignalWeights
 | signal_uid FK nullable ---------+----------------------------+
-| portfolio_data_node_uid         |--> PortfoliosUpdater
+| portfolio_table_update_uid         |--> PortfoliosUpdater
 | backtest_table_price_column_name|
 +-----------------------------+
                                   |
@@ -1030,9 +1030,9 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
         | PortfolioTable                                          |
         | - portfolio identity                                    |
-        | - signal_weights_data_node_uid                          |
-        | - portfolio_weights_data_node_uid                       |
-        | - portfolio_data_node_uid                               |
+        | - signal_weights_table_update_uid                       |
+        | - portfolio_weights_table_update_uid                    |
+        | - portfolio_table_update_uid                            |
         | - optional published_index_uid -> IndexTable.uid        |
         +---------------------------------------------------------+
 ```
@@ -1046,7 +1046,7 @@ without updating portfolio registry links.
 
 When a run publishes no new executed weights, the workflow must not require a
 fresh `PortfolioWeights` TimeIndexTableUpdate. It preserves the existing
-`PortfolioTable.portfolio_weights_data_node_uid` and still updates the signal
+`PortfolioTable.portfolio_weights_table_update_uid` and still updates the signal
 and portfolio-values pointers from the TimeIndexTableUpdate records produced by the current
 graph run.
 

@@ -118,15 +118,13 @@ class MSDataInterface:
         return PricingMarketDataConfiguration.model_validate(
             {
                 "market_data_set": getattr(configuration, "market_data_set"),
-                "data_node_uids": getattr(
-                    configuration,
-                    "data_node_uids",
-                    {},
-                ),
+                # Configuration objects built for 2.x carry the pre-3.0 attribute name.
+                "storage_table_uids": getattr(configuration, "storage_table_uids", None)
+                or getattr(configuration, "data_node_uids", {}),
             }
         )
 
-    def _data_node_uid_for_concept(
+    def _storage_table_uid_for_concept(
         self,
         concept_key: str,
         *,
@@ -134,25 +132,25 @@ class MSDataInterface:
     ) -> uuid.UUID:
         configuration = self._get_market_data_configuration()
         if market_data_set is None:
-            direct_uid = configuration.direct_data_node_uid_for(concept_key)
+            direct_uid = configuration.direct_storage_table_uid_for(concept_key)
             if direct_uid is not None:
                 return direct_uid
             market_data_set = configuration.market_data_set
 
-        return self._persisted_data_node_uid_for_concept(
+        return self._persisted_storage_table_uid_for_concept(
             market_data_set=market_data_set,
             concept_key=concept_key,
         )
 
     @staticmethod
-    def _persisted_data_node_uid_for_concept(
+    def _persisted_storage_table_uid_for_concept(
         *,
         market_data_set: Any,
         concept_key: str,
     ) -> uuid.UUID:
         from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
-        return PricingMarketDataSetBinding.resolve_data_node_uid(
+        return PricingMarketDataSetBinding.resolve_storage_table_uid(
             market_data_set=market_data_set,
             concept_key=concept_key,
         )
@@ -162,7 +160,7 @@ class MSDataInterface:
 
         return TimeIndexTableRef.from_uid(
             str(
-                self._data_node_uid_for_concept(
+                self._storage_table_uid_for_concept(
                     concept_key,
                     market_data_set=market_data_set,
                 )

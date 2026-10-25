@@ -16,11 +16,14 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "unique_identifier": "example-sleeve",
         "calendar_uid": str(uuid.uuid4()),
         "published_index_uid": str(uuid.uuid4()),
+        "portfolio_weights_table_update_uid": None,
+        "signal_weights_table_update_uid": None,
+        "signal_uid": None,
+        "portfolio_table_update_uid": None,
+        "backtest_table_price_column_name": "close",
         "portfolio_weights_data_node_uid": None,
         "signal_weights_data_node_uid": None,
-        "signal_uid": None,
         "portfolio_data_node_uid": None,
-        "backtest_table_price_column_name": "close",
     }
 
 
@@ -226,6 +229,7 @@ def test_get_portfolio_summary_returns_standard_summary(monkeypatch) -> None:
 def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     portfolio = _portfolio_row()
     portfolio["calendar_uid"] = str(uuid.uuid4())
+    # A 2.x writer updates only the pre-3.0 columns, which 3.0 reads (ADR 0048).
     portfolio["portfolio_weights_data_node_uid"] = str(uuid.uuid4())
     portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
     portfolio["signal_uid"] = "example-signal"
@@ -259,15 +263,18 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     }
     assert "backtest_table_price_column_name" not in summary_keys
     assert {
-        "portfolio_weights_data_node_uid",
-        "signal_weights_data_node_uid",
+        "portfolio_weights_table_update_uid",
+        "signal_weights_table_update_uid",
         "signal_uid",
-        "portfolio_data_node_uid",
+        "portfolio_table_update_uid",
     } <= summary_keys
     assert summary["extensions"]["pointers"] == {
+        "portfolio_weights_table_update_uid": portfolio["portfolio_weights_data_node_uid"],
+        "signal_weights_table_update_uid": portfolio["signal_weights_data_node_uid"],
+        "signal_uid": portfolio["signal_uid"],
+        "portfolio_table_update_uid": portfolio["portfolio_data_node_uid"],
         "portfolio_weights_data_node_uid": portfolio["portfolio_weights_data_node_uid"],
         "signal_weights_data_node_uid": portfolio["signal_weights_data_node_uid"],
-        "signal_uid": portfolio["signal_uid"],
         "portfolio_data_node_uid": portfolio["portfolio_data_node_uid"],
     }
     assert summary["highlight_fields"][0] == {
@@ -285,14 +292,14 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     assert inline_fields_by_key["published_index_uid"]["link_url"] == (
         f"/api/v1/index/{portfolio['published_index_uid']}/"
     )
-    assert inline_fields_by_key["portfolio_weights_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["portfolio_weights_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/weights/"
         "?order=desc&limit=1&include_asset_detail=true"
     )
-    assert inline_fields_by_key["signal_weights_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["signal_weights_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/signals_weights/?order=desc&limit=100"
     )
-    assert inline_fields_by_key["portfolio_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["portfolio_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/portfolio_values/?order=desc&limit=100"
     )
     assert summary["badges"] == [
@@ -496,7 +503,7 @@ def test_get_portfolio_signal_weights_frame_returns_tabular_response(monkeypatch
 
 def test_get_portfolio_signal_weights_frame_returns_400_when_unconfigured(monkeypatch) -> None:
     def fake_signal_weights_frame(**kwargs):
-        raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
+        raise ValueError("Portfolio has no signal_weights_table_update_uid configured.")
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.get_portfolio_signal_weights_frame",
@@ -507,7 +514,7 @@ def test_get_portfolio_signal_weights_frame_returns_400_when_unconfigured(monkey
     response = client.get(f"/api/v1/portfolio/{uuid.uuid4()}/signals_weights/")
 
     assert response.status_code == 400
-    assert "signal_weights_data_node_uid" in response.json()["detail"]
+    assert "signal_weights_table_update_uid" in response.json()["detail"]
 
 
 def test_get_portfolio_values_frame_returns_tabular_response(monkeypatch) -> None:
@@ -1456,7 +1463,7 @@ def test_public_signal_weights_frame_requires_signal_updater(monkeypatch) -> Non
 
     from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response
 
-    with pytest.raises(ValueError, match="signal_weights_data_node_uid"):
+    with pytest.raises(ValueError, match="signal_weights_table_update_uid"):
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 

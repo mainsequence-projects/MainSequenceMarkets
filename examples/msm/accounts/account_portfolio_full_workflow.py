@@ -578,7 +578,7 @@ def _run_virtual_fund_allocation_extension(
         print("2. Applying account virtual-fund allocation through VirtualFundHoldings.")
         applied_frame = apply_account_virtual_fund_allocation_plan(
             plan,
-            data_node=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
+            updater=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
             run=True,
         )
         print("    Applied virtual-fund holdings rows:")

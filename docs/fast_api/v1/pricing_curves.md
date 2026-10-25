@@ -10,6 +10,12 @@ These routes list `CurveTable` registry rows through `msm_pricing.api.Curve`.
 They do not return timestamped `DiscountCurvesStorage` observations or
 compressed curve payloads.
 
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries `storage_table_uid` also
+    repeats it under its pre-3.0 name `data_node_uid`, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+
 ## List Curves
 
 ```text
@@ -321,7 +327,7 @@ Response:
   "delete_curve_selections": true,
   "storage_cleanups": [
     {
-      "data_node_uid": "discount-curves-data-node-uid",
+      "storage_table_uid": "discount-curves-storage-table-uid",
       "storage_table_identifier": "DiscountCurvesStorage",
       "deleted_count": 10,
       "table_empty": false
@@ -385,7 +391,7 @@ Response:
   "binding": {
     "uid": "binding-uid",
     "concept_key": "discount_curves",
-    "data_node_uid": "discount-curves-data-node-uid",
+    "storage_table_uid": "discount-curves-storage-table-uid",
     "storage_table_identifier": "DiscountCurvesStorage"
   },
   "valuation_date": "2026-06-01T00:00:00Z",
@@ -440,6 +446,6 @@ state explicitly:
 
 ```json
 {
-  "detail": "No discount-curve data has been published for curve 'PROVIDER_TIIE_28' in pricing market-data set 'default'. The curve registry row and discount_curves binding exist, but bound TimeIndexTableUpdater <data-node-uid> has no latest ms_markets__discountcurvests observation for this curve_identifier."
+  "detail": "No discount-curve data has been published for curve 'PROVIDER_TIIE_28' in pricing market-data set 'default'. The curve registry row and discount_curves binding exist, but bound storage table <storage-table-uid> has no latest ms_markets__discountcurvests observation for this curve_identifier."
 }
 ```

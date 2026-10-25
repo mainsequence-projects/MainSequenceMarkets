@@ -277,7 +277,7 @@ Use one rule for markets MetaTables and markets TimeIndexTableUpdaters:
   `asset_snapshots`
 - when `MSM_AUTO_REGISTER_NAMESPACE` is set to a non-default namespace, prefix
   logical identifiers with that namespace
-- use `markets_data_node_identifier(...)` for TimeIndexTableUpdater identifiers
+- use `markets_identifier(...)` for TimeIndexTableUpdater identifiers
 - let `AssetIndexedUpdater` apply the default markets `hash_namespace`
 - pass explicit `hash_namespace` only for tests, isolated experiments, or
   parallel runs that must not collide

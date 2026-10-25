@@ -21,6 +21,7 @@ from msm.repositories.crud import (
     build_update_model_operation,
     build_upsert_model_operation,
     mirror_renamed_columns,
+    renamed_keyword,
 )
 
 
@@ -30,12 +31,33 @@ def build_create_portfolio_operation(
     unique_identifier: str,
     calendar_uid: uuid.UUID | str,
     published_index_uid: uuid.UUID | str | None = None,
+    portfolio_weights_table_update_uid: uuid.UUID | str | None = None,
+    signal_weights_table_update_uid: uuid.UUID | str | None = None,
+    signal_uid: str | None = None,
+    portfolio_table_update_uid: uuid.UUID | str | None = None,
+    backtest_table_price_column_name: str = "close",
     portfolio_weights_data_node_uid: uuid.UUID | str | None = None,
     signal_weights_data_node_uid: uuid.UUID | str | None = None,
-    signal_uid: str | None = None,
     portfolio_data_node_uid: uuid.UUID | str | None = None,
-    backtest_table_price_column_name: str = "close",
 ) -> MetaTableCompiledSQLOperation:
+    portfolio_weights_table_update_uid = renamed_keyword(
+        portfolio_weights_table_update_uid,
+        portfolio_weights_data_node_uid,
+        current="portfolio_weights_table_update_uid",
+        previous="portfolio_weights_data_node_uid",
+    )
+    signal_weights_table_update_uid = renamed_keyword(
+        signal_weights_table_update_uid,
+        signal_weights_data_node_uid,
+        current="signal_weights_table_update_uid",
+        previous="signal_weights_data_node_uid",
+    )
+    portfolio_table_update_uid = renamed_keyword(
+        portfolio_table_update_uid,
+        portfolio_data_node_uid,
+        current="portfolio_table_update_uid",
+        previous="portfolio_data_node_uid",
+    )
     statement = (
         insert(PortfolioTable)
         .values(
@@ -45,10 +67,10 @@ def build_create_portfolio_operation(
                     "unique_identifier": unique_identifier,
                     "calendar_uid": calendar_uid,
                     "published_index_uid": published_index_uid,
-                    "portfolio_weights_data_node_uid": portfolio_weights_data_node_uid,
-                    "signal_weights_data_node_uid": signal_weights_data_node_uid,
+                    "portfolio_weights_table_update_uid": portfolio_weights_table_update_uid,
+                    "signal_weights_table_update_uid": signal_weights_table_update_uid,
                     "signal_uid": signal_uid,
-                    "portfolio_data_node_uid": portfolio_data_node_uid,
+                    "portfolio_table_update_uid": portfolio_table_update_uid,
                     "backtest_table_price_column_name": backtest_table_price_column_name,
                 },
             )

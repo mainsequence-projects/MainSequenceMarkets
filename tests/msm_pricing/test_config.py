@@ -30,7 +30,7 @@ def test_pricing_market_data_configuration_defaults_to_empty_runtime_overrides()
     configuration = default_pricing_market_data_configuration()
 
     assert configuration.market_data_set == PRICING_MARKET_DATA_SET_DEFAULT
-    assert configuration.data_node_uids == {}
+    assert configuration.storage_table_uids == {}
 
 
 def test_set_pricing_market_data_configuration_accepts_typed_override() -> None:
@@ -38,7 +38,7 @@ def test_set_pricing_market_data_configuration_accepts_typed_override() -> None:
     fixings_uid = "00000000-0000-0000-0000-000000000102"
     override = PricingMarketDataConfiguration(
         market_data_set="eod",
-        data_node_uids={
+        storage_table_uids={
             PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
         },
@@ -56,7 +56,7 @@ def test_set_pricing_market_data_configuration_accepts_mapping_override() -> Non
     configured = set_pricing_market_data_configuration(
         {
             "market_data_set": "risk_manager",
-            "data_node_uids": {
+            "storage_table_uids": {
                 PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
                 PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
             },
@@ -65,7 +65,7 @@ def test_set_pricing_market_data_configuration_accepts_mapping_override() -> Non
 
     assert configured == PricingMarketDataConfiguration(
         market_data_set="risk_manager",
-        data_node_uids={
+        storage_table_uids={
             PRICING_CONCEPT_DISCOUNT_CURVES: discount_curves_uid,
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_uid,
         },
@@ -86,7 +86,7 @@ def test_reset_pricing_market_data_configuration_restores_defaults() -> None:
     set_pricing_market_data_configuration(
         {
             "market_data_set": "eod",
-            "data_node_uids": {
+            "storage_table_uids": {
                 PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000301",
             },
         }

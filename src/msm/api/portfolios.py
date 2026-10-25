@@ -6,7 +6,12 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from msm.api.base import MarketsMetaTableRow, operation_result_rows
+from msm.api.base import (
+    MarketsMetaTableRow,
+    PayloadWithRenamedFields,
+    operation_result_rows,
+    pre_3_0_field,
+)
 from msm.models import (
     CalendarTable,
     IndexTable,
@@ -54,23 +59,35 @@ class Portfolio(MarketsMetaTableRow):
     unique_identifier: str
     calendar_uid: uuid.UUID
     published_index_uid: uuid.UUID | None = None
-    portfolio_weights_data_node_uid: uuid.UUID | None = None
-    signal_weights_data_node_uid: uuid.UUID | None = None
+    portfolio_weights_table_update_uid: uuid.UUID | None = None
+    signal_weights_table_update_uid: uuid.UUID | None = None
     signal_uid: str | None = None
-    portfolio_data_node_uid: uuid.UUID | None = None
+    portfolio_table_update_uid: uuid.UUID | None = None
     backtest_table_price_column_name: str = "close"
+    portfolio_weights_data_node_uid: uuid.UUID | None = pre_3_0_field(
+        "portfolio_weights_table_update_uid"
+    )
+    signal_weights_data_node_uid: uuid.UUID | None = pre_3_0_field(
+        "signal_weights_table_update_uid"
+    )
+    portfolio_data_node_uid: uuid.UUID | None = pre_3_0_field("portfolio_table_update_uid")
 
 
-class PortfolioCreate(BaseModel):
+class PortfolioCreate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "portfolio_weights_table_update_uid": "portfolio_weights_data_node_uid",
+        "signal_weights_table_update_uid": "signal_weights_data_node_uid",
+        "portfolio_table_update_uid": "portfolio_data_node_uid",
+    }
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     calendar_uid: uuid.UUID | str
     published_index_uid: uuid.UUID | str | None = None
-    portfolio_weights_data_node_uid: uuid.UUID | str | None = None
-    signal_weights_data_node_uid: uuid.UUID | str | None = None
+    portfolio_weights_table_update_uid: uuid.UUID | str | None = None
+    signal_weights_table_update_uid: uuid.UUID | str | None = None
     signal_uid: str | None = Field(default=None, max_length=255)
-    portfolio_data_node_uid: uuid.UUID | str | None = None
+    portfolio_table_update_uid: uuid.UUID | str | None = None
     backtest_table_price_column_name: str = "close"
 
 
@@ -78,15 +95,20 @@ class PortfolioUpsert(PortfolioCreate):
     """Payload for inserting or updating a portfolio."""
 
 
-class PortfolioUpdate(BaseModel):
+class PortfolioUpdate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "portfolio_weights_table_update_uid": "portfolio_weights_data_node_uid",
+        "signal_weights_table_update_uid": "signal_weights_data_node_uid",
+        "portfolio_table_update_uid": "portfolio_data_node_uid",
+    }
 
     calendar_uid: uuid.UUID | str | None = None
     published_index_uid: uuid.UUID | str | None = None
-    portfolio_weights_data_node_uid: uuid.UUID | str | None = None
-    signal_weights_data_node_uid: uuid.UUID | str | None = None
+    portfolio_weights_table_update_uid: uuid.UUID | str | None = None
+    signal_weights_table_update_uid: uuid.UUID | str | None = None
     signal_uid: str | None = Field(default=None, max_length=255)
-    portfolio_data_node_uid: uuid.UUID | str | None = None
+    portfolio_table_update_uid: uuid.UUID | str | None = None
     backtest_table_price_column_name: str | None = None
 
     @model_validator(mode="before")

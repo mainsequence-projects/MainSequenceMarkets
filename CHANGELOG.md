@@ -130,6 +130,22 @@ and this project follows versioned releases.
   its run history, and the producer continues from its output table's last
   observation. `signal_uid`, portfolio configuration hashes and rebalance
   strategy revisions do not change; `msm.identity` maps the moved paths back.
+- **Renamed UID fields (ADR 0048).** Row APIs, payloads, repositories, services
+  and HTTP responses use `holdings_storage_table_uid` (`Account`),
+  `source_storage_table_uid` (`AccountHoldingsSet`),
+  `portfolio_weights_table_update_uid`, `signal_weights_table_update_uid` and
+  `portfolio_table_update_uid` (`Portfolio`), and `storage_table_uid`
+  (`PricingMarketDataSetBinding` and the curve and resolve responses).
+  `PricingMarketDataConfiguration.data_node_uids` is `storage_table_uids`,
+  `PricingMarketDataSetBinding.resolve_data_node_uid` is
+  `resolve_storage_table_uid`, `direct_data_node_uid_for` is
+  `direct_storage_table_uid_for`, and the virtual-fund allocation methods take
+  `updater=` instead of `data_node=`. Rows read the pre-3.0 column, which 2.x
+  writers still update. Portfolio detail fields use the new keys and the
+  labels "Portfolio Weights Table Update", "Signal Weights Table Update" and
+  "Portfolio Values Table Update"; the Command Center binding column is
+  `storage_table_uid`. Missing-curve messages call the bound UID a storage
+  table instead of a TimeIndexTableUpdater.
 - `portfolio_values`, `latest_portfolio_weights` and the new `signal_weights`
   read in `msm_portfolios.services.portfolio_reads` resolve each portfolio's
   table from the catalog and read it by uid through `TimeIndexTableRef`,
@@ -151,6 +167,15 @@ and this project follows versioned releases.
   `PortfoliosDataNode` and `DiscountCurvesNode`, resolve from those paths and
   from `msm_portfolios` with a warning. Stored configurations that name the old
   paths still rebuild. ms-markets 4.0 removes the aliases.
+- The pre-3.0 UID field names (`holdings_data_node_uid`,
+  `source_data_node_uid`, `portfolio_weights_data_node_uid`,
+  `signal_weights_data_node_uid`, `portfolio_data_node_uid` and
+  `data_node_uid`) stay readable on rows and in every HTTP response, where
+  OpenAPI marks them deprecated, and requests, payloads, row writes and
+  repository builders accept them with a `DeprecationWarning`.
+  `data_node_uids`, `resolve_data_node_uid`, `direct_data_node_uid_for`,
+  `data_node=` and `msm.settings.markets_data_node_identifier` are deprecated
+  aliases. ms-markets 4.0 removes them.
 
 ### Fixed
 

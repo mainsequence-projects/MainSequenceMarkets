@@ -21,6 +21,7 @@ from msm.repositories.crud import (
     count_model,
     create_model,
     get_model_by_uid,
+    renamed_column_value,
     search_model,
     update_model,
 )
@@ -192,16 +193,16 @@ def get_portfolio_frontend_detail_summary(
                 else None,
             },
             {
-                "key": "portfolio_weights_data_node_uid",
-                "label": "Portfolio Weights Node",
-                "value": _string_or_none(portfolio.get("portfolio_weights_data_node_uid")),
+                "key": "portfolio_weights_table_update_uid",
+                "label": "Portfolio Weights Table Update",
+                "value": _string_or_none(portfolio.get("portfolio_weights_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["portfolio_weights"].get("url")),
             },
             {
-                "key": "signal_weights_data_node_uid",
-                "label": "Signal Weights Node",
-                "value": _string_or_none(portfolio.get("signal_weights_data_node_uid")),
+                "key": "signal_weights_table_update_uid",
+                "label": "Signal Weights Table Update",
+                "value": _string_or_none(portfolio.get("signal_weights_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["signal_weights"].get("url")),
             },
@@ -212,9 +213,9 @@ def get_portfolio_frontend_detail_summary(
                 "kind": "code",
             },
             {
-                "key": "portfolio_data_node_uid",
-                "label": "Portfolio Values Node",
-                "value": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+                "key": "portfolio_table_update_uid",
+                "label": "Portfolio Values Table Update",
+                "value": _string_or_none(portfolio.get("portfolio_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["portfolio_values"].get("url")),
             },
@@ -244,16 +245,17 @@ def get_portfolio_frontend_detail_summary(
             "calendar": calendar_reference,
             "nodes": node_references,
             "pointers": {
-                "portfolio_weights_data_node_uid": _string_or_none(
-                    portfolio.get("portfolio_weights_data_node_uid")
+                "portfolio_weights_table_update_uid": _string_or_none(
+                    portfolio.get("portfolio_weights_table_update_uid")
                 ),
-                "signal_weights_data_node_uid": _string_or_none(
-                    portfolio.get("signal_weights_data_node_uid")
+                "signal_weights_table_update_uid": _string_or_none(
+                    portfolio.get("signal_weights_table_update_uid")
                 ),
                 "signal_uid": _string_or_none(portfolio.get("signal_uid")),
-                "portfolio_data_node_uid": _string_or_none(
-                    portfolio.get("portfolio_data_node_uid")
+                "portfolio_table_update_uid": _string_or_none(
+                    portfolio.get("portfolio_table_update_uid")
                 ),
+                **_pre_3_0_pointers(portfolio),
             },
         },
     }
@@ -284,7 +286,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
     portfolio_uid = _string_or_none(portfolio.get("uid"))
     return {
         "portfolio_weights": {
-            "uid": _string_or_none(portfolio.get("portfolio_weights_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("portfolio_weights_table_update_uid")),
             "label": "Portfolio weights",
             "url": (
                 f"/api/v1/portfolio/{portfolio_uid}/weights/"
@@ -294,7 +296,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
             ),
         },
         "signal_weights": {
-            "uid": _string_or_none(portfolio.get("signal_weights_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("signal_weights_table_update_uid")),
             "signal_uid": _string_or_none(portfolio.get("signal_uid")),
             "label": "Signal weights",
             "url": (
@@ -304,7 +306,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
             ),
         },
         "portfolio_values": {
-            "uid": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("portfolio_table_update_uid")),
             "label": "Portfolio values",
             "url": (
                 f"/api/v1/portfolio/{portfolio_uid}/portfolio_values/?order=desc&limit=100"
@@ -432,7 +434,8 @@ def get_portfolio_values_frame_response(
         source_context={
             "portfolio_uid": _string_or_none(portfolio.get("uid")),
             "portfolio_identifier": portfolio_identifier,
-            "portfolio_data_node_uid": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+            "portfolio_table_update_uid": portfolio.get("portfolio_table_update_uid"),
+            "portfolio_data_node_uid": portfolio.get("portfolio_table_update_uid"),
             "start_date": start_date,
             "end_date": end_date,
             "limit": limit,
@@ -457,9 +460,11 @@ def get_portfolio_signal_weights_frame_response(
         return None
 
     portfolio = _build_portfolio_row(portfolio_row)
-    data_node_uid = _string_or_none(portfolio.get("signal_weights_data_node_uid"))
-    if data_node_uid is None:
-        raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
+    signal_weights_table_update_uid = _string_or_none(
+        portfolio.get("signal_weights_table_update_uid")
+    )
+    if signal_weights_table_update_uid is None:
+        raise ValueError("Portfolio has no signal_weights_table_update_uid configured.")
 
     signal_uid = _resolve_portfolio_signal_uid(portfolio)
     rows = _portfolio_signal_weight_rows(
@@ -498,7 +503,8 @@ def get_portfolio_signal_weights_frame_response(
         source_context={
             "portfolio_uid": _string_or_none(portfolio.get("uid")),
             "portfolio_identifier": _string_or_none(portfolio.get("unique_identifier")),
-            "signal_weights_data_node_uid": data_node_uid,
+            "signal_weights_table_update_uid": signal_weights_table_update_uid,
+            "signal_weights_data_node_uid": signal_weights_table_update_uid,
             "signal_uid": signal_uid,
             "start_date": start_date,
             "end_date": end_date,
@@ -1553,22 +1559,30 @@ def _build_weight_row(
 
 
 def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    pointers = {
+        current: _string_or_none(renamed_column_value(PortfolioTable, row, current))
+        for current in PortfolioTable.__renamed_columns__
+    }
     return {
         "uid": row.get("uid"),
         "unique_identifier": _string_or_empty(row.get("unique_identifier")),
         "calendar_uid": _string_or_none(row.get("calendar_uid")),
         "published_index_uid": _string_or_none(row.get("published_index_uid")),
-        "portfolio_weights_data_node_uid": _string_or_none(
-            row.get("portfolio_weights_data_node_uid")
-        ),
-        "signal_weights_data_node_uid": _string_or_none(row.get("signal_weights_data_node_uid")),
+        **pointers,
         "signal_uid": _string_or_none(row.get("signal_uid")),
-        "portfolio_data_node_uid": _string_or_none(row.get("portfolio_data_node_uid")),
         "backtest_table_price_column_name": _string_or_empty(
             row.get("backtest_table_price_column_name")
         )
         or "close",
+        **_pre_3_0_pointers(pointers),
     }
+
+
+def _pre_3_0_pointers(pointers: Mapping[str, Any]) -> dict[str, Any]:
+    """Repeat portfolio pointers under their pre-3.0 names, removed in 4.0 (ADR 0048)."""
+
+    renamed = PortfolioTable.__renamed_columns__
+    return {previous: pointers[current] for current, previous in renamed.items()}
 
 
 def _build_portfolio_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:

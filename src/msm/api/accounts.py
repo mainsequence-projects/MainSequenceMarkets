@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from msm.api.base import MarketsMetaTableRow
+from msm.api.base import MarketsMetaTableRow, PayloadWithRenamedFields, pre_3_0_field
 from msm.models import (
     AccountGroupTable,
     AccountHoldingsSetTable,
@@ -153,7 +153,8 @@ class Account(MarketsMetaTableRow):
     is_paper: bool = True
     account_is_active: bool = False
     account_group_uid: uuid.UUID | None = None
-    holdings_data_node_uid: uuid.UUID | None = None
+    holdings_storage_table_uid: uuid.UUID | None = None
+    holdings_data_node_uid: uuid.UUID | None = pre_3_0_field("holdings_storage_table_uid")
     metadata_json: dict[str, Any] | None = None
 
     @classmethod
@@ -226,15 +227,18 @@ class Account(MarketsMetaTableRow):
         return positions
 
 
-class AccountCreate(BaseModel):
+class AccountCreate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "holdings_storage_table_uid": "holdings_data_node_uid",
+    }
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     account_name: str = Field(min_length=1, max_length=255)
     is_paper: bool = True
     account_is_active: bool = False
     account_group_uid: uuid.UUID | str | None = None
-    holdings_data_node_uid: uuid.UUID | str | None = None
+    holdings_storage_table_uid: uuid.UUID | str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -242,14 +246,17 @@ class AccountUpsert(AccountCreate):
     """Payload for inserting or updating an account."""
 
 
-class AccountUpdate(BaseModel):
+class AccountUpdate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "holdings_storage_table_uid": "holdings_data_node_uid",
+    }
 
     account_name: str | None = Field(default=None, max_length=255)
     is_paper: bool | None = None
     account_is_active: bool | None = None
     account_group_uid: uuid.UUID | str | None = None
-    holdings_data_node_uid: uuid.UUID | str | None = None
+    holdings_storage_table_uid: uuid.UUID | str | None = None
     metadata_json: dict[str, Any] | None = None
 
 
@@ -266,7 +273,8 @@ class AccountHoldingsSet(MarketsMetaTableRow):
 
     account_uid: uuid.UUID
     time_index: dt.datetime
-    source_data_node_uid: uuid.UUID | None = None
+    source_storage_table_uid: uuid.UUID | None = None
+    source_data_node_uid: uuid.UUID | None = pre_3_0_field("source_storage_table_uid")
 
     @classmethod
     def create(
@@ -297,12 +305,15 @@ class AccountHoldingsSet(MarketsMetaTableRow):
         return super().update(uid, values)
 
 
-class AccountHoldingsSetCreate(BaseModel):
+class AccountHoldingsSetCreate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "source_storage_table_uid": "source_data_node_uid",
+    }
 
     account_uid: uuid.UUID | str
     time_index: dt.datetime
-    source_data_node_uid: uuid.UUID | str | None = None
+    source_storage_table_uid: uuid.UUID | str | None = None
 
     @field_validator("time_index")
     @classmethod
@@ -314,10 +325,13 @@ class AccountHoldingsSetUpsert(AccountHoldingsSetCreate):
     """Payload for inserting or updating an account holdings set."""
 
 
-class AccountHoldingsSetUpdate(BaseModel):
+class AccountHoldingsSetUpdate(PayloadWithRenamedFields):
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {
+        "source_storage_table_uid": "source_data_node_uid",
+    }
 
-    source_data_node_uid: uuid.UUID | str | None = None
+    source_storage_table_uid: uuid.UUID | str | None = None
 
 
 class AccountTargetAllocation(MarketsMetaTableRow):

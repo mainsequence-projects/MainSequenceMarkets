@@ -7,6 +7,12 @@ The routes do not create or update portfolios. Portfolio construction remains a
 library workflow outside this API surface. ADR 0047 adds the multi-portfolio
 frames, the batch lookup and the dataset catalog routes described below.
 
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries a `*_table_update_uid` portfolio pointer also
+    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+
 ## Runtime Sources
 
 - Portfolio identity uses `msm.api.portfolios.Portfolio`.
@@ -56,10 +62,10 @@ Returns `command-center.resource_collection@v1` and exposes
       "unique_identifier": "example-sleeve",
       "calendar_uid": "00000000-0000-0000-0000-000000000001",
       "published_index_uid": "index-uid",
-      "portfolio_weights_data_node_uid": null,
-      "signal_weights_data_node_uid": null,
+      "portfolio_weights_table_update_uid": null,
+      "signal_weights_table_update_uid": null,
       "signal_uid": null,
-      "portfolio_data_node_uid": null,
+      "portfolio_table_update_uid": null,
       "backtest_table_price_column_name": "close"
     }
   ],
@@ -89,10 +95,10 @@ links:
     "unique_identifier": "example-sleeve",
     "calendar_uid": "00000000-0000-0000-0000-000000000001",
     "published_index_uid": "index-uid",
-    "portfolio_weights_data_node_uid": null,
-    "signal_weights_data_node_uid": null,
+    "portfolio_weights_table_update_uid": null,
+    "signal_weights_table_update_uid": null,
     "signal_uid": null,
-    "portfolio_data_node_uid": null,
+    "portfolio_table_update_uid": null,
     "backtest_table_price_column_name": "close"
   },
   "metadata": {
@@ -168,7 +174,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/calendar/calendar-uid/"
     },
     {
-      "key": "portfolio_weights_data_node_uid",
+      "key": "portfolio_weights_table_update_uid",
       "label": "Portfolio Weights Node",
       "value": "weights-node-uid",
       "kind": "code",
@@ -176,7 +182,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/portfolio/portfolio-uid/weights/?order=desc&limit=1&include_asset_detail=true"
     },
     {
-      "key": "signal_weights_data_node_uid",
+      "key": "signal_weights_table_update_uid",
       "label": "Signal Weights Node",
       "value": "signal-node-uid",
       "kind": "code",
@@ -184,7 +190,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/portfolio/portfolio-uid/signals_weights/?order=desc&limit=100"
     },
     {
-      "key": "portfolio_data_node_uid",
+      "key": "portfolio_table_update_uid",
       "label": "Portfolio Values Node",
       "value": "values-node-uid",
       "kind": "code",
@@ -232,10 +238,10 @@ page-specific resolved metadata for consumers that need more than a field URL.
       }
     },
     "pointers": {
-      "portfolio_weights_data_node_uid": "weights-node-uid",
-      "signal_weights_data_node_uid": "signal-node-uid",
+      "portfolio_weights_table_update_uid": "weights-node-uid",
+      "signal_weights_table_update_uid": "signal-node-uid",
       "signal_uid": "canonical-signal-uid",
-      "portfolio_data_node_uid": "values-node-uid"
+      "portfolio_table_update_uid": "values-node-uid"
     }
   }
 }

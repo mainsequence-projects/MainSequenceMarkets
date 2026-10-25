@@ -114,16 +114,16 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         set_key=market_data_set.set_key,
         market_data_set_uid=market_data_set.uid,
     )
-    curve_data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
-    fixing_data_node_uid = IndexFixingsStorage.get_meta_table_uid()
-    if curve_data_node_uid is None or fixing_data_node_uid is None:
+    curve_storage_table_uid = DiscountCurvesStorage.get_meta_table_uid()
+    fixing_storage_table_uid = IndexFixingsStorage.get_meta_table_uid()
+    if curve_storage_table_uid is None or fixing_storage_table_uid is None:
         raise RuntimeError("Pricing storage tables must be attached before binding market data.")
     curve_storage_table_identifier = DiscountCurvesStorage.get_identifier()
     fixing_storage_table_identifier = IndexFixingsStorage.get_identifier()
     curve_binding = PricingMarketDataSetBinding.upsert(
         market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_uid=curve_data_node_uid,
+        storage_table_uid=curve_storage_table_uid,
         storage_table_identifier=curve_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
@@ -131,7 +131,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     fixing_binding = PricingMarketDataSetBinding.upsert(
         market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        data_node_uid=fixing_data_node_uid,
+        storage_table_uid=fixing_storage_table_uid,
         storage_table_identifier=fixing_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
@@ -141,12 +141,12 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         bindings=[
             {
                 "concept_key": curve_binding.concept_key,
-                "data_node_uid": curve_binding.data_node_uid,
+                "storage_table_uid": curve_binding.storage_table_uid,
                 "storage_table_identifier": curve_binding.storage_table_identifier,
             },
             {
                 "concept_key": fixing_binding.concept_key,
-                "data_node_uid": fixing_binding.data_node_uid,
+                "storage_table_uid": fixing_binding.storage_table_uid,
                 "storage_table_identifier": fixing_binding.storage_table_identifier,
             },
         ],
@@ -326,7 +326,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         projection_key_nodes=_count_curve_key_nodes(projection_curve_frame),
         discount_rows=len(discount_curve_frame),
         discount_key_nodes=_count_curve_key_nodes(discount_curve_frame),
-        data_node_uid=curve_data_node_uid,
+        storage_table_uid=curve_storage_table_uid,
         storage_table_identifier=curve_storage_table_identifier,
     )
 
@@ -339,14 +339,14 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
-        data_node_uid=fixing_data_node_uid,
+        storage_table_uid=fixing_storage_table_uid,
         storage_table_identifier=fixing_storage_table_identifier,
     )
 
     _print_step(
         "Using explicit pricing market-data bindings",
-        curve_data_node_uid=curve_data_node_uid,
-        fixing_data_node_uid=fixing_data_node_uid,
+        curve_storage_table_uid=curve_storage_table_uid,
+        fixing_storage_table_uid=fixing_storage_table_uid,
         curve_storage_table_identifier=curve_storage_table_identifier,
         fixing_storage_table_identifier=fixing_storage_table_identifier,
     )
@@ -478,8 +478,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "index_convention_details": convention_details,
         "projection_curve": projection_curve,
         "discount_curve": discount_curve,
-        "curve_data_node_uid": curve_data_node_uid,
-        "fixing_data_node_uid": fixing_data_node_uid,
+        "curve_storage_table_uid": curve_storage_table_uid,
+        "fixing_storage_table_uid": fixing_storage_table_uid,
         "curve_storage_table_identifier": curve_storage_table_identifier,
         "fixing_storage_table_identifier": fixing_storage_table_identifier,
         "projection_curve_rows": len(projection_curve_frame),

@@ -213,7 +213,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | is_paper                      |
 | account_is_active             |
 | account_group_uid FK          |
-| holdings_data_node_uid        |
+| holdings_storage_table_uid    |
 | metadata_json                 |
 +---------------+---------------+
                                 |
@@ -286,7 +286,7 @@ There is no top-level `msm.accounts` shim. Import account rows from
 `AccountTable.uid` is the canonical account identity used by other MetaTables and
 time-index-table output rows. `unique_identifier` is the stable external business key used for
 lookup and idempotent upserts. `account_group_uid` is optional membership in one
-account group. `holdings_data_node_uid` is optional metadata for an account's
+account group. `holdings_storage_table_uid` is optional metadata for an account's
 associated holdings storage; it is not the account identity. Account allocation
 model tracking does not live on `AccountTable`; it lives on
 `AccountTargetAllocationTable`.

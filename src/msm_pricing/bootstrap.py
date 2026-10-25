@@ -198,7 +198,7 @@ def seed_default_pricing_market_data_bindings(
         values = {
             "market_data_set_uid": market_data_set_uid,
             "concept_key": concept_key,
-            "data_node_uid": storage["data_node_uid"],
+            "storage_table_uid": storage["storage_table_uid"],
             "storage_table_identifier": storage["storage_table_identifier"],
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
@@ -314,11 +314,11 @@ def _default_pricing_market_data_bindings_from_runtime(
 
     return {
         PRICING_CONCEPT_DISCOUNT_CURVES: {
-            "data_node_uid": _required_model_meta_table_uid(DiscountCurvesStorage),
+            "storage_table_uid": _required_model_meta_table_uid(DiscountCurvesStorage),
             "storage_table_identifier": DiscountCurvesStorage.get_identifier(),
         },
         PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: {
-            "data_node_uid": _required_model_meta_table_uid(IndexFixingsStorage),
+            "storage_table_uid": _required_model_meta_table_uid(IndexFixingsStorage),
             "storage_table_identifier": IndexFixingsStorage.get_identifier(),
         },
     }

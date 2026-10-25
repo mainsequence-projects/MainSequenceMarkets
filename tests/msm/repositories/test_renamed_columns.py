@@ -144,17 +144,17 @@ def test_account_and_portfolio_repositories_write_both_columns() -> None:
         _context(),
         unique_identifier="ACCOUNT_A",
         account_name="Account A",
-        holdings_data_node_uid=STORAGE_TABLE_UID,
+        holdings_storage_table_uid=STORAGE_TABLE_UID,
     )
     account_update = build_update_account_operation(
-        _context(), uid=uuid.uuid4(), holdings_data_node_uid=STORAGE_TABLE_UID
+        _context(), uid=uuid.uuid4(), holdings_storage_table_uid=STORAGE_TABLE_UID
     )
     update_uid = uuid.uuid4()
     portfolio = build_create_portfolio_operation(
         _context(),
         unique_identifier="PORTFOLIO_A",
         calendar_uid=uuid.uuid4(),
-        portfolio_data_node_uid=update_uid,
+        portfolio_table_update_uid=update_uid,
     )
 
     for operation in (account, account_update):
@@ -163,3 +163,30 @@ def test_account_and_portfolio_repositories_write_both_columns() -> None:
     assert _parameters(portfolio)["portfolio_table_update_uid"] == update_uid
     assert _parameters(portfolio)["portfolio_data_node_uid"] == update_uid
     assert PortfolioTable.__renamed_columns__["portfolio_table_update_uid"] == "portfolio_data_node_uid"
+
+
+def test_repository_builders_accept_pre_3_0_keywords_with_a_warning() -> None:
+    with pytest.warns(DeprecationWarning, match="holdings_data_node_uid= is deprecated"):
+        account = build_create_account_operation(
+            _context(),
+            unique_identifier="ACCOUNT_A",
+            account_name="Account A",
+            holdings_data_node_uid=STORAGE_TABLE_UID,
+        )
+    with pytest.warns(DeprecationWarning, match="portfolio_data_node_uid= is deprecated"):
+        portfolio = build_create_portfolio_operation(
+            _context(),
+            unique_identifier="PORTFOLIO_A",
+            calendar_uid=uuid.uuid4(),
+            portfolio_data_node_uid=STORAGE_TABLE_UID,
+        )
+
+    assert _parameters(account)["holdings_storage_table_uid"] == STORAGE_TABLE_UID
+    assert _parameters(portfolio)["portfolio_table_update_uid"] == STORAGE_TABLE_UID
+    with pytest.warns(DeprecationWarning), pytest.raises(TypeError, match="not both"):
+        build_update_account_operation(
+            _context(),
+            uid=uuid.uuid4(),
+            holdings_storage_table_uid=uuid.uuid4(),
+            holdings_data_node_uid=STORAGE_TABLE_UID,
+        )
