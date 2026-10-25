@@ -7,6 +7,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | Method | Path | Operation | Success responses |
 | --- | --- | --- | --- |
 | GET | `/` | Hello | 200 |
+| GET | `/access/roles/` | Access Roles | 200 |
 | GET | `/caller/` | Admitted Caller | 200 |
 | GET | `/data-sources/` | List Sources | 200 |
 | POST | `/data-sources/` | Create Source | 201 |
@@ -46,16 +47,20 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/meta-tables/{table_uid}/updates` | List Table Updates | 200 |
 | POST | `/meta-tables/{table_uid}/validate-contract` | Validate Existing Contract | 200 |
 | GET | `/meta-tables/{uid}/access-history/` | Table Access History | 200 |
-| GET | `/meta-tables/{uid}/effective-access/` | Effective Access | 200 |
-| GET | `/meta-tables/{uid}/permissions` | Table Permissions | 200 |
-| PUT | `/meta-tables/{uid}/permissions` | Set Table Permissions | 200 |
+| GET | `/meta-tables/{uid}/access/` | Table Access | 200 |
+| POST | `/meta-tables/{uid}/access/changes/` | Change Table Access | 200 |
+| GET | `/meta-tables/{uid}/access/explain/` | Explain Table Access | 200 |
+| GET | `/meta-tables/{uid}/access/me/` | Table Access Me | 200 |
 | GET | `/namespaces/` | List Namespaces | 200 |
+| POST | `/namespaces/` | Create Namespace | 201 |
 | GET | `/namespaces/{namespace_uid}/` | Retrieve Namespace | 200 |
 | PATCH | `/namespaces/{namespace_uid}/` | Patch Namespace | 200 |
 | GET | `/namespaces/{namespace_uid}/access-map/` | Namespace Access Map | 200 |
 | GET | `/namespaces/{namespace_uid}/tables/` | Namespace Tables | 200 |
-| GET | `/namespaces/{uid}/permissions` | Namespace Permissions | 200 |
-| PUT | `/namespaces/{uid}/permissions` | Set Namespace Permissions | 200 |
+| GET | `/namespaces/{uid}/access/` | Namespace Access | 200 |
+| POST | `/namespaces/{uid}/access/changes/` | Change Namespace Access | 200 |
+| GET | `/namespaces/{uid}/access/explain/` | Explain Namespace Access | 200 |
+| GET | `/namespaces/{uid}/access/me/` | Namespace Access Me | 200 |
 | POST | `/runtime-bootstrap/activate/` | Activate | 200 |
 | POST | `/runtime-bootstrap/configure/` | Configure | 200 |
 | POST | `/runtime-bootstrap/destroy-local/` | Destroy Local | 200 |
@@ -63,10 +68,9 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/runtime-context/` | Runtime Context | 200 |
 | POST | `/runtime-migrations/{lease_uid}/release/` | Release Migration | 200 |
 | GET | `/security/access-history/` | Security History | 200 |
+| POST | `/security/checks/` | Run Security Check Now | 200 |
 | GET | `/security/database-permissions/` | Database Permission Status | 200 |
-| POST | `/security/namespaces/` | Create Namespace | 201 |
 | GET | `/security/principals/` | Principal Search | 200 |
-| POST | `/security/reconcile/` | Reconcile Database Permissions | 200 |
 | GET | `/security/resources/` | Security Resources | 200 |
 | GET | `/table-update-runs/` | List Runs | 200 |
 | POST | `/table-update-runs/` | Create Update Run | 201 |

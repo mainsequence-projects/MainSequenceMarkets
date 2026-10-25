@@ -691,8 +691,9 @@ def _canonical_descriptor(
         for item in catalog_foreign_keys
     ):
         return None
-    owner_uid = str(getattr(meta_table, "created_by_user_uid", "") or "")
-    can_edit = True if actor is not None and owner_uid == actor.user_uid else None
+    # MetaTables roles decide who may edit a table, and the platform checks them when the
+    # change runs. Registering a table (`created_by_user_uid`) no longer makes the caller its
+    # owner, so edit access stays unknown here (`None`) for every actor.
     return IndexDatasetDescriptor(
         meta_table_uid=str(meta_table.uid),
         identifier=identifier,
@@ -715,10 +716,8 @@ def _canonical_descriptor(
         discovery_source="core_model",
         access=IndexDatasetAccess(
             can_view=True,
-            can_edit=can_edit,
-            reason=None
-            if can_edit
-            else "Edit access is rechecked by the platform at mutation time.",
+            can_edit=None,
+            reason="Edit access is rechecked by the platform at mutation time.",
         ),
         producer_identifiers=_producer_identifiers(meta_table),
     )

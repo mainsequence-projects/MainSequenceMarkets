@@ -35,14 +35,18 @@ older document, ranking uses keywords only; `semantic` is false while the model 
 unavailable. Set `METATABLES_SEARCH_EMBEDDINGS=off` to keep the model from loading.
 
 `GET /meta-tables/{uid}/search-document/` returns that document as
-`{"content": "..."}` and serves the Admin's Description tab. It requires table
-Reader access and does not query physical rows or change catalog state. The
+`{"content": "..."}` and serves the Admin's Description tab. It requires
+`tables.get` and does not query physical rows or change catalog state. The
 inherited `/time-index-meta-tables/{uid}/search-document/` route accepts
 time-index tables only. Both spellings also work without the trailing slash,
 without redirecting.
 
 `PATCH /namespaces/{uid}/` with `{"description": ...}` sets a namespace's
-description; it requires Writer access to the namespace.
+description; it requires `namespaces.update` (`editor` or `owner`).
+
+`POST /namespaces/` with `{"name": ..., "description": ...}` creates a namespace
+whose name is free; any person can, and becomes its `owner`. A taken name answers 409
+with the namespace's owners when the caller can see them.
 
 ## Import and bounded relation reads
 
@@ -58,7 +62,7 @@ the import operation's 200-relation batch limit.
 optional `physical_schema`, `relation_names`, `exclude_relation_names`, `namespace`,
 `include_views`, `follow_foreign_keys`, `refresh_existing`, `dry_run`, and `strict`.
 Preview and strict mode default to true. Discovery/import requires an active
-administrator; refreshing existing rows also requires their Writer grant.
+administrator; refreshing existing rows also requires `tables.update` on them.
 The result separates planned changes, committed changes, relation failures,
 warnings, stale visibility, and runtime read-admission status.
 
@@ -70,14 +74,14 @@ data. The 60-second request deadline and 200-relation limit still apply.
 
 `POST /meta-tables/{table_uid}/read/` accepts `columns`, typed `filters`, `order_by`,
 `limit`, `offset`, and `statement_timeout_ms`. It returns `rows`, `columns`,
-`has_more`, `limit`, and `offset`. Reader/Writer grants authorize each request.
+`has_more`, `limit`, and `offset`. `tables.get_data` authorizes each request.
 Only registered columns can be selected, and values are bound parameters.
 Non-runtime sources use their stored account for this generated SELECT; arbitrary
 SQL and managed mutations retain the runtime source restriction. No external
 DDL, DML, permission initialization, role creation, or grants are performed.
 
 `POST /meta-tables/{table_uid}/introspect/` refreshes imported definitions and
-projections with Writer authorization. See the [import guide](../client/register-existing-tables.md)
+projections and needs `tables.update`. See the [import guide](../client/register-existing-tables.md)
 for limits, lifecycle, views, Python calls and Vite navigation.
 
 ## Table update pipelines
@@ -118,8 +122,8 @@ Each field is an object or `null` when no statistics have been stored; explicitl
 stored empty objects remain `{}`. Additional stored statistics keys and nested
 index coordinates are preserved. Reads return catalog statistics without querying
 the physical table, recalculating bounds, or changing stored progress.
-Missing, hidden, and relational tables return the same 404 response. A table Reader
-grant is sufficient; writes are not required. The `/stats/` spelling is also accepted
+Missing, hidden, and relational tables return the same 404 response. `tables.get_data`
+(`data_viewer`) is sufficient; writes are not required. The `/stats/` spelling is also accepted
 without redirecting.
 
 ## Registration and finalization
@@ -167,7 +171,7 @@ differences, including SQL Server batch transaction semantics and active cancell
 ## Migration connection
 
 `POST /meta-tables/{uid}/migration-connection/` validates the provider identity,
-Writer access to its catalog tables and the selected DataSource's write availability.
+`tables.migrate` on its catalog tables and the selected DataSource's write availability.
 It returns the configured runtime connection (`uri`, dialect, TLS material, default
 schema, DataSource UID and provider table UIDs). A supervised runtime also returns a
 lease that the client releases after migration and finalization. Responses use

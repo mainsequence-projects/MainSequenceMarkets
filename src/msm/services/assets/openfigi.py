@@ -379,13 +379,21 @@ def get_openfigi_api_key(
     *,
     secret_name: str = OPENFIGI_API_KEY_SECRET_NAME,
 ) -> str:
-    """Read the OpenFIGI API key from Main Sequence Secrets."""
+    """Read the OpenFIGI API key from Main Sequence Secrets.
+
+    Reading a Secret's value needs the `value_reader` policy on it. A caller
+    without it gets `OpenFigiConfigurationError` naming that grant.
+    """
 
     try:
         secret = _get_mainsequence_secret(secret_name)
     except Exception as exc:
-        if exc.__class__.__name__ == "DoesNotExist":
+        error_name = exc.__class__.__name__
+        if error_name == "DoesNotExist":
             message = _missing_openfigi_secret_message(secret_name)
+            raise OpenFigiConfigurationError(message) from exc
+        if error_name == "PermissionDeniedError":
+            message = _unreadable_openfigi_secret_message(secret_name)
             raise OpenFigiConfigurationError(message) from exc
         raise
 
@@ -412,7 +420,19 @@ def _get_mainsequence_secret(secret_name: str) -> Any:
 
 
 def _missing_openfigi_secret_message(secret_name: str) -> str:
-    return f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} before using OpenFIGI."
+    return (
+        f"{secret_name} needs to be set in {OPENFIGI_SECRET_SETUP_URL} before using OpenFIGI. "
+        f"A Secret that exists is hidden from a caller without a policy on it; the caller "
+        f"needs `value_reader` on {secret_name}."
+    )
+
+
+def _unreadable_openfigi_secret_message(secret_name: str) -> str:
+    return (
+        f"The caller may not read the value of the {secret_name} Secret. Reading it needs "
+        f"`value_reader` on {secret_name}: its owner grants it, or the caller's deployment "
+        f"workflow declares `secrets: [{{name: {secret_name}, policy: value_reader}}]`."
+    )
 
 
 def _ensure_normalized_openfigi_result(item: Mapping[str, Any]) -> dict[str, Any]:

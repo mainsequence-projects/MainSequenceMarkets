@@ -9,7 +9,8 @@ authorize the caller; the selected engine backend executes the database operatio
 
 Use `metatables.compiled_sql.v1.compile_sqlalchemy_statement(...)` to compile a
 SQLAlchemy Core statement with bound parameters. A request selects one DataSource;
-the database applies your Reader and Writer grants to every table it touches.
+the database applies your roles to every table it touches: `data_viewer` reads,
+`data_writer` and above write.
 Omit source and dialect configuration for the normal application path:
 
 ```python
@@ -57,7 +58,7 @@ with `DEFAULT`; the database must define that default.
 It can query any table you can read in the same runtime. Compiled operations with
 `operation="select"` also use the read identity; insert/update/upsert/delete select
 the write identity. The operation label does not classify or rewrite your SQL.
-Database permissions prevent writes to Reader tables, reserved tables and provider
+Database permissions prevent writes to tables you can only read, reserved tables and provider
 version tables. Sharing, schema changes and table deletion remain API operations.
 
 Bind values instead of interpolating user input. Requests have row and time limits.
@@ -70,8 +71,8 @@ journal guarantees. See [database access](../security/index.md#sql-and-schema-bo
 ## Read another registered source
 
 Keep the same API connection and runtime default. An administrator first
-[imports the source's tables or views](register-existing-tables.md); Readers and
-Writers then select an imported MetaTable and use its registered source:
+[imports the source's tables or views](register-existing-tables.md); anyone with
+`data_viewer` or above then selects an imported MetaTable and uses its registered source:
 
 ```python
 from metatables import MetaTable

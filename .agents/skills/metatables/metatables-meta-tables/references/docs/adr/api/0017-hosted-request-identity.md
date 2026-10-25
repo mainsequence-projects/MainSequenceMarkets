@@ -9,6 +9,16 @@ launcher declaration, genuine EdDSA caller assertions verified by the SDK, rejec
 callers, Local isolation, and PodDeploymentOrchestrator's own launcher run against
 the deployed entrypoint. A hosted rollout has not yet been verified.
 
+> Amendment (2026-10-15, SDK #225): caller assertions stop carrying Team UIDs.
+> Admission asks the platform with `in_teams()` which of the Teams that MetaTables
+> grants name the caller, or the requester of a delegated call, belongs to. The SDK
+> reuses an answer for 24 hours (`team_membership_cache_seconds`). SQL writes act
+> on an answer at most a minute old; migration credentials, table deletion,
+> finalization and permission changes ask at once. A SQL login's stored Teams, and
+> so its database role memberships, change only on a fresh answer, so pods holding
+> answers of different ages cannot flip them. A failed check is a 503, never "not a
+> member".
+
 Owner: MetaTables API. The SDK owns caller verification
 ([SDK 9.0.6 ADR 0036: Request-scoped logged user](https://github.com/mainsequence-sdk/mainsequence-sdk/blob/v9.0.6/docs/adr/0036-request-scoped-logged-user.md));
 the platform's FastAPI launcher owns the startup check.

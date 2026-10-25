@@ -119,7 +119,7 @@ application code installation, or redeployment is required.
 
 The connection uses the selected DataSource's configured database login. Environment
 operators supply its CREATE/ALTER/DROP and ownership privileges. MetaTables does not
-provision migration roles or sandbox DDL. API Writer checks continue to protect
+provision migration roles or sandbox DDL. API `tables.migrate` checks continue to protect
 catalog operations and connection admission; they do not limit direct database DDL.
 Runtime connection credentials are private and must not be logged or persisted.
 

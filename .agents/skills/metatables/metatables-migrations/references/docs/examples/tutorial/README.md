@@ -107,7 +107,7 @@ migrations.
 Every `seed`, `update`, and `read` invocation first calls the setup script against
 its selected API. It reserves the registry and four tutorial tables, upgrades the
 reviewed provider to its Alembic head when needed, and finalizes the catalog.
-Repeated setup preserves table UIDs and data. Existing tables require Writer access.
+Repeated setup preserves table UIDs and data. Existing tables require `editor`.
 `preview` and `connect` skip migration/data setup.
 
 Revision `0002` adds the volatility table after `0001`; it preserves existing prices,

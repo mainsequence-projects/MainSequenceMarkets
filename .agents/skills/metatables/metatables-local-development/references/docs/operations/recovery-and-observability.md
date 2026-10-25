@@ -17,6 +17,16 @@ per-table finalization result, physical schema, provider identity, and registry
 state. Reuse only a compatible registry resolved by physical identity. Preserve
 Alembic's applied history; write new revisions for further changes.
 
+## Failed security check
+
+The daily security check ([ADR 0023](../adr/api/0023-daily-security-check.md)) records
+a failure on the Admin's Database permissions panel with an error code, and its Job run
+fails. Nothing it changed is kept, and caller SQL keeps running with the grants it
+found. Read the `check-security` Job run log for the cause, fix it in the database, then
+**Run security check now**. `sql_principal_permission_drift` means a MetaTables role
+owns an object or holds an elevated attribute; reassign that object or remove the
+attribute, because the check never does it.
+
 ## Deletion
 
 Ordinary delete requires edit access and respects table and inbound
