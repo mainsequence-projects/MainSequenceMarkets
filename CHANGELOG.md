@@ -7,6 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Release 4.1.0 drops the pre-3.0 UID columns that 4.0.0 stopped writing
+([ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)).
+Deploy it only when no project older than 4.0 uses accounts, portfolios or
+pricing bindings in any Environment: every 3.x release still selects and writes
+these columns.
+
+### Removed
+
+- Revision `0025` drops `holdings_data_node_uid`, `source_data_node_uid`, the
+  three portfolio `*_data_node_uid` columns, and the pricing binding
+  `data_node_uid` column with its index. Its downgrade re-adds the columns,
+  nullable, from the current ones and restores the index.
+
+## [4.0.0]
+
 Breaking release 4.0.0. It removes the pre-3.0 names that 3.x kept as deprecated
 aliases and stops writing the pre-3.0 UID columns
 ([ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)).

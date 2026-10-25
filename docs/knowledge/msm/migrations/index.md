@@ -53,7 +53,11 @@ Release 4.0.0 adds revision `0024`. ms-markets 4.0 no longer maps, reads or
 writes the pre-3.0 columns, and `0024` makes `data_node_uid` nullable so the
 rows it inserts can leave them NULL. Deploy it only when no reader older than
 3.1 remains. Its downgrade copies the current values back and restores NOT NULL.
-4.1 drops the pre-3.0 columns; each step needs its own release. See
+
+Release 4.1.0 adds revision `0025`, which drops the pre-3.0 columns and the
+`data_node_uid` index. Deploy it only when no process older than 4.0 uses these
+tables, because every 3.x release selects and writes them. Its downgrade re-adds
+the columns from the current ones. Each step needs its own release. See
 [ADR 0048](../../../ADR/0048-time-index-vocabulary-rename.md).
 
 Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra

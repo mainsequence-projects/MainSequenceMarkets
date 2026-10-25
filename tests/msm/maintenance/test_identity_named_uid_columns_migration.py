@@ -1,4 +1,4 @@
-"""Revisions 0022 to 0024 move the UID columns to identity-named ones (ADR 0048)."""
+"""Revisions 0022 to 0025 move the UID columns to identity-named ones (ADR 0048)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,9 @@ FINAL_COPY = importlib.import_module(
 )
 STOP_WRITING = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0024_stop_writing_pre_3_0_uid_columns"
+)
+DROP = importlib.import_module(
+    "msm_migrations.versions.mainsequence_markets.0025_drop_pre_3_0_uid_columns"
 )
 
 
@@ -189,6 +192,37 @@ def test_0024_lets_rows_omit_data_node_uid_and_downgrades_with_a_copy(tmp_path) 
             row = _row(connection, table_name)
             for previous, current in columns:
                 assert row[previous] == row[current] == written[(table_name, current)]
+        assert _foreign_keys(connection) == foreign_keys
+        assert _indexes(connection) == indexes
+    engine.dispose()
+
+
+def test_0025_drops_the_pre_3_0_columns_and_downgrades_from_the_current_ones(tmp_path) -> None:
+    engine = sa.create_engine(f"sqlite:///{tmp_path / 'uid-columns.sqlite'}")
+    with engine.connect() as connection:
+        config = _config(connection)
+        command.upgrade(config, "0021")
+        _seed_pre_3_0_values(connection)
+        command.upgrade(config, "0024")
+        written = _writes_from_4_0(connection)
+        foreign_keys = _foreign_keys(connection)
+        indexes = _indexes(connection)
+
+        command.upgrade(config, "0025")
+        for table_name, columns in DROP.RENAMED_COLUMNS.items():
+            row = _row(connection, table_name)
+            for previous, current in columns:
+                assert previous not in row
+                assert row[current] == written[(table_name, current)]
+        assert DROP.BINDING_INDEX not in {name for name, _columns, _unique in _indexes(connection)}
+        assert _foreign_keys(connection) == foreign_keys
+
+        command.downgrade(config, "0024")
+        for table_name, columns in DROP.RENAMED_COLUMNS.items():
+            row = _row(connection, table_name)
+            for previous, current in columns:
+                assert row[previous] == row[current] == written[(table_name, current)]
+        assert _nullable(connection, DROP.BINDING_TABLE, "data_node_uid")
         assert _foreign_keys(connection) == foreign_keys
         assert _indexes(connection) == indexes
     engine.dispose()

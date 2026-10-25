@@ -156,7 +156,7 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0019_ledger_hypertable_uniqueness.py", "0020_expected_columns.json",
         "0020_merge_legacy_schema.py", "0021_portfolio_dataset_catalog.py",
         "0022_identity_named_uid_columns.py", "0023_read_identity_named_uid_columns.py",
-        "0024_stop_writing_pre_3_0_uid_columns.py",
+        "0024_stop_writing_pre_3_0_uid_columns.py", "0025_drop_pre_3_0_uid_columns.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -193,6 +193,11 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert stop_writing.revision == "0024"
     assert stop_writing.down_revision == "0023"
+    drop = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0025_drop_pre_3_0_uid_columns"
+    )
+    assert drop.revision == "0025"
+    assert drop.down_revision == "0024"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:
