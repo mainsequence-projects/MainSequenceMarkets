@@ -269,8 +269,8 @@ Returns one `core.tabular_frame@v1` with columns `time_index`,
 `portfolio_identifier`, `portfolio_uid`, `close`, `return`, `calculated_close`
 and `close_time` for every requested portfolio. The portfolios are grouped by
 the `PortfoliosTS` instance the catalog records for them; each instance is read
-once, so comparing an Alpaca portfolio with an Interactive Brokers portfolio is
-one call whose two sources live in two namespaces. `order` sorts by
+once, so comparing portfolios computed by two different providers is one call
+whose two sources live in two namespaces. `order` sorts by
 `time_index` across all portfolios and `limit` (1 to 5000) bounds the merged
 result. Every uid must be a portfolio (`404` otherwise); `source.context`
 names the requested uids and the window.

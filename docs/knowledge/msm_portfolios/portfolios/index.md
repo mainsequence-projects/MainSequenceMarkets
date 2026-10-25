@@ -323,7 +323,7 @@ weights = latest_portfolio_weights(
     repository_context=runtime.context,
 )
 values = portfolio_values(
-    ["alpaca-etf-tracker", "ibkr-income", "btc-eth-target"],
+    ["equity-tracker", "income-fund", "btc-eth-target"],
     start="2026-05-01T00:00:00Z",
     end="2026-05-31T00:00:00Z",
     repository_context=runtime.context,
@@ -396,31 +396,31 @@ from msm_portfolios.data_nodes.contract_instances import (
 )
 
 
-class AlpacaBase(DeclarativeBase):
+class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-AlpacaPortfoliosStorage = configured_portfolios_storage(
-    instance_key="alpaca",
-    namespace="alpaca-connectors",
-    storage_app="alpaca_connectors",
-    base=AlpacaBase,
+ProviderPortfoliosStorage = configured_portfolios_storage(
+    instance_key="main",
+    namespace="my-provider",
+    storage_app="my_provider",
+    base=ProviderBase,
 )
-AlpacaPortfolioWeightsStorage = configured_portfolio_weights_storage(
-    instance_key="alpaca", namespace="alpaca-connectors",
-    storage_app="alpaca_connectors", base=AlpacaBase,
+ProviderPortfolioWeightsStorage = configured_portfolio_weights_storage(
+    instance_key="main", namespace="my-provider",
+    storage_app="my_provider", base=ProviderBase,
 )
-AlpacaSignalWeightsStorage = configured_signal_weights_storage(
-    instance_key="alpaca", namespace="alpaca-connectors",
-    storage_app="alpaca_connectors", base=AlpacaBase,
+ProviderSignalWeightsStorage = configured_signal_weights_storage(
+    instance_key="main", namespace="my-provider",
+    storage_app="my_provider", base=ProviderBase,
 )
 ```
 
 Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
 `<storage_app>__<contract>__<instance_key>` (here
-`alpaca_connectors__portfoliosts__alpaca`), whose MetaTable identifier is
+`my_provider__portfoliosts__main`), whose MetaTable identifier is
 `<Contract>.<instance_key>` prefixed with the namespace when it is not the
-default Markets one (`alpaca-connectors.PortfoliosTS.alpaca`), and whose
+default Markets one (`my-provider.PortfoliosTS.main`), and whose
 columns, dtypes, foreign keys to the core registries (`Portfolio`,
 `Asset`, `SignalMetadata`) and unique grain index equal the contract's. With
 `base=`, the referenced core tables are copied into the provider's metadata so
@@ -451,9 +451,9 @@ state = register_portfolio_datasets(
     runtime.context,
     {
         "portfolio_uid": portfolio.uid,
-        "values_meta_table_uid": AlpacaPortfoliosStorage.get_meta_table_uid(),
-        "weights_meta_table_uid": AlpacaPortfolioWeightsStorage.get_meta_table_uid(),
-        "signal_meta_table_uid": AlpacaSignalWeightsStorage.get_meta_table_uid(),
+        "values_meta_table_uid": ProviderPortfoliosStorage.get_meta_table_uid(),
+        "weights_meta_table_uid": ProviderPortfolioWeightsStorage.get_meta_table_uid(),
+        "signal_meta_table_uid": ProviderSignalWeightsStorage.get_meta_table_uid(),
     },
 )
 result = reconcile_portfolio_dataset_availability(

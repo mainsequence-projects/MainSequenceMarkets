@@ -173,7 +173,7 @@ def configured_contract_instance_storage(
     ``namespace`` is the MetaTables namespace that owns the instance; it defaults
     to the active Markets namespace, which is right only for the Markets
     deployment itself. ``storage_app`` is the physical-name app segment, for
-    example ``alpaca_connectors``. ``base`` is the provider's SQLAlchemy
+    example ``my_provider``. ``base`` is the provider's SQLAlchemy
     declarative base when the provider migrates the instance with its own
     Alembic provider; the contract's foreign-key target tables are copied into
     that base's metadata so SQLAlchemy can resolve the constraints, exactly as

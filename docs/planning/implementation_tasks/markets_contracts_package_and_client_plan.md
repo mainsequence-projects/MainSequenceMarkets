@@ -31,9 +31,9 @@ The split is complete when:
 - every `msm.api` row class works unchanged under two backends, `runtime`
   (compiled SQL, today's path) and `remote` (the client), selected by the
   application and never mixed in one process;
-- `markets-analytics` can replace `ms-markets[portfolios]==2.2.10` with the
-  contracts range for its portfolio analytics route family without importing
-  a table class.
+- a consumer API can replace an exact `ms-markets[portfolios]` pin with the
+  contracts range for a portfolio-reading route family without importing a
+  table class.
 
 ## What Moves Where
 
@@ -205,9 +205,9 @@ PyPI project and the ordering rule.
    the release ordering. Tests: `tests/packaging` installs each wheel in a
    clean environment and imports it; the contracts wheel has no SQLAlchemy,
    `metatables` or QuantLib in its resolved set.
-6. Switch `markets-analytics` portfolio analytics to the client (migration
-   path step 4) as the first external proof, then document the consumer
-   pattern in the FastAPI guide and the README.
+6. Switch one consumer's portfolio reads to the client (migration path step
+   4) as the first external proof, then document the consumer pattern in the
+   FastAPI guide and the README.
 
 ## Out Of Scope
 

@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposed. Drafted 2026-10-25 from an analysis of this repository, the
-`markets-analytics` API, the `alpaca-connectors` application and the installed
-MetaTables and SDK contracts. The
+Proposed. Drafted 2026-10-25 from an analysis of this repository, of how
+applications consume it, and of the installed MetaTables and SDK contracts. The
 `development` branch has since moved to MetaTables 0.1.51, whose namespace and
 table roles (`owner`, `editor`, `data_writer`, `data_viewer`, `metadata_viewer`)
 replace the Reader and Writer vocabulary used below; the grant boundaries this
@@ -48,25 +47,21 @@ grants on `mainsequence.markets`.
 
 ### What consumers look like today
 
-`markets-analytics` imports `msm`, `msm_portfolios`, `msm_pricing` and
-`valmer_connectors`, attaches 28 MetaTables at startup, compiles raw SQL
-against ms-markets table classes in six service files and writes Index rows
-through the row API. Its workload User needs Reader on the whole
-`mainsequence.markets` and `valmer_connectors` namespaces, Writer on three
-Index tables and view on three repository branches. It pins
-`ms-markets[portfolios]==2.2.10` exactly because the imported table classes
-must match the schema the Markets migration Job applied. Its documentation
-states that it applies no per-user authorization.
+A consumer application, for example an analytics API that serves the Command
+Center, imports `msm`, `msm_portfolios` and `msm_pricing`, attaches dozens of
+MetaTables at startup, compiles raw SQL against ms-markets table classes and
+writes Index rows through the row API. Its workload User needs Reader on the
+whole `mainsequence.markets` namespace, Writer on the Index tables it edits and
+view on the repository branches whose deployments own those tables. It pins an
+exact ms-markets release because the imported table classes must match the
+schema the Markets migration Job applied, and it applies no per-user
+authorization of its own.
 
-`alpaca-connectors` extends the ontology with sidecar tables and computes
-portfolios. Resolving its model classes shows that every table it declares,
-including `alpaca_connectors__acct_alpaca` and `alpaca_connectors__bars_1d_sip_all`,
-registers in the `mainsequence.markets` namespace, because the project mixin
-changes only the physical name prefix. Its operator guide therefore grants the
-Alpaca Team Writer on the whole `mainsequence.markets` namespace. The same
-pattern holds for Binance, Interactive Brokers, Valmer and the Mexico fund
-competition project: all five write Asset, Account, Portfolio, Index, Calendar
-or AssetCategory rows directly.
+A provider application extends the ontology with sidecar tables and computes
+portfolios. A project mixin that changes only the physical-name prefix still
+registers every table in the `mainsequence.markets` namespace, so the provider's
+Team is granted Writer on the whole Markets namespace. Providers also write
+Asset, Account, Portfolio, Index, Calendar or AssetCategory rows directly.
 
 ### Why the current boundary is wrong
 
@@ -193,9 +188,10 @@ mechanism, with these rules:
 
 `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS` become storage
 contracts with any number of instances. ms-markets owns the contract: columns,
-dtypes, time index and index names. A provider owns its instances:
-`alpaca_connectors__portfoliosts` in the Alpaca namespace, migrated by the
-Alpaca provider, written by Alpaca's nodes with `output_table=`. The existing
+dtypes, time index and index names. A provider owns its instances: a
+`<provider>__portfoliosts` table in the provider's namespace, migrated by the
+provider's migration provider, written by the provider's nodes with
+`output_table=`. The existing
 core tables remain the Markets-owned instance for portfolios Markets computes
 itself. A provider may add columns beyond the contract; Markets reads the
 contract columns and ignores the rest.
@@ -211,9 +207,9 @@ The Markets read services resolve the table from the catalog and read it by
 uid through `TimeIndexTableRef`, filtered by `portfolio_identifier`. A request
 for several portfolios groups them by table uid, reads each table once and
 returns one `core.tabular_frame@v1` frame. The fan-out is bounded by the
-number of providers, not of portfolios. Comparing an Alpaca portfolio with an
-Interactive Brokers portfolio is therefore one call whose two sources happen
-to live in two namespaces.
+number of providers, not of portfolios. Comparing portfolios computed by two
+different providers is therefore one call whose two sources live in two
+namespaces.
 
 Who may read is a separate, narrow grant: the Markets workload gets Reader on
 each provider's time-series tables, or the call is requester-bound and the
@@ -225,58 +221,60 @@ then one more producer writing its own instance. Nothing in this decision
 depends on Markets running an engine; signals, strategies and engines stay
 with providers, as `msm_portfolios` intends.
 
-## Worked example: the Alpaca Account
+## Worked example: a provider account sidecar
 
-Today `AlpacaAccountDetails` is a one-to-one sidecar on `ms_markets__account.uid`
-with cascade delete, registered in `mainsequence.markets`. Listing
-registrations compiles a join over both tables and runs it as the Alpaca
-workload. Registration runs `Account.upsert`, an upsert on the sidecar and a
-holdings snapshot as three separate MetaTables requests.
+A broker provider keeps its account details in a one-to-one sidecar on
+`ms_markets__account.uid` with cascade delete, including application-encrypted
+credential columns. Today the sidecar is registered in `mainsequence.markets`.
+Listing registrations compiles a join over both tables and runs it as the
+provider workload. Registration runs `Account.upsert`, an upsert on the sidecar
+and a holdings snapshot as three separate MetaTables requests.
 
 Under this ADR:
 
-- The sidecar moves to the `alpaca-connectors` namespace. Its foreign key,
-  its encrypted key columns and Alpaca's migration provider are unchanged. The
-  encrypted columns are the reason the sidecar must stay Alpaca-owned: only a
-  process holding the Alpaca keyring can open them.
+- The sidecar moves to the provider's namespace. Its foreign key, its encrypted
+  columns and the provider's migration provider are unchanged. The encrypted
+  columns are the reason the sidecar must stay provider-owned: only a process
+  holding the provider's keyring can open them, and the Markets workload must
+  not be granted the sidecar for `include`, which returns columns as stored.
 - `Account.upsert` and the active-flag update go through the Markets account
   create and update routes, `POST /api/v1/account/` and
   `PATCH /api/v1/account/{uid}/`. The holdings snapshot uses the existing
-  `addAccountHoldings` route. Atomicity is unchanged; a
-  composite register route on Markets could later make it better than today.
-- The list query pages on the sidecar, which already duplicates `is_paper`
-  and the unique identifier, and hydrates core columns with one batch lookup
-  by uid. Adding `account_name` and the active flag to the sidecar removes the
-  join from the common path. Core-first listing with sidecar columns uses the
-  Markets `include` hydration with Alpaca's Reader grant.
-- Alpaca's Team drops Writer on `mainsequence.markets`.
+  `addAccountHoldings` route. Atomicity is unchanged; a composite register
+  route on Markets could later make it better than today.
+- The list query pages on the sidecar, which duplicates the paper flag and the
+  unique identifier, and hydrates core columns with one batch lookup by uid.
+  Adding the account name and the active flag to the sidecar removes the join
+  from the common path.
+- The provider's Team drops Writer on `mainsequence.markets`.
 
-## Worked example: the Alpaca ETF tracking portfolio
+## Worked example: a provider-computed portfolio
 
-Today `build_alpaca_etf_tracking_portfolio` runs in an Alpaca Job and writes
-five time-index tables, all registered in `mainsequence.markets`: Alpaca bars
-and interpolated prices, which Alpaca migrates, and signal weights, portfolio
-values and portfolio weights, which are Markets' shared tables. It also upserts
-the Calendar and Portfolio rows. `PortfolioTable` has producer uid columns,
-but `portfolio_values()` in `msm_portfolios.services.portfolio_reads` selects
-from the fixed core table and ignores them.
+A provider Job builds a tracking portfolio from its own signal and its own
+price bars. Today it writes five time-index tables, all registered in
+`mainsequence.markets`: its bars and interpolated prices, which it migrates,
+and signal weights, portfolio values and portfolio weights, which are Markets'
+shared tables. It also upserts the Calendar and Portfolio rows.
+`PortfolioTable` has producer uid columns, but `portfolio_values()` in
+`msm_portfolios.services.portfolio_reads` selects from the fixed core table and
+ignores them.
 
 Under this ADR:
 
-- Alpaca declares `AlpacaPortfoliosStorage`, `AlpacaPortfolioWeightsStorage`
-  and `AlpacaSignalWeightsStorage` through a storage factory ms-markets
-  exposes for the three contracts, in the Alpaca namespace, migrated by the
-  Alpaca provider. Bars and interpolated prices move to that namespace too.
-- `AlpacaETFHoldingsSignal` and `PortfoliosDataNode` are bound to those
+- The provider declares its own portfolio values, portfolio weights and signal
+  weights instances through the storage factories ms-markets exposes for the
+  three contracts, in the provider's namespace, migrated by the provider. Its
+  bars and interpolated prices move to that namespace too.
+- The provider's signal node and `PortfoliosDataNode` are bound to those
   instances with `output_table=`. The signal, the strategy and the engine code
-  stay in the Alpaca repository.
+  stay in the provider's repository.
 - The Portfolio row is created through the Markets API with the three table
   uids, the calendar and the strategy configuration. After each run the Job
   reconciles the portfolio dataset availability.
-- Alpaca's Team is Writer on `alpaca-connectors` only and grants the Markets
-  workload Reader on its three time-series tables.
-- `markets-analytics` obtains the portfolio values frame for any mix of
-  Alpaca and Interactive Brokers portfolios from one Markets route.
+- The provider's Team is Writer on its own namespace only and grants the
+  Markets workload Reader on its three time-series tables.
+- A consumer obtains the portfolio values frame for portfolios from several
+  providers through one Markets route.
 
 ## Migration path
 
@@ -293,11 +291,10 @@ Under this ADR:
    signals, bind nodes to them, backfill from their own nodes, register the
    catalog rows, and replace direct registry writes with API calls. Drop
    Writer on `mainsequence.markets`.
-4. Consumers: switch `markets-analytics` route family by route family,
-   portfolio analytics first, then Index Studio, then holdings and fixed
-   income; remove `start_engine`, drop the namespace grants, and replace the
-   exact pin with the contracts range. New applications such as Hunch start
-   on the client and hold no tables.
+4. Consumers: switch each consumer route family by route family, portfolio
+   reads first, then index authoring, then holdings and pricing; remove
+   `start_engine`, drop the namespace grants, and replace the exact pin with the
+   contracts range. New applications start on the client and hold no tables.
 
 ## Consequences
 
@@ -345,8 +342,8 @@ Implemented in `msm_portfolios.data_nodes.contract_instances`,
   and the other two are its supporting facts.
 - An instance is named `<storage_app>__<contract>__<instance_key>` and
   identified as `<Contract>.<instance_key>`, namespace-prefixed outside the
-  default Markets namespace. The ADR's `alpaca_connectors__portfoliosts` is
-  therefore `alpaca_connectors__portfoliosts__alpaca`; the key keeps two
+  default Markets namespace. Decision 5's `<provider>__portfoliosts` is
+  therefore `<provider>__portfoliosts__<instance_key>`; the key keeps two
   instances of one provider distinct.
 - Registration verifies each declared table against the contract (columns and
   index names) through the MetaTables catalog before writing the row, and
@@ -410,8 +407,8 @@ in the adapter operation registry. Deviations and refinements:
   single-column foreign key to the core table's `uid` (the sidecar rule of
   decision 4), reads each sidecar once for the returned uids as the Markets
   workload and attaches rows under `includes[<uid>]`. It works for a sidecar in
-  any namespace today, including `mainsequence.markets`, so the Alpaca account
-  listing can move before step 3. Search-driven list routes do not take
+  any namespace today, including `mainsequence.markets`, so a provider's
+  account listing can move before step 3. Search-driven list routes do not take
   `include`; a consumer pages on its own sidecar and hydrates by uid, which is
   the direction the worked example needs.
 - Formula save takes the Index identity from the stored row and accepts only
