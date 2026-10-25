@@ -5,81 +5,12 @@ import warnings
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict
 
 from msm.base import MarketsBase
 
 RowT = TypeVar("RowT", bound="MarketsMetaTableRow")
 Payload = BaseModel | Mapping[str, Any] | None
-
-
-def reconcile_renamed_columns(table: type[MarketsBase] | None, data: Any) -> Any:
-    """Give row data both names of each renamed UID column (ADR 0048).
-
-    Rows read from a table hold the current and the pre-3.0 column; the value is
-    taken from the column ``READ_PRE_3_0_COLUMNS`` selects. Rows built from one
-    name get the same value under the other.
-    """
-
-    renamed = getattr(table, "__renamed_columns__", None)
-    if not renamed or not isinstance(data, Mapping):
-        return data
-    from msm.repositories.crud import renamed_column_value
-
-    reconciled = dict(data)
-    for current, previous in renamed.items():
-        if current in reconciled or previous in reconciled:
-            value = renamed_column_value(table, reconciled, current)
-            reconciled[current] = reconciled[previous] = value
-    return reconciled
-
-
-def pre_3_0_field(current: str) -> Any:
-    """Declare the deprecated pre-3.0 name of renamed UID field ``current``."""
-
-    return Field(
-        default=None,
-        deprecated=f"Use {current}; the pre-3.0 name is removed in ms-markets 4.0 (ADR 0048).",
-    )
-
-
-def accept_renamed_fields(model: type[BaseModel], data: Any) -> Any:
-    """Move pre-3.0 input names to their current names, with a warning (ADR 0048)."""
-
-    renamed = getattr(model, "__renamed_fields__", None)
-    if not renamed or not isinstance(data, Mapping):
-        return data
-    from msm._deprecated_imports import warn_renamed
-    from msm.repositories.crud import _same_value
-
-    accepted = dict(data)
-    for current, previous in renamed.items():
-        if previous not in accepted:
-            continue
-        warn_renamed(f"{model.__name__}.{previous}", f"{model.__name__}.{current}")
-        value = accepted.pop(previous)
-        if current in accepted and not _same_value(accepted[current], value):
-            raise ValueError(
-                f"{model.__name__} received different values for {current} and its "
-                f"pre-3.0 name {previous}."
-            )
-        accepted.setdefault(current, value)
-    return accepted
-
-
-class PayloadWithRenamedFields(BaseModel):
-    """Payload that accepts the pre-3.0 name of each renamed UID field (ADR 0048).
-
-    ``__renamed_fields__`` maps each current field to its pre-3.0 name; ms-markets
-    4.0 stops accepting the pre-3.0 names.
-    """
-
-    __renamed_fields__: ClassVar[Mapping[str, str]] = {}
-
-    @model_validator(mode="before")
-    @classmethod
-    def _accept_pre_3_0_field_names(cls, data: Any) -> Any:
-        return accept_renamed_fields(cls, data)
 
 
 class MarketsMetaTableRow(BaseModel):
@@ -101,11 +32,6 @@ class MarketsMetaTableRow(BaseModel):
         from msm.api.remote import install_remote_dispatch
 
         install_remote_dispatch(cls)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _reconcile_renamed_columns(cls, data: Any) -> Any:
-        return reconcile_renamed_columns(getattr(cls, "__table__", None), data)
 
     @classmethod
     def start_engine(cls, **kwargs: Any):
@@ -133,7 +59,7 @@ class MarketsMetaTableRow(BaseModel):
         result = create_model(
             cls._active_context(),
             model=cls.__table__,
-            values=_row_values(cls, payload, kwargs),
+            values=_payload_values(payload, kwargs),
         )
         return cls._from_operation_result(result)
 
@@ -148,7 +74,7 @@ class MarketsMetaTableRow(BaseModel):
         result = upsert_model(
             cls._active_context(),
             model=cls.__table__,
-            values=_row_values(cls, payload, kwargs),
+            values=_payload_values(payload, kwargs),
             conflict_columns=cls.__upsert_keys__,
         )
         return cls._from_operation_result(result)
@@ -168,7 +94,7 @@ class MarketsMetaTableRow(BaseModel):
             cls._active_context(),
             model=cls.__table__,
             uid=uid,
-            values=_row_values(cls, payload, kwargs),
+            values=_payload_values(payload, kwargs),
         )
         return cls._from_operation_result(result)
 
@@ -402,19 +328,6 @@ def operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[
     return []
 
 
-def _row_values(
-    row: type[BaseModel], payload: Payload, kwargs: Mapping[str, Any]
-) -> dict[str, Any]:
-    values = _payload_values(payload, kwargs)
-    table = getattr(row, "__table__", None)
-    for current, previous in getattr(table, "__renamed_columns__", {}).items():
-        if previous in values and current not in values:
-            from msm._deprecated_imports import warn_renamed
-
-            warn_renamed(f"{row.__name__}.{previous}", f"{row.__name__}.{current}")
-    return values
-
-
 RANGE_LOOKUP_SUFFIXES = ("__gte", "__gt", "__lte", "__lt")
 
 
@@ -448,8 +361,8 @@ def _upsert_values(row: type[Any], payload: BaseModel | Mapping[str, Any]) -> di
         if not isinstance(payload, payload_model):
             data = payload.model_dump(exclude_unset=True) if isinstance(payload, BaseModel) else payload
             payload = payload_model.model_validate(data)
-        return _row_values(row, payload, {})
-    return _row_values(row, payload, {})
+        return _payload_values(payload, {})
+    return _payload_values(payload, {})
 
 
 def _payload_values(payload: Payload, kwargs: Mapping[str, Any]) -> dict[str, Any]:

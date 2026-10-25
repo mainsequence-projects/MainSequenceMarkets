@@ -10,10 +10,9 @@ The FastAPI layer is a resolver only. Row contracts and CRUD operations come
 from `msm_pricing.api`.
 
 !!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries `storage_table_uid` also
-    repeats it under its pre-3.0 name `data_node_uid`, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+    ms-markets 4.0 removed the pre-3.0 name `data_node_uid`. Responses carry only
+    `storage_table_uid`, and requests that use `data_node_uid` fail with `422`
+    ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
 
 ## Discoverability
 

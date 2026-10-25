@@ -463,7 +463,6 @@ def test_delete_pricing_curve_deletes_with_explicit_cleanup_flags(monkeypatch) -
         "storage_cleanups": [
             {
                 "storage_table_uid": str(storage_table_uid),
-                "data_node_uid": str(storage_table_uid),
                 "storage_table_identifier": "DiscountCurvesStorage",
                 "deleted_count": 4,
                 "table_empty": False,
@@ -532,7 +531,6 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
                 "uid": str(binding_uid),
                 "concept_key": "discount_curves",
                 "storage_table_uid": str(storage_table_uid),
-                "data_node_uid": str(storage_table_uid),
                 "storage_table_identifier": "DiscountCurvesStorage",
             },
             "valuation_date": None,
@@ -571,7 +569,6 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
             "uid": str(binding_uid),
             "concept_key": "discount_curves",
             "storage_table_uid": str(storage_table_uid),
-            "data_node_uid": str(storage_table_uid),
             "storage_table_identifier": "DiscountCurvesStorage",
         },
         "valuation_date": None,

@@ -6,12 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from msm.api.base import (
-    MarketsMetaTableRow,
-    PayloadWithRenamedFields,
-    operation_result_rows,
-    pre_3_0_field,
-)
+from msm.api.base import MarketsMetaTableRow, operation_result_rows
 from msm.models import (
     CalendarTable,
     IndexTable,
@@ -64,22 +59,10 @@ class Portfolio(MarketsMetaTableRow):
     signal_uid: str | None = None
     portfolio_table_update_uid: uuid.UUID | None = None
     backtest_table_price_column_name: str = "close"
-    portfolio_weights_data_node_uid: uuid.UUID | None = pre_3_0_field(
-        "portfolio_weights_table_update_uid"
-    )
-    signal_weights_data_node_uid: uuid.UUID | None = pre_3_0_field(
-        "signal_weights_table_update_uid"
-    )
-    portfolio_data_node_uid: uuid.UUID | None = pre_3_0_field("portfolio_table_update_uid")
 
 
-class PortfolioCreate(PayloadWithRenamedFields):
+class PortfolioCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "portfolio_weights_table_update_uid": "portfolio_weights_data_node_uid",
-        "signal_weights_table_update_uid": "signal_weights_data_node_uid",
-        "portfolio_table_update_uid": "portfolio_data_node_uid",
-    }
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     calendar_uid: uuid.UUID | str
@@ -95,13 +78,8 @@ class PortfolioUpsert(PortfolioCreate):
     """Payload for inserting or updating a portfolio."""
 
 
-class PortfolioUpdate(PayloadWithRenamedFields):
+class PortfolioUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "portfolio_weights_table_update_uid": "portfolio_weights_data_node_uid",
-        "signal_weights_table_update_uid": "signal_weights_data_node_uid",
-        "portfolio_table_update_uid": "portfolio_data_node_uid",
-    }
 
     calendar_uid: uuid.UUID | str | None = None
     published_index_uid: uuid.UUID | str | None = None

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
@@ -393,7 +391,6 @@ def test_pricing_market_data_binding_resolve_wraps_source_resolution(monkeypatch
         "market_data_set": "default",
         "concept_key": "discount_curves",
         "storage_table_uid": str(storage_table_uid),
-        "data_node_uid": str(storage_table_uid),
     }
     assert captured == {"market_data_set": "default", "concept_key": "discount_curves"}
 
@@ -426,34 +423,25 @@ def test_pricing_market_data_binding_create_wraps_source_create(monkeypatch) -> 
     assert captured["payload"]["market_data_set_uid"] == row.market_data_set_uid
 
 
-def test_pricing_market_data_binding_create_accepts_the_pre_3_0_field_name(monkeypatch) -> None:
+def test_pricing_market_data_binding_create_rejects_the_pre_3_0_field_name(monkeypatch) -> None:
     row = _binding_row()
-    captured: dict[str, object] = {}
-
-    def fake_create(payload):
-        captured["payload"] = payload.model_dump()
-        return row
-
     monkeypatch.setattr(
         "apps.v1.routers.pricing_market_data.create_pricing_market_data_binding",
-        fake_create,
+        lambda payload: row,
     )
 
     client = TestClient(app)
-    with pytest.warns(DeprecationWarning, match="data_node_uid is deprecated"):
-        response = client.post(
-            "/api/v1/pricing/market_data/bindings/",
-            json={
-                "market_data_set_uid": str(row.market_data_set_uid),
-                "concept_key": "discount_curves",
-                "data_node_uid": str(row.storage_table_uid),
-            },
-        )
+    response = client.post(
+        "/api/v1/pricing/market_data/bindings/",
+        json={
+            "market_data_set_uid": str(row.market_data_set_uid),
+            "concept_key": "discount_curves",
+            "data_node_uid": str(row.storage_table_uid),
+        },
+    )
 
-    assert response.status_code == 201
-    assert captured["payload"]["storage_table_uid"] == row.storage_table_uid
-    assert response.json()["storage_table_uid"] == str(row.storage_table_uid)
-    assert response.json()["data_node_uid"] == str(row.storage_table_uid)
+    # ms-markets 4.0 removed the pre-3.0 name (ADR 0048).
+    assert response.status_code == 422
 
 
 def test_pricing_market_data_binding_upsert_wraps_source_upsert(monkeypatch) -> None:

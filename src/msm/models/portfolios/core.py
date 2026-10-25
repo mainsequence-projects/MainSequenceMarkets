@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-from typing import ClassVar
-
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -29,12 +27,6 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         "Stores required calendar linkage, optional published index linkage, and TimeIndexTableUpdater "
         "pointers used to publish portfolio weights, signals, and values."
     )
-    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
-    __renamed_columns__: ClassVar[dict[str, str]] = {
-        "portfolio_weights_table_update_uid": "portfolio_weights_data_node_uid",
-        "signal_weights_table_update_uid": "signal_weights_data_node_uid",
-        "portfolio_table_update_uid": "portfolio_data_node_uid",
-    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -109,36 +101,12 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Platform TimeIndexTableUpdate.uid for the portfolio weights producer.",
         },
     )
-    portfolio_weights_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        nullable=True,
-        info={
-            "label": "Portfolio Weights Table Update UID (pre-3.0 column)",
-            "description": (
-                "Pre-3.0 copy of portfolio_weights_table_update_uid. ms-markets 3.x writes both "
-                "columns and reads this one until every writer runs 3.x; "
-                "ms-markets 4.0 stops writing it and 4.1 drops it."
-            ),
-        },
-    )
     signal_weights_table_update_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,
         info={
             "label": "Signal Weights Table Update UID",
             "description": "Platform TimeIndexTableUpdate.uid for the signal weights producer.",
-        },
-    )
-    signal_weights_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        nullable=True,
-        info={
-            "label": "Signal Weights Table Update UID (pre-3.0 column)",
-            "description": (
-                "Pre-3.0 copy of signal_weights_table_update_uid. ms-markets 3.x writes both "
-                "columns and reads this one until every writer runs 3.x; "
-                "ms-markets 4.0 stops writing it and 4.1 drops it."
-            ),
         },
     )
     signal_uid: Mapped[str | None] = mapped_column(
@@ -163,18 +131,6 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Portfolio Values Table Update UID",
             "description": "Platform TimeIndexTableUpdate.uid for the portfolio values producer.",
-        },
-    )
-    portfolio_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True),
-        nullable=True,
-        info={
-            "label": "Portfolio Values Table Update UID (pre-3.0 column)",
-            "description": (
-                "Pre-3.0 copy of portfolio_table_update_uid. ms-markets 3.x writes both "
-                "columns and reads this one until every writer runs 3.x; "
-                "ms-markets 4.0 stops writing it and 4.1 drops it."
-            ),
         },
     )
     backtest_table_price_column_name: Mapped[str] = mapped_column(

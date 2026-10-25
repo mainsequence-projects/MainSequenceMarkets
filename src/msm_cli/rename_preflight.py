@@ -1,11 +1,12 @@
 """``msm rename-preflight``: what a consumer changes and rotates for ADR 0048.
 
 ``scan`` finds pre-3.0 import paths, class names and UID field names in a source
-tree, including ``getattr(obj, "<pre-3.0 field>", default)`` calls that ms-markets
-4.0 turns into silent defaults. ``rotation`` reports which of a consumer's updaters
-got a new MetaTables ``update_hash`` and the pre-3.0 hash that names their old
-``TimeIndexTableUpdate``. ``account-uids`` classifies the UIDs stored on accounts
-and account holdings sets as storage tables or table updates.
+tree, including ``getattr(obj, "<pre-3.0 field>", default)`` calls, which return
+their default without an error since ms-markets 4.0 removed the pre-3.0 names.
+``rotation`` reports which of a consumer's updaters got a new MetaTables
+``update_hash`` and the pre-3.0 hash that names their old ``TimeIndexTableUpdate``.
+``account-uids`` classifies the UIDs stored on accounts and account holdings sets
+as storage tables or table updates.
 """
 
 from __future__ import annotations
@@ -155,8 +156,7 @@ def as_dicts(findings: Iterable[Finding]) -> list[dict[str, Any]]:
 
 
 def _scan_rules() -> list[tuple[str, re.Pattern[str], Callable[[re.Match[str]], str]]]:
-    from msm._deprecated_imports import RENAMED_CLASS_NAMES
-    from msm.identity import PRE_RENAME_MODULES
+    from msm.identity import PRE_RENAME_CLASS_NAMES, PRE_RENAME_MODULES
 
     rules: list[tuple[str, re.Pattern[str], Callable[[re.Match[str]], str]]] = []
     for current, previous in PRE_RENAME_MODULES:
@@ -168,7 +168,7 @@ def _scan_rules() -> list[tuple[str, re.Pattern[str], Callable[[re.Match[str]], 
                 + match.group(0)[len(previous) :],
             )
         )
-    for previous, current in sorted(RENAMED_CLASS_NAMES.items()):
+    for current, previous in sorted(PRE_RENAME_CLASS_NAMES.items(), key=lambda item: item[1]):
         rules.append(("class name", re.compile(rf"\b{previous}\b"), lambda _m, c=current: c))
     for previous, current in PRE_3_0_FIELD_NAMES.items():
         rules.append(

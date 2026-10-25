@@ -79,9 +79,7 @@ class VirtualFund(MarketsMetaTableRow):
         updater: Any | None = None,
         run: bool = False,
         validate_bounds: bool = True,
-        data_node: Any | None = None,
     ) -> pd.DataFrame:
-        updater = _renamed_updater_argument(updater, data_node)
         resolved_holdings_set_uid = virtual_fund_holdings_set_uid or uuid.uuid4()
         frame = build_virtual_fund_holdings_frame(
             allocation_time=allocation_time,
@@ -107,19 +105,6 @@ class VirtualFund(MarketsMetaTableRow):
             if run:
                 updater.run(update_tree=False)
         return frame
-
-
-def _renamed_updater_argument(updater: Any | None, data_node: Any | None) -> Any | None:
-    """Accept the pre-3.0 ``data_node=`` keyword, with a warning (ADR 0048)."""
-
-    if data_node is None:
-        return updater
-    from msm._deprecated_imports import warn_renamed
-
-    warn_renamed("data_node=", "updater=")
-    if updater is not None and updater is not data_node:
-        raise TypeError("Pass the holdings updater as updater=, not also as data_node=.")
-    return data_node
 
 
 class VirtualFundCreate(BaseModel):

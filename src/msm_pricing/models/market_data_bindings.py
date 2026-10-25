@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-from typing import ClassVar
-
 from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
@@ -106,10 +104,6 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         "or interest-rate index fixings, to the backend storage table UID consumed "
         "by the pricing engine."
     )
-    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
-    __renamed_columns__: ClassVar[dict[str, str]] = {
-        "storage_table_uid": "data_node_uid",
-    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -121,10 +115,6 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         Index(
             None,
             "concept_key",
-        ),
-        Index(
-            None,
-            "data_node_uid",
         ),
         Index(
             None,
@@ -166,18 +156,6 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
             "description": (
                 "Backend MetaTable/TimeIndexMetaTable UID of the time-index-table output table "
                 "used to resolve this pricing concept."
-            ),
-        },
-    )
-    data_node_uid: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        nullable=False,
-        info={
-            "label": "Storage Table UID (pre-3.0 column)",
-            "description": (
-                "Pre-3.0 copy of storage_table_uid. ms-markets 3.x writes both "
-                "columns and reads this one until every writer runs 3.x; "
-                "ms-markets 4.0 stops writing it and 4.1 drops it."
             ),
         },
     )

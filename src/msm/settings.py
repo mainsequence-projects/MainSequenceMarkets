@@ -49,15 +49,6 @@ def markets_identifier(identifier: str, namespace: str | None = None) -> str:
     return f"{namespace_prefix}{resolved_identifier}"
 
 
-def markets_data_node_identifier(identifier: str, namespace: str | None = None) -> str:
-    """Deprecated alias of :func:`markets_identifier`; removed in ms-markets 4.0 (ADR 0048)."""
-
-    from msm._deprecated_imports import warn_renamed
-
-    warn_renamed("msm.settings.markets_data_node_identifier", "msm.settings.markets_identifier")
-    return markets_identifier(identifier, namespace=namespace)
-
-
 __all__ = [
     "ASSET_IDENTIFIER_DIMENSION",
     "DEFAULT_MARKETS_NAMESPACE",
@@ -65,7 +56,6 @@ __all__ = [
     "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "markets_auto_register_namespace",
     "markets_configured_namespace",
-    "markets_data_node_identifier",
     "markets_identifier",
     "markets_namespace",
 ]

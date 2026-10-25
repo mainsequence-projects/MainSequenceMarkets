@@ -102,14 +102,14 @@ def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, start):
             command.upgrade(config, start)
             _seed_asset(connection)
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == ["0023"]
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0023"
+        assert ScriptDirectory.from_config(config).get_heads() == ["0024"]
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0024"
         assert len(sa.inspect(connection).get_table_names()) == 64
         if start:
             assert connection.exec_driver_sql("SELECT unique_identifier FROM ms_markets__asset").scalar_one() == "migration-preservation-asset"
         connection.rollback()
         command.upgrade(config, "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0023"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0024"
     engine.dispose()
 
 
@@ -184,7 +184,7 @@ def test_original_0017_postgresql_upgrade_preserves_every_row():
         assert {name: BRIDGE._fingerprint(connection, name) for name in tables} == before
         connection.rollback()
         command.upgrade(_config(connection), "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0023"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0024"
         assert {name: connection.exec_driver_sql(f'SELECT count(*) FROM "{name}"').scalar_one() for name in tables} == counts
         assert "ms_markets__portfoliodatasetavailability" in sa.inspect(connection).get_table_names()
     engine.dispose()

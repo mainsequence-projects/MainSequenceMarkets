@@ -407,11 +407,8 @@ def apply_account_virtual_fund_allocation_plan(
     *,
     updater: Any | None = None,
     run: bool = False,
-    data_node: Any | None = None,
 ) -> pd.DataFrame:
-    from msm.api.virtual_funds import VirtualFund, _renamed_updater_argument
-
-    updater = _renamed_updater_argument(updater, data_node)
+    from msm.api.virtual_funds import VirtualFund
 
     if plan.status == PLAN_STATUS_INFEASIBLE:
         raise ValueError("Cannot apply an infeasible virtual-fund allocation plan.")

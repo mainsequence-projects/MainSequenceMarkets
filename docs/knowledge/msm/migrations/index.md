@@ -48,8 +48,12 @@ writer changed after `0022`, NULL included, and makes `storage_table_uid` NOT
 NULL. ms-markets 3.1 reads the identity-named columns and still writes both, so
 3.0 readers stay correct. Deploy it only when no writer older than 3.0 remains:
 after `0023`, a 2.x writer can no longer create pricing market-data bindings.
-4.0 stops writing the pre-3.0 columns, and 4.1 drops them; each step needs its
-own release. See
+
+Release 4.0.0 adds revision `0024`. ms-markets 4.0 no longer maps, reads or
+writes the pre-3.0 columns, and `0024` makes `data_node_uid` nullable so the
+rows it inserts can leave them NULL. Deploy it only when no reader older than
+3.1 remains. Its downgrade copies the current values back and restores NOT NULL.
+4.1 drops the pre-3.0 columns; each step needs its own release. See
 [ADR 0048](../../../ADR/0048-time-index-vocabulary-rename.md).
 
 Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra

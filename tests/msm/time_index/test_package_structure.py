@@ -26,6 +26,11 @@ os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
         # ADR 0017 removed the DataNodeTableContract module entirely; its
         # holdings/position schemas now live on the storage classes.
         "msm.time_index.utils.contracts",
+        # ms-markets 4.0 removed the pre-3.0 alias packages (ADR 0048).
+        "msm.data_nodes",
+        "msm_portfolios.data_nodes",
+        "msm_pricing.data_nodes",
+        "msm_portfolios.contrib.prices.data_nodes",
     ],
 )
 def test_legacy_data_node_module_paths_are_removed(module_name: str) -> None:

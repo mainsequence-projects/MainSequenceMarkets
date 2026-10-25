@@ -8,12 +8,7 @@ def test_core_msm_does_not_import_msm_portfolios() -> None:
     core_root = repo_root / "src" / "msm"
     # These name msm_portfolios as a string (moved module paths, or the Markets packages
     # whose row classes run on the remote backend); they import nothing from it.
-    allowed_cross_package_files = {
-        "migrations/registry.py",
-        "identity.py",
-        "_deprecated_imports.py",
-        "api/remote.py",
-    }
+    allowed_cross_package_files = {"migrations/registry.py", "identity.py", "api/remote.py"}
     offenders: list[str] = []
 
     for path in core_root.rglob("*.py"):

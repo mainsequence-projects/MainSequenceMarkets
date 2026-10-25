@@ -7,6 +7,41 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Breaking release 4.0.0. It removes the pre-3.0 names that 3.x kept as deprecated
+aliases and stops writing the pre-3.0 UID columns
+([ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)).
+Release it only when no project older than 3.1 reads accounts, portfolios or
+pricing bindings, and after `msm rename-preflight scan` reports nothing in every
+dependent project. Dependent packages declare `ms-markets>=4,<5`.
+
+### Removed
+
+- The `msm.data_nodes`, `msm_portfolios.data_nodes`, `msm_pricing.data_nodes`
+  and `msm_portfolios.contrib.prices.data_nodes` alias packages, the pre-3.0
+  `*DataNode`, `*DataNodeConfiguration`, `TargetPositionsDataNodeConfiguration`,
+  `DiscountCurvesNode` and `FixingRatesNode` names, and the `msm_portfolios`
+  fallback that resolved them.
+- The pre-3.0 UID field names on rows, payloads and HTTP responses:
+  `holdings_data_node_uid`, `source_data_node_uid`, the portfolio
+  `*_data_node_uid` pointers and the pricing binding `data_node_uid`. Also
+  `PricingMarketDataConfiguration.data_node_uids` and `direct_data_node_uid_for`,
+  `PricingMarketDataSetBinding.resolve_data_node_uid`, the `data_node=` keyword
+  of virtual-fund allocation and `msm.settings.markets_data_node_identifier`.
+  Payloads and HTTP requests that use a pre-3.0 name fail validation, and row
+  writes raise `ValueError`.
+
+### Changed
+
+- Models no longer map the pre-3.0 UID columns, so ms-markets stops reading and
+  writing them. Revision `0024` makes `data_node_uid` nullable so the rows 4.0
+  inserts can leave it NULL; its downgrade copies the current values back and
+  restores NOT NULL. The columns stay until 4.1.0, because 3.x processes still
+  select them.
+- `msm rename-preflight scan` takes the pre-3.0 class names from
+  `msm.identity`, which stays in 4.0.
+
+## [3.1.0]
+
 Release 3.1.0 reads the identity-named UID columns that 3.0.0 added
 ([ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)).
 Deploy it only when no project older than 3.0 writes accounts, portfolios or

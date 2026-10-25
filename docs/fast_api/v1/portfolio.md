@@ -8,10 +8,8 @@ library workflow outside this API surface. ADR 0047 adds the multi-portfolio
 frames, the batch lookup and the dataset catalog routes described below.
 
 !!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries a `*_table_update_uid` portfolio pointer also
-    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+    ms-markets 4.0 removed the pre-3.0 `*_data_node_uid` portfolio pointer names.
+    Responses carry only the `*_table_update_uid` pointers ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
 
 ## Runtime Sources
 

@@ -21,9 +21,6 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "signal_uid": None,
         "portfolio_table_update_uid": None,
         "backtest_table_price_column_name": "close",
-        "portfolio_weights_data_node_uid": None,
-        "signal_weights_data_node_uid": None,
-        "portfolio_data_node_uid": None,
     }
 
 
@@ -233,8 +230,6 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     portfolio["signal_weights_table_update_uid"] = str(uuid.uuid4())
     portfolio["signal_uid"] = "example-signal"
     portfolio["portfolio_table_update_uid"] = str(uuid.uuid4())
-    # 3.1 reads the current columns, so a stale pre-3.0 value is ignored (ADR 0048).
-    portfolio["portfolio_weights_data_node_uid"] = str(uuid.uuid4())
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
         lambda context, uid: portfolio,
@@ -274,9 +269,6 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
         "signal_weights_table_update_uid": portfolio["signal_weights_table_update_uid"],
         "signal_uid": portfolio["signal_uid"],
         "portfolio_table_update_uid": portfolio["portfolio_table_update_uid"],
-        "portfolio_weights_data_node_uid": portfolio["portfolio_weights_table_update_uid"],
-        "signal_weights_data_node_uid": portfolio["signal_weights_table_update_uid"],
-        "portfolio_data_node_uid": portfolio["portfolio_table_update_uid"],
     }
     assert summary["highlight_fields"][0] == {
         "key": "calendar",

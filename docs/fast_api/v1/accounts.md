@@ -6,10 +6,10 @@ valid asset and portfolio targets, and holdings read endpoints support both
 direct account snapshots and virtual-fund-grouped views.
 
 !!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries `holdings_storage_table_uid` or `source_storage_table_uid` also
-    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+    ms-markets 4.0 removed the pre-3.0 names `holdings_data_node_uid` and
+    `source_data_node_uid`. Responses carry only `holdings_storage_table_uid` and
+    `source_storage_table_uid`, and requests that use a pre-3.0 name fail with
+    `422` ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
 
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`

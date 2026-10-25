@@ -1,4 +1,4 @@
-"""Revisions 0022 and 0023 move the UID columns to identity-named ones (ADR 0048)."""
+"""Revisions 0022 to 0024 move the UID columns to identity-named ones (ADR 0048)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ REVISION = importlib.import_module(
 )
 FINAL_COPY = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0023_read_identity_named_uid_columns"
+)
+STOP_WRITING = importlib.import_module(
+    "msm_migrations.versions.mainsequence_markets.0024_stop_writing_pre_3_0_uid_columns"
 )
 
 
@@ -84,6 +87,23 @@ def _late_2_x_writes(connection) -> dict[tuple[str, str], str | None]:
     return written
 
 
+def _writes_from_4_0(connection) -> dict[tuple[str, str], str]:
+    """Write the current columns as ms-markets 4.0 does, leaving the pre-3.0 ones NULL."""
+
+    written = {}
+    for table_name, columns in STOP_WRITING.RENAMED_COLUMNS.items():
+        table = sa.Table(table_name, sa.MetaData(), autoload_with=connection)
+        values = {
+            current: uuid.uuid5(uuid.NAMESPACE_URL, f"{table_name}.{current}.4_0").hex
+            for _previous, current in columns
+        }
+        values.update({previous: None for previous, _current in columns})
+        connection.execute(table.update().values(**values))
+        written.update({(table_name, column): value for column, value in values.items()})
+    connection.commit()
+    return written
+
+
 def test_0022_copies_pre_3_0_values_and_downgrades_cleanly(tmp_path) -> None:
     engine = sa.create_engine(f"sqlite:///{tmp_path / 'uid-columns.sqlite'}")
     with engine.connect() as connection:
@@ -142,6 +162,33 @@ def test_0023_copies_late_2_x_writes_and_requires_storage_table_uid(tmp_path) ->
         assert _nullable(connection, FINAL_COPY.BINDING_TABLE, "storage_table_uid")
         row = _row(connection, FINAL_COPY.BINDING_TABLE)
         assert row["storage_table_uid"] == written[(FINAL_COPY.BINDING_TABLE, "data_node_uid")]
+        assert _foreign_keys(connection) == foreign_keys
+        assert _indexes(connection) == indexes
+    engine.dispose()
+
+
+def test_0024_lets_rows_omit_data_node_uid_and_downgrades_with_a_copy(tmp_path) -> None:
+    engine = sa.create_engine(f"sqlite:///{tmp_path / 'uid-columns.sqlite'}")
+    with engine.connect() as connection:
+        config = _config(connection)
+        command.upgrade(config, "0021")
+        _seed_pre_3_0_values(connection)
+        command.upgrade(config, "0023")
+        foreign_keys = _foreign_keys(connection)
+        indexes = _indexes(connection)
+
+        command.upgrade(config, "0024")
+        assert _nullable(connection, STOP_WRITING.BINDING_TABLE, "data_node_uid")
+        assert _foreign_keys(connection) == foreign_keys
+        assert _indexes(connection) == indexes
+        written = _writes_from_4_0(connection)
+
+        command.downgrade(config, "0023")
+        assert not _nullable(connection, STOP_WRITING.BINDING_TABLE, "data_node_uid")
+        for table_name, columns in STOP_WRITING.RENAMED_COLUMNS.items():
+            row = _row(connection, table_name)
+            for previous, current in columns:
+                assert row[previous] == row[current] == written[(table_name, current)]
         assert _foreign_keys(connection) == foreign_keys
         assert _indexes(connection) == indexes
     engine.dispose()

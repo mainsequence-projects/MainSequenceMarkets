@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-from apps.v1.schemas.common import RenamedResponseFields, pre_3_0_response_field
 
 
 def _pricing_market_data_contracts():
@@ -79,11 +77,9 @@ class PricingMarketDataSetBindingDeleteResponse(BaseModel):
     deleted_count: int = Field(ge=0)
 
 
-class PricingMarketDataBindingResolveResponse(RenamedResponseFields):
+class PricingMarketDataBindingResolveResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uid": "data_node_uid"}
 
     market_data_set: str | None = None
     concept_key: str
     storage_table_uid: UUID
-    data_node_uid: UUID | None = pre_3_0_response_field("storage_table_uid")

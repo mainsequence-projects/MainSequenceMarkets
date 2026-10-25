@@ -38,6 +38,15 @@ Fix every `silent default` finding first. Code such as
 `getattr(binding, "data_node_uid", "")` keeps working through 3.x, but under
 4.0 it returns the default without an error.
 
+## Upgrading To 4.0
+
+ms-markets 4.0 removes every pre-3.0 name. An import from a pre-3.0 path raises
+`ModuleNotFoundError`, a pre-3.0 class name raises `AttributeError`, and a
+pre-3.0 field name fails validation in payloads and HTTP requests. The exception
+is `getattr(obj, "<pre-3.0 field>", default)`, which returns the default without
+an error, so `msm rename-preflight scan` must report nothing before a project
+moves to 4.0.
+
 ## Identities
 
 Every producer whose class or configuration class moved gets a new MetaTables

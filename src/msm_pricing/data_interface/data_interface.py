@@ -118,9 +118,7 @@ class MSDataInterface:
         return PricingMarketDataConfiguration.model_validate(
             {
                 "market_data_set": getattr(configuration, "market_data_set"),
-                # Configuration objects built for 2.x carry the pre-3.0 attribute name.
-                "storage_table_uids": getattr(configuration, "storage_table_uids", None)
-                or getattr(configuration, "data_node_uids", {}),
+                "storage_table_uids": getattr(configuration, "storage_table_uids", {}),
             }
         )
 
