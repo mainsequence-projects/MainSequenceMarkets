@@ -39,7 +39,8 @@ Platform utilities answer these questions:
   lives under `msm.time_index.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
-  host CodeRepository.
+  host CodeRepository and `msm rename-preflight` for moving a host project to
+  the 3.0 names ([Upgrading To 3.0](../../../upgrading-to-3.md)).
 
 ## Key Contracts
 

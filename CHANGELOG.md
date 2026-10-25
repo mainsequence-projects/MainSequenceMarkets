@@ -108,6 +108,15 @@ and this project follows versioned releases.
   (`msm.repositories.crud.mirror_renamed_columns`, driven by each model's
   `__renamed_columns__`) and reads the pre-3.0 columns until every writer runs
   3.x (ADR 0048).
+- `msm rename-preflight` helps host projects move to the 3.0 names. `scan`
+  lists pre-3.0 import paths, class names and UID field names with their
+  replacements, including `getattr(..., "<pre-3.0 field>", default)` calls that
+  4.0 would turn into silent defaults, and exits 1 while any remain.
+  `rotation module:callable` reports each updater's new and pre-3.0
+  `update_hash`. `account-uids` classifies the stored account and holdings-set
+  UIDs as storage tables or table updates. The new
+  [Upgrading To 3.0](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3/)
+  page describes the upgrade order.
 
 ### Changed
 

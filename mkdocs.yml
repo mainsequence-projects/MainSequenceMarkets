@@ -25,6 +25,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Core Concepts: concepts.md
+  - Upgrading To 3.0: upgrading-to-3.md
   - Tutorial:
       - Overview: tutorial/index.md
       - Assets And Categories: tutorial/01-assets.md

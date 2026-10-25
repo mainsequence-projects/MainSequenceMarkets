@@ -27,8 +27,62 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             emit_json=args.emit_json,
         )
+    if args.command == "rename-preflight" and args.preflight:
+        return rename_preflight_command(args)
     parser.print_help()
     return 1
+
+
+def rename_preflight_command(args: argparse.Namespace) -> int:
+    """Run one ``msm rename-preflight`` check (ADR 0048)."""
+
+    from msm_cli import rename_preflight
+
+    if args.preflight == "scan":
+        findings = rename_preflight.scan(Path(path) for path in args.paths)
+        rows = rename_preflight.as_dicts(findings)
+        if args.emit_json:
+            print(json.dumps(rows, indent=2))
+        else:
+            _print_table(
+                "Pre-3.0 names to replace",
+                ["File", "Line", "Kind", "Pre-3.0", "Use"],
+                [[r["path"], r["line"], r["kind"], r["old"], r["new"]] for r in rows],
+            )
+        return 1 if findings else 0
+    if args.preflight == "rotation":
+        report = rename_preflight.rotation(rename_preflight.load_objects(args.objects))
+        if args.emit_json:
+            print(json.dumps(report, indent=2))
+        else:
+            _print_table(
+                "Updater identities under 3.0",
+                ["Updater", "Rotated", "update_hash", "Pre-3.0 update_hash"],
+                [
+                    [r["updater"], r["rotated"], r["update_hash"], r["pre_3_0_update_hash"]]
+                    for r in report
+                ],
+            )
+        return 0
+    report = rename_preflight.account_uids(limit=args.limit)
+    if args.emit_json:
+        print(json.dumps(report, indent=2))
+    else:
+        _print_table(
+            "Stored account UIDs",
+            ["Table", "Column", "Classification", "Count", "Examples"],
+            [
+                [
+                    r["table"],
+                    r["column"],
+                    r["classification"],
+                    r["count"],
+                    ", ".join(r["examples"]),
+                ]
+                for r in report
+            ],
+        )
+    return 0 if all(r["classification"] == "TimeIndexMetaTable" for r in report) else 1
 
 
 def copy_msm_skills_command(
@@ -182,6 +236,36 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit machine-readable JSON.",
     )
+
+    preflight_parser = subparsers.add_parser(
+        "rename-preflight",
+        help="Find what moving to ms-markets 3.0 changes in a host project (ADR 0048).",
+    )
+    preflight = preflight_parser.add_subparsers(dest="preflight")
+    scan_parser = preflight.add_parser(
+        "scan",
+        help="List pre-3.0 import paths, class names and UID field names; exits 1 if any.",
+    )
+    scan_parser.add_argument("paths", nargs="+", help="Files or directories to scan.")
+    rotation_parser = preflight.add_parser(
+        "rotation",
+        help="Show which updaters got a new update_hash and their pre-3.0 hash.",
+    )
+    rotation_parser.add_argument(
+        "objects",
+        help="module:callable returning the updaters, signals or portfolio configurations.",
+    )
+    uids_parser = preflight.add_parser(
+        "account-uids",
+        help="Classify stored account UIDs; exits 1 unless all are storage tables.",
+    )
+    uids_parser.add_argument(
+        "--limit", type=int, default=10_000, help="Rows to read from each table."
+    )
+    for sub in (scan_parser, rotation_parser, uids_parser):
+        sub.add_argument(
+            "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
+        )
     return parser
 
 

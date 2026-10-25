@@ -95,7 +95,7 @@ def stable_identity_payload(payload: Any, *, sources: Iterable[Any] = ()) -> Any
     memo: dict[int, str | None] = {}
     nested_hashes = {
         updater.update_hash: _pre_rename_update_hash(updater, memo)
-        for updater in _reachable_updaters(sources)
+        for updater in reachable_updaters(sources)
         if getattr(updater, "update_hash", None)
     }
     return _translate(payload, nested_hashes)
@@ -113,7 +113,7 @@ def _pre_rename_update_hash(updater: TimeIndexTableUpdater, memo: dict[int, str 
         return updater.update_hash
 
     nested_hashes: dict[str, str] = {}
-    for nested in _reachable_updaters(vars(updater).values()):
+    for nested in reachable_updaters(vars(updater).values()):
         nested_hash = getattr(nested, "update_hash", None)
         if nested is not updater and nested_hash:
             nested_hashes[nested_hash] = _pre_rename_update_hash(nested, memo)
@@ -134,7 +134,9 @@ def _pre_rename_update_hash(updater: TimeIndexTableUpdater, memo: dict[int, str 
     return result
 
 
-def _reachable_updaters(roots: Iterable[Any]) -> Iterator[TimeIndexTableUpdater]:
+def reachable_updaters(roots: Iterable[Any]) -> Iterator[TimeIndexTableUpdater]:
+    """Yield every updater reachable from ``roots`` through attributes, fields and containers."""
+
     seen: set[int] = set()
     pending = list(roots)
     while pending:
@@ -179,5 +181,6 @@ __all__ = [
     "PRE_RENAME_MODULES",
     "pre_rename_class_path",
     "pre_rename_update_hash",
+    "reachable_updaters",
     "stable_identity_payload",
 ]
