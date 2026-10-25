@@ -77,6 +77,14 @@ and this project follows versioned releases.
   requester (ADR 0047, decision 3). Caller-bound calls are unchanged. The
   declaration takes effect only when an Organization admin pushes it; a push by
   anyone else makes the `markets-api` resource fail before it deploys.
+- `tests/identity/test_pinned_identities.py` pins the identities that a rename
+  or a module move would rotate: the physical table name and MetaTable
+  identifier of every library-owned model, the `module:qualname` of every
+  shipped `TimeIndexTableUpdater` and `TimeIndexTableUpdateConfig` subclass
+  (MetaTables hashes both into each producer's `update_hash`), and the
+  `signal_uid` and portfolio configuration hash of fixed library and
+  application signal configurations. Changing a pinned value is a deliberate
+  identity rotation and belongs in this changelog.
 
 ### Changed
 
@@ -90,6 +98,25 @@ and this project follows versioned releases.
   `dataset_reader` for tests. The portfolio values, weights and signal-weight
   API routes use these reads. The `apps/v1` runtimes attach
   `PortfolioDatasetAvailability`.
+
+### Fixed
+
+- UID column labels and descriptions name the identity each column holds.
+  The three `PortfolioTable.*_data_node_uid` columns are labelled as
+  `TimeIndexTableUpdate` uids, which is what the portfolio updaters write.
+  `PricingMarketDataSetBindingTable.data_node_uid` is labelled as the storage
+  table uid it is resolved through. `AccountTable.holdings_data_node_uid` and
+  `AccountHoldingsSetTable.source_data_node_uid` describe `TimeIndexMetaTable`
+  uids, as their original `DataNodeStorage` descriptions did, instead of being
+  labelled as updater uids. The Command Center market-data binding columns
+  read "Storage table UID", and the API settings namespace assumption names
+  time-index table updaters instead of DataNodes. Column names, API fields and
+  MetaTable contract hashes are unchanged; the catalog refreshes the labels on
+  the next migration finalization.
+- `docs/concepts.md` describes timestamped data in MetaTables terms: a
+  `PlatformTimeIndexMetaTable` storage class written by a
+  `TimeIndexTableUpdater` producer, instead of a single DataNode storage
+  contract.
 
 ## [2.2.12] - 2026-10-22
 

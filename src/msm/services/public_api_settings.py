@@ -49,7 +49,10 @@ def get_public_api_settings(
                 "label": "Markets namespace",
                 "value": namespace,
                 "source": namespace_source,
-                "description": "Runtime MetaTables and DataNodes resolve against this namespace.",
+                "description": (
+                    "Runtime MetaTables and time-index table updaters resolve against this "
+                    "namespace."
+                ),
             },
             {
                 "key": "runtime_bootstrap",

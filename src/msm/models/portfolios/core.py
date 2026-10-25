@@ -97,7 +97,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Portfolio Weights Data Node UID",
+            "label": "Portfolio Weights Table Update UID",
             "description": "Platform TimeIndexTableUpdate.uid for the portfolio weights producer.",
         },
     )
@@ -105,7 +105,7 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Signal Weights Data Node UID",
+            "label": "Signal Weights Table Update UID",
             "description": "Platform TimeIndexTableUpdate.uid for the signal weights producer.",
         },
     )
@@ -129,8 +129,8 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Portfolio Data Node UID",
-            "description": "Platform TimeIndexTableUpdate.uid for the portfolio-level data producer.",
+            "label": "Portfolio Values Table Update UID",
+            "description": "Platform TimeIndexTableUpdate.uid for the portfolio values producer.",
         },
     )
     backtest_table_price_column_name: Mapped[str] = mapped_column(

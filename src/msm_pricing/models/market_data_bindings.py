@@ -152,7 +152,7 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=False,
         info={
-            "label": "TimeIndexTableUpdater Storage UID",
+            "label": "Storage Table UID",
             "description": (
                 "Backend MetaTable/TimeIndexMetaTable UID of the time-index-table output table "
                 "used to resolve this pricing concept."

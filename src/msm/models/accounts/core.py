@@ -117,8 +117,11 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Holdings TimeIndexTableUpdater UID",
-            "description": "Optional platform DataNodeStorage UID for this account's holdings history.",
+            "label": "Holdings Storage Table UID",
+            "description": (
+                "Optional TimeIndexMetaTable uid of the time-index table that holds this "
+                "account's holdings history."
+            ),
         },
     )
     metadata_json: Mapped[dict | None] = mapped_column(
@@ -297,8 +300,11 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Source TimeIndexTableUpdater UID",
-            "description": "Optional DataNodeStorage uid that produced this holdings set.",
+            "label": "Source Storage Table UID",
+            "description": (
+                "Optional TimeIndexMetaTable uid of the time-index table this holdings set "
+                "was produced from."
+            ),
         },
     )
 

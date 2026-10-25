@@ -38,7 +38,9 @@ def test_get_api_settings_uses_auto_register_namespace(monkeypatch) -> None:
         "label": "Markets namespace",
         "value": "mainsequence.examples",
         "source": "MSM_AUTO_REGISTER_NAMESPACE",
-        "description": "Runtime MetaTables and DataNodes resolve against this namespace.",
+        "description": (
+            "Runtime MetaTables and time-index table updaters resolve against this namespace."
+        ),
     }
 
 

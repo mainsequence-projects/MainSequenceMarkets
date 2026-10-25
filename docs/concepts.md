@@ -4,7 +4,7 @@ This page is the single canonical explanation of the `ms-markets` runtime model.
 Other pages state the one-line rule they need and link here instead of
 re-explaining it. Read this once; the rest of the docs assume it.
 
-## Three layers: row objects, `*Table` declarations, DataNodes
+## Three layers: row objects, `*Table` declarations, time-index tables
 
 `ms-markets` is meant to feel like a typed market-domain API, not a pile of
 SQLAlchemy internals. There are three distinct layers, and each has an owner:
@@ -18,10 +18,25 @@ SQLAlchemy internals. There are three distinct layers, and each has an owner:
   Schema, registration, and migration code works here. A row class names its
   backing table through `__table__` and its required schema set through
   `__required_tables__`.
-- **DataNodes** — timestamped storage contracts for execution facts and
-  observations (orders, events, trades, holdings, fixings, curve points). These
-  are *not* duplicate row MetaTables; they are time-indexed tables described by
-  `PlatformTimeIndexMetaTable` storage classes.
+- **Time-index tables and their updaters** — execution facts and observations
+  (orders, events, trades, holdings, fixings, curve points) live in time-index
+  tables, *not* in duplicate row MetaTables. Following MetaTables, two classes
+  describe each dataset:
+    - a storage class, a `PlatformTimeIndexMetaTable` such as `OrdersStorage`,
+      declares the columns, time index and index names. Its backend record is a
+      `TimeIndexMetaTable`.
+    - a producer, a `TimeIndexTableUpdater` subclass such as `Orders` or
+      `AssetSnapshot`, computes incremental frames and writes them to that
+      table. Its backend record is a `TimeIndexTableUpdate`.
+
+    A `TimeIndexMetaTable` uid identifies a table; a `TimeIndexTableUpdate` uid
+    identifies one producer, and several producers can write to the same table.
+
+    The shared producer base classes are still named `*DataNode`, for example
+    `AssetIndexedDataNode`, and live under `msm.data_nodes`,
+    `msm_portfolios.data_nodes` and `msm_pricing.data_nodes`. The names predate
+    the MetaTables terms; the classes are ordinary `TimeIndexTableUpdater`
+    subclasses.
 
 ```python
 from msm.api.assets import Asset       # row object — application code
@@ -29,8 +44,8 @@ from msm.models import AssetTable       # SQLAlchemy declaration — schema code
 ```
 
 Rule of thumb: **user workflows talk about `Asset.upsert(...)`; schema and
-registration text talks about `AssetTable`.** Timestamped facts go to DataNodes,
-never to a second row table.
+registration text talks about `AssetTable`.** Timestamped facts go to
+time-index tables, never to a second row table.
 
 ## `start_engine()` is runtime attachment, not schema creation
 
@@ -103,14 +118,14 @@ production, leave it unset; the runtime uses the default markets namespace from
 - **`msm`** — core market reference data, assets, accounts, account allocation,
   virtual funds, calendars, execution, indexes, platform bootstrap,
   repositories, and services.
-- **`msm_portfolios`** — portfolio construction workflows and portfolio
-  DataNodes. Optional extra `ms-markets[portfolios]`.
+- **`msm_portfolios`** — portfolio construction workflows and the portfolio
+  time-index tables and updaters. Optional extra `ms-markets[portfolios]`.
 - **`msm_pricing`** — priceable instruments, QuantLib helpers, curves, fixings,
   market-data sets, and valuation. Optional extra `ms-markets[pricing]`.
 
 Repository helpers remain lower-level building blocks for compiled MetaTable
 operations; services own broader workflows that compose providers,
-repositories, DataNodes, and row APIs. The split is recorded in
+repositories, time-index table updaters, and row APIs. The split is recorded in
 [ADR 0008](ADR/0008-metatable-table-and-api-model-split.md) and should guide new
 MetaTable-facing APIs unless a more specific ADR overrides it.
 
