@@ -68,7 +68,7 @@ construction models. Keep the owning package list updated when adding
 persistent market objects so schema registration stays deterministic.
 
 Models should represent durable schema. Runtime-only behavior belongs in
-DataNodes, services, pricing classes, or `msm.api` row helpers depending on the
+updaters, services, pricing classes, or `msm.api` row helpers depending on the
 use case.
 
 The core `markets_sqlalchemy_models()` list intentionally does not include
@@ -121,7 +121,7 @@ qualified `__metatable_identifier__`; new extension models should prefer
 `__markets_base_identifier__` so the default namespace rule is visible.
 
 `__metatable_description__` is required on every concrete markets MetaTable,
-including `PlatformTimeIndexMetaTable` storage classes used by DataNodes. The
+including `PlatformTimeIndexMetaTable` storage classes used by updaters. The
 description is table-level discovery text: it should identify the row grain,
 business intention, and expected use of the table. Column labels and column
 descriptions stay on SQLAlchemy column `info` metadata. Built-in markets and

@@ -28,8 +28,8 @@ from msm.repositories.base import (
     compile_markets_statement,
     execute_markets_operation,
 )
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
-from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 
 PortfolioReadExecutor = Callable[
     [Any],

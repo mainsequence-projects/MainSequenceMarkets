@@ -199,4 +199,4 @@ exists.
 
 - [Indexes](../indices/index.md)
 - [Assets](../assets/index.md)
-- [Asset-Indexed DataNodes](../assets/asset_indexed_data_nodes.md)
+- [Asset-Indexed Updaters](../assets/asset_indexed_updaters.md)

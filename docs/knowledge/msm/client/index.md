@@ -2,7 +2,7 @@
 
 `msm.client` is no longer a market-domain runtime surface. Market domain code
 should use SQLAlchemy models, compiled MetaTable repository operations, service
-helpers, and DataNodes directly.
+helpers, and updaters directly.
 
 ## Scope
 
@@ -16,11 +16,11 @@ Current market runtime boundaries are:
 - `msm.repositories`: compiled SQL operation builders for MetaTable execution.
 - `msm.services`: workflow helpers built on repository operations and TimeIndexTableUpdater
   contracts.
-- `msm.data_nodes.accounts`, `msm.data_nodes.assets`,
-  `msm.data_nodes.execution`, and `msm.data_nodes.indices`: concept-specific
+- `msm.time_index.accounts`, `msm.time_index.assets`,
+  `msm.time_index.execution`, and `msm.time_index.indices`: concept-specific
   TimeIndexTableUpdater modules. Shared asset-indexed behavior lives in
-  `msm.data_nodes.assets.asset_indexed`.
-- `msm.data_nodes.utils`: shared TimeIndexTableUpdater support code that is not a model
+  `msm.time_index.assets.asset_indexed`.
+- `msm.time_index.utils`: shared TimeIndexTableUpdater support code that is not a model
   concept package.
 
 ## Removed Runtime Surface
@@ -30,7 +30,7 @@ Code should not import `msm.client.models` or expect market objects to expose
 active `.get()`, `.filter()`, `.create()`, or `.update()` methods.
 
 Resolve market data through MetaTable services or pass explicit runtime objects
-into DataNodes. For example, category-based portfolio code should resolve the
+into updaters. For example, category-based portfolio code should resolve the
 category membership through `msm.services.asset_categories` and pass the
 resulting `asset_list` into the portfolio or price configuration.
 

@@ -29,7 +29,7 @@ VirtualFundHoldingsSetTable
 ```
 
 `msm_portfolios` remains the portfolio construction engine. It can provide
-portfolio weights or run portfolio DataNodes, but it does not own virtual-fund
+portfolio weights or run portfolio updaters, but it does not own virtual-fund
 identity or holdings storage.
 
 ## Storage Shape
@@ -176,7 +176,7 @@ vector allocation step and keeps the notional values for diagnostics.
 Apply only after inspecting a feasible or attributed plan:
 
 ```python
-from msm.data_nodes.accounts import VirtualFundHoldings
+from msm.time_index.accounts import VirtualFundHoldings
 from msm.services.accounts import apply_account_virtual_fund_allocation_plan
 
 node = VirtualFundHoldings(config=VirtualFundHoldings.default_config())

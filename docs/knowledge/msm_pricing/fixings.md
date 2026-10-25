@@ -1,18 +1,18 @@
 # Fixings
 
-Index fixings are observed facts about an index, published by `FixingRatesNode`
+Index fixings are observed facts about an index, published by `FixingRatesUpdater`
 and keyed by `IndexTable.unique_identifier`. They are not assets and they are
 not a separate `Rate` model.
 
 ## Index Fixings
 
-`FixingRatesNode` extends `IndexTimestampedDataNode`, so rows are keyed by
+`FixingRatesUpdater` extends `IndexTimestampedUpdater`, so rows are keyed by
 `(time_index, index_identifier)`, where `index_identifier` is
 `IndexTable.unique_identifier`.
 
 ```text
 +-----------------------------+        observations keyed by      +-----------------------------+
-| IndexTable                  |<--------------------------------| FixingRatesNode             |
+| IndexTable                  |<--------------------------------| FixingRatesUpdater          |
 |-----------------------------|        index_identifier          |-----------------------------|
 | uid                  PK     |                                  | time_index                  |
 | unique_identifier    unique |                                  | index_identifier            |
@@ -23,7 +23,7 @@ not a separate `Rate` model.
 The fixing TimeIndexTableUpdater contract is:
 
 ```text
-FixingRatesNode
+FixingRatesUpdater
   index:   (time_index, index_identifier)
   cadence: 1d
   columns: rate

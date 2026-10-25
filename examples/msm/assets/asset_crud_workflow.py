@@ -50,7 +50,7 @@ def create_query_assets(
     )
 
     from msm.api.assets import Asset, AssetType
-    from msm.data_nodes.assets import AssetSnapshot
+    from msm.time_index.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
     normalized_openfigi = query_by_figi(EXAMPLE_OPENFIGI_EQUITY_FIGI)

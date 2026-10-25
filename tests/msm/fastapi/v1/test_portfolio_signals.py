@@ -310,7 +310,7 @@ def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
         lambda context, uid: signal,
     )
     monkeypatch.setattr(
-        "msm_portfolios.data_nodes.signals.storage.SignalWeightsStorage.get_time_index_meta_table",
+        "msm_portfolios.time_index.signals.storage.SignalWeightsStorage.get_time_index_meta_table",
         classmethod(lambda cls: FakeTimeIndexMetaTable()),
     )
 

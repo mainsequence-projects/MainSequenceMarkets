@@ -95,7 +95,7 @@ from msm_pricing.settings import (
 ```
 
 `interest_rate_index_fixings` is intentionally rate-specific. The current
-`FixingRatesNode` stores a decimal `rate` column for SOFR, TIIE, IBOR,
+`FixingRatesUpdater` stores a decimal `rate` column for SOFR, TIIE, IBOR,
 overnight, and similar interest-rate indexes. Future equity index levels,
 inflation observations, or volatility inputs should use their own concept keys.
 
@@ -122,7 +122,7 @@ Deployments can add or replace market-data sets for `eod`, `live`,
 ```python
 from msm_pricing.bootstrap import attach_pricing_schemas
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,

@@ -157,7 +157,7 @@ def configure_pricing_market_data(
     """Install pricing market-data runtime configuration.
 
     When ``configuration`` is omitted, the default pricing context remains active
-    and market-data DataNodes are resolved through persisted pricing bindings.
+    and market-data updaters are resolved through persisted pricing bindings.
     Passing a typed configuration or mapping installs an explicit process-wide
     override.
     """
@@ -282,8 +282,8 @@ def _pricing_startup_models(
 
 
 def _pricing_default_market_data_binding_models() -> list[type[MarketsBase]]:
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     return [
         PricingMarketDataSetTable,
@@ -296,8 +296,8 @@ def _pricing_default_market_data_binding_models() -> list[type[MarketsBase]]:
 def _default_pricing_market_data_bindings_from_runtime(
     runtime: PricingRuntime,
 ) -> dict[str, dict[str, str]]:
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     required_models = _pricing_default_market_data_binding_models()
     missing_models = [

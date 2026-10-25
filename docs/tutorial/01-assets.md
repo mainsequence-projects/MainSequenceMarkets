@@ -102,14 +102,14 @@ Use this workflow when ingesting external asset metadata:
 3. Persist canonical identity through the user-facing `msm.api.assets.Asset`
    row API. Row operations attach to registered MetaTables lazily.
 4. Store timestamped asset facts through TimeIndexTableUpdater schemas in
-   `msm.data_nodes.assets`.
+   `msm.time_index.assets`.
 
 The package boundary is deliberate: `msm.api` owns user row operations,
-`msm.models.*Table` owns SQLAlchemy schema declarations, DataNodes own
+`msm.models.*Table` owns SQLAlchemy schema declarations, updaters own
 time-indexed market facts, and services own external provider integration.
 
 ```python
-from msm.data_nodes.assets import AssetSnapshot
+from msm.time_index.assets import AssetSnapshot
 from msm.services.assets.openfigi import (
     query_by_figi,
 )
@@ -273,7 +273,7 @@ then bind rows whose payloads each carry their own `time_index`:
 ```python
 from datetime import datetime, UTC
 
-from msm.data_nodes.assets import AssetSnapshot
+from msm.time_index.assets import AssetSnapshot
 
 snapshot_node = AssetSnapshot().set_snapshots(
     {
@@ -285,7 +285,7 @@ snapshot_node = AssetSnapshot().set_snapshots(
 snapshot_frame = snapshot_node.run()
 ```
 
-Markets DataNodes use the same identifier rule as MetaTables. With the default
+Markets updaters use the same identifier rule as MetaTables. With the default
 markets namespace, logical identifiers stay bare, such as `Asset` and
 `AssetSnapshotsTS`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
 the published identifiers become `mainsequence.examples.Asset` and
@@ -306,8 +306,8 @@ the existing row.
 
 See `examples/msm/assets/asset_crud_workflow.py` for the workflow that also writes
 an `AssetSnapshot` frame. See
-[Asset-Indexed DataNodes](../knowledge/msm/assets/asset_indexed_data_nodes.md) for
-the detailed `AssetIndexedDataNode` contract and how `AssetSnapshot` implements
+[Asset-Indexed Updaters](../knowledge/msm/assets/asset_indexed_updaters.md) for
+the detailed `AssetIndexedUpdater` contract and how `AssetSnapshot` implements
 it.
 
 When the universe itself should be a reusable platform object, create an asset
@@ -344,8 +344,8 @@ examples reuse shared identifiers and FIGI constants from
 `examples/msm/assets/utils/reference_data.py`.
 
 For timestamped facts keyed to index reference rows, use the same stamped
-TimeIndexTableUpdater workflow with `msm.data_nodes.indices.IndexTimestampedDataNode` and an
-`IndexDataNodeConfiguration` subclass. The frame contract is
+TimeIndexTableUpdater workflow with `msm.time_index.indices.IndexTimestampedUpdater` and an
+`IndexUpdaterConfiguration` subclass. The frame contract is
 `["time_index", "index_identifier"]`, with a canonical source-table foreign key
 from `index_identifier` to `IndexTable.unique_identifier`. Keep index identity
 on `uid` and `unique_identifier`; do not add legacy platform Constant-name

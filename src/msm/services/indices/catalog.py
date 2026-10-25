@@ -12,7 +12,7 @@ from metatables import MetaTable, TimeIndexMetaTable
 from msm.api.base import operation_result_rows
 from msm.api.indices import Index, IndexType
 from msm.analytics.indices import IndexFormulaInput
-from msm.data_nodes.indices.storage import (
+from msm.time_index.indices.storage import (
     INDEX_VALUES_CADENCE_COMPONENT,
     INDEX_VALUES_STORAGE_NAME_COMPONENT,
     configured_index_values_storage,

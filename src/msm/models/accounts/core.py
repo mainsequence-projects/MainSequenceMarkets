@@ -56,7 +56,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         default=new_markets_uid,
         info={
             "label": "UID",
-            "description": "Canonical account identity used by account-owned MetaTables and DataNodes.",
+            "description": "Canonical account identity used by account-owned MetaTables and updaters.",
         },
     )
     unique_identifier: Mapped[str] = mapped_column(

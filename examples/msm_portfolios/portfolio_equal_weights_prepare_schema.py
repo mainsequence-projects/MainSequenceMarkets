@@ -33,7 +33,7 @@ from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E
     start_portfolio_example_runtime,
 )
 from examples.msm.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE  # noqa: E402
-from msm_portfolios.data_nodes.prices.storage import ExternalPricesStorage  # noqa: E402
+from msm_portfolios.time_index.prices.storage import ExternalPricesStorage  # noqa: E402
 
 
 def print_step(step: int, message: str) -> None:

@@ -13,7 +13,7 @@ frames, the batch lookup and the dataset catalog routes described below.
 - Optional descriptive metadata uses
   `msm_portfolios.api.portfolios.PortfolioMetadata`.
 - Latest weights use
-  `msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage`.
+  `msm_portfolios.time_index.portfolios.storage.PortfolioWeightsStorage`.
 - Weight row asset labels use `AssetSnapshotsStorage`; OpenFIGI is not used for
   portfolio weight labels.
 - Signal weights resolve from nullable `Portfolio.signal_uid`, which points to

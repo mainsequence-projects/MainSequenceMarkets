@@ -31,7 +31,7 @@ flows, accounting valuation, deterministic restart, or ledger-derived projection
 - Omitted and explicit `None` must preserve the legacy serialized payload,
   configuration hash, dependency graph, output identity, and stored history.
 - Enabled accounting is hash-bearing and creates a distinct history.
-- `PortfoliosDataNode` must reject enabled accounting; it must not silently
+- `PortfoliosUpdater` must reject enabled accounting; it must not silently
   downgrade, mix histories, or fabricate accounting state from weights.
 - Do not restore the rejected `unique_identifier` source-field fallback.
   Accounting Asset inputs use `asset_identifier` and persisted FKs target

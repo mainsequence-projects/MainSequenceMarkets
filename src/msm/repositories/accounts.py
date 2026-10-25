@@ -32,8 +32,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 
 from metatables import MetaTableCompiledSQLOperation
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.models import (
     AccountHoldingsSetTable,
     AccountAllocationModelTable,

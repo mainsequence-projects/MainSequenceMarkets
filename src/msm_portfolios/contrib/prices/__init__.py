@@ -1,4 +1,4 @@
-from .data_nodes import (
+from .updaters import (
     get_interpolated_prices_timeseries as get_interpolated_prices_timeseries,
 )
 

@@ -3,7 +3,7 @@
 The analytics namespace is intentionally separate from `pricing_engine`.
 Analytics helpers operate on caller-supplied arrays, pandas objects, or
 already-computed metrics; they do not resolve Main Sequence backend rows,
-publish DataNodes, or mutate pricing instruments.
+publish updaters, or mutate pricing instruments.
 """
 
 from __future__ import annotations

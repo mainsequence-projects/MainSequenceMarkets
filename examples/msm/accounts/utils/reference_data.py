@@ -9,7 +9,7 @@ from examples.msm.assets.utils import (
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER,
     EXAMPLE_ETH_TICKER,
 )
-from msm.data_nodes.accounts.constants import (
+from msm.time_index.accounts.constants import (
     TARGET_TYPE_ASSET,
     TARGET_TYPE_PORTFOLIO,
 )

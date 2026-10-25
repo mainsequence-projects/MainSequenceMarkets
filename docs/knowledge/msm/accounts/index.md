@@ -123,7 +123,7 @@ target_positions = build_target_positions_frame(
 Use the TimeIndexTableUpdater package for holdings:
 
 ```python
-from msm.data_nodes.accounts import AccountHoldings
+from msm.time_index.accounts import AccountHoldings
 
 holdings_node = AccountHoldings(
     config=AccountHoldings.default_config(),
@@ -181,8 +181,8 @@ interpolated-price output table has already been migrated. Pass
 testing the account path without chaining the portfolio example.
 
 There is no top-level `msm.accounts` shim. Import account rows from
-`msm.api.accounts` and account holdings DataNodes from
-`msm.data_nodes.accounts`.
+`msm.api.accounts` and account holdings updaters from
+`msm.time_index.accounts`.
 
 ## Account MetaTables
 
@@ -313,7 +313,7 @@ are versioned through `AccountTargetAllocationTable` and `PositionSetTable`:
 This keeps account identity, account grouping, allocation-model intent, and
 timestamped target rows in separate places.
 
-## Holdings DataNodes
+## Holdings Updaters
 
 Holdings are time-series-like observations. They are not MetaTables. A holdings
 TimeIndexTableUpdater writes to a table described by a registered `PlatformTimeIndexMetaTable`
@@ -482,9 +482,9 @@ constructing or running the TimeIndexTableUpdater. Do not call
 Add static account reference data as MetaTables under `msm.models` and expose it
 through typed rows under `msm.api`.
 
-Add timestamped account or fund observations as DataNodes under
-`msm.data_nodes.accounts`. Define the table contract with a
-`PlatformTimeIndexMetaTable` storage class in a concept-owned `msm.data_nodes.*.storage`
+Add timestamped account or fund observations as updaters under
+`msm.time_index.accounts`. Define the table contract with a
+`PlatformTimeIndexMetaTable` storage class in a concept-owned `msm.time_index.*.storage`
 module and keep
 the published row grain explicit.
 
@@ -501,7 +501,7 @@ holdings history grows over time.
 ## Related Concepts
 
 - [Assets](../assets/index.md)
-- [DataNodes](../assets/asset_indexed_data_nodes.md)
+- [Updaters](../assets/asset_indexed_updaters.md)
 - [Portfolios](../../msm_portfolios/portfolios/index.md)
 - [Repositories](../repositories/index.md)
 - [Services](../services/index.md)

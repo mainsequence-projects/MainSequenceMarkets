@@ -388,7 +388,7 @@ def _search_account_holdings_rows(
     account_uid: str,
     limit: int,
 ) -> list[dict[str, Any]]:
-    from msm.data_nodes.accounts.storage import AccountHoldingsStorage
+    from msm.time_index.accounts.storage import AccountHoldingsStorage
     from msm.repositories.crud import search_model
 
     return [

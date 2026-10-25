@@ -14,21 +14,21 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from msm.data_nodes.assets import (
+from msm.time_index.assets import (
     AssetSnapshot,
     AssetSnapshotConfiguration,
 )
-from msm.data_nodes.assets.snapshots import AssetTimestampedDataNode
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+from msm.time_index.assets.snapshots import AssetTimestampedUpdater
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
-from msm_pricing.data_nodes import AssetPricingDetail, AssetPricingDetailConfiguration
-from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+from msm_pricing.time_index import AssetPricingDetail, AssetPricingDetailConfiguration
+from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 
 
 def test_asset_snapshot_uses_table_update_run_hook(monkeypatch) -> None:
     table_update_run = object()
     monkeypatch.setattr(
-        AssetTimestampedDataNode,
+        AssetTimestampedUpdater,
         "_execute_local_update",
         lambda _self, *, table_update_run: table_update_run,
     )

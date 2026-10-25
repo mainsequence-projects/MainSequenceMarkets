@@ -7,9 +7,9 @@ from typing import Any, Literal
 
 from sqlalchemy import String, cast, delete, func, literal, or_, select
 
-from msm.data_nodes.accounts.constants import TARGET_TYPE_PORTFOLIO
-from msm.data_nodes.accounts.storage import TargetPositionsStorage
-from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.constants import TARGET_TYPE_PORTFOLIO
+from msm.time_index.accounts.storage import TargetPositionsStorage
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
     CalendarTable,
     PortfolioTable,
@@ -26,8 +26,8 @@ from msm.repositories.crud import (
 )
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.services.assets.reference_details import asset_reference_details
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
-from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services.portfolio_reads import (
     latest_portfolio_weights,
     portfolio_values,

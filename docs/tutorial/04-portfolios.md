@@ -21,20 +21,20 @@ The preparation script derives the configured interpolated price storage from
 the registered `ExternalPricesStorage` table and the example interpolation
 policy, finds or generates the real dynamic Alembic revision under the active
 migration namespace, and runs the dynamic provider upgrade before portfolio
-DataNodes write. If an older registered `ExternalPricesStorage` table is missing
+updaters write. If an older registered `ExternalPricesStorage` table is missing
 cadence metadata, the preparation step repairs that source metadata before
 deriving the dynamic interpolation table. The run script creates the
 optional portfolio `Index`, publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
 `PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
-`PortfoliosDataNode`, creates or reuses the crypto
+`PortfoliosUpdater`, creates or reuses the crypto
 `CRYPTO_24_7` calendar, and stores the calendar, index, and TimeIndexTableUpdater UIDs on the
 `Portfolio` row. The price configuration stores the
 `ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
 the explicit upstream interpolation node can recover the price source through
 the `metatables` TimeIndexTableRef lookup path. The portfolio configuration receives that
 `InterpolatedPrices` node as `valuation_source_instance` and sets
-`valuation_column="close"`; `PortfoliosDataNode` does not create interpolation
+`valuation_column="close"`; `PortfoliosUpdater` does not create interpolation
 storage internally. Real portfolio extensions can pass any compatible
 asset-indexed valuation TimeIndexTableUpdater or TimeIndexTableRef and choose any numeric valuation
 column, such as `fair_value` or `nav`, without reshaping the source into OHLC
@@ -74,11 +74,11 @@ FixedWeights signal
   -> CalendarEventSignal selects market_close observations
   -> PortfolioRebalance persists complete or unfinished strategy state
   -> PortfolioWeights projects only executed-weight changes
-  -> PortfoliosDataNode values current holdings at valuation-source observations
+  -> PortfoliosUpdater values current holdings at valuation-source observations
   -> optional PortfolioAnalytics samples canonical values for reporting
 ```
 
-`PortfoliosDataNode` never creates a calendar or frequency-based index. A
+`PortfoliosUpdater` never creates a calendar or frequency-based index. A
 weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
 daily valuation source produces daily portfolio values. `ImmediateSignal` is
 reserved for true execution at a signal's original observation timestamp.
@@ -107,7 +107,7 @@ observable intraday price, and
 `LiquidityConstrained` consumes price plus available-liquidity observations.
 Missing capacity leaves persisted work pending or partial. Adding a strategy
 does not add a branch or date generator to `PortfolioRebalance`,
-`PortfolioWeights`, or `PortfoliosDataNode`.
+`PortfolioWeights`, or `PortfoliosUpdater`.
 
 For a bounded five-percent trailing daily participation policy:
 

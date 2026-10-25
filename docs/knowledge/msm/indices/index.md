@@ -128,12 +128,12 @@ Frequency is part of dataset identity, not Index identity.
 
 ## Custom Publication
 
-Custom producers use `IndexValuesDataNode` or
+Custom producers use `IndexValuesUpdater` or
 `normalize_index_values_frame(...)`. Nullable provenance is supplied when
 omitted. Custom publication rejects a non-null `definition_uid`.
 
 ```python
-from msm.data_nodes.indices import (
+from msm.time_index.indices import (
     configured_index_values_storage,
     normalize_index_values_frame,
 )
@@ -148,7 +148,7 @@ or performance series.
 
 ## Formula Publication
 
-`FormulaIndexDataNode` loads immutable formula versions and reads only their
+`FormulaIndexUpdater` loads immutable formula versions and reads only their
 pinned source storage classes. Construction requires the configured storage
 UID set to equal the persisted formula-input MetaTable UID set and validates
 the source grain and observable types.

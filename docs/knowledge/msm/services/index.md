@@ -48,10 +48,10 @@ asset reference read service. It resolves the latest `AssetSnapshotsStorage`
 row per asset in the backend instead of scanning snapshot rows and selecting
 the newest timestamp in Python.
 
-Provider services may compose table declarations and DataNodes when the provider response
+Provider services may compose table declarations and updaters when the provider response
 needs to produce multiple library-owned objects. For example, the OpenFIGI
 service builds `msm.models.AssetTable`, `msm.models.OpenFigiAssetDetailsTable`, and an
-`msm.data_nodes.assets.AssetSnapshot` frame from the same provider row.
+`msm.time_index.assets.AssetSnapshot` frame from the same provider row.
 Ticker-only asset intake should use the OpenFIGI mapping helper with explicit
 market, exchange, and security context; raw tickers should not be persisted as
 canonical `Asset.unique_identifier` values when a provider FIGI can be resolved.
@@ -64,9 +64,9 @@ Typed row operations that should return FastAPI-ready Pydantic objects belong in
 `msm.api`, for example `msm.api.assets.Asset.upsert(...)`,
 `msm.api.portfolios.Portfolio.upsert(...)`, or
 `msm.api.execution.OrderManager.create_batch(...)`. Services remain the place
-for workflows that compose providers, repositories, and DataNodes.
+for workflows that compose providers, repositories, and updaters.
 
-Use `msm.data_nodes.assets.AssetSnapshot` directly for snapshot rows:
+Use `msm.time_index.assets.AssetSnapshot` directly for snapshot rows:
 `AssetSnapshot.build_frame(...)` validates row payloads, and
 `AssetSnapshot().set_snapshots(...)` binds rows to a node before running it.
 Each snapshot payload must carry its own `time_index`; the TimeIndexTableUpdater does not

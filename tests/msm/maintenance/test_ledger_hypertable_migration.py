@@ -12,7 +12,7 @@ from alembic.operations import Operations
 
 from metatables import PlatformTimeIndexMetaTable
 from msm_migrations.registry import metatable_provider_models
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioEventLedgerStorage
+from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 
 
 def test_every_time_index_unique_key_contains_its_partition_column() -> None:

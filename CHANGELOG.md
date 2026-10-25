@@ -102,6 +102,25 @@ and this project follows versioned releases.
 
 ### Changed
 
+- **Renamed packages and classes (ADR 0048).** `msm.data_nodes`,
+  `msm_portfolios.data_nodes` and `msm_pricing.data_nodes` are now
+  `msm.time_index`, `msm_portfolios.time_index` and `msm_pricing.time_index`,
+  and `msm_portfolios.contrib.prices.data_nodes` is
+  `msm_portfolios.contrib.prices.updaters`. `*DataNode` updaters are
+  `*Updater`, `*DataNodeConfiguration` classes are `*UpdaterConfiguration`,
+  `TargetPositionsDataNodeConfiguration` is `TargetPositionsConfiguration`, and
+  `DiscountCurvesNode` and `FixingRatesNode` are `DiscountCurvesUpdater` and
+  `FixingRatesUpdater`. Storage classes, physical table names and MetaTable
+  identifiers are unchanged. The asset-indexed skill folder is now
+  `assets/asset_indexed_updaters`; re-run `msm copy-msm-skills` to replace the
+  old folder.
+- **Identity rotation.** MetaTables hashes each updater's and each
+  configuration class's import path into `update_hash`. Every producer whose
+  class or configuration class moved, or that nests such a producer, gets a
+  new `TimeIndexTableUpdate` on its first run under 3.0.0. The old record keeps
+  its run history, and the producer continues from its output table's last
+  observation. `signal_uid`, portfolio configuration hashes and rebalance
+  strategy revisions do not change; `msm.identity` maps the moved paths back.
 - `portfolio_values`, `latest_portfolio_weights` and the new `signal_weights`
   read in `msm_portfolios.services.portfolio_reads` resolve each portfolio's
   table from the catalog and read it by uid through `TimeIndexTableRef`,

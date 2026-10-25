@@ -25,7 +25,7 @@ from msm.base import (
     markets_table_storage_app,
     markets_table_storage_name,
 )
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm_migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
@@ -58,7 +58,7 @@ from msm.models import (
     VirtualFundTable,
     markets_sqlalchemy_models,
 )
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioEventLedgerStorage
+from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 

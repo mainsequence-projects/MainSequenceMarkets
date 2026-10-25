@@ -89,7 +89,7 @@ def test_index_workflow_skill_defines_formula_and_custom_contract() -> None:
 
     assert '`Index.calculation_method` is exactly' in content
     assert "MetaTable UID and observable are immutable formula semantics" in content
-    assert "Custom publication uses `IndexValuesDataNode`" in content
+    assert "Custom publication uses `IndexValuesUpdater`" in content
     assert "Self-financing and chained performance are stateful" in content
     assert "Do not add compatibility aliases" in content
 

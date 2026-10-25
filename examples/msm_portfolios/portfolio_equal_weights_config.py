@@ -18,7 +18,7 @@ from examples.msm.platform.bootstrap import (  # noqa: E402
 )
 
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
-from msm_portfolios.data_nodes.prices.storage import (  # noqa: E402
+from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
     configured_interpolated_prices_storage,
 )

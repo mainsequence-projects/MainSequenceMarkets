@@ -16,8 +16,8 @@ os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
 from msm.models import PortfolioDatasetAvailabilityTable, SignalMetadataTable
-from msm_portfolios.data_nodes.portfolios.storage import PortfoliosStorage
-from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services import (
     latest_portfolio_weights,
     portfolio_values,

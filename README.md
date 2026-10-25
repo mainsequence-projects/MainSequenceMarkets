@@ -13,7 +13,7 @@
 [![Maintained](https://img.shields.io/badge/maintained-actively-green.svg)](https://github.com/mainsequence-projects/MainSequenceMarkets/commits/main/)
 
 `ms-markets` is the financial markets extension layer for the Main Sequence
-platform. It provides reusable market-domain ORM models, market DataNodes,
+platform. It provides reusable market-domain ORM models, market time-index updaters,
 portfolio construction utilities, repository operations, and application-facing
 helpers for building financial systems on top of Main Sequence. Portfolio and
 QuantLib-backed pricing capabilities are packaged as separate import surfaces so
@@ -59,7 +59,7 @@ Main package areas:
 - `msm.client`: planned typed HTTP client over the Markets API with a remote
   row backend (ADR 0047, decision 2); not shipped yet. Consumers use `msm.api`
   today
-- `msm.data_nodes`: market TimeIndexTableUpdater contracts, including account holdings,
+- `msm.time_index`: market TimeIndexTableUpdater contracts, including account holdings,
   execution events, asset snapshots, and asset pricing details
 - `msm.api.execution`: order managers, target quantities, orders, events,
   trades, and execution error row APIs

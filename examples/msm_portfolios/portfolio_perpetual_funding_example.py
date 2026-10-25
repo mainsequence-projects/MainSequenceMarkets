@@ -23,7 +23,7 @@ from msm_portfolios.accounting import (
     PositionValuationModel,
     ValuationResult,
 )
-from msm_portfolios.data_nodes import PortfolioEngine
+from msm_portfolios.time_index import PortfolioEngine
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     InstrumentExecutionSpec,

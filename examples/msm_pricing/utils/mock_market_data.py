@@ -5,12 +5,12 @@ from typing import Any
 
 import pandas as pd
 
-from msm_pricing.data_nodes import (
+from msm_pricing.time_index import (
     CURVE_IDENTIFIER,
     CurveConfig,
     CurveKeyNode,
-    DiscountCurvesNode,
-    FixingRatesNode,
+    DiscountCurvesUpdater,
+    FixingRatesUpdater,
     IndexFixingConfiguration,
 )
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
@@ -124,7 +124,7 @@ def example_index_convention_dump() -> dict[str, Any]:
     }
 
 
-class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
+class MockFlatForwardDiscountCurvesNode(DiscountCurvesUpdater):
     """Example discount-curve TimeIndexTableUpdater backed by a sampled QuantLib flat-forward curve."""
 
     def __init__(
@@ -170,7 +170,7 @@ class MockFlatForwardDiscountCurvesNode(DiscountCurvesNode):
         )
 
 
-class MockIndexFixingsNode(FixingRatesNode):
+class MockIndexFixingsNode(FixingRatesUpdater):
     """Example index-fixings TimeIndexTableUpdater that emits deterministic mock rates."""
 
     def __init__(

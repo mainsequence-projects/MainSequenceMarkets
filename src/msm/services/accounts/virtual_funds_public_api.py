@@ -8,8 +8,8 @@ from typing import Any, Literal
 
 from sqlalchemy import String, cast, func, or_, select
 
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage
-from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
     AccountHoldingsSetTable,
     AccountTable,

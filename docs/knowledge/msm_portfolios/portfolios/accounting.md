@@ -6,7 +6,7 @@ and position-driven cash flows. It is appropriate for dividends, funding,
 coupons, exercise, expiry, settlement, and user-defined lifecycle economics that
 cannot be represented truthfully as weighted asset returns.
 
-The existing `PortfoliosDataNode` remains the default weight-only engine. Enabling
+The existing `PortfoliosUpdater` remains the default weight-only engine. Enabling
 accounting creates a separate configuration identity and output history; it never
 converts or appends to a legacy weight-only portfolio.
 
@@ -73,8 +73,8 @@ The responsibilities are strict:
 
 | Requirement | Engine |
 | --- | --- |
-| Weighted asset-return portfolio with turnover commission | Existing `PortfoliosDataNode` |
-| Existing saved portfolio with no accounting configuration | Existing `PortfoliosDataNode` |
+| Weighted asset-return portfolio with turnover commission | Existing `PortfoliosUpdater` |
+| Existing saved portfolio with no accounting configuration | Existing `PortfoliosUpdater` |
 | Quantities, currency cash, receivables, payables, or lifecycle cash flows | `PortfolioEngine` |
 | Signal targets converted into simulated quantities and costs | `PortfolioEngine` coordinated `RebalanceStrategy` path |
 | User-defined position-dependent economics | Inject a `LifecycleEventModel` into `PortfolioEngine` |
@@ -85,7 +85,7 @@ Portfolio as allocation intent.
 
 An omitted `PortfolioBuildConfiguration.accounting_configuration` and an
 explicit `None` both preserve the legacy serialized configuration and hash. An
-enabled accounting configuration passed to `PortfoliosDataNode` is rejected;
+enabled accounting configuration passed to `PortfoliosUpdater` is rejected;
 there is no silent downgrade to weight-only valuation.
 
 ## Target Configuration
@@ -487,7 +487,7 @@ Accounting mode is strict. Common failures mean:
 | Observation would cause look-ahead | `observed_at` is later than the economic event in `as_known` mode |
 | Broken event digest or state chain | Ledger records are incomplete, modified, or incorrectly ordered |
 | Corrected source revision requires tail replay | A source changed and correction publication is not yet implemented |
-| Enabled accounting rejected by `PortfoliosDataNode` | The accounting configuration was sent to the legacy weight-only engine |
+| Enabled accounting rejected by `PortfoliosUpdater` | The accounting configuration was sent to the legacy weight-only engine |
 
 The engine does not convert any of these conditions into a zero cash flow,
 stale valuation, inverse FX guess, or weight-only fallback.
@@ -515,7 +515,7 @@ For changes to this accounting surface, run at least:
 ```bash
 uv run --extra portfolios --extra dev ruff check \
   src/msm_portfolios/accounting \
-  src/msm_portfolios/data_nodes/portfolios \
+  src/msm_portfolios/time_index/portfolios \
   examples/msm_portfolios \
   tests/msm_portfolios/accounting
 

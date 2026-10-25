@@ -27,7 +27,7 @@ from msm.repositories.base import (
     execute_markets_operation,
 )
 from msm.repositories.crud import search_model, update_model, upsert_model
-from msm_portfolios.data_nodes.contract_instances import (
+from msm_portfolios.time_index.contract_instances import (
     PORTFOLIO_WEIGHTS_CONTRACT,
     PORTFOLIOS_CONTRACT,
     SIGNAL_WEIGHTS_CONTRACT,

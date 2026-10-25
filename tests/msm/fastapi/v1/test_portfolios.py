@@ -1447,7 +1447,7 @@ def test_public_signal_weights_frame_requires_portfolio_signal_uid(monkeypatch) 
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 
-def test_public_signal_weights_frame_requires_signal_data_node(monkeypatch) -> None:
+def test_public_signal_weights_frame_requires_signal_updater(monkeypatch) -> None:
     portfolio = _portfolio_row()
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
@@ -1541,7 +1541,7 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
         lambda context, uid: portfolio,
     )
     monkeypatch.setattr(
-        "msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage.get_time_index_meta_table",
+        "msm_portfolios.time_index.portfolios.storage.PortfolioWeightsStorage.get_time_index_meta_table",
         classmethod(lambda cls: FakeTimeIndexMetaTable()),
     )
 

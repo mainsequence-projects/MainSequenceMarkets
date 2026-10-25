@@ -3,7 +3,7 @@
 The `apps/v1` portfolio-signal routes expose `SignalMetadataTable` rows and
 their associated `SignalWeightsStorage` cleanup operations.
 
-These routes manage signal metadata only. They do not run signal DataNodes or
+These routes manage signal metadata only. They do not run signal updaters or
 portfolio calculation jobs.
 
 `signal_description` is a plain-text or Markdown string. Do not send HTML tags;
@@ -15,7 +15,7 @@ the API does not define HTML rendering semantics for signal descriptions.
 - Create and update payloads use
   `SignalMetadataCreate` and `SignalMetadataUpdate`.
 - Historical signal weights use
-  `msm_portfolios.data_nodes.signals.storage.SignalWeightsStorage`.
+  `msm_portfolios.time_index.signals.storage.SignalWeightsStorage`.
 
 `SignalWeightsStorage.signal_uid` references `SignalMetadataTable.signal_uid`.
 Deleting a signal metadata row therefore first clears matching signal-weight

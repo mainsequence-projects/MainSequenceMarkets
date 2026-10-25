@@ -19,12 +19,12 @@ from pydantic import (
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
-from msm_portfolios.data_nodes import (
+from msm_portfolios.time_index import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     SignalWeights,
     canonical_signal_configuration,
 )
-from msm_portfolios.data_nodes.base import _class_import_path, _drop_excluded_keys
+from msm_portfolios.time_index.base import _class_import_path, _drop_excluded_keys
 from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
@@ -231,7 +231,7 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
     asset_list: list[Any] | None = Field(
         default=None,
         description=(
-            "Resolved asset scope for portfolio DataNodes. Items may be strings, mappings, "
+            "Resolved asset scope for portfolio updaters. Items may be strings, mappings, "
             "or objects with an asset_identifier field."
         ),
         json_schema_extra={"hash_excluded": True},
@@ -282,7 +282,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     Portfolios uses **direct injection** (instances), not string lookups:
     - `signal_weights_instance` is a SignalWeights TimeIndexTableUpdater
     - `rebalance_strategy_instance` is a RebalanceStrategyBase state machine whose
-      declared DataNode dependencies are serialized as part of its identity
+      declared updater dependencies are serialized as part of its identity
 
     Attributes:
         rebalance_strategy_instance:
@@ -359,7 +359,7 @@ class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
         ge=0.0,
         description=(
             "Commission fee rate applied as turnover drag. "
-            "PortfoliosDataNode computes fees as sum(abs(w_current - w_before)) * commission_fee."
+            "PortfoliosUpdater computes fees as sum(abs(w_current - w_before)) * commission_fee."
         ),
         examples=[0.00018, 0.001, 0.0],
     )
@@ -526,7 +526,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
 
     execution_configuration: PortfolioExecutionConfiguration = Field(
         ...,
-        description="Execution / fee configuration used by PortfoliosDataNode.",
+        description="Execution / fee configuration used by PortfoliosUpdater.",
         examples=[{"commission_fee": 0.00018}],
     )
 

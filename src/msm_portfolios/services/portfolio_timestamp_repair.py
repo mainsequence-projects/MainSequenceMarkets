@@ -14,7 +14,7 @@ from msm.api.base import operation_result_rows
 from msm.api.portfolios import Portfolio
 from msm.repositories.base import MarketsOperationContext
 from msm.repositories.calendars import search_calendar_sessions
-from msm_portfolios.data_nodes.portfolios.storage import PortfoliosStorage
+from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage
 
 from .portfolio_reads import portfolio_values
 

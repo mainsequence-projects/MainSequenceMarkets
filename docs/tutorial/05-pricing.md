@@ -99,7 +99,7 @@ storage table UID. Use `msm_pricing.api.PricingMarketDataSet` and
 
 ```python
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,
@@ -166,7 +166,7 @@ before publishing curve observations:
 6. Upsert `msm_pricing.api.PricingMarketDataSetCurveBinding` through
    `upsert_index_curve_selection(...)` to bind the selected market-data set,
    valuation role, index UID, and quote side to the curve UID.
-7. Publish curve observations through `DiscountCurvesNode` with
+7. Publish curve observations through `DiscountCurvesUpdater` with
    `curve_identifier` set to the same curve `unique_identifier`. Each emitted
    row must include a non-empty `curve` mapping for the constructed pricing
    nodes and `key_nodes` for the dated input quotes used to build that row.
@@ -176,7 +176,7 @@ before publishing curve observations:
    the standard fields shown below when they fit the source, including
    yield-native inputs for discount curves. Source-specific producers can add
    source-owned extensions and can override
-   `DiscountCurvesNode.normalize_key_nodes(...)` or attach
+   `DiscountCurvesUpdater.normalize_key_nodes(...)` or attach
    `set_key_nodes_validator(...)` when they need stricter validation.
 
    ```python
@@ -427,9 +427,9 @@ For a full floating-rate bond workflow, use
    index UID. The helper persists the generic selector fields internally, so
    index-based workflows should pass `index_uid`, not `selector_type` and
    `selector_key`.
-4. Publish one month of mock fixings through a `FixingRatesNode` subclass and a
+4. Publish one month of mock fixings through a `FixingRatesUpdater` subclass and a
    sampled flat-forward projection curve plus a sampled flat-forward discount
-   curve through `DiscountCurvesNode` subclasses. Each curve storage row stores
+   curve through `DiscountCurvesUpdater` subclasses. Each curve storage row stores
    both the compressed pricing `curve` and compressed source-owned `key_nodes`
    provenance. The publisher emits `key_nodes` as JSON, and read/API helpers
    return decompressed JSON. The mock example uses the recommended yield-aware

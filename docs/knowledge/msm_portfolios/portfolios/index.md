@@ -10,11 +10,11 @@ For the complete engine contract, source schemas, configuration, ledger fields,
 restart semantics, extension hooks, and operational limitations, read
 [Position-Aware Portfolio Accounting](accounting.md).
 
-The existing `PortfoliosDataNode` remains the default weight-return engine.
+The existing `PortfoliosUpdater` remains the default weight-return engine.
 Omitting `PortfolioBuildConfiguration.accounting_configuration`, or setting it
 to `None`, does not add dependencies or change the serialized legacy
 configuration. Supplying accounting configuration selects a separate history;
-passing that configuration to `PortfoliosDataNode` is rejected instead of
+passing that configuration to `PortfoliosUpdater` is rejected instead of
 falling back to weight-only valuation.
 
 The opt-in implementation follows [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md):
@@ -98,16 +98,16 @@ Portfolios answer these questions:
 - Which valuation source provides the asset values used for returns?
 - Which signals produce target weights?
 - Which rebalance strategy converts signals into portfolio weights?
-- Which DataNodes store canonical portfolio values, signal weights, and
+- Which updaters store canonical portfolio values, signal weights, and
   portfolio weights?
 - Which metadata identifies portfolios, signals, and rebalance strategies?
 
 ## Primary Modules
 
 - `msm_portfolios.configuration`: portfolio configuration models.
-- `msm_portfolios.data_nodes`: canonical DataNodes for portfolios, portfolio
+- `msm_portfolios.time_index`: canonical updaters for portfolios, portfolio
   weights, signal weights, storage initialization, and identity helpers.
-- `msm_portfolios.data_nodes.contract_instances`: factories that build a
+- `msm_portfolios.time_index.contract_instances`: factories that build a
   provider-owned instance of the `PortfoliosTS`, `PortfolioWeightsTS` and
   `SignalWeightsTS` contracts (ADR 0047).
 - `msm_portfolios.services.portfolio_datasets`: the Markets catalog of which
@@ -127,18 +127,18 @@ Portfolios answer these questions:
 - `msm_portfolios.api.market_metadata`: typed row APIs for `SignalMetadata` and
   `RebalanceStrategyMetadata`.
 - `msm.services.portfolios`: service helpers for portfolio identity rows.
-- `msm_portfolios.contrib`: contributed price and signal DataNodes.
+- `msm_portfolios.contrib`: contributed price and signal updaters.
 - `msm_portfolios.utils`: small shared logging and time constants only.
 - `msm_portfolios.contrib.signals.regression_utils`: regression helpers used by
   contributed replicator-style signals.
 
 ## Key Contracts
 
-Portfolio DataNodes use canonical time-indexed frames. Portfolio identity should
+Portfolio updaters use canonical time-indexed frames. Portfolio identity should
 be deterministic: configuration hashes and signal/rebalance UIDs must be stable
 for equivalent configuration payloads.
 
-Canonical markets DataNodes derive their published identifiers from the same
+Canonical markets updaters derive their published identifiers from the same
 rule as MetaTables: the default markets namespace keeps bare logical
 identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
 That namespace also becomes the default TimeIndexTableUpdater `hash_namespace`. Pass an
@@ -180,7 +180,7 @@ at their actual UTC timestamps, including early closes and DST shifts.
 `ImmediateSignal` instead selects original signal observations and declares no
 additional event source. Event selection and state transitions occur in the
 strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
-`PortfoliosDataNode` builds a rebalance index.
+`PortfoliosUpdater` builds a rebalance index.
 
 `calendar_identifier` and `calendar_events_instance` are required for
 `CalendarEventSignal`. The event producer requires the canonical persisted
@@ -220,7 +220,7 @@ strategy-declared observed inputs ---------------------+--> PortfolioRebalance
                                                                    v
                                                         PortfolioWeightsStorage
                                                                    |
-valuation observations --------------------------------------------+--> PortfoliosDataNode
+valuation observations --------------------------------------------+--> PortfoliosUpdater
                                                                         valuation only
                                                                             |
                                                                             v
@@ -250,7 +250,7 @@ calendar.
 
 `PortfolioRebalanceStateStorage` is a portfolio-level state ledger, not a
 broker order/fill ledger. `PortfolioWeights` projects only state transitions
-that actually changed executed weights, and `PortfoliosDataNode` continues to
+that actually changed executed weights, and `PortfoliosUpdater` continues to
 value those weights at independent valuation-source observations. Missing
 future bars or liquidity leave a target `pending` or `partial`; they do not
 create a completion timestamp.
@@ -389,7 +389,7 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm_portfolios.data_nodes.contract_instances import (
+from msm_portfolios.time_index.contract_instances import (
     configured_portfolio_weights_storage,
     configured_portfolios_storage,
     configured_signal_weights_storage,
@@ -428,7 +428,7 @@ the foreign keys resolve without importing the core classes into the
 provider's migration scope. Without `base=` the instance is registered in the
 Markets registry; the Markets migration provider still lists only the core
 tables. The provider may add columns beyond the contract; Markets reads the
-contract columns and ignores the rest. `PortfolioCanonicalDataNode` subclasses
+contract columns and ignores the rest. `PortfolioCanonicalUpdater` subclasses
 accept the instance through `output_table=`.
 
 Markets keeps the catalog in `PortfolioDatasetAvailabilityTable`
@@ -581,7 +581,7 @@ Portfolio identity, required calendar linkage, and optional published-index link
 | portfolio_weights_data_node_uid |--> PortfolioWeights           +-----------------------------+
 | signal_weights_data_node_uid    |--> SignalWeights
 | signal_uid FK nullable ---------+----------------------------+
-| portfolio_data_node_uid         |--> PortfoliosDataNode
+| portfolio_data_node_uid         |--> PortfoliosUpdater
 | backtest_table_price_column_name|
 +-----------------------------+
                                   |
@@ -655,9 +655,9 @@ MetaTables:
 | PortfolioRebalance          |------------------------------->| PortfolioRebalanceStateStorage       |
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
 | SignalWeights               |------------------------------->| SignalWeightsStorage                 |
-| PortfoliosDataNode          |------------------------------->| PortfoliosStorage                    |
+| PortfoliosUpdater           |------------------------------->| PortfoliosStorage                    |
 | PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
-| External price DataNodes    |------------------------------->| ExternalPricesStorage                |
+| External price updaters     |------------------------------->| ExternalPricesStorage                |
 | InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
 +-----------------------------+                                +--------------------------------------+
           TimeIndexTableUpdater update logic                                  PlatformTimeIndexMetaTable
@@ -674,7 +674,7 @@ MetaTables:
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
 `PortfolioTable.signal_uid` is nullable because portfolio rows can be registered
-before a signal workflow runs. Once `PortfoliosDataNode.run(...,
+before a signal workflow runs. Once `PortfoliosUpdater.run(...,
 update_pointers=True)` completes, the portfolio row should store the same
 `signal_uid` that identifies the signal metadata and signal-weight rows. API
 reads for portfolio signal weights must use this pointer; they must not infer a
@@ -687,7 +687,7 @@ signal by scanning the shared `SignalWeightsStorage` table.
 written for a real portfolio identity. Rebalance state and portfolio weights
 also reference `AssetTable.unique_identifier`, so neither can point to unknown
 assets. `PortfolioCalendarEventsStorage.calendar_identifier` references
-`CalendarTable.unique_identifier`. `PortfoliosDataNode` resolves the portfolio identifier
+`CalendarTable.unique_identifier`. `PortfoliosUpdater` resolves the portfolio identifier
 from the attached `PortfolioTable` row or from the explicit runtime identifier
 before normalizing rows.
 
@@ -726,7 +726,7 @@ strategy-declared observations ---------+--> PortfolioRebalance
                                       PortfolioWeights
                                               |
                                               v
-ValuationSource --------------------> PortfoliosDataNode
+ValuationSource --------------------> PortfoliosUpdater
   bars, fair value, NAV                    |
                                           v
                                   canonical portfolio values
@@ -833,7 +833,7 @@ for the resolved `PortfolioTable.unique_identifier`, stored as
 valuation-source progress, or the table-wide maximum of the shared
 `PortfoliosStorage` table.
 
-After resolving that portfolio-scoped start, `PortfoliosDataNode` reads
+After resolving that portfolio-scoped start, `PortfoliosUpdater` reads
 canonical executed weights and actual valuation observations. It selects the
 latest weights as-of each eligible observation, validates per-asset staleness,
 and writes one canonical value row per eligible source timestamp. Before the
@@ -919,7 +919,7 @@ portfolio_configuration = PortfolioConfiguration(
 sources declared by the strategy, validates those observations against the
 strategy's required grain and fields, and persists the resulting state.
 `PortfolioWeights.dependencies()` exposes only that rebalance-state updater.
-`PortfoliosDataNode.dependencies()` continues to expose canonical
+`PortfoliosUpdater.dependencies()` continues to expose canonical
 executed weights and its independent valuation source. Valuation sources may
 contain extra assets; required holdings are aligned independently using the
 latest observation at or before the target within `maximum_staleness`.
@@ -949,7 +949,7 @@ Account allocation registry rows remain core `msm` account concepts:
 `AccountAllocationModelTable`, `AccountTargetAllocationTable`, and
 `PositionSetTable`. The timestamped target exposure rows that can reference a
 constructed portfolio are also core account allocation storage. They live in
-`msm.data_nodes.accounts.storage.TargetPositionsStorage`; portfolio workflows may read or
+`msm.time_index.accounts.storage.TargetPositionsStorage`; portfolio workflows may read or
 expand them, but they do not own the table.
 
 ```text
@@ -1022,7 +1022,7 @@ virtual-fund allocation rows.
                                             |
                                             v
 +---------------------+      +-----------------------------+
-| ValuationSource     |----->| PortfoliosDataNode          |
+| ValuationSource     |----->| PortfoliosUpdater           |
 +---------------------+      | valuation only              |
                              +--------------+--------------+
                                             |
@@ -1037,7 +1037,7 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
 ```
 
-`PortfoliosDataNode.run(..., update_pointers=True)` updates the
+`PortfoliosUpdater.run(..., update_pointers=True)` updates the
 `PortfolioTable` TimeIndexTableUpdater pointer fields after the portfolio graph has
 published. This is enabled by default for portfolio-configuration runs, so
 examples and callers do not need to manually re-upsert the portfolio row after
@@ -1047,7 +1047,7 @@ without updating portfolio registry links.
 When a run publishes no new executed weights, the workflow must not require a
 fresh `PortfolioWeights` TimeIndexTableUpdate. It preserves the existing
 `PortfolioTable.portfolio_weights_data_node_uid` and still updates the signal
-and portfolio-values pointers from the DataNodeUpdates produced by the current
+and portfolio-values pointers from the TimeIndexTableUpdate records produced by the current
 graph run.
 
 Virtual-fund allocation is a separate relationship over account holdings and a
@@ -1117,7 +1117,7 @@ shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
 from `pandas_market_calendars`, publishes example OHLCV bars to
 `ExternalPricesStorage`, interpolates those prices, runs
 `PortfolioCalendarEvents`, `SignalWeights`, `PortfolioRebalance`,
-`PortfolioWeights`, and `PortfoliosDataNode`, and upserts the
+`PortfolioWeights`, and `PortfoliosUpdater`, and upserts the
 `Portfolio` row with `calendar_uid` plus the published TimeIndexTableUpdater update UIDs.
 The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.
@@ -1128,7 +1128,7 @@ virtual-funds workflow.
 ## Extension Notes
 
 Add new portfolio construction configuration in `msm_portfolios.configuration`.
-Add reusable DataNodes under `msm_portfolios.data_nodes` or
+Add reusable updaters under `msm_portfolios.time_index` or
 `msm_portfolios.contrib`. Add rebalance logic under
 `msm_portfolios.rebalance_strategy`. Add portfolio identity persistence through
 core `msm.models`, `msm.repositories`, `msm.services`, and `msm.api`. Add

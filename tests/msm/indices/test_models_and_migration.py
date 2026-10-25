@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from msm.data_nodes.indices import IndexValuesStorage
+from msm.time_index.indices import IndexValuesStorage
 from msm.models import (
     IndexFormulaDefinitionTable,
     IndexFormulaInputTable,

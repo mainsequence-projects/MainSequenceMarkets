@@ -20,7 +20,7 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
-from msm_pricing.data_nodes.curves.storage import CURVE_IDENTIFIER_DIMENSION
+from msm_pricing.time_index.curves.storage import CURVE_IDENTIFIER_DIMENSION
 from msm_pricing.models.curves import CurveTable
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
 
@@ -44,7 +44,7 @@ def _validate_payload(
 
 
 class Curve(BaseModel):
-    """Pricing-owned curve identity row used by curve DataNodes and runtime resolution."""
+    """Pricing-owned curve identity row used by curve updaters and runtime resolution."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -722,7 +722,7 @@ class CurveDeleteConflictError(ValueError):
 
 
 def _active_curve_delete_context():
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
     from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
     from msm_pricing.models.market_data_bindings import (
         PricingMarketDataSetBindingTable,
@@ -879,7 +879,7 @@ def _count_model_rows(context: Any, *, model: type[Any], filters: dict[str, Any]
 def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
     from metatables import TimeIndexMetaTable
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 
     scopes: dict[str, dict[str, Any]] = {}
     canonical_storage = DiscountCurvesStorage.get_time_index_meta_table()

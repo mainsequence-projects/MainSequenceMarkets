@@ -43,20 +43,20 @@ def pricing_sqlalchemy_models() -> list[type[MarketsBase]]:
         PricingMarketDataSetTable,
         PricingMarketDataSetBindingTable,
         PricingMarketDataSetCurveBindingTable,
-        *_pricing_data_node_storage_models(),
+        *_pricing_time_index_storage_models(),
     ]
 
 
-def _pricing_data_node_storage_models() -> list[type[MarketsBase]]:
+def _pricing_time_index_storage_models() -> list[type[MarketsBase]]:
     """Return ADR 0017 pricing TimeIndexTableUpdater output storage MetaTables in FK order.
 
     Imported lazily to avoid an import cycle: the pricing storage module imports
     domain/pricing MetaTables for its FK targets.
     """
 
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
-    from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 
     return [
         DiscountCurvesStorage,

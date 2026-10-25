@@ -9,10 +9,10 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.base import MarketsMetaTableRow
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm.models import AccountGroupTable, AccountHoldingsSetTable, AccountTable, PortfolioTable
 
-from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
     VirtualFundHoldingsSetTable,
     VirtualFundTable,

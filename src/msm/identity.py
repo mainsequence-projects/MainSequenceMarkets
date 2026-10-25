@@ -25,10 +25,41 @@ import metatables.updaters.configuration as update_configuration
 from metatables import TimeIndexTableUpdater
 from pydantic import BaseModel
 
-PRE_RENAME_MODULES: tuple[tuple[str, str], ...] = ()
+PRE_RENAME_MODULES: tuple[tuple[str, str], ...] = (
+    # ADR 0048: the DataNode packages moved to the time-index vocabulary in 3.0.0.
+    ("msm_portfolios.contrib.prices.updaters", "msm_portfolios.contrib.prices.data_nodes"),
+    ("msm_portfolios.time_index", "msm_portfolios.data_nodes"),
+    ("msm_pricing.time_index", "msm_pricing.data_nodes"),
+    ("msm.time_index", "msm.data_nodes"),
+)
 """``(current module, pre-rename module)`` pairs; a pair also covers submodules."""
 
-PRE_RENAME_CLASS_NAMES: Mapping[str, str] = {}
+PRE_RENAME_CLASS_NAMES: Mapping[str, str] = {
+    "AssetIndexedUpdater": "AssetIndexedDataNode",
+    "AssetIndexedUpdaterConfiguration": "AssetIndexedDataNodeConfiguration",
+    "AssetScopedPortfolioCanonicalUpdater": "AssetScopedPortfolioCanonicalDataNode",
+    "AssetTimestampedUpdater": "AssetTimestampedDataNode",
+    "AssetUpdaterConfiguration": "AssetDataNodeConfiguration",
+    "CurveTimestampedUpdater": "CurveTimestampedDataNode",
+    "CurveUpdaterConfiguration": "CurveDataNodeConfiguration",
+    "DiscountCurvesUpdater": "DiscountCurvesNode",
+    "ExecutionUpdater": "ExecutionDataNode",
+    "ExecutionUpdaterConfiguration": "ExecutionDataNodeConfiguration",
+    "FixingRatesUpdater": "FixingRatesNode",
+    "FormulaIndexUpdater": "FormulaIndexDataNode",
+    "FormulaIndexUpdaterConfiguration": "FormulaIndexDataNodeConfiguration",
+    "HoldingsUpdater": "HoldingsDataNode",
+    "HoldingsUpdaterConfiguration": "HoldingsDataNodeConfiguration",
+    "IndexTimestampedUpdater": "IndexTimestampedDataNode",
+    "IndexUpdaterConfiguration": "IndexDataNodeConfiguration",
+    "IndexValuesUpdater": "IndexValuesDataNode",
+    "PortfolioCanonicalUpdater": "PortfolioCanonicalDataNode",
+    "PortfolioCanonicalUpdaterConfiguration": "PortfolioCanonicalDataNodeConfiguration",
+    "PortfoliosUpdater": "PortfoliosDataNode",
+    "StampedUpdater": "StampedDataNode",
+    "StampedUpdaterConfiguration": "StampedDataNodeConfiguration",
+    "TargetPositionsConfiguration": "TargetPositionsDataNodeConfiguration",
+}
 """Pre-rename name of each class renamed inside a module of :data:`PRE_RENAME_MODULES`."""
 
 _TABLE_UPDATE_KIND = "table_update"

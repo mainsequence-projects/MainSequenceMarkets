@@ -34,9 +34,9 @@ import pytest
 from pydantic import Field
 
 from metatables import TimeIndexMetaTable, TimeIndexTableUpdateConfig, TimeIndexTableUpdater
-from msm.data_nodes.assets import AssetSnapshot
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-from msm.data_nodes.indices import configured_index_values_storage
+from msm.time_index.assets import AssetSnapshot
+from msm.time_index.assets.storage import AssetSnapshotsStorage
+from msm.time_index.indices import configured_index_values_storage
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
 from msm.settings import markets_auto_register_namespace
@@ -50,20 +50,20 @@ from msm_portfolios.configuration import (
     PortfolioMarketsConfig,
     compute_strategy_revision,
 )
-from msm_portfolios.contrib.prices.data_nodes import InterpolatedPrices, InterpolatedPricesConfig
+from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
 from msm_portfolios.contrib.signals.fixed_weights import (
     AUIDWeight,
     FixedWeights,
     FixedWeightsConfig,
 )
 from msm_portfolios.contrib.signals.intraday_trend import IntradayTrend, IntradayTrendConfig
-from msm_portfolios.data_nodes import (
+from msm_portfolios.time_index import (
     SignalWeights,
     compute_portfolio_configuration_hash,
     compute_signal_uid,
 )
-from msm_portfolios.data_nodes.contract_instances import configured_portfolios_storage
-from msm_portfolios.data_nodes.prices.storage import configured_interpolated_prices_storage
+from msm_portfolios.time_index.contract_instances import configured_portfolios_storage
+from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
 from msm_portfolios.rebalance_strategy import ImmediateSignal, LiquidityConstrained, TimeWeighted
 
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
@@ -199,62 +199,62 @@ PINNED_METATABLE_IDENTIFIERS = {
 }
 
 PINNED_UPDATER_PATHS = (
-    "msm.data_nodes.accounts.virtual_funds:VirtualFundHoldings",
-    "msm.data_nodes.accounts:AccountHoldings",
-    "msm.data_nodes.accounts:HoldingsDataNode",
-    "msm.data_nodes.accounts:TargetPositions",
-    "msm.data_nodes.assets.asset_indexed:AssetIndexedDataNode",
-    "msm.data_nodes.assets.snapshots:AssetSnapshot",
-    "msm.data_nodes.assets.snapshots:AssetTimestampedDataNode",
-    "msm.data_nodes.execution:ExecutionDataNode",
-    "msm.data_nodes.execution:OrderEvents",
-    "msm.data_nodes.execution:Orders",
-    "msm.data_nodes.execution:Trades",
-    "msm.data_nodes.indices.formula:FormulaIndexDataNode",
-    "msm.data_nodes.indices.timestamped:IndexTimestampedDataNode",
-    "msm.data_nodes.indices.values:IndexValuesDataNode",
-    "msm.data_nodes.utils.stamped:StampedDataNode",
-    "msm_portfolios.contrib.prices.data_nodes:InterpolatedPrices",
+    "msm.time_index.accounts.virtual_funds:VirtualFundHoldings",
+    "msm.time_index.accounts:AccountHoldings",
+    "msm.time_index.accounts:HoldingsUpdater",
+    "msm.time_index.accounts:TargetPositions",
+    "msm.time_index.assets.asset_indexed:AssetIndexedUpdater",
+    "msm.time_index.assets.snapshots:AssetSnapshot",
+    "msm.time_index.assets.snapshots:AssetTimestampedUpdater",
+    "msm.time_index.execution:ExecutionUpdater",
+    "msm.time_index.execution:OrderEvents",
+    "msm.time_index.execution:Orders",
+    "msm.time_index.execution:Trades",
+    "msm.time_index.indices.formula:FormulaIndexUpdater",
+    "msm.time_index.indices.timestamped:IndexTimestampedUpdater",
+    "msm.time_index.indices.values:IndexValuesUpdater",
+    "msm.time_index.utils.stamped:StampedUpdater",
+    "msm_portfolios.contrib.prices.updaters:InterpolatedPrices",
     "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
     "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
     "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
     "msm_portfolios.contrib.signals.market_cap:MarketCap",
     "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
-    "msm_portfolios.data_nodes.base:AssetScopedPortfolioCanonicalDataNode",
-    "msm_portfolios.data_nodes.base:PortfolioCanonicalDataNode",
-    "msm_portfolios.data_nodes.portfolios.accounting:PortfolioEngine",
-    "msm_portfolios.data_nodes.portfolios.analytics:PortfolioAnalytics",
-    "msm_portfolios.data_nodes.portfolios.calendar_events:PortfolioCalendarEvents",
-    "msm_portfolios.data_nodes.portfolios.rebalance:PortfolioRebalance",
-    "msm_portfolios.data_nodes.portfolios.weights:PortfolioWeights",
-    "msm_portfolios.data_nodes.portfolios:PortfoliosDataNode",
-    "msm_portfolios.data_nodes.signals.weights:SignalWeights",
-    "msm_pricing.data_nodes.curves:CurveTimestampedDataNode",
-    "msm_pricing.data_nodes.curves:DiscountCurvesNode",
-    "msm_pricing.data_nodes.index_fixings:FixingRatesNode",
-    "msm_pricing.data_nodes.pricing_details:AssetPricingDetail",
+    "msm_portfolios.time_index.base:AssetScopedPortfolioCanonicalUpdater",
+    "msm_portfolios.time_index.base:PortfolioCanonicalUpdater",
+    "msm_portfolios.time_index.portfolios.accounting:PortfolioEngine",
+    "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalytics",
+    "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEvents",
+    "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalance",
+    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
+    "msm_portfolios.time_index.portfolios:PortfoliosUpdater",
+    "msm_portfolios.time_index.signals.weights:SignalWeights",
+    "msm_pricing.time_index.curves:CurveTimestampedUpdater",
+    "msm_pricing.time_index.curves:DiscountCurvesUpdater",
+    "msm_pricing.time_index.index_fixings:FixingRatesUpdater",
+    "msm_pricing.time_index.pricing_details:AssetPricingDetail",
 )
 
 PINNED_CONFIGURATION_PATHS = (
-    "msm.data_nodes.accounts:HoldingsDataNodeConfiguration",
-    "msm.data_nodes.accounts:TargetPositionsDataNodeConfiguration",
-    "msm.data_nodes.assets.asset_indexed:AssetIndexedDataNodeConfiguration",
-    "msm.data_nodes.assets.snapshots:AssetDataNodeConfiguration",
-    "msm.data_nodes.assets.snapshots:AssetSnapshotConfiguration",
-    "msm.data_nodes.execution:ExecutionDataNodeConfiguration",
-    "msm.data_nodes.indices.formula:FormulaIndexDataNodeConfiguration",
-    "msm.data_nodes.indices.timestamped:IndexDataNodeConfiguration",
-    "msm.data_nodes.utils.stamped:StampedDataNodeConfiguration",
-    "msm_portfolios.contrib.prices.data_nodes:InterpolatedPricesConfig",
-    "msm_portfolios.data_nodes.base:PortfolioCanonicalDataNodeConfiguration",
-    "msm_portfolios.data_nodes.base:SignalWeightsConfiguration",
-    "msm_portfolios.data_nodes.portfolios.accounting:PortfolioEngineConfiguration",
-    "msm_portfolios.data_nodes.portfolios.analytics:PortfolioAnalyticsConfiguration",
-    "msm_portfolios.data_nodes.portfolios.calendar_events:PortfolioCalendarEventsConfiguration",
-    "msm_pricing.data_nodes.curves:CurveConfig",
-    "msm_pricing.data_nodes.curves:CurveDataNodeConfiguration",
-    "msm_pricing.data_nodes.index_fixings:IndexFixingConfiguration",
-    "msm_pricing.data_nodes.pricing_details:AssetPricingDetailConfiguration",
+    "msm.time_index.accounts:HoldingsUpdaterConfiguration",
+    "msm.time_index.accounts:TargetPositionsConfiguration",
+    "msm.time_index.assets.asset_indexed:AssetIndexedUpdaterConfiguration",
+    "msm.time_index.assets.snapshots:AssetUpdaterConfiguration",
+    "msm.time_index.assets.snapshots:AssetSnapshotConfiguration",
+    "msm.time_index.execution:ExecutionUpdaterConfiguration",
+    "msm.time_index.indices.formula:FormulaIndexUpdaterConfiguration",
+    "msm.time_index.indices.timestamped:IndexUpdaterConfiguration",
+    "msm.time_index.utils.stamped:StampedUpdaterConfiguration",
+    "msm_portfolios.contrib.prices.updaters:InterpolatedPricesConfig",
+    "msm_portfolios.time_index.base:PortfolioCanonicalUpdaterConfiguration",
+    "msm_portfolios.time_index.base:SignalWeightsConfiguration",
+    "msm_portfolios.time_index.portfolios.accounting:PortfolioEngineConfiguration",
+    "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalyticsConfiguration",
+    "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEventsConfiguration",
+    "msm_pricing.time_index.curves:CurveConfig",
+    "msm_pricing.time_index.curves:CurveUpdaterConfiguration",
+    "msm_pricing.time_index.index_fixings:IndexFixingConfiguration",
+    "msm_pricing.time_index.pricing_details:AssetPricingDetailConfiguration",
 )
 
 PINNED_SIGNAL_UIDS = {
@@ -269,8 +269,10 @@ PINNED_PORTFOLIO_CONFIGURATION_HASHES = {
 }
 
 PINNED_UPDATE_HASHES = {
-    "asset_snapshot": "assetsnapshot_4d4316ca465e3c695835bc75d3af6f26",
-    "interpolated_prices": "interpolatedprices_c4d16a20ee4ebf061f3581472e2e5f80",
+    # Rotated in 3.0.0 when the classes moved to msm.time_index and
+    # msm_portfolios.contrib.prices.updaters (ADR 0048).
+    "asset_snapshot": "assetsnapshot_6eb60d0a440e8ab0b9794f1f5d3e42eb",
+    "interpolated_prices": "interpolatedprices_946a6bc2b70ac3aa0e4a71cd0a1f1e32",
 }
 
 PINNED_PRE_RENAME_UPDATE_HASHES = {

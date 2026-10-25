@@ -43,8 +43,8 @@ hides per-line resolver loops does not satisfy that decision.
   portfolio valuation inputs (`ValuationLine`/`ValuationPosition`).
 - [Curves](curves.md): curve rows (`CurveTable`), build details
   (`CurveBuildingDetailsTable`), market-data-set curve bindings, and curve
-  observations (`DiscountCurvesNode`).
-- [Fixings](fixings.md): index fixing observations (`FixingRatesNode`).
+  observations (`DiscountCurvesUpdater`).
+- [Fixings](fixings.md): index fixing observations (`FixingRatesUpdater`).
 - [Scenarios](scenarios/index.md): transient curve scenario and generic
   valuation workflow orchestration under `msm_pricing.scenarios`.
 - [Analytics](analytics.md): pure-data spread analytics, cross-asset spread
@@ -83,7 +83,7 @@ msm_pricing/
   api/             row APIs and instrument attach/load bridge helpers
   instruments/     Pydantic priceable instrument contracts
   models/          SQLAlchemy MetaTable declarations owned by pricing
-  data_nodes/      pricing DataNodes and storage-facing publishing helpers
+  time_index/      pricing updaters and storage-facing publishing helpers
   pricing_engine/  QuantLib builders, resolvers, pricers, and analytics
   scenarios/       transient scenario workflows
     curves/        curve shocks, key-node bumps, runtime curve handles
@@ -103,7 +103,7 @@ The pricing graph has four persistent layers:
 
 1. core assets and indexes from `msm`;
 2. pricing MetaTables that extend assets and indexes;
-3. pricing DataNodes that publish curve and fixing observations;
+3. pricing updaters that publish curve and fixing observations;
 4. serialized instrument payloads that reference backend UUIDs.
 
 Per [ADR 0035](../../ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md),

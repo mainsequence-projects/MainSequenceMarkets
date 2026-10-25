@@ -88,7 +88,7 @@ reused wherever that same curve identity is resolved.
 - `metadata_json`: caller-owned scenario metadata.
 
 The bump helpers operate on copied `key_nodes` dictionaries. They never mutate
-the submitted observation, the persisted `DiscountCurvesNode` row, or prepared
+the submitted observation, the persisted `DiscountCurvesUpdater` row, or prepared
 valuation context caches.
 
 ## Runtime Construction

@@ -39,7 +39,7 @@ tiie = Index.upsert(
 )
 ```
 
-Publish its values with a cadence-specific `IndexValuesDataNode`. Custom rows
+Publish its values with a cadence-specific `IndexValuesUpdater`. Custom rows
 contain no `definition_uid`.
 
 ## 3. Resolve The Asset
@@ -182,19 +182,19 @@ Use the actual registered source storage classes whose MetaTable UIDs match
 the two input UIDs:
 
 ```python
-from msm.data_nodes.indices import (
-    FormulaIndexDataNode,
-    FormulaIndexDataNodeConfiguration,
+from msm.time_index.indices import (
+    FormulaIndexUpdater,
+    FormulaIndexUpdaterConfiguration,
     configured_index_values_storage,
 )
 
 DailyIndexValues = configured_index_values_storage(cadence="1d")
-config = FormulaIndexDataNodeConfiguration(
+config = FormulaIndexUpdaterConfiguration(
     formula_definition_uids=(mixed.definition.uid,),
     source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
-node = FormulaIndexDataNode(config, DailyIndexValues)
+node = FormulaIndexUpdater(config, DailyIndexValues)
 ```
 
 Construction verifies exact source UID coverage, source grain, observable

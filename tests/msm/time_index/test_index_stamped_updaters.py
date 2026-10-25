@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+import datetime as dt
+import os
+from typing import ClassVar
+
+import pandas as pd
+import pytest
+
+# Prevent SDK import-time project resolution from reading the local .env.
+os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
+os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
+os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
+os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
+
+from msm.time_index.indices import (
+    IndexUpdaterConfiguration,
+    IndexTimestampedUpdater,
+)
+from msm.time_index.utils.stamped import StampedUpdaterConfiguration
+from msm.models import IndexTable
+from msm.models.registration import markets_foreign_key_target_identifiers
+from msm.settings import INDEX_IDENTIFIER_DIMENSION
+from msm_pricing.time_index.index_fixings import FixingRatesUpdater
+from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
+from msm_pricing.meta_tables import pricing_sqlalchemy_models
+
+
+class ExampleIndexFact(IndexTimestampedUpdater):
+    """Example index-stamped node bound to the IndexFixingsStorage contract."""
+
+    configuration_class: ClassVar[type[IndexUpdaterConfiguration]] = IndexUpdaterConfiguration
+
+    @classmethod
+    def _required_output_table(cls) -> type[IndexFixingsStorage]:
+        return IndexFixingsStorage
+
+
+def test_index_updater_configuration_is_stamped() -> None:
+    config = ExampleIndexFact.default_config()
+
+    assert isinstance(config, StampedUpdaterConfiguration)
+    assert isinstance(config, IndexUpdaterConfiguration)
+    assert config.reference_dimension == INDEX_IDENTIFIER_DIMENSION
+    # Storage-first: schema/identity/FK fields no longer live on the config.
+    assert "records" not in IndexUpdaterConfiguration.model_fields
+    assert "node_metadata" not in IndexUpdaterConfiguration.model_fields
+    assert "foreign_keys" not in IndexUpdaterConfiguration.model_fields
+
+
+def test_index_node_resolves_output_table_and_index_contract() -> None:
+    output_table = ExampleIndexFact._required_output_table()
+
+    assert output_table is IndexFixingsStorage
+    assert output_table.__index_names__ == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert output_table.__time_index_name__ == "time_index"
+
+
+def test_index_node_storage_has_index_foreign_key() -> None:
+    index_identifier = IndexTable.__table__.name
+    fk_column = IndexFixingsStorage.__table__.columns[INDEX_IDENTIFIER_DIMENSION]
+
+    assert markets_foreign_key_target_identifiers(IndexFixingsStorage) == [index_identifier]
+    assert any(
+        foreign_key.column is IndexTable.__table__.c.unique_identifier
+        and foreign_key.ondelete == "RESTRICT"
+        for foreign_key in fk_column.foreign_keys
+    )
+    assert IndexFixingsStorage in set(pricing_sqlalchemy_models())
+
+
+def test_index_node_does_not_expose_bootstrap_frame_api() -> None:
+    assert not hasattr(ExampleIndexFact, "build_schema_bootstrap_frame")
+    assert not hasattr(ExampleIndexFact, "build_initialization_frame")
+
+
+def test_index_node_validate_frame_normalizes_datetime64_ns_utc() -> None:
+    frame = ExampleIndexFact.validate_frame(
+        pd.DataFrame(
+            [
+                {
+                    "time_index": dt.datetime(2026, 5, 26, 18, 50, 19, 240235, tzinfo=dt.UTC),
+                    "index_identifier": "SPX",
+                    "rate": 5340.26,
+                }
+            ]
+        )
+    )
+
+    assert list(frame.index.names) == ["time_index", INDEX_IDENTIFIER_DIMENSION]
+    assert str(frame.reset_index()["time_index"].dtype) == "datetime64[ns, UTC]"
+    assert frame.reset_index()["index_identifier"].iloc[0] == "SPX"
+
+
+def test_index_node_validate_frame_rejects_duplicate_keys() -> None:
+    time_index = "2026-05-26T00:00:00Z"
+
+    with pytest.raises(ValueError, match="duplicate rows"):
+        ExampleIndexFact.validate_frame(
+            pd.DataFrame(
+                [
+                    {"time_index": time_index, "index_identifier": "SPX", "rate": 5340.26},
+                    {"time_index": time_index, "index_identifier": "SPX", "rate": 5340.27},
+                ]
+            )
+        )
+
+
+def test_fixing_rates_node_is_index_timestamped(monkeypatch) -> None:
+    registered_identifier = "registered.index-fixings"
+    monkeypatch.setattr(
+        IndexFixingsStorage,
+        "get_identifier",
+        classmethod(lambda _cls: registered_identifier),
+    )
+
+    assert issubclass(FixingRatesUpdater, IndexTimestampedUpdater)
+    assert FixingRatesUpdater._required_output_table() is IndexFixingsStorage
+    assert "__data_node_identifier__" not in FixingRatesUpdater.__dict__
+    assert FixingRatesUpdater._default_identifier() == registered_identifier
+    assert "fixing rates" in FixingRatesUpdater._default_description()

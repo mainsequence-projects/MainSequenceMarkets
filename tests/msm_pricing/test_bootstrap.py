@@ -38,8 +38,8 @@ def reset_pricing_runtime(monkeypatch) -> None:
 def install_fake_pricing_bootstrap(monkeypatch):
     attach_calls = []
 
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     monkeypatch.setattr(
         CurveTable,

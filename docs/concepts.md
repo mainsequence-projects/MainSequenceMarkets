@@ -32,11 +32,11 @@ SQLAlchemy internals. There are three distinct layers, and each has an owner:
     A `TimeIndexMetaTable` uid identifies a table; a `TimeIndexTableUpdate` uid
     identifies one producer, and several producers can write to the same table.
 
-    The shared producer base classes are still named `*DataNode`, for example
-    `AssetIndexedDataNode`, and live under `msm.data_nodes`,
-    `msm_portfolios.data_nodes` and `msm_pricing.data_nodes`. The names predate
-    the MetaTables terms; the classes are ordinary `TimeIndexTableUpdater`
-    subclasses.
+    The shared producer base classes, such as `AssetIndexedUpdater` and
+    `StampedUpdater`, live under `msm.time_index`, `msm_portfolios.time_index`
+    and `msm_pricing.time_index`; see
+    [ADR 0048](ADR/0048-time-index-vocabulary-rename.md) for the names they had
+    before 3.0.0.
 
 ```python
 from msm.api.assets import Asset       # row object — application code

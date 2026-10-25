@@ -4,7 +4,7 @@ from typing import Union
 
 import pandas as pd
 
-from msm_portfolios.data_nodes import (
+from msm_portfolios.time_index import (
     ASSET_IDENTIFIER,
     SIGNAL_UID,
     SignalWeights,

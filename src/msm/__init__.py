@@ -60,7 +60,7 @@ __all__ = [
     "INDEX_TYPE_INTEREST_RATE",
     "INDEX_TYPE_INTEREST_RATE_DEFINITION",
     "api",
-    "data_nodes",
+    "time_index",
     "models",
     "portfolios",
     "services",

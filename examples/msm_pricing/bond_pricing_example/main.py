@@ -65,9 +65,9 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         PricingMarketDataSetCurveBinding,
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
-    from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index import CurveConfig, IndexFixingConfiguration
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.pricing_engine import apply_z_spread_to_curve
     from msm_pricing.settings import (
@@ -310,7 +310,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         zero_rate=0.0525,
     )
-    projection_curve_frame = _run_data_node_frame(
+    projection_curve_frame = _run_updater_frame(
         projection_curve_node,
         label="projection curve",
     )
@@ -319,7 +319,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         zero_rate=0.0475,
     )
-    discount_curve_frame = _run_data_node_frame(discount_curve_node, label="discount curve")
+    discount_curve_frame = _run_updater_frame(discount_curve_node, label="discount curve")
     _print_step(
         "Published mock projection and discount curve rows",
         projection_rows=len(projection_curve_frame),
@@ -335,7 +335,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         fixing_rate=0.0525,
     )
-    fixing_frame = _run_data_node_frame(fixing_node, label="index fixings")
+    fixing_frame = _run_updater_frame(fixing_node, label="index fixings")
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
@@ -509,7 +509,7 @@ def _preview_cashflows(
     return {bucket: rows[:limit] for bucket, rows in cashflows.items() if rows}
 
 
-def _run_data_node_frame(node: Any, *, label: str) -> Any:
+def _run_updater_frame(node: Any, *, label: str) -> Any:
     result = node.run()
     if isinstance(result, tuple):
         error_on_last_update, frame = result

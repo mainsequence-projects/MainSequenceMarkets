@@ -287,7 +287,7 @@ Assets answer these questions:
   issuer reference data.
 - `msm.constants`: static built-in asset type keys and built-in `AssetType`
   definitions for application and project code.
-- `msm.data_nodes.assets`: asset-indexed DataNodes such as `AssetSnapshot`.
+- `msm.time_index.assets`: asset-indexed updaters such as `AssetSnapshot`.
 - `msm.services.assets`: application-facing asset service helpers over
   repositories.
 - `msm.services.assets.reference_details`: canonical asset identity plus latest
@@ -315,7 +315,7 @@ what each type string means in a namespace.
 Pricing details are not the same thing as core asset details or market prices.
 Serialized priceable instrument terms belong to `msm_pricing`, not
 `msm.models.assets`: timestamped pricing-detail observations live in
-`msm_pricing.data_nodes.pricing_details`, and no-date writes also update
+`msm_pricing.time_index.pricing_details`, and no-date writes also update
 `msm_pricing.models.AssetCurrentPricingDetailsTable` for fast runtime loading.
 Users attach or load them through `Instrument.attach_to_asset(asset)` and
 `Instrument.load_from_asset(asset)`. For large universes, use
@@ -505,29 +505,29 @@ Use an explicit `repository_context` for live platform reads or pass an
 dictionaries; dashboard-specific or Command Center-specific response envelopes
 belong at the application boundary.
 
-## Asset-Indexed DataNodes
+## Asset-Indexed Updaters
 
 Timestamped asset facts, such as snapshots and pricing details, belong in
-asset-indexed DataNodes instead of columns on `AssetTable`. See
-[Asset-Indexed DataNodes](asset_indexed_data_nodes.md) for the detailed
-`AssetIndexedDataNode` contract, the difference from a generic Main Sequence
+asset-indexed updaters instead of columns on `AssetTable`. See
+[Asset-Indexed Updaters](asset_indexed_updaters.md) for the detailed
+`AssetIndexedUpdater` contract, the difference from a generic Main Sequence
 `TimeIndexTableUpdater`, and `AssetSnapshot` as the concrete implementation.
 
 ## Extension Notes
 
-Add new TimeIndexTableUpdater schemas under `msm.data_nodes.assets` when the output is
+Add new TimeIndexTableUpdater schemas under `msm.time_index.assets` when the output is
 time-indexed market data. Add provider-specific lookup or normalization under a
 service submodule such as `msm.services.assets.openfigi`. Add new persistent
 fields in `msm.models` only when the platform schema needs to own the field.
 
 There is intentionally no `msm.assets` package boundary. Asset identity belongs
 to MetaTable models and repositories, timestamped asset facts belong to
-DataNodes, and external provider integration belongs to services.
+updaters, and external provider integration belongs to services.
 
 ## Related Concepts
 
 - [Accounts](../accounts/index.md)
-- [Asset-Indexed DataNodes](asset_indexed_data_nodes.md)
+- [Asset-Indexed Updaters](asset_indexed_updaters.md)
 - [Bond Assets](bonds.md)
 - [Currency Assets](currency.md)
 - [Portfolios](../../msm_portfolios/portfolios/index.md)

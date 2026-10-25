@@ -13,10 +13,10 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage  # noqa: E402
+from msm.time_index.assets.storage import AssetSnapshotsStorage  # noqa: E402
 from msm.models import PortfolioDatasetAvailabilityTable  # noqa: E402
 from msm.services.assets import asset_reference_details  # noqa: E402
-from msm_portfolios.data_nodes.portfolios.storage import (  # noqa: E402
+from msm_portfolios.time_index.portfolios.storage import (  # noqa: E402
     PortfolioWeightsStorage,
     PortfoliosStorage,
 )

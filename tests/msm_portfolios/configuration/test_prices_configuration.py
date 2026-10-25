@@ -5,7 +5,7 @@ from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from pydantic import ValidationError
 
 from msm_portfolios.configuration import PricesConfiguration
-from msm_portfolios.contrib.prices.data_nodes import (
+from msm_portfolios.contrib.prices.updaters import (
     InterpolatedPrices,
     InterpolatedPricesConfig,
     _resolve_interpolated_source_prices,

@@ -16,7 +16,7 @@ integration live in `msm_pricing`.
   real account holdings.
 - [Assets](assets/index.md): asset identity, type registration, category
   membership, relational asset detail tables, OpenFIGI details, and
-  asset-indexed DataNodes.
+  asset-indexed updaters.
 - [Calendars](calendars/index.md): bounded calendar identities, daily facts,
   sessions, and calendar-level events used by portfolios, execution, and
   pricing adapters.
@@ -24,7 +24,7 @@ integration live in `msm_pricing`.
 - [Derivatives](derivatives/index.md): futures and derivative details that
   extend canonical assets and may reference non-asset underlyings.
 - [Execution](execution/index.md): order-manager intent rows and timestamped
-  order, event, and trade DataNodes.
+  order, event, and trade updaters.
 - [Indexes](indices/index.md): canonical identity, formula/custom calculation,
   cadence publication, derivative underlyings, and pricing references.
 - [Migrations](migrations/index.md): admin-owned schema evolution through the

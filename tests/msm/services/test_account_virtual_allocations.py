@@ -366,7 +366,7 @@ def test_portfolio_target_requires_expander() -> None:
 
 
 def test_portfolio_expansion_uses_latest_weights_at_or_before_valuation_time(monkeypatch) -> None:
-    from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage
+    from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage
 
     context = object()
 

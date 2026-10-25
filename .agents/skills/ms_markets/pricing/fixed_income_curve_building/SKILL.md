@@ -19,10 +19,10 @@ IndexTable.uid
 PricingMarketDataSetCurveBinding(role + selector + quote side)
   -> CurveTable.uid
   -> CurveBuildingDetails.curve_uid
-  -> DiscountCurvesNode(curve_identifier)
+  -> DiscountCurvesUpdater(curve_identifier)
 
 IndexTable.unique_identifier
-  -> FixingRatesNode(index_identifier, rate)
+  -> FixingRatesUpdater(index_identifier, rate)
 ```
 
 ## Route First
@@ -39,7 +39,7 @@ Use these skills first when the task crosses their boundaries:
 - Asset identity or bond asset detail tables:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed market data:
-  `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
+  `.agents/skills/ms_markets/assets/asset_indexed_updaters/SKILL.md`
 
 Then use this skill for pricing-specific index, fixing, and curve choices.
 
@@ -49,8 +49,8 @@ Then use this skill for pricing-specific index, fixing, and curve choices.
   `msm.models.IndexTable` rows.
 - Creating or reviewing `Curve` rows, their `CurveBuildingDetails`, and their
   market-data-set curve selection bindings.
-- Creating or extending `FixingRatesNode` subclasses that publish index fixings.
-- Creating or extending `DiscountCurvesNode` subclasses that publish compressed
+- Creating or extending `FixingRatesUpdater` subclasses that publish index fixings.
+- Creating or extending `DiscountCurvesUpdater` subclasses that publish compressed
   curve payloads.
 - Wiring `msm_pricing.pricing_engine.resolvers` into bonds, swaps, examples, and
   tests.
@@ -73,10 +73,10 @@ Before changing code, inspect the local implementation relevant to the task:
 1. `src/msm/api/indices.py`
 2. `src/msm_pricing/api/index_convention_details.py`
 3. `src/msm_pricing/api/curves.py`
-4. `src/msm_pricing/data_nodes/index_fixings/__init__.py`
-5. `src/msm_pricing/data_nodes/index_fixings/storage.py`
-6. `src/msm_pricing/data_nodes/curves/__init__.py`
-7. `src/msm_pricing/data_nodes/curves/storage.py`
+4. `src/msm_pricing/time_index/index_fixings/__init__.py`
+5. `src/msm_pricing/time_index/index_fixings/storage.py`
+6. `src/msm_pricing/time_index/curves/__init__.py`
+7. `src/msm_pricing/time_index/curves/storage.py`
 8. `src/msm_pricing/pricing_engine/resolvers.py`
 9. `src/msm_pricing/meta_tables.py`
 10. `examples/msm_pricing/bond_pricing_example/main.py`
@@ -148,7 +148,7 @@ agent also creates or verifies all of the following:
   intended market-data set, valuation role, selector, and quote side.
 - The market-data set has a `PricingMarketDataSetBinding` for
   `PRICING_CONCEPT_DISCOUNT_CURVES` pointing at the curve storage TimeIndexTableUpdater.
-- Published or publishable `DiscountCurvesNode` observations use
+- Published or publishable `DiscountCurvesUpdater` observations use
   `curve_identifier=Curve.unique_identifier`.
 
 For index-scoped curve selection, use
@@ -200,8 +200,8 @@ from msm_pricing.api import (
     PricingMarketDataSetBinding,
     PricingMarketDataSetCurveBinding,
 )
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
@@ -342,20 +342,20 @@ Rules:
 
 ## Fixings Pattern
 
-Use `FixingRatesNode` for observed index fixings. It extends
-`IndexTimestampedDataNode`, so rows are keyed by
+Use `FixingRatesUpdater` for observed index fixings. It extends
+`IndexTimestampedUpdater`, so rows are keyed by
 `["time_index", "index_identifier"]`, where `index_identifier` is
 `IndexTable.unique_identifier`.
 
-Subclass `FixingRatesNode` when the source is specific:
+Subclass `FixingRatesUpdater` when the source is specific:
 
 ```python
 import pandas as pd
 
-from msm_pricing.data_nodes import FixingRatesNode, IndexFixingConfiguration
+from msm_pricing.time_index import FixingRatesUpdater, IndexFixingConfiguration
 
 
-class ExampleFixingsNode(FixingRatesNode):
+class ExampleFixingsNode(FixingRatesUpdater):
     def build_fixing_frame(self, *, update_statistics, index_identifier: str) -> pd.DataFrame:
         return pd.DataFrame(
             [
@@ -385,19 +385,19 @@ Rules:
 
 ## Curve Pattern
 
-Use `DiscountCurvesNode` for compressed discount curves. Rows are keyed by
+Use `DiscountCurvesUpdater` for compressed discount curves. Rows are keyed by
 `["time_index", "curve_identifier"]`, where `curve_identifier` is
 `Curve.unique_identifier`.
 
-Subclass `DiscountCurvesNode` when the curve source is specific:
+Subclass `DiscountCurvesUpdater` when the curve source is specific:
 
 ```python
 import pandas as pd
 
-from msm_pricing.data_nodes import CurveConfig, CurveKeyNode, DiscountCurvesNode
+from msm_pricing.time_index import CurveConfig, CurveKeyNode, DiscountCurvesUpdater
 
 
-class ExampleDiscountCurveNode(DiscountCurvesNode):
+class ExampleDiscountCurveNode(DiscountCurvesUpdater):
     def build_curve_frame(
         self,
         *,
@@ -470,7 +470,7 @@ Rules:
   Per-node `quote_type` and `quote_unit` describe raw source inputs;
   `CurveBuildingDetails` describes the final stored curve.
 - When a producer needs stricter source-specific semantics, override
-  `DiscountCurvesNode.normalize_key_nodes(...)` or attach a runtime callable
+  `DiscountCurvesUpdater.normalize_key_nodes(...)` or attach a runtime callable
   with `set_key_nodes_validator(...)`. The hook receives the normalized
   key-node value, the full row, and the curve identifier. It must return JSON
   object/list provenance. Do not put validator callables in `CurveConfig`; they
@@ -548,7 +548,7 @@ Resolver expectations:
   `msm_pricing.pricing_engine.apply_z_spread_to_curve(...)`. This helper
   accepts the decimal continuous spread returned by `Bond.z_spread(...)` and
   returns a derived QuantLib handle. It must not be treated as curve
-  construction, node bumping, or a mutation of `DiscountCurvesNode`,
+  construction, node bumping, or a mutation of `DiscountCurvesUpdater`,
   `key_nodes`, `CurveTable`, or `CurveBuildingDetails`.
 
 For instrument payloads:

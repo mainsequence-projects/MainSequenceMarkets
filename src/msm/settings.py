@@ -9,7 +9,7 @@ INDEX_IDENTIFIER_DIMENSION = "index_identifier"
 
 
 def markets_namespace(namespace: str | None = None) -> str:
-    """Return the active markets namespace for MetaTables and DataNodes."""
+    """Return the active markets namespace for MetaTables and updaters."""
 
     if namespace not in (None, ""):
         return str(namespace)

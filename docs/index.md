@@ -37,7 +37,7 @@ into `src/msm`.
 The general style of `msm` is to keep user-facing code typed and
 domain-oriented. Application code operates on Pydantic row objects such as
 `Asset`, `Account`, and `OrderManager`; schema code works with SQLAlchemy
-`*Table` declarations such as `AssetTable`; timestamped facts live in DataNodes.
+`*Table` declarations such as `AssetTable`; timestamped facts live in time-index tables.
 
 ```python
 from msm.api.assets import Asset       # row object — application code

@@ -108,7 +108,7 @@ def run_account_portfolio_full_workflow(
     *,
     prepare_portfolio_schema: bool = True,
     use_portfolio_example: bool = True,
-    run_portfolio_data_nodes: bool = True,
+    run_portfolio_updaters: bool = True,
     run_virtual_fund_allocation: bool = False,
     apply_virtual_fund_allocation: bool = False,
     revision_message: str | None = None,
@@ -151,7 +151,7 @@ def run_account_portfolio_full_workflow(
         )
 
         portfolio_example_result = build_equal_weight_portfolio(
-            run_data_nodes=run_portfolio_data_nodes,
+            run_updaters=run_portfolio_updaters,
             runtime_models=ACCOUNT_WORKFLOW_RUNTIME_MODELS,
         )
         print(
@@ -177,8 +177,8 @@ def run_account_portfolio_full_workflow(
     from msm.api.assets import Asset, AssetType
     from msm.api.calendars import Calendar
     from msm.api.portfolios import Portfolio, PortfolioGroup
-    from msm.data_nodes.accounts import AccountHoldings, TargetPositions
-    from msm.data_nodes.assets import AssetSnapshot
+    from msm.time_index.accounts import AccountHoldings, TargetPositions
+    from msm.time_index.assets import AssetSnapshot
     from msm.services import build_account_holdings_frame, build_target_positions_frame
 
     print_section("Account Workflow")
@@ -465,9 +465,9 @@ def run_account_portfolio_full_workflow(
         "target_accounts": target_accounts,
         "target_records": target_records,
         "target_positions_frame": combined_target_positions_frame,
-        "target_positions_data_node_identifier": target_positions_node._default_identifier(),
+        "target_positions_updater_identifier": target_positions_node._default_identifier(),
         "persisted_target_positions_frame": persisted_target_positions_frame,
-        "holdings_data_node_identifier": holdings_node._default_identifier(),
+        "holdings_updater_identifier": holdings_node._default_identifier(),
         "holdings_date": workflow_time,
         "pretty_positions_by_account": pretty_positions_by_account,
         "updated_frame": holdings_frame,
@@ -573,7 +573,7 @@ def _run_virtual_fund_allocation_extension(
 
     applied_frame = None
     if apply_plan:
-        from msm.data_nodes.accounts import VirtualFundHoldings
+        from msm.time_index.accounts import VirtualFundHoldings
 
         print("2. Applying account virtual-fund allocation through VirtualFundHoldings.")
         applied_frame = apply_account_virtual_fund_allocation_plan(
@@ -608,7 +608,7 @@ def main() -> None:
         help=("Create a standalone Portfolio row instead of reusing the portfolio example output."),
     )
     parser.add_argument(
-        "--no-run-portfolio-data-nodes",
+        "--no-run-portfolio-updaters",
         action="store_true",
         help=(
             "When chaining the portfolio example, skip its TimeIndexTableUpdater publication; "
@@ -638,7 +638,7 @@ def main() -> None:
     result = run_account_portfolio_full_workflow(
         prepare_portfolio_schema=not args.skip_schema_prep,
         use_portfolio_example=not args.standalone_target_sleeve,
-        run_portfolio_data_nodes=not args.no_run_portfolio_data_nodes,
+        run_portfolio_updaters=not args.no_run_portfolio_updaters,
         run_virtual_fund_allocation=args.with_virtual_fund_allocation,
         apply_virtual_fund_allocation=args.apply_virtual_fund_allocation,
         revision_message=args.revision_message,
@@ -671,9 +671,9 @@ def main() -> None:
     )
     print(
         "TargetPositions TimeIndexTableUpdater identifier:",
-        result["target_positions_data_node_identifier"],
+        result["target_positions_updater_identifier"],
     )
-    print("Holdings TimeIndexTableUpdater identifier:", result["holdings_data_node_identifier"])
+    print("Holdings TimeIndexTableUpdater identifier:", result["holdings_updater_identifier"])
     print("Holdings date:", result["holdings_date"].isoformat())
     if result["virtual_fund_allocation_result"] is not None:
         allocation_result = result["virtual_fund_allocation_result"]

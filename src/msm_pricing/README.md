@@ -33,7 +33,7 @@ src/msm_pricing/
 ├── analytics/           # Pure-data spread and relative-value analytics
 ├── api/                 # User-facing pricing persistence workflows
 ├── data_interface/      # Main Sequence market-data reads for curves/index fixings
-├── data_nodes/          # Pricing DataNodes and curve/index-fixing codecs
+├── time_index/          # Pricing updaters and curve/index-fixing codecs
 ├── instruments/         # Pydantic wrappers for priceable instruments
 ├── meta_tables.py       # Pricing MetaTable discovery and registration
 ├── models/              # SQLAlchemy MetaTable declarations
@@ -119,7 +119,7 @@ directly by each model's SQLAlchemy table name.
 Curves are pricing-owned reference data, not assets. `CurveTable` owns curve
 identity, `CurveBuildingDetailsTable` owns curve construction rules, and
 `PricingMarketDataSetCurveBindingTable` owns valuation-context curve selection.
-`DiscountCurvesNode` lives under `msm_pricing.data_nodes` as a stamped TimeIndexTableUpdater
+`DiscountCurvesUpdater` lives under `msm_pricing.time_index` as a stamped TimeIndexTableUpdater
 keyed by `(time_index, curve_identifier)`. Curve TimeIndexTableUpdater configurations use
 the actual `CurveTable.unique_identifier`; they do not resolve Main Sequence
 Constants into curve identity. EOD curve observations declare daily cadence on
@@ -136,7 +136,7 @@ identifier. Top-level `asset_identifier` and `index_identifier` key-node fields
 are rejected. `CurveBuildingDetails` still describes how the final stored
 curve is built and interpreted by pricing.
 Source-specific builders can enforce stricter provenance semantics by overriding
-`DiscountCurvesNode.normalize_key_nodes(...)` or by attaching a runtime callable
+`DiscountCurvesUpdater.normalize_key_nodes(...)` or by attaching a runtime callable
 with `set_key_nodes_validator(...)`.
 
 Helper-based curves use `builder_type="rate_helper_curve"` and generic helper
@@ -159,8 +159,8 @@ with `quote_convention="forward_rate"`. Deprecated QuantLib names such as
 `MonotonicLogCubicDiscountCurve` are rejected instead of aliased.
 
 Fixings are index facts, not assets and not a separate rate model.
-`FixingRatesNode` lives under `msm_pricing.data_nodes` as an
-`IndexTimestampedDataNode` helper keyed by `(time_index, index_identifier)`,
+`FixingRatesUpdater` lives under `msm_pricing.time_index` as an
+`IndexTimestampedUpdater` helper keyed by `(time_index, index_identifier)`,
 where `index_identifier` references `IndexTable.unique_identifier`. Its
 daily EOD cadence is declared on `IndexFixingsStorage.__cadence__`, so the
 observation interval is first-class `PlatformTimeIndexMetaTable` metadata.
@@ -191,7 +191,7 @@ table UID used by `TimeIndexTableRef.from_uid(...)`:
 
 ```python
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,
@@ -395,5 +395,5 @@ only by writing both role bindings explicitly.
 Add new priceable instruments under `instruments/` and shared QuantLib helpers
 under `pricing_engine/`. Keep SQLAlchemy table declarations under `models/`.
 Keep storage access in `data_interface/`, and keep pricing TimeIndexTableUpdater publishers
-under `data_nodes/` so instrument classes remain focused on rebuilding terms
+under `time_index/` so instrument classes remain focused on rebuilding terms
 and pricing.

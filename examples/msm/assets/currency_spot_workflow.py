@@ -44,7 +44,7 @@ def create_eurusd_currency_spot() -> dict[str, Any]:
     )
 
     from msm.api.assets import Asset, AssetType, CurrencySpot
-    from msm.data_nodes.assets import AssetSnapshot
+    from msm.time_index.assets import AssetSnapshot
     from msm.services.assets.openfigi import query_by_figi
 
     currency_asset_type = AssetType.upsert(**EXAMPLE_CURRENCY_ASSET_TYPE)

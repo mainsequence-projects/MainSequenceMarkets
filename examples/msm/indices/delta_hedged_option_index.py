@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from msm.data_nodes.indices import configured_index_values_storage, normalize_index_values_frame
+from msm.time_index.indices import configured_index_values_storage, normalize_index_values_frame
 
 
 DAILY_INDEX_VALUES = configured_index_values_storage(cadence="1d")

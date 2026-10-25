@@ -9,8 +9,8 @@ from uuid import UUID
 import pandas as pd
 
 from metatables import dtype_codec as dc
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage
-from msm.data_nodes.utils.storage_schema import (
+from msm.time_index.accounts.storage import AccountHoldingsStorage
+from msm.time_index.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )

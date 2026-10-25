@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from msm_pricing.data_nodes.curves.key_nodes import (
+from msm_pricing.time_index.curves.key_nodes import (
     CurveKeyNodeBase,
     CurveKeyNodeSourceReference,
 )

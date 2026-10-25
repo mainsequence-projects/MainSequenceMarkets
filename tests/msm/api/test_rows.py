@@ -192,7 +192,7 @@ def test_account_pretty_print_positions_formats_holdings(capsys) -> None:
     assert "asset_uid" in capsys.readouterr().out
 
 
-def test_account_pretty_print_positions_rejects_datanode_run_tuple() -> None:
+def test_account_pretty_print_positions_rejects_updater_run_tuple() -> None:
     account = Account.model_validate(
         {
             "uid": uuid.uuid4(),

@@ -11,12 +11,12 @@ import pandas as pd
 
 from metatables import dtype_codec as dc
 from msm.api.base import operation_result_rows
-from msm.data_nodes.accounts.constants import (
+from msm.time_index.accounts.constants import (
     TARGET_TYPE_ASSET,
     TARGET_TYPE_PORTFOLIO,
 )
-from msm.data_nodes.accounts.storage import TargetPositionsStorage
-from msm.data_nodes.utils.storage_schema import (
+from msm.time_index.accounts.storage import TargetPositionsStorage
+from msm.time_index.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
 )

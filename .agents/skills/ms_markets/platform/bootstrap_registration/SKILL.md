@@ -63,7 +63,7 @@ create schemas, or repair schema drift.
 - Asset schema modeling details; use
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`.
 - Asset-indexed TimeIndexTableUpdater frame semantics; use
-  `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`.
+  `.agents/skills/ms_markets/assets/asset_indexed_updaters/SKILL.md`.
 - Fixed-income pricing semantics; use
   `.agents/skills/ms_markets/pricing/fixed_income_curve_building/SKILL.md`.
 

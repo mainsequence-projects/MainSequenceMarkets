@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import and_, func, literal, select
 
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.models import AssetTable
 from msm.repositories.base import (
     MarketsOperationContext,

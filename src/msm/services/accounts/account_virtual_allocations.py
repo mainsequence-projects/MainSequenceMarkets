@@ -612,7 +612,7 @@ def resolve_account_virtual_fund_allocation_inputs(
 
     from msm.api.base import operation_result_rows
     from msm.bootstrap import resolve_runtime
-    from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+    from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
     from msm.models.accounts import (
         AccountHoldingsSetTable,
         AccountTargetAllocationTable,

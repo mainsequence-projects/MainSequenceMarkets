@@ -16,7 +16,7 @@ from msm_portfolios.accounting import (
     project_portfolio_values,
     project_state,
 )
-from msm_portfolios.data_nodes import PortfolioEngine, normalize_portfolio_event_ledger_frame
+from msm_portfolios.time_index import PortfolioEngine, normalize_portfolio_event_ledger_frame
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     InstrumentExecutionSpec,
