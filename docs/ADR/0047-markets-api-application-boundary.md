@@ -83,7 +83,7 @@ Asset, Account, Portfolio, Index, Calendar or AssetCategory rows directly.
   pass-through without policy. The two problems reinforce each other.
 
 The in-process design is right for one audience: the Markets deployment's own
-API, migration Job and DataNode Jobs, which must read and write the tables
+API, migration Job and updater Jobs, which must read and write the tables
 they own. The mistake is using that producer path as the integration surface
 for other applications.
 
@@ -99,8 +99,8 @@ for other applications.
   Environment with `ResourceRelease.filter_admin` and obtains a bearer token
   through `resolve_runtime_access`. That is a complete application-to-application
   call mechanism, used today only to reach MetaTables.
-- `msm_portfolios` data nodes already accept any output table that matches the
-  storage contract (`output_table` in `msm_portfolios.data_nodes.base`), and
+- `msm_portfolios` updaters already accept any output table that matches the
+  storage contract (`output_table` in `msm_portfolios.time_index.base`), and
   `configured_interpolated_prices_storage` already builds a contract-identical
   table under a different physical name.
 - Index already catalogues datasets by table uid in
@@ -132,7 +132,7 @@ Split the distribution along the ADR 0008 seam:
   the HTTP contracts under `msm.api.http`, constants and the storage layout
   contracts. No SQLAlchemy, no `metatables`, no QuantLib.
 - `ms-markets`: everything else, including models, repositories, migrations,
-  data nodes and the FastAPI application.
+  time-index updaters and the FastAPI application.
 
 Add `msm.client`, the package the README already names. It is a typed HTTP
 client over the `apps/v1` OpenAPI document that returns `msm.api` row models.
@@ -190,7 +190,7 @@ mechanism, with these rules:
 contracts with any number of instances. ms-markets owns the contract: columns,
 dtypes, time index and index names. A provider owns its instances: a
 `<provider>__portfoliosts` table in the provider's namespace, migrated by the
-provider's migration provider, written by the provider's nodes with
+provider's migration provider, written by the provider's updaters with
 `output_table=`. The existing
 core tables remain the Markets-owned instance for portfolios Markets computes
 itself. A provider may add columns beyond the contract; Markets reads the
@@ -265,7 +265,7 @@ Under this ADR:
   weights instances through the storage factories ms-markets exposes for the
   three contracts, in the provider's namespace, migrated by the provider. Its
   bars and interpolated prices move to that namespace too.
-- The provider's signal node and `PortfoliosDataNode` are bound to those
+- The provider's signal updater and `PortfoliosUpdater` are bound to those
   instances with `output_table=`. The signal, the strategy and the engine code
   stay in the provider's repository.
 - The Portfolio row is created through the Markets API with the three table
@@ -288,7 +288,7 @@ Under this ADR:
    row backend.
 3. Providers: declare their namespace in their mixins, move existing tables
    with a namespace move, declare contract instances for portfolios and
-   signals, bind nodes to them, backfill from their own nodes, register the
+   signals, bind updaters to them, backfill from their own updaters, register the
    catalog rows, and replace direct registry writes with API calls. Drop
    Writer on `mainsequence.markets`.
 4. Consumers: switch each consumer route family by route family, portfolio
@@ -328,7 +328,7 @@ Under this ADR:
 
 ### 2026-10-25: step 1, decision 5 (contract plus instances, catalog)
 
-Implemented in `msm_portfolios.data_nodes.contract_instances`,
+Implemented in `msm_portfolios.time_index.contract_instances`,
 `msm.models.portfolio_dataset_availability`, Alembic revision `0021`,
 `msm_portfolios.services.portfolio_datasets` and
 `msm_portfolios.services.portfolio_reads`. Deviations and refinements:

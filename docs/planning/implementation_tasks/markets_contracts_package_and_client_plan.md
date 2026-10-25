@@ -22,7 +22,7 @@ The split is complete when:
   QuantLib, and its wire contract is versioned by a `>=2,<3` range that the
   Markets API honours;
 - `ms-markets` depends on `ms-markets-contracts` with an exact pin and keeps
-  every table class, repository, migration, data node and the FastAPI
+  every table class, repository, migration, time-index updater and the FastAPI
   application;
 - `msm.client` is a typed HTTP client generated from, or checked against,
   `apps/v1`'s OpenAPI document, that returns the `msm.api` row models, and
@@ -51,7 +51,7 @@ The split is complete when:
 | `msm.api.http` | contracts | Collection, discovery, bulk-action, tabular-frame, error and operation contracts; see "FastAPI in the contracts" |
 | `msm.constants` | contracts | Static keys |
 | Storage layout contracts: column names, dtypes, index names of `PortfoliosTS`, `PortfolioWeightsTS`, `SignalWeightsTS`, `IndexValuesTS` | contracts | As data (a frozen mapping per contract), not as SQLAlchemy tables; `contract_instances.py` keeps building tables from them |
-| `msm.models`, `msm.repositories`, `msm.bootstrap`, `msm_migrations`, `msm.data_nodes`, `msm_portfolios` (nodes, strategies, services), `msm_pricing`, `apps/v1`, `msm_cli` | `ms-markets` | Unchanged location |
+| `msm.models`, `msm.repositories`, `msm.bootstrap`, `msm_migrations`, `msm.time_index`, `msm_portfolios` (updaters, strategies, services), `msm_pricing`, `apps/v1`, `msm_cli` | `ms-markets` | Unchanged location |
 
 `msm.client` (new, in the contracts distribution so a consumer needs one
 package):
