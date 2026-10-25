@@ -4,7 +4,11 @@
 
 Proposed. Drafted 2026-10-25 from an analysis of this repository, the
 `markets-analytics` API, the `alpaca-connectors` application and the installed
-MetaTables and SDK contracts. Nothing in this ADR is implemented.
+MetaTables and SDK contracts. Nothing in this ADR is implemented. The
+`development` branch has since moved to MetaTables 0.1.51, whose namespace and
+table roles (`owner`, `editor`, `data_writer`, `reader`) replace the Reader and
+Writer vocabulary used below; the grant boundaries this ADR draws are
+unchanged by that rename, and implementation must use the role names.
 
 It builds on [ADR 0008](0008-metatable-table-and-api-model-split.md) (row
 objects separate from table declarations), [ADR 0030](0030-explicit-portfolio-price-source-dependency.md)
