@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import metatables.updaters.configuration as update_configuration
 from msm.identity import stable_identity_payload
 
-from .base import _drop_excluded_keys
+from .base import _drop_excluded_keys, _isoformat_dates_and_times
 from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS
 
 
@@ -18,7 +18,7 @@ def canonical_portfolio_configuration(
     payload = _portfolio_configuration_payload(portfolio_configuration)
     serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
-        dict(serialized_payload),
+        _isoformat_dates_and_times(dict(serialized_payload)),
         excluded_keys=PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS,
     )
 

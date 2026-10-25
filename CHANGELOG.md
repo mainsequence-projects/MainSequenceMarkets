@@ -214,6 +214,16 @@ portfolio and strategy identities do not change. Dependent packages declare
   `PlatformTimeIndexMetaTable` storage class written by a
   `TimeIndexTableUpdater` producer, instead of a single DataNode storage
   contract.
+- `compute_portfolio_configuration_hash` and `compute_signal_uid` no longer
+  raise `TypeError` when a configuration holds a `datetime.date` or
+  `datetime.time`, such as the execution window of `TimeWeighted`,
+  `VolumeParticipation` and `TrailingAverageDailyVolumeParticipation`. The
+  canonical signal, portfolio and rebalance strategy payloads carry these values
+  as ISO strings. Configurations that hashed before keep their identities, and
+  rebalance strategy revisions do not change. MetaTables still cannot compute
+  the `update_hash` of an updater whose configuration holds one of these values,
+  so `PortfolioWeights` and `PortfoliosUpdater` still raise the same `TypeError`
+  for a portfolio that uses one of these strategies.
 
 ## [2.2.12] - 2026-10-22
 

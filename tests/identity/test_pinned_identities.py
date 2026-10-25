@@ -65,7 +65,13 @@ from msm_portfolios.time_index import (
 )
 from msm_portfolios.time_index.contract_instances import configured_portfolios_storage
 from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
-from msm_portfolios.rebalance_strategy import ImmediateSignal, LiquidityConstrained, TimeWeighted
+from msm_portfolios.rebalance_strategy import (
+    ImmediateSignal,
+    LiquidityConstrained,
+    TimeWeighted,
+    TrailingAverageDailyVolumeParticipation,
+    VolumeParticipation,
+)
 
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
 
@@ -287,6 +293,10 @@ PINNED_NESTED_SIGNAL_UIDS = {
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
     "interpolated_prices_valuation": "4ea19e0e2eb0aa504cf795b79524e2c6",
+    # Execution windows are datetime.time values, which hash as ISO strings.
+    "time_weighted_rebalance": "878f466cbb3c0d7c7cd807769eea0ea1",
+    "volume_participation_rebalance": "6c81dcd53cd19338933140ba6543375a",
+    "trailing_average_daily_volume_rebalance": "134b49b83d79333d73c8ef6772627017",
 }
 
 PINNED_STRATEGY_REVISIONS = {
@@ -296,6 +306,12 @@ PINNED_STRATEGY_REVISIONS = {
     ),
     "time_weighted_on_interpolated_prices": (
         "bdfd05cd41f40a138e77888ec15342eb22f2cfcb0a149539c51f05ef80e47325"
+    ),
+    "volume_participation_on_interpolated_prices": (
+        "0af1d91c0620b9fd4105b091105c0cc164306412a6ac3a13d9ec309ce7b439a9"
+    ),
+    "trailing_average_daily_volume_on_asset_snapshot": (
+        "e3eda5bb7990340e97aab0ad1d232cc9a93f717a041a5eeabd666904c9c90488"
     ),
 }
 
@@ -481,6 +497,15 @@ STRATEGIES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "time_weighted_on_interpolated_prices": lambda updaters: TimeWeighted(
         execution_bars_instance=updaters["interpolated_prices"]
     ),
+    "volume_participation_on_interpolated_prices": lambda updaters: VolumeParticipation(
+        execution_bars_instance=updaters["interpolated_prices"]
+    ),
+    "trailing_average_daily_volume_on_asset_snapshot": lambda updaters: (
+        TrailingAverageDailyVolumeParticipation(
+            daily_liquidity_instance=updaters["asset_snapshot"],
+            execution_bars_instance=updaters["interpolated_prices"],
+        )
+    ),
 }
 
 NESTED_PORTFOLIOS: dict[str, Callable[[dict[str, Any]], PortfolioConfiguration]] = {
@@ -488,6 +513,18 @@ NESTED_PORTFOLIOS: dict[str, Callable[[dict[str, Any]], PortfolioConfiguration]]
         SIGNALS["library_fixed_weights"](),
         valuation_source=updaters["interpolated_prices"],
         rebalance_strategy=STRATEGIES["liquidity_constrained_on_asset_snapshot"](updaters),
+    ),
+    "time_weighted_rebalance": lambda updaters: _portfolio_configuration(
+        SIGNALS["library_fixed_weights"](),
+        rebalance_strategy=STRATEGIES["time_weighted_on_interpolated_prices"](updaters),
+    ),
+    "volume_participation_rebalance": lambda updaters: _portfolio_configuration(
+        SIGNALS["library_fixed_weights"](),
+        rebalance_strategy=STRATEGIES["volume_participation_on_interpolated_prices"](updaters),
+    ),
+    "trailing_average_daily_volume_rebalance": lambda updaters: _portfolio_configuration(
+        SIGNALS["library_fixed_weights"](),
+        rebalance_strategy=STRATEGIES["trailing_average_daily_volume_on_asset_snapshot"](updaters),
     ),
 }
 

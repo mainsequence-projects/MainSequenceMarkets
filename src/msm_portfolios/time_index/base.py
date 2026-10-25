@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 import pandas as pd
@@ -207,6 +208,28 @@ def _drop_excluded_keys(value: Any, *, excluded_keys: frozenset[str]) -> Any:
             for key, item in value.items()
             if key not in excluded_keys
         }
+    return value
+
+
+def _isoformat_dates_and_times(value: Any) -> Any:
+    """Return ``value`` with each ``datetime.date`` and ``datetime.time`` as an ISO string.
+
+    The MetaTables serializer turns ``datetime.datetime`` into an ISO string but returns
+    dates and times unchanged, and ``hash_signature`` cannot JSON-encode them. An ISO
+    string is what ``str`` and pydantic's JSON mode give them too, so identities hashed
+    with ``default=str`` and JSON dumps of a configuration stay the same.
+    """
+
+    if isinstance(value, dt.time) or (
+        isinstance(value, dt.date) and not isinstance(value, dt.datetime)
+    ):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_isoformat_dates_and_times(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_isoformat_dates_and_times(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _isoformat_dates_and_times(item) for key, item in value.items()}
     return value
 
 

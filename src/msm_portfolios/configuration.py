@@ -24,7 +24,11 @@ from msm_portfolios.time_index import (
     SignalWeights,
     canonical_signal_configuration,
 )
-from msm_portfolios.time_index.base import _class_import_path, _drop_excluded_keys
+from msm_portfolios.time_index.base import (
+    _class_import_path,
+    _drop_excluded_keys,
+    _isoformat_dates_and_times,
+)
 from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
@@ -54,7 +58,7 @@ def canonical_rebalance_strategy_configuration(
     payload = _rebalance_strategy_payload(rebalance_strategy)
     serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     canonical = _drop_excluded_keys(
-        dict(serialized_payload),
+        _isoformat_dates_and_times(dict(serialized_payload)),
         excluded_keys=REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     )
     if isinstance(rebalance_strategy, RebalanceStrategyBase):

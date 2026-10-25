@@ -18,6 +18,7 @@ from ..base import (
     _class_import_path,
     _drop_empty_framework_init_kwargs,
     _drop_excluded_keys,
+    _isoformat_dates_and_times,
     _empty_flat_frame,
     _is_canonical_frame,
     _normalize_pivoted_signal_weights,
@@ -441,7 +442,7 @@ def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
     payload = _signal_configuration_payload(signal)
     serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
-        dict(serialized_payload),
+        _isoformat_dates_and_times(dict(serialized_payload)),
         excluded_keys=SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
     )
 
