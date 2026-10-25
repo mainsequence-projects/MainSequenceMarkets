@@ -75,7 +75,10 @@ def _seed_every_table(connection):
                 row[column.name] = rows[target.table.name][target.name]
         if table.name == "ms_markets__index":
             row.update(calculation_method="custom", value_format="decimal")
-        elif table.name == "ms_markets__indexdatasetavailability":
+        elif table.name in (
+            "ms_markets__indexdatasetavailability",
+            "ms_markets__portfoliodatasetavailability",
+        ):
             row["population_state"] = "unavailable"
         elif table.name == "ms_markets__indexformuladefinition":
             row.update(alignment_policy="exact", missing_data_policy="fail", status="draft")
@@ -99,14 +102,14 @@ def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, start):
             command.upgrade(config, start)
             _seed_asset(connection)
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == ["0020"]
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0020"
-        assert len(sa.inspect(connection).get_table_names()) == 63
+        assert ScriptDirectory.from_config(config).get_heads() == ["0021"]
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0021"
+        assert len(sa.inspect(connection).get_table_names()) == 64
         if start:
             assert connection.exec_driver_sql("SELECT unique_identifier FROM ms_markets__asset").scalar_one() == "migration-preservation-asset"
         connection.rollback()
         command.upgrade(config, "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0020"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0021"
     engine.dispose()
 
 
@@ -166,14 +169,22 @@ def test_original_0017_postgresql_upgrade_preserves_every_row():
         connection.commit()
         tables = sorted(name for name in sa.inspect(connection).get_table_names() if name != migration.version_table)
         before = {name: BRIDGE._fingerprint(connection, name) for name in tables}
+        counts = {name: connection.exec_driver_sql(f'SELECT count(*) FROM "{name}"').scalar_one() for name in tables}
         connection.rollback()
-        command.upgrade(_config(connection), "head")
+        # The 0020 bridge must leave every row byte-identical; 0021 then adds a nullable
+        # column to SignalMetadata, which changes row JSON, so fingerprints are taken at 0020.
+        command.upgrade(_config(connection), "0020")
         assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0020"
         assert {name: BRIDGE._fingerprint(connection, name) for name in tables} == before
         for table_name, names in BRIDGE.LEGACY_IDENTIFIERS.items():
             actual = {column["name"]: column for column in sa.inspect(connection).get_columns(table_name)}
             assert all(actual[name]["type"].length == 255 for name in names)
         connection.rollback()
-        command.upgrade(_config(connection), "head")
+        command.upgrade(_config(connection), "0020")
         assert {name: BRIDGE._fingerprint(connection, name) for name in tables} == before
+        connection.rollback()
+        command.upgrade(_config(connection), "head")
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0021"
+        assert {name: connection.exec_driver_sql(f'SELECT count(*) FROM "{name}"').scalar_one() for name in tables} == counts
+        assert "ms_markets__portfoliodatasetavailability" in sa.inspect(connection).get_table_names()
     engine.dispose()
