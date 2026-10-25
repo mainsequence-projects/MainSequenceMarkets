@@ -72,5 +72,10 @@ have upgraded first:
    no project older than 4.0 uses these tables, because every 3.x release
    still selects and writes them.
 
+In each Environment, a project can run a release only after the ms-markets
+deployment's `migrate-markets` Job has applied that release's revision there:
+3.0 selects the columns that `0022` adds, and 4.0 inserts pricing bindings
+without the `data_node_uid` value that `0024` makes optional.
+
 To check what the stored account UIDs hold, run
 `msm rename-preflight account-uids` with the Markets runtime attached.
