@@ -13,8 +13,44 @@ and this project follows versioned releases.
   proposes the
   Markets API as the application boundary: provider-owned namespaces and
   sidecars, a contracts package with a remote row backend, and contract-plus-
-  instances for portfolio and signal time series catalogued by Markets. It is
-  a proposal; nothing in it is implemented.
+  instances for portfolio and signal time series catalogued by Markets. Its
+  migration path step 1 is implemented in this release as described below;
+  the packaging split (step 2) and the provider and consumer moves (steps 3
+  and 4) are not.
+- `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS` are storage
+  contracts with instances (ADR 0047, decision 5).
+  `msm_portfolios.data_nodes.contract_instances` adds
+  `configured_portfolios_storage`, `configured_portfolio_weights_storage` and
+  `configured_signal_weights_storage`, which build an instance under a
+  caller-chosen MetaTables namespace, physical-name app segment and optional
+  SQLAlchemy base, with the contract's columns, dtypes, time index, index
+  names and foreign keys and a stable identifier `<Contract>.<instance_key>`.
+  The core tables remain the Markets-owned instance.
+- `PortfolioDatasetAvailabilityTable` (`PortfolioDatasetAvailability`) catalogs,
+  per portfolio, the values, weights and signal instance uids and the
+  reconciled population state of the values instance, mirroring
+  `IndexDatasetAvailability`. `SignalMetadataTable.meta_table_uid` records the
+  signal's instance. Alembic revision `0021` creates the table and the column;
+  no existing table, column or row changes.
+- `msm_portfolios.services.portfolio_datasets` adds
+  `register_portfolio_datasets`, `reconcile_portfolio_dataset_availability`,
+  `list_portfolio_dataset_states` and `verify_contract_instance`. Registration
+  verifies each declared table against the contract; reconciliation aggregates
+  each instance once for all of its portfolios and records unreadable
+  instances as `unavailable`.
+
+### Changed
+
+- `portfolio_values`, `latest_portfolio_weights` and the new `signal_weights`
+  read in `msm_portfolios.services.portfolio_reads` resolve each portfolio's
+  table from the catalog and read it by uid through `TimeIndexTableRef`,
+  filtered by `portfolio_identifier` or `signal_uid`. Portfolios without a
+  catalog row read the core tables as before. A request for several portfolios
+  groups them by table uid, reads each table once and returns one ordered
+  list. `latest_portfolio_weights` gains `order`, and the reads accept a
+  `dataset_reader` for tests. The portfolio values, weights and signal-weight
+  API routes use these reads. The `apps/v1` runtimes attach
+  `PortfolioDatasetAvailability`.
 
 ## [2.2.12] - 2026-10-22
 

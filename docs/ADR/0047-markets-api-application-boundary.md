@@ -4,11 +4,14 @@
 
 Proposed. Drafted 2026-10-25 from an analysis of this repository, the
 `markets-analytics` API, the `alpaca-connectors` application and the installed
-MetaTables and SDK contracts. Nothing in this ADR is implemented. The
+MetaTables and SDK contracts. The
 `development` branch has since moved to MetaTables 0.1.51, whose namespace and
-table roles (`owner`, `editor`, `data_writer`, `reader`) replace the Reader and
-Writer vocabulary used below; the grant boundaries this ADR draws are
-unchanged by that rename, and implementation must use the role names.
+table roles (`owner`, `editor`, `data_writer`, `data_viewer`, `metadata_viewer`)
+replace the Reader and Writer vocabulary used below; the grant boundaries this
+ADR draws are unchanged by that rename, and implementation uses the role names.
+
+Migration path step 1 is implemented on `development` (see "Implementation
+notes" at the end). Steps 2 to 4 are not.
 
 It builds on [ADR 0008](0008-metatable-table-and-api-model-split.md) (row
 objects separate from table declarations), [ADR 0030](0030-explicit-portfolio-price-source-dependency.md)
@@ -318,3 +321,39 @@ Under this ADR:
 - Row-level ownership inside shared tables. MetaTables grants are per table
   by design; this ADR works with that rather than against it.
 - Moving signals, strategies or engines into Markets.
+
+## Implementation notes
+
+### 2026-10-25: step 1, decision 5 (contract plus instances, catalog)
+
+Implemented in `msm_portfolios.data_nodes.contract_instances`,
+`msm.models.portfolio_dataset_availability`, Alembic revision `0021`,
+`msm_portfolios.services.portfolio_datasets` and
+`msm_portfolios.services.portfolio_reads`. Deviations and refinements:
+
+- The catalog row is one per portfolio, carrying the values, weights and
+  signal instance uids together, as this ADR lists them. The reconciled
+  population state, row count and time bounds describe the values instance;
+  weights and signal instances are catalogued but not aggregated. The Index
+  catalog has one row per (Index, dataset) because every cadence table is a
+  dataset in its own right; for a portfolio the values series is the dataset
+  and the other two are its supporting facts.
+- An instance is named `<storage_app>__<contract>__<instance_key>` and
+  identified as `<Contract>.<instance_key>`, namespace-prefixed outside the
+  default Markets namespace. The ADR's `alpaca_connectors__portfoliosts` is
+  therefore `alpaca_connectors__portfoliosts__alpaca`; the key keeps two
+  instances of one provider distinct.
+- Registration verifies each declared table against the contract (columns and
+  index names) through the MetaTables catalog before writing the row, and
+  reconciles at once; `reconcile=False` leaves the row `unavailable` with error
+  code `not_reconciled` until the first run. A provider that adds columns
+  passes verification.
+- Reads use `TimeIndexTableRef` for catalogued instances and keep the compiled
+  SQL path for the core tables, so a portfolio without a catalog row behaves
+  exactly as before. Reconciliation aggregates provider instances with one
+  compiled `count`, `min`, `max` statement per instance; this needs the Markets
+  workload to hold `data_viewer` on the instance, which is the grant this ADR
+  asks providers to give.
+- Signals: `SignalMetadataTable.meta_table_uid` is set by registration when the
+  portfolio has a `signal_uid`, so a signal read without a portfolio still
+  resolves its instance.

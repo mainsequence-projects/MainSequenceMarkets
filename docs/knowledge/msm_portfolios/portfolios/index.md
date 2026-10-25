@@ -107,6 +107,12 @@ Portfolios answer these questions:
 - `msm_portfolios.configuration`: portfolio configuration models.
 - `msm_portfolios.data_nodes`: canonical DataNodes for portfolios, portfolio
   weights, signal weights, storage initialization, and identity helpers.
+- `msm_portfolios.data_nodes.contract_instances`: factories that build a
+  provider-owned instance of the `PortfoliosTS`, `PortfolioWeightsTS` and
+  `SignalWeightsTS` contracts (ADR 0047).
+- `msm_portfolios.services.portfolio_datasets`: the Markets catalog of which
+  instance holds each portfolio's datasets, with register, reconcile and list
+  services.
 - `msm_portfolios.rebalance_strategy`: rebalance strategy base classes and
   built-in strategies.
 - `msm.models.portfolios`: core SQLAlchemy MetaTable declaration for portfolio
@@ -304,7 +310,11 @@ Reusable portfolio output reads live under
 `msm_portfolios.services`:
 
 ```python
-from msm_portfolios.services import latest_portfolio_weights, portfolio_values
+from msm_portfolios.services import (
+    latest_portfolio_weights,
+    portfolio_values,
+    signal_weights,
+)
 
 weights = latest_portfolio_weights(
     ["btc-eth-target"],
@@ -313,31 +323,158 @@ weights = latest_portfolio_weights(
     repository_context=runtime.context,
 )
 values = portfolio_values(
-    ["btc-eth-target"],
+    ["alpaca-etf-tracker", "ibkr-income", "btc-eth-target"],
     start="2026-05-01T00:00:00Z",
     end="2026-05-31T00:00:00Z",
     repository_context=runtime.context,
 )
+signal = signal_weights(
+    "signal-uid",
+    start="2026-05-01T00:00:00Z",
+    repository_context=runtime.context,
+)
 ```
 
-`latest_portfolio_weights(...)` reads `PortfolioWeightsStorage` by
-`PortfolioTable.unique_identifier`, which is the storage-facing
-`portfolio_identifier`. It keeps `PortfolioTable.uid` in the returned
-`portfolio_uid` field so consumers can retain canonical row identity while
-reading historical storage rows. Pass `as_of=True` for latest-at-or-before
-snapshot selection or `as_of=False` for exact timestamp matching.
+Every read first resolves, in one statement, which table holds each
+portfolio's rows: `PortfolioTable` left-joined to its
+`PortfolioDatasetAvailabilityTable` row and to `SignalMetadataTable`
+(`resolve_portfolio_dataset_tables(...)`). The requested portfolios are then
+grouped by table uid:
 
-`portfolio_values(...)` reads canonical portfolio value rows from
-`PortfoliosStorage` for one or more portfolio identifiers, with optional
-`start`, `end`, `latest_only`, and `limit` filters. These helpers return
-market-domain row dictionaries. Command Center tabular frames, dashboard
-formatting, and valuation-position construction are separate consumer concerns.
+- a group with a catalogued table uid is read once by uid through
+  `metatables.TimeIndexTableRef`, filtered by `portfolio_identifier` (or
+  `signal_uid`), on the contract columns only; extra provider columns are
+  ignored;
+- the group with no catalog row reads the Markets-owned core table
+  (`PortfoliosStorage`, `PortfolioWeightsStorage`, `SignalWeightsStorage`)
+  through compiled SQL, as before.
+
+The result is one ordered list of row dictionaries with `portfolio_uid`
+attached, however many instances served it. The fan-out is bounded by the
+number of distinct tables, not of portfolios.
+
+`latest_portfolio_weights(...)` reads the `PortfolioWeightsTS` instance by
+`PortfolioTable.unique_identifier`, which is the storage-facing
+`portfolio_identifier`. Pass `as_of=True` for latest-at-or-before snapshot
+selection, `as_of=False` for exact timestamp matching, and `order="asc"` for
+the earliest snapshot when no `weights_date` is given. On a catalogued table
+the latest snapshot time comes from `get_last_observation`, and the snapshot
+rows from one bounded `get_df_between_dates` call.
+
+`portfolio_values(...)` reads value rows for one or more portfolios, with
+optional `start`, `end`, `latest_only` and `limit`. `signal_weights(...)`
+reads one signal's rows; the instance is the caller's `meta_table_uid` (from
+the portfolio's catalog row), else `SignalMetadataTable.meta_table_uid`, else
+the core table. These helpers return market-domain row dictionaries. Command
+Center tabular frames and dashboard formatting are consumer concerns.
 
 Use an explicit `repository_context` for live platform reads. Tests and
-downstream adapters may pass an `executor` callable when they need to inspect or
-control execution without relying on hidden row-class active context. See
-`examples/msm_portfolios/portfolio_read_services.py` for an offline example that
-uses injected executors.
+downstream adapters may pass an `executor` callable for the SQL statements and
+a `dataset_reader` callable (uid to `TimeIndexTableRef`-like reader) for the
+catalogued tables, as `tests/msm_portfolios/services/test_portfolio_reads.py`
+does. See `examples/msm_portfolios/portfolio_read_services.py` for an offline
+example with injected executors.
+
+## Contract Instances And The Dataset Catalog
+
+ADR 0047 makes `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS`
+storage contracts with any number of instances. ms-markets owns the contract:
+columns, dtypes, nullability, time index and index names. The core tables are
+the Markets-owned instance for portfolios Markets computes itself. A provider
+owns its instances, in its own MetaTables namespace, migrated by its own
+Alembic provider and written by its own nodes with `output_table=`.
+
+```python
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
+
+from metatables import sqlalchemy_naming_convention
+from msm_portfolios.data_nodes.contract_instances import (
+    configured_portfolio_weights_storage,
+    configured_portfolios_storage,
+    configured_signal_weights_storage,
+)
+
+
+class AlpacaBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+AlpacaPortfoliosStorage = configured_portfolios_storage(
+    instance_key="alpaca",
+    namespace="alpaca-connectors",
+    storage_app="alpaca_connectors",
+    base=AlpacaBase,
+)
+AlpacaPortfolioWeightsStorage = configured_portfolio_weights_storage(
+    instance_key="alpaca", namespace="alpaca-connectors",
+    storage_app="alpaca_connectors", base=AlpacaBase,
+)
+AlpacaSignalWeightsStorage = configured_signal_weights_storage(
+    instance_key="alpaca", namespace="alpaca-connectors",
+    storage_app="alpaca_connectors", base=AlpacaBase,
+)
+```
+
+Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
+`<storage_app>__<contract>__<instance_key>` (here
+`alpaca_connectors__portfoliosts__alpaca`), whose MetaTable identifier is
+`<Contract>.<instance_key>` prefixed with the namespace when it is not the
+default Markets one (`alpaca-connectors.PortfoliosTS.alpaca`), and whose
+columns, dtypes, foreign keys to the core registries (`Portfolio`,
+`Asset`, `SignalMetadata`) and unique grain index equal the contract's. With
+`base=`, the referenced core tables are copied into the provider's metadata so
+the foreign keys resolve without importing the core classes into the
+provider's migration scope. Without `base=` the instance is registered in the
+Markets registry; the Markets migration provider still lists only the core
+tables. The provider may add columns beyond the contract; Markets reads the
+contract columns and ignores the rest. `PortfolioCanonicalDataNode` subclasses
+accept the instance through `output_table=`.
+
+Markets keeps the catalog in `PortfolioDatasetAvailabilityTable`
+(`msm.models.portfolio_dataset_availability`, identifier
+`PortfolioDatasetAvailability`, mirroring `IndexDatasetAvailabilityTable`).
+One row per portfolio records the values, weights and signal instance uids and
+the reconciled population state of the values instance: `populated`,
+`compatible_empty` or `unavailable`, with row count, earliest and latest time
+index, reconciled time and error fields. `SignalMetadataTable.meta_table_uid`
+records the signal's instance so a signal can be read without its portfolio.
+
+```python
+from msm_portfolios.services import (
+    list_portfolio_dataset_states,
+    reconcile_portfolio_dataset_availability,
+    register_portfolio_datasets,
+)
+
+state = register_portfolio_datasets(
+    runtime.context,
+    {
+        "portfolio_uid": portfolio.uid,
+        "values_meta_table_uid": AlpacaPortfoliosStorage.get_meta_table_uid(),
+        "weights_meta_table_uid": AlpacaPortfolioWeightsStorage.get_meta_table_uid(),
+        "signal_meta_table_uid": AlpacaSignalWeightsStorage.get_meta_table_uid(),
+    },
+)
+result = reconcile_portfolio_dataset_availability(
+    runtime.context, portfolio_uids=[portfolio.uid]
+)
+```
+
+`register_portfolio_datasets` checks that each declared table is a visible
+`TimeIndexMetaTable` that exposes the contract columns and index names, upserts
+the catalog row, binds `SignalMetadata.meta_table_uid` when the portfolio has a
+signal, and reconciles. `reconcile_portfolio_dataset_availability` groups the
+requested portfolios by values table uid and aggregates each instance once with
+one `count`, `min` and `max` statement grouped by `portfolio_identifier`; an
+instance the Markets workload cannot read yields `unavailable` rows carrying the
+error. Portfolios without a catalog row are reported in
+`skipped_portfolio_uids` and keep reading the core tables. The provider calls
+these through the Markets API after creating the portfolio and after each run.
+
+Who may read is a separate, narrow grant: the Markets workload needs
+`data_viewer` on each provider's time-series tables, or the call is
+requester-bound and the person's own grants apply.
 
 ## Repair legacy midnight-indexed portfolio values
 
@@ -392,6 +529,8 @@ src/msm/models/portfolios/
 ├── core.py       PortfolioTable
 ├── groups.py     PortfolioGroupTable, PortfolioGroupMembershipTable
 └── signals.py    SignalMetadataTable
+src/msm/models/portfolio_dataset_availability.py
+                  PortfolioDatasetAvailabilityTable
 ```
 
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
