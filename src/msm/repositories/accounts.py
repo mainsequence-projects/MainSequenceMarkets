@@ -54,6 +54,7 @@ from .crud import (
     build_delete_model_operation,
     build_get_model_by_uid_operation,
     build_search_model_operation,
+    mirror_renamed_columns,
 )
 
 
@@ -71,13 +72,18 @@ def build_create_account_operation(
     statement = (
         insert(AccountTable)
         .values(
-            unique_identifier=unique_identifier,
-            account_name=account_name,
-            is_paper=is_paper,
-            account_is_active=account_is_active,
-            account_group_uid=account_group_uid,
-            holdings_data_node_uid=holdings_data_node_uid,
-            metadata_json=metadata_json,
+            **mirror_renamed_columns(
+                AccountTable,
+                {
+                    "unique_identifier": unique_identifier,
+                    "account_name": account_name,
+                    "is_paper": is_paper,
+                    "account_is_active": account_is_active,
+                    "account_group_uid": account_group_uid,
+                    "holdings_data_node_uid": holdings_data_node_uid,
+                    "metadata_json": metadata_json,
+                },
+            )
         )
         .returning(AccountTable)
     )
@@ -194,18 +200,21 @@ def build_update_account_operation(
     holdings_data_node_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
 ) -> MetaTableCompiledSQLOperation:
-    values = {
-        key: value
-        for key, value in {
-            "account_name": account_name,
-            "is_paper": is_paper,
-            "account_is_active": account_is_active,
-            "account_group_uid": account_group_uid,
-            "holdings_data_node_uid": holdings_data_node_uid,
-            "metadata_json": metadata_json,
-        }.items()
-        if value is not None
-    }
+    values = mirror_renamed_columns(
+        AccountTable,
+        {
+            key: value
+            for key, value in {
+                "account_name": account_name,
+                "is_paper": is_paper,
+                "account_is_active": account_is_active,
+                "account_group_uid": account_group_uid,
+                "holdings_data_node_uid": holdings_data_node_uid,
+                "metadata_json": metadata_json,
+            }.items()
+            if value is not None
+        },
+    )
     statement = (
         update(AccountTable).where(AccountTable.uid == uid).values(**values).returning(AccountTable)
     )

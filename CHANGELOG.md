@@ -99,6 +99,15 @@ and this project follows versioned releases.
   yet, so every identity is unchanged; the pinned identity tests now also cover
   real updaters built offline, nested updater hashes, strategy revisions,
   factory-built storage tables and a simulated class move.
+- Alembic revision `0022` adds `holdings_storage_table_uid`,
+  `source_storage_table_uid`, `portfolio_weights_table_update_uid`,
+  `signal_weights_table_update_uid`, `portfolio_table_update_uid` and an
+  indexed `storage_table_uid` next to the pre-3.0 `*_data_node_uid` columns and
+  copies their values. No row or pre-3.0 column changes. ms-markets 3.x writes
+  both columns on every CRUD and repository write path
+  (`msm.repositories.crud.mirror_renamed_columns`, driven by each model's
+  `__renamed_columns__`) and reads the pre-3.0 columns until every writer runs
+  3.x (ADR 0048).
 
 ### Changed
 

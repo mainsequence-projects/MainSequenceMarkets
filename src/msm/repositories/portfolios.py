@@ -20,6 +20,7 @@ from msm.repositories.crud import (
     build_search_model_operation,
     build_update_model_operation,
     build_upsert_model_operation,
+    mirror_renamed_columns,
 )
 
 
@@ -38,14 +39,19 @@ def build_create_portfolio_operation(
     statement = (
         insert(PortfolioTable)
         .values(
-            unique_identifier=unique_identifier,
-            calendar_uid=calendar_uid,
-            published_index_uid=published_index_uid,
-            portfolio_weights_data_node_uid=portfolio_weights_data_node_uid,
-            signal_weights_data_node_uid=signal_weights_data_node_uid,
-            signal_uid=signal_uid,
-            portfolio_data_node_uid=portfolio_data_node_uid,
-            backtest_table_price_column_name=backtest_table_price_column_name,
+            **mirror_renamed_columns(
+                PortfolioTable,
+                {
+                    "unique_identifier": unique_identifier,
+                    "calendar_uid": calendar_uid,
+                    "published_index_uid": published_index_uid,
+                    "portfolio_weights_data_node_uid": portfolio_weights_data_node_uid,
+                    "signal_weights_data_node_uid": signal_weights_data_node_uid,
+                    "signal_uid": signal_uid,
+                    "portfolio_data_node_uid": portfolio_data_node_uid,
+                    "backtest_table_price_column_name": backtest_table_price_column_name,
+                },
+            )
         )
         .returning(PortfolioTable)
     )

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+from typing import ClassVar
+
 from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
@@ -104,6 +106,10 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         "or interest-rate index fixings, to the backend storage table UID consumed "
         "by the pricing engine."
     )
+    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
+    __renamed_columns__: ClassVar[dict[str, str]] = {
+        "storage_table_uid": "data_node_uid",
+    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -119,6 +125,10 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
         Index(
             None,
             "data_node_uid",
+        ),
+        Index(
+            None,
+            "storage_table_uid",
         ),
     )
 
@@ -148,14 +158,27 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Pricing market-data concept key, such as discount_curves.",
         },
     )
-    data_node_uid: Mapped[uuid.UUID] = mapped_column(
+    storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        nullable=False,
+        # Nullable until revision 0023 has copied every pre-3.0 row (ADR 0048).
+        nullable=True,
         info={
             "label": "Storage Table UID",
             "description": (
                 "Backend MetaTable/TimeIndexMetaTable UID of the time-index-table output table "
                 "used to resolve this pricing concept."
+            ),
+        },
+    )
+    data_node_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+        info={
+            "label": "Storage Table UID (pre-3.0 column)",
+            "description": (
+                "Pre-3.0 copy of storage_table_uid. ms-markets 3.x writes both "
+                "columns and reads this one until every writer runs 3.x; "
+                "ms-markets 4.0 drops it."
             ),
         },
     )
@@ -166,7 +189,7 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
             "label": "Storage Table Identifier",
             "description": (
                 "Optional diagnostic copy of the storage table identifier. Pricing resolution "
-                "uses data_node_uid, not this string."
+                "uses storage_table_uid, not this string."
             ),
         },
     )

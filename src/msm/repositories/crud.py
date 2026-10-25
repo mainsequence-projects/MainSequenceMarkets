@@ -20,6 +20,37 @@ from .base import (
 _MISSING = object()
 
 
+def mirror_renamed_columns(
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return ``values`` with each renamed UID column also written under its pre-3.0 name.
+
+    ms-markets 3.x keeps each pre-3.0 ``*_data_node_uid`` column next to the column
+    that renamed it (``__renamed_columns__``, ADR 0048) and writes both, so readers
+    and writers that still use the pre-3.0 column stay consistent. A value given
+    under either name fills both columns.
+    """
+
+    payload = dict(values)
+    for current, previous in getattr(model, "__renamed_columns__", {}).items():
+        if current in payload and previous in payload:
+            if not _same_value(payload[current], payload[previous]):
+                raise ValueError(
+                    f"{model.__name__} received different values for {current} and its "
+                    f"pre-3.0 name {previous}."
+                )
+        elif current in payload:
+            payload[previous] = payload[current]
+        elif previous in payload:
+            payload[current] = payload[previous]
+    return payload
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    return left == right or (left is not None and right is not None and str(left) == str(right))
+
+
 def build_create_model_operation(
     context: MarketsOperationContext,
     *,
@@ -30,7 +61,9 @@ def build_create_model_operation(
     """Build an insert operation for a markets MetaTable SQLAlchemy model."""
 
     statement = insert(model).values(
-        _model_value_mapping(model, _model_insert_payload(model, values))
+        _model_value_mapping(
+            model, _model_insert_payload(model, mirror_renamed_columns(model, values))
+        )
     )
     if returning:
         statement = statement.returning(model)
@@ -53,7 +86,7 @@ def build_upsert_model_operation(
     if not conflict_columns:
         raise ValueError("Upsert operations require at least one conflict column.")
 
-    payload = dict(values)
+    payload = mirror_renamed_columns(model, values)
     insert_payload = _model_insert_payload(model, payload)
     update_payload = _model_update_payload(model, payload)
     statement = postgresql_insert(model).values(_model_value_mapping(model, insert_payload))
@@ -103,6 +136,7 @@ def build_bulk_upsert_model_operation(
     if not values:
         raise ValueError("Bulk upsert operations require at least one values row.")
 
+    values = [mirror_renamed_columns(model, row) for row in values]
     insert_payloads = [_model_insert_payload(model, row) for row in values]
     statement = postgresql_insert(model).values(
         [_model_value_mapping(model, payload) for payload in insert_payloads]
@@ -366,7 +400,7 @@ def build_update_model_operation(
         .values(
             _model_value_mapping(
                 model,
-                values,
+                mirror_renamed_columns(model, values),
                 include_none=False,
             )
         )

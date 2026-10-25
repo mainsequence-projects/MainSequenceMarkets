@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+from typing import ClassVar
+
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
@@ -29,6 +31,10 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         "by holdings and execution workflows. Allocation-model tracking belongs "
         "to AccountTargetAllocationTable."
     )
+    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
+    __renamed_columns__: ClassVar[dict[str, str]] = {
+        "holdings_storage_table_uid": "holdings_data_node_uid",
+    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -113,7 +119,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Optional AccountGroupTable.uid used to group accounts.",
         },
     )
-    holdings_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
+    holdings_storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,
         info={
@@ -121,6 +127,18 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
             "description": (
                 "Optional TimeIndexMetaTable uid of the time-index table that holds this "
                 "account's holdings history."
+            ),
+        },
+    )
+    holdings_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        info={
+            "label": "Holdings Storage Table UID (pre-3.0 column)",
+            "description": (
+                "Pre-3.0 copy of holdings_storage_table_uid. ms-markets 3.x writes both "
+                "columns and reads this one until every writer runs 3.x; "
+                "ms-markets 4.0 drops it."
             ),
         },
     )
@@ -249,6 +267,10 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
         "rows reference it through holdings_set_uid, and virtual-fund allocation "
         "sets use it as their source holdings bound."
     )
+    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
+    __renamed_columns__: ClassVar[dict[str, str]] = {
+        "source_storage_table_uid": "source_data_node_uid",
+    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -296,7 +318,7 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
             "description": "UTC timestamp identifying this account holdings snapshot.",
         },
     )
-    source_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
+    source_storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,
         info={
@@ -304,6 +326,18 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
             "description": (
                 "Optional TimeIndexMetaTable uid of the time-index table this holdings set "
                 "was produced from."
+            ),
+        },
+    )
+    source_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        info={
+            "label": "Source Storage Table UID (pre-3.0 column)",
+            "description": (
+                "Pre-3.0 copy of source_storage_table_uid. ms-markets 3.x writes both "
+                "columns and reads this one until every writer runs 3.x; "
+                "ms-markets 4.0 drops it."
             ),
         },
     )
