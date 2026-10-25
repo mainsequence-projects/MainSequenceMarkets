@@ -10,6 +10,10 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
+    PortfolioDatasetReconciliationResult,
+    PortfolioDatasetReconcileRequest,
+    PortfolioDatasetRegistrationRequest,
+    PortfolioDatasetState,
     PortfolioDeleteRequest,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
@@ -23,13 +27,19 @@ from apps.v1.services.portfolios import (
     bulk_delete_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
+    get_portfolio_dataset_state,
     get_portfolio_detail,
     get_portfolio_signal_weights_frame,
     get_portfolio_summary,
     get_portfolio_values_frame,
     get_portfolio_weights,
+    get_portfolios_by_uids,
+    get_portfolios_values_frame,
+    get_portfolios_weights_frame,
     list_portfolios,
     preflight_bulk_delete_portfolios,
+    reconcile_portfolio_dataset_catalog,
+    register_portfolio_dataset_catalog,
 )
 from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
@@ -108,6 +118,198 @@ def get_portfolios(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/by-uids/",
+    response_model=ResourceCollection[Portfolio],
+    summary="Look up portfolios by uid",
+    description=(
+        "Return the portfolio identity rows whose uid is listed in `uid__in` (repeated or "
+        "comma-separated, at most 500), in request order. Unknown uids are omitted. A bounded "
+        "batch lookup, not a browsable collection."
+    ),
+    operation_id="getPortfoliosByUids",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid or empty `uid__in`."},
+        409: {"model": ErrorResponse, "description": "A stored portfolio row is invalid."},
+    },
+)
+def get_portfolios_by_uid_list(
+    uid__in: Annotated[
+        list[str],
+        Query(alias="uid__in", description="Portfolio uids, repeated or comma-separated."),
+    ],
+) -> ResourceCollection[Portfolio]:
+    try:
+        items = get_portfolios_by_uids(uids=uid__in)
+    except PortfolioDataIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return resource_collection_response(
+        items=items, total_items=len(items), limit=max(len(items), 1), offset=0
+    )
+
+
+@router.get(
+    "/values/",
+    response_model=TabularFrameResponse,
+    summary="Get values frame for several portfolios",
+    description=(
+        "Return portfolio value rows for every portfolio in `portfolio_uid__in` as one canonical "
+        "Command Center tabular frame. Portfolios are grouped by the PortfoliosTS instance the "
+        "Markets catalog records for them; each instance is read once, so comparing portfolios "
+        "from two providers is one call (ADR 0047)."
+    ),
+    operation_id="getPortfoliosValuesFrame",
+    response_model_exclude_none=True,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT},
+)
+def get_portfolios_values_frame_route(
+    portfolio_uid__in: Annotated[
+        list[str],
+        Query(alias="portfolio_uid__in", description="Portfolio uids, repeated or comma-separated."),
+    ],
+    start_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive lower time_index bound. Use ISO 8601."),
+    ] = None,
+    end_date: Annotated[
+        dt.datetime | None,
+        Query(description="Optional inclusive upper time_index bound. Use ISO 8601."),
+    ] = None,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(description="Ordering by time_index across all portfolios."),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(ge=1, le=5000, description="Maximum rows to return across all portfolios."),
+    ] = 500,
+) -> TabularFrameResponse:
+    try:
+        return get_portfolios_values_frame(
+            uids=portfolio_uid__in,
+            start_date=start_date,
+            end_date=end_date,
+            order=order,
+            limit=limit,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/weights/",
+    response_model=TabularFrameResponse,
+    summary="Get weights frame for several portfolios",
+    description=(
+        "Return one weight snapshot per portfolio in `portfolio_uid__in` as one canonical "
+        "Command Center tabular frame: the latest snapshot, the latest at or before "
+        "`weights_date` with `as_of=true`, or the exact `weights_date` snapshot with "
+        "`as_of=false`. Portfolios are grouped by the PortfolioWeightsTS instance the Markets "
+        "catalog records for them (ADR 0047)."
+    ),
+    operation_id="getPortfoliosWeightsFrame",
+    response_model_exclude_none=True,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    openapi_extra={"x-ui-contract": CORE_TABULAR_FRAME_CONTRACT},
+)
+def get_portfolios_weights_frame_route(
+    portfolio_uid__in: Annotated[
+        list[str],
+        Query(alias="portfolio_uid__in", description="Portfolio uids, repeated or comma-separated."),
+    ],
+    weights_date: Annotated[
+        dt.datetime | None,
+        Query(description="Snapshot timestamp. Omit for the latest snapshot of each portfolio."),
+    ] = None,
+    as_of: Annotated[
+        bool,
+        Query(description="With weights_date: true selects the latest snapshot at or before it."),
+    ] = True,
+) -> TabularFrameResponse:
+    try:
+        return get_portfolios_weights_frame(
+            uids=portfolio_uid__in,
+            weights_date=weights_date,
+            as_of=as_of,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/datasets/reconcile/",
+    response_model=PortfolioDatasetReconciliationResult,
+    summary="Reconcile portfolio dataset availability",
+    description=(
+        "Reconcile the values instance of the selected catalogued portfolios: one aggregate per "
+        "instance, however many portfolios it holds. Portfolios without a catalog row are "
+        "reported as skipped and keep reading the core tables (ADR 0047)."
+    ),
+    operation_id="reconcilePortfolioDatasets",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def reconcile_portfolio_datasets_route(
+    payload: PortfolioDatasetReconcileRequest,
+) -> PortfolioDatasetReconciliationResult:
+    try:
+        return reconcile_portfolio_dataset_catalog(payload=payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{uid}/datasets/",
+    response_model=PortfolioDatasetState,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register portfolio dataset instances",
+    description=(
+        "Record which PortfoliosTS, PortfolioWeightsTS and SignalWeightsTS instances hold this "
+        "portfolio's rows. Each table must be a visible TimeIndexMetaTable that satisfies its "
+        "contract. The row is reconciled at once unless `reconcile` is false (ADR 0047)."
+    ),
+    operation_id="registerPortfolioDatasets",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def register_portfolio_datasets_route(
+    uid: str,
+    payload: PortfolioDatasetRegistrationRequest,
+) -> PortfolioDatasetState:
+    try:
+        return register_portfolio_dataset_catalog(uid=uid, payload=payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{uid}/datasets/",
+    response_model=PortfolioDatasetState | None,
+    summary="Get portfolio dataset catalog row",
+    description=(
+        "Return the catalog row naming the instances that hold this portfolio's datasets and "
+        "the reconciled population state of its values. `null` means the portfolio has no row "
+        "and reads the Markets-owned core tables."
+    ),
+    operation_id="getPortfolioDatasets",
+    responses={404: {"model": ErrorResponse}},
+)
+def get_portfolio_datasets_route(uid: str) -> PortfolioDatasetState | None:
+    try:
+        return get_portfolio_dataset_state(uid=uid)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post(

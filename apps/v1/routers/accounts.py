@@ -3,12 +3,14 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
 
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
     Account,
+    AccountCreate,
+    AccountUpdate,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -19,13 +21,16 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
+    create_account,
     get_account_holdings,
     get_account_holdings_by_fund,
     get_account,
     get_account_summary,
     get_account_target_positions,
+    get_accounts_by_uids,
     list_accounts,
     search_account_target_allocation_targets,
+    update_account,
 )
 from msm.api.http import (
     RESOURCE_COLLECTION_CONTRACT,
@@ -81,6 +86,78 @@ def get_accounts(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/",
+    response_model=Account,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create account",
+    description=(
+        "Create one account identity row. Providers register accounts through this route "
+        "instead of writing the Account table directly (ADR 0047)."
+    ),
+    operation_id="createAccount",
+    responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def create_account_record(payload: AccountCreate) -> Account:
+    try:
+        return create_account(payload=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/by-uids/",
+    response_model=ResourceCollection[Account],
+    summary="Look up accounts by uid",
+    description=(
+        "Return the accounts whose uid is listed in `uid__in` (repeated or comma-separated, "
+        "at most 500), in request order. Unknown uids are omitted. A bounded batch lookup for "
+        "consumers that hydrate core columns from their own rows; not a browsable collection."
+    ),
+    operation_id="getAccountsByUids",
+    responses={400: {"model": ErrorResponse, "description": "Invalid or empty `uid__in`."}},
+)
+def get_accounts_by_uid_list(
+    uid__in: Annotated[
+        list[str],
+        Query(alias="uid__in", description="Account uids, repeated or comma-separated."),
+    ],
+) -> ResourceCollection[Account]:
+    try:
+        items = get_accounts_by_uids(uids=uid__in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return resource_collection_response(
+        items=items, total_items=len(items), limit=max(len(items), 1), offset=0
+    )
+
+
+@router.patch(
+    "/{uid}/",
+    response_model=Account,
+    summary="Update account",
+    description="Update the mutable fields of one account identity row.",
+    operation_id="updateAccount",
+    responses={
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse, "description": "Account not found."},
+        409: {"model": ErrorResponse},
+    },
+)
+def update_account_record(uid: str, payload: AccountUpdate) -> Account:
+    try:
+        account = update_account(uid=uid, payload=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if account is None:
+        raise HTTPException(status_code=404, detail=f"Account {uid!r} was not found.")
+    return account
 
 
 @router.get(

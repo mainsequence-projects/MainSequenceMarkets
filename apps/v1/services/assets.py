@@ -37,6 +37,17 @@ def list_assets(
     return [Asset.model_validate(row) for row in rows]
 
 
+def get_assets_by_uids(*, uids: Sequence[str]) -> list[Asset]:
+    """Return the assets whose uid is listed, in request order; unknown uids are omitted."""
+
+    from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
+    from msm.models import AssetTable
+
+    runtime = _get_runtime()
+    rows = rows_by_uids(runtime.context, model=AssetTable, uids=normalize_lookup_uids(uids))
+    return [Asset.model_validate(row) for row in rows]
+
+
 def list_assets_response(
     *,
     search: str = "",

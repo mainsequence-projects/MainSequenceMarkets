@@ -2616,3 +2616,119 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
         "target_positions_date": "timestamp with time zone",
     }
     assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
+
+
+def _account_payload(account_uid: uuid.UUID) -> dict[str, object]:
+    return {
+        "uid": str(account_uid),
+        "unique_identifier": "alpaca-paper-1",
+        "account_name": "Alpaca paper",
+        "is_paper": True,
+        "account_is_active": False,
+        "account_group_uid": None,
+        "holdings_data_node_uid": None,
+        "metadata_json": {"provider": "alpaca"},
+    }
+
+
+def test_create_account_returns_created_row(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountCreate
+
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_create(*, payload):
+        captured["payload"] = payload
+        return Account.model_validate(_account_payload(account_uid))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.create_account", fake_create)
+
+    response = TestClient(app).post(
+        "/api/v1/account/",
+        json={
+            "unique_identifier": "alpaca-paper-1",
+            "account_name": "Alpaca paper",
+            "metadata_json": {"provider": "alpaca"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == _account_payload(account_uid)
+    assert isinstance(captured["payload"], AccountCreate)
+    assert captured["payload"].unique_identifier == "alpaca-paper-1"
+    assert captured["payload"].is_paper is True
+
+
+def test_create_account_rejects_unknown_fields_and_reports_conflicts(monkeypatch) -> None:
+    response = TestClient(app).post(
+        "/api/v1/account/", json={"unique_identifier": "x", "account_name": "x", "extra": 1}
+    )
+    assert response.status_code == 422
+
+    def failing_create(*, payload):
+        raise RuntimeError("duplicate key value violates unique constraint")
+
+    monkeypatch.setattr("apps.v1.routers.accounts.create_account", failing_create)
+    response = TestClient(app).post(
+        "/api/v1/account/", json={"unique_identifier": "x", "account_name": "x"}
+    )
+    assert response.status_code == 409
+
+
+def test_update_account_patches_mutable_fields(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountUpdate
+
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_update(*, uid, payload):
+        captured.update(uid=uid, payload=payload)
+        row = _account_payload(account_uid)
+        row["account_is_active"] = True
+        return Account.model_validate(row)
+
+    monkeypatch.setattr("apps.v1.routers.accounts.update_account", fake_update)
+
+    response = TestClient(app).patch(
+        f"/api/v1/account/{account_uid}/", json={"account_is_active": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["account_is_active"] is True
+    assert captured["uid"] == str(account_uid)
+    assert isinstance(captured["payload"], AccountUpdate)
+    assert captured["payload"].account_is_active is True
+    assert captured["payload"].account_name is None
+
+
+def test_update_account_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr("apps.v1.routers.accounts.update_account", lambda *, uid, payload: None)
+
+    response = TestClient(app).patch(f"/api/v1/account/{uuid.uuid4()}/", json={"is_paper": False})
+
+    assert response.status_code == 404
+
+
+def test_account_create_and_update_services_use_the_typed_row_api(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountCreate, AccountUpdate
+    from apps.v1.services import accounts as account_service
+
+    account_uid = uuid.uuid4()
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(account_service, "_get_runtime", lambda: SimpleNamespace(context=object()))
+    monkeypatch.setattr(
+        Account, "create", classmethod(lambda cls, payload: calls.append(("create", payload)) or Account.model_validate(_account_payload(account_uid)))
+    )
+    monkeypatch.setattr(
+        Account, "update", classmethod(lambda cls, uid, payload: calls.append(("update", (uid, payload))) or Account.model_validate(_account_payload(account_uid)))
+    )
+    monkeypatch.setattr(account_service, "get_account", lambda *, uid: Account.model_validate(_account_payload(account_uid)) if uid == str(account_uid) else None)
+
+    created = account_service.create_account(payload=AccountCreate(unique_identifier="a", account_name="A"))
+    updated = account_service.update_account(uid=str(account_uid), payload=AccountUpdate(is_paper=False))
+    missing = account_service.update_account(uid=str(uuid.uuid4()), payload=AccountUpdate(is_paper=False))
+
+    assert created.uid == account_uid and updated.uid == account_uid and missing is None
+    assert [name for name, _ in calls] == ["create", "update"]
+    assert account_service.create_account.__registry_write__ == ("account", "create")
+    assert account_service.update_account.__registry_write__ == ("account", "update")

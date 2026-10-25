@@ -116,7 +116,9 @@ def test_every_mutating_service_is_a_registry_write() -> None:
     import inspect
 
     expected = {
-        "accounts": {"add_account_holdings", "add_account_target_positions"},
+        "accounts": {
+            "add_account_holdings", "add_account_target_positions", "create_account", "update_account",
+        },
         "asset_categories": {
             "create_asset_category", "update_asset_category", "delete_asset_category",
             "bulk_delete_asset_categories",
@@ -131,7 +133,10 @@ def test_every_mutating_service_is_a_registry_write() -> None:
             "create_calendar_event", "update_calendar_event", "delete_calendar_event",
             "bulk_upsert_calendar_events",
         },
-        "indices": {"create_index", "update_index", "delete_index"},
+        "indices": {
+            "create_index", "update_index", "delete_index",
+            "save_index_formula", "activate_index_formula", "retire_index_formula",
+        },
         "portfolio_groups": {
             "create_portfolio_group", "update_portfolio_group", "delete_portfolio_group",
             "bulk_delete_portfolio_groups", "add_portfolio_to_group", "remove_portfolio_from_group",
@@ -144,6 +149,7 @@ def test_every_mutating_service_is_a_registry_write() -> None:
         "portfolios": {
             "delete_portfolio", "cascade_delete_portfolio", "delete_portfolio_weights",
             "bulk_delete_portfolios", "bulk_cascade_delete_portfolios",
+            "register_portfolio_dataset_catalog", "reconcile_portfolio_dataset_catalog",
         },
         "pricing_curves": {"delete_pricing_curve"},
         "pricing_market_data": {

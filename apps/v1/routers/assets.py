@@ -13,6 +13,7 @@ from apps.v1.services.assets import (
     get_asset_monitor_frame,
     get_asset_pricing_details,
     get_asset_summary,
+    get_assets_by_uids,
     list_asset_related_meta_tables,
     list_assets_response,
 )
@@ -158,6 +159,34 @@ def get_asset_monitor_frame_route(
         asset_type=asset_type,
         unique_identifiers=unique_identifiers,
         request_url=str(request.url),
+    )
+
+
+@router.get(
+    "/by-uids/",
+    response_model=ResourceCollection[Asset],
+    summary="Look up assets by uid",
+    description=(
+        "Return the asset identity rows whose uid is listed in `uid__in` (repeated or "
+        "comma-separated, at most 500), in request order. Unknown uids are omitted. A bounded "
+        "batch lookup for consumers that hydrate core columns from their own rows; not a "
+        "browsable collection."
+    ),
+    operation_id="getAssetsByUids",
+    responses={400: {"model": ErrorResponse, "description": "Invalid or empty `uid__in`."}},
+)
+def get_assets_by_uid_list(
+    uid__in: Annotated[
+        list[str],
+        Query(alias="uid__in", description="Asset uids, repeated or comma-separated."),
+    ],
+) -> ResourceCollection[Asset]:
+    try:
+        items = get_assets_by_uids(uids=uid__in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return resource_collection_response(
+        items=items, total_items=len(items), limit=max(len(items), 1), offset=0
     )
 
 

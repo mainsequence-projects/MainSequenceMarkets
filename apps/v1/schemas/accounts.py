@@ -16,14 +16,14 @@ from apps.v1.schemas.holdings import (
 )
 
 
-def _account_contract():
+def _account_contracts():
     prepare_apps_v1_import_namespace()
-    from msm.api.accounts import Account
+    from msm.api.accounts import Account, AccountCreate, AccountUpdate
 
-    return Account
+    return Account, AccountCreate, AccountUpdate
 
 
-Account = _account_contract()
+Account, AccountCreate, AccountUpdate = _account_contracts()
 
 
 class AccountHoldingRow(BaseHoldingRow):
