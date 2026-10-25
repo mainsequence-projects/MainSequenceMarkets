@@ -209,10 +209,31 @@ Bearer token. Handlers read the verified caller from `request.state.user` (a
 `User.get_logged_user()`. The platform's caller assertions carry only those two
 facts, for the caller and for a requester; an assertion that lists `team_uids` is
 refused with `401`. Membership is checked on demand with
-`RequestUserIdentity.in_teams()`, which no Markets route needs. The Index routes
-derive their actor from that identity's `uid`; the deprecated
-`IndexActor.team_uids` stays empty for HTTP callers. Route code does not parse
-authentication headers or bind SDK request-header context variables.
+`RequestUserIdentity.in_teams()`, which no Markets route needs. Route code does
+not parse authentication headers or bind SDK request-header context variables.
+
+Every handler and service acts for one identity (ADR 0047, decision 3):
+`apps.v1.identity.acting_identity()` returns `User.get_requester()` on a
+requester-bound call and `User.get_logged_user()` otherwise, never both, and
+`None` outside an authenticated request. The Index routes derive their actor from
+it; the deprecated `IndexActor.team_uids` stays empty for HTTP callers. Every
+service that creates, updates or deletes a registry row is wrapped with
+`apps.v1.identity.registry_write`, which resolves the acting identity before the
+write and, after a successful write, records resource, action, row uid and the
+acting identity's uid and kind on the `apps.v1.identity` logger. No registry
+table has an author or owner column yet; when one does, the same hook supplies
+its value. Writes keep running as the Markets workload, whose `data_writer`
+role on `mainsequence.markets` is the single place writes are allowed; the API's
+policy decides who may trigger them.
+
+A requester is only present when the `markets-api` resource declares
+`acts_for_requester: true` in `.mainsequence/workflows/ms-markets-api.yaml`.
+That declaration lets the platform sign the person an application works for
+into the caller assertion, so it is an Organization-level permission: an
+Organization admin must add it and push the workflow. Until it is declared,
+every call is caller-bound and `acting_identity()` returns the caller, the
+calling application's workload User. The declaration is not in the repository
+yet; see the changelog.
 
 ## API Discoverability
 

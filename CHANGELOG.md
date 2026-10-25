@@ -39,6 +39,22 @@ and this project follows versioned releases.
   each instance once for all of its portfolios and records unreadable
   instances as `unavailable`.
 
+- `apps.v1.identity` adds `acting_identity()`, the one place the Markets API
+  decides whom a request acts for: `User.get_requester()` on a requester-bound
+  call, `User.get_logged_user()` otherwise, never both, and `None` outside a
+  request. `registry_write` wraps every API service that creates, updates or
+  deletes a registry row (accounts, asset categories, assets, calendars,
+  indexes, portfolio groups, portfolio signals, portfolios, pricing curves and
+  pricing market data) and records the acting identity with the resource,
+  action and row uid on the `apps.v1.identity` logger after a successful
+  write. The Index routes derive their actor from the acting identity, so a
+  requester-bound call acts for the requester.
+- Pending operator action: for requester-bound calls the `markets-api`
+  resource in `.mainsequence/workflows/ms-markets-api.yaml` must declare
+  `acts_for_requester: true`, which only an Organization admin may push. This
+  release does not change the workflow file; until the declaration lands every
+  call is caller-bound and the API acts for the calling workload.
+
 ### Changed
 
 - `portfolio_values`, `latest_portfolio_weights` and the new `signal_weights`

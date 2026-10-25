@@ -357,3 +357,26 @@ Implemented in `msm_portfolios.data_nodes.contract_instances`,
 - Signals: `SignalMetadataTable.meta_table_uid` is set by registration when the
   portfolio has a `signal_uid`, so a signal read without a portfolio still
   resolves its instance.
+
+### 2026-10-25: step 1, decision 3 (acting identity)
+
+Implemented in `apps/v1/identity.py`. `acting_identity()` returns the requester
+on a requester-bound call and the caller otherwise, never both, and `None`
+outside an authenticated request so local scripts and direct service calls keep
+working. `registry_write` wraps every `apps/v1` service that creates, updates or
+deletes a registry row and records resource, action, row uid and acting identity
+after a successful write. The Index actor is derived from the acting identity.
+
+Deviations and open items:
+
+- No Markets registry table has an author or owner column, so "recording the
+  acting user" is a structured log record on the `apps.v1.identity` logger, not
+  a column write. The hook is the place a column is filled once one exists.
+- Ownership and Team scoping policies are not enforced yet; the helper gives
+  every service one identity to authorize against, and the platform's own
+  grants still apply to requester-bound reads.
+- `acts_for_requester: true` on the `markets-api` resource is required for a
+  requester to be present. It is an Organization-level permission that an
+  Organization admin must add to `.mainsequence/workflows/ms-markets-api.yaml`
+  and push; this implementation does not edit the workflow file. Until then
+  every call is caller-bound.
