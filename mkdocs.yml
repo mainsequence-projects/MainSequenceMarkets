@@ -124,6 +124,7 @@ nav:
       - Namespaced Migration Provider Package: ADR/0044-namespaced-migration-provider-package.md
       - Squashed Initial Schema And Namespaced Packages: ADR/0045-squashed-initial-schema-and-namespaced-packages.md
       - Preserve The Populated Legacy 0017 Schema: ADR/0046-legacy-0017-schema-bridge.md
+      - Markets API As The Application Boundary: ADR/0047-markets-api-application-boundary.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

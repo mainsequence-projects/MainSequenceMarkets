@@ -44,6 +44,8 @@ Recommended sections:
 - [0043. SDK 9 And MetaTables Client Hard Cut For The 2.0 Package Contract](0043-sdk-9-metatables-client-hard-cut.md)
 - [0044. Namespaced Migration Provider Package](0044-namespaced-migration-provider-package.md)
 - [0045. Squashed Initial Schema And Namespaced Packages](0045-squashed-initial-schema-and-namespaced-packages.md)
+- [0046. Preserve The Populated Legacy 0017 Schema](0046-legacy-0017-schema-bridge.md)
+- [0047. Markets API As The Application Boundary](0047-markets-api-application-boundary.md)
 
 ## Command Center Decisions
 
@@ -56,4 +58,3 @@ Recommended sections:
 - [0003. Fixed Income Pricer API](fast_api/v1/0003-fixed-income-pricer-api.md)
 - [0004. Reusable Delete Impact Contract](fast_api/v1/0004-delete-impact-contract.md)
 
-- [0046. Preserve The Populated Legacy 0017 Schema](0046-legacy-0017-schema-bridge.md)
