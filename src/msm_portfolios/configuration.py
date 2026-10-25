@@ -102,7 +102,7 @@ class MarketsTimeSeries(PortfolioConfigBaseModel):
     Reference to a MarketsTimeSeries by unique identifier.
 
     This is used to point price nodes to a specific upstream time series
-    (e.g., "alpaca_1d_bars", "binance_1d_bars") depending on your backend setup.
+    (e.g., "provider_1d_bars") depending on your backend setup.
 
     Attributes:
         unique_identifier: Identifier of the MarketsTimeSeries.
@@ -112,9 +112,9 @@ class MarketsTimeSeries(PortfolioConfigBaseModel):
         default="alpaca_1d_bars",
         description=(
             "Unique identifier of the MarketsTimeSeries to use as a price source "
-            "(e.g., 'alpaca_1d_bars', 'binance_1d_bars')."
+            "(e.g., 'provider_1d_bars')."
         ),
-        examples=["alpaca_1d_bars", "binance_1d_bars"],
+        examples=["provider_1d_bars"],
     )
 
 

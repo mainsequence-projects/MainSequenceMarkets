@@ -241,7 +241,7 @@ def build_zero_curve_with_effective_date(
             z *= 0.01  # percent -> decimal
 
         T = dc.yearFraction(base, d)
-        # Preserving your existing assumption: "Valmer zero is simple ACT/360"
+        # Preserving the existing assumption: the source zero rate is simple ACT/360
         df = 1.0 / (1.0 + z * T)
 
         dates.append(d)

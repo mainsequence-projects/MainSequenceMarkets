@@ -70,7 +70,7 @@ Implement this work as four independent promotion tracks.
 
 The work should stay inside the owning package folders. Do not create generic
 library code under downstream project-local adapter folders such as
-`src/fundcompetition/local_ms_markets`.
+the consumer application's local ms-markets package.
 
 Planned and implemented locations:
 
@@ -299,10 +299,10 @@ risk-factor API.
 
 Additional donor analysis:
 
-- `local_valmer/curve_bumps.py` contains generic curve bump semantics:
+- `local_provider/curve_bumps.py` contains generic curve bump semantics:
   `CurveBumpSpec`, tenor parsing, key-rate interpolation, and empty-shock
-  detection. These are not Valmer-specific and belong in `msm_pricing`.
-- `local_valmer/curve_key_nodes.py` contains generic key-node mechanics:
+  detection. These are not provider-specific and belong in `msm_pricing`.
+- `local_provider/curve_key_nodes.py` contains generic key-node mechanics:
   deriving days-to-maturity from explicit days, maturity/pillar dates, or
   tenor labels; normalizing decimal and percent rate units; bumping supported
   rate/yield fields; and converting rate/yield key nodes to runtime curve
@@ -318,10 +318,10 @@ Additional donor analysis:
   base/scenario curve handles per position line and need generic machinery to
   price the base position and shocked position without asking
   `PricingValuationContext` to resolve or rebuild those curves again.
-- `local_valmer/curve_scenarios.py` contains both a generic runtime conversion
-  shape and a Valmer TIIE/OIS special rebuild. The generic conversion belongs
+- `local_provider/curve_scenarios.py` contains both a generic runtime conversion
+  shape and a provider TIIE/OIS special rebuild. The generic conversion belongs
   in `msm_pricing`; the TIIE/OIS branch that imports
-  `valmer_connectors.instruments.rates_curves` remains connector-owned.
+  the provider connector's rates-curve module remains connector-owned.
 
 The implementation must build on:
 
@@ -474,9 +474,9 @@ logic.
 Rejected behavior:
 
 - do not import project settings such as a local default curve quote side;
-- do not import `valmer_connectors` or any connector package from
+- do not import any connector package from
   `msm_pricing`;
-- do not promote Valmer-specific TIIE/OIS reconstruction into the core pricing
+- do not promote provider-specific TIIE/OIS reconstruction into the core pricing
   library;
 - do not silently fall back to latest observations unless the caller selects an
   explicit latest-observation policy;
@@ -581,7 +581,7 @@ library APIs:
 - Command Center `core.tabular_frame@v1` normalization from arbitrary JSON into
   pandas DataFrames as part of financial market logic;
 - project-specific dirty-price, quote-side, or vendor translation assumptions;
-- connector-specific curve rebuilds such as Valmer TIIE/OIS construction that
+- connector-specific curve rebuilds such as provider TIIE/OIS construction that
   import connector packages;
 - source-specific clean-price-to-rate or vendor quote translation for curve
   key nodes unless expressed as an explicit producer adapter outside core
@@ -766,7 +766,7 @@ sub-stages. Do not land it as one opaque port from the downstream project.
 - [x] Build each distinct shocked `Curve.unique_identifier` at most once per
   scenario. Multiple lines, roles, or selectors that resolve to the same curve
   must share the same scenario handle.
-- [x] Leave connector-specific rebuilds, including Valmer TIIE/OIS curve
+- [x] Leave connector-specific rebuilds, including provider TIIE/OIS curve
   construction, outside `msm_pricing`. If a connector needs that behavior, it
   should call the generic scenario API with connector-built scenario handles or
   a connector-owned handle builder.
@@ -848,7 +848,7 @@ sub-stages. Do not land it as one opaque port from the downstream project.
   `Curve.unique_identifier`.
 - [x] Add a regression test that proves the helper does not hardcode `zero`
   observation nodes when build details require `forward_rate`.
-- [x] Add a regression test that proves Valmer-specific TIIE/OIS reconstruction
+- [x] Add a regression test that proves provider-specific TIIE/OIS reconstruction
   is not imported or referenced from `msm_pricing`.
 - [x] Keep tests offline where possible by using fake `Curve`,
   `CurveBuildingDetails`, observations, and simple instruments. Use platform

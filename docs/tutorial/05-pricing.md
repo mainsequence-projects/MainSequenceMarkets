@@ -615,8 +615,8 @@ Use this workflow when adding or reviewing a market-domain relational table:
    name from the storage app segment and logical identity. Built-in tables use
    `ms_markets`, producing `ms_markets__<lowercase-identity>`. Project-local
    extension tables may set `__markets_storage_app__`, for example
-   `binance_spot`, to produce project-owned names such as
-   `binance_spot__binancespotaccountdetails`. The
+   `my_provider`, to produce project-owned names such as
+   `my_provider__provideraccountdetails`. The
    `MSM_AUTO_REGISTER_NAMESPACE` suffix still applies when configured before
    model import.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency

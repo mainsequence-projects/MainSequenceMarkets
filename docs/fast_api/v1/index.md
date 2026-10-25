@@ -63,7 +63,7 @@ This API is intentionally thin:
   collection, discovery, detail, summary, and action boundaries for all lists.
 - [Provider Adapter HTTP Toolkit](provider_adapter_toolkit.md): installable
   collection, discovery, preflight, observable-operation, and error helpers for
-  Alpaca-, Binance-, and other provider adapters.
+  provider adapters.
 
 ## Design Decisions (ADRs)
 

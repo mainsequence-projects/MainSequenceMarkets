@@ -21,10 +21,10 @@ authored MetaTable identifier, and the optional namespace suffix. Built-in
 library tables use the package-owned default app segment `ms_markets`, producing
 names such as `ms_markets__account`. Project-local extension tables may set
 `__markets_storage_app__` to a project-owned app segment, producing names such
-as `binance_spot__binancespotaccountdetails`. When
+as `my_provider__provideraccountdetails`. When
 `MSM_AUTO_REGISTER_NAMESPACE` is set before model import, the namespace is
 appended as a suffix, for example
-`binance_spot__binancespotaccountdetails__mainsequence_examples`.
+`my_provider__provideraccountdetails__mainsequence_examples`.
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the

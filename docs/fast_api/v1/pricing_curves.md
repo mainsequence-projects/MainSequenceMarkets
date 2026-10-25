@@ -440,6 +440,6 @@ state explicitly:
 
 ```json
 {
-  "detail": "No discount-curve data has been published for curve 'VALMER_TIIE_28' in pricing market-data set 'default'. The curve registry row and discount_curves binding exist, but bound TimeIndexTableUpdater <data-node-uid> has no latest ms_markets__discountcurvests observation for this curve_identifier."
+  "detail": "No discount-curve data has been published for curve 'PROVIDER_TIIE_28' in pricing market-data set 'default'. The curve registry row and discount_curves binding exist, but bound TimeIndexTableUpdater <data-node-uid> has no latest ms_markets__discountcurvests observation for this curve_identifier."
 }
 ```

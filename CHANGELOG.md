@@ -1218,7 +1218,7 @@ See
   fixed-income spread analytics without copying project-local adapter code into
   the library.
 - Added an implementation task plan for upstreaming generic curve
-  reconstruction and observation export machinery from Valmer connector code
+  reconstruction and observation export machinery from provider connector code
   into `msm_pricing.pricing_engine.curves`.
 - Implemented `PricingValuationContext` with a public `PreparedInstrument`
   wrapper, frozen `PricingValuationContextSpec` input contract, fixed

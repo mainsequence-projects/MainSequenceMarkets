@@ -1,11 +1,11 @@
 # Generic Curve Reconstruction And Observation Export Upstream Plan
 
 This implementation plan analyzes generic curve-construction machinery
-currently embedded in Valmer connector code and defines where it should move in
-`msm_pricing`. The goal is not to copy Valmer functions blindly. The goal is to
+currently embedded in provider connector code and defines where it should move in
+`msm_pricing`. The goal is not to copy provider functions blindly. The goal is to
 promote reusable QuantLib helper construction, generic curve reconstruction,
-and curve observation export mechanics into ms-markets while leaving Valmer
-source parsing and vendor policy in `valmer-connectors`.
+and curve observation export mechanics into ms-markets while leaving provider
+source parsing and vendor policy in the provider connector.
 
 ## Success Conditions
 
@@ -13,17 +13,17 @@ source parsing and vendor policy in `valmer-connectors`.
   available from `msm_pricing.pricing_engine.curves`, not from connector
   packages.
 - Helper-style curve key nodes can rebuild runtime curve handles and normalized
-  curve observation nodes without importing `valmer_connectors`.
+  curve observation nodes without importing a provider connector package.
 - `msm_pricing.scenarios.curves` can shock helper-style key nodes and delegate
   runtime curve reconstruction to the generic pricing-engine layer.
 - Zero-rate export is one observation convention, not the architecture. Future
   curve families must be able to add observation conventions without renaming
   the public reconstruction or export APIs.
-- Valmer connector code becomes an adapter: read Valmer files, classify source
+- provider connector code becomes an adapter: read provider files, classify source
   rows, map source quotes into generic helper specs or key nodes, then call
   ms-markets.
-- No Valmer URL, file format, source suffix, source exception class, or
-  Valmer-specific default quote side is imported into `msm_pricing`.
+- No provider URL, file format, source suffix, source exception class, or
+  provider-specific default quote side is imported into `msm_pricing`.
 
 ## Naming And Dependency Guardrails
 
@@ -66,7 +66,7 @@ They must not be copied into ms-markets symbols.
 ## Source Analysis
 
 Source file:
-`/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/src/valmer_connectors/instruments/rates_curves.py`
+the provider connector's rates-curve module
 
 | Donor Location | Generic Meaning | Target Owner |
 | --- | --- | --- |
@@ -93,15 +93,15 @@ Additional generic candidates observed around the listed code:
 - The source-specific helper-vector assembly at `rates_curves.py:729` is the
   same generic vector assembly without the optional deposit helper.
 
-## What Must Stay In Valmer
+## What Must Stay In The Provider Connector
 
 - CSV reading, request URLs, source filenames, source suffix classification,
   and source row selection.
-- Valmer-specific error classes and source diagnostics.
+- provider-specific error classes and source diagnostics.
 - Mapping source-local instrument identifiers into generic tenor and helper
   specs.
-- Valmer default source quote side and source quote unit assumptions.
-- Any vendor-specific fallback or repair rule needed to interpret Valmer input
+- Provider default source quote side and source quote unit assumptions.
+- Any vendor-specific fallback or repair rule needed to interpret provider input
   rows before they become generic key nodes.
 
 ## Target Architecture
@@ -586,18 +586,18 @@ Tasks:
 
 External repository target:
 
-- `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be`
+- the provider connector repository
 
 Tasks:
 
-- [ ] Replace Valmer-local OIS helper construction with
+- [ ] Replace provider-local OIS helper construction with
   `msm_pricing.pricing_engine.curves.helpers`.
-- [ ] Replace Valmer-local helper-based reconstruction with
+- [ ] Replace provider-local helper-based reconstruction with
   `msm_pricing.pricing_engine.curves.reconstruction`.
-- [ ] Replace Valmer-local curve observation export with
+- [ ] Replace provider-local curve observation export with
   `msm_pricing.pricing_engine.curves.observations`.
-- [ ] Keep Valmer file parsing and source row classification local.
-- [ ] Preserve connector-owned tests for Valmer-specific row mapping.
+- [ ] Keep provider file parsing and source row classification local.
+- [ ] Preserve connector-owned tests for provider-specific row mapping.
 - [ ] Add compatibility wrappers only where downstream imports require them,
   and mark those wrappers as temporary.
 - [ ] Before deleting connector-local OIS helpers, add a parity test that
@@ -612,7 +612,7 @@ Tasks:
   reconstruction, and curve observation export.
 - Focused scenario tests proving helper-style shocked curves rebuild through the
   generic pricing-engine path.
-- Valmer connector migration tests proving the same exported observation nodes
+- provider connector migration tests proving the same exported observation nodes
   are produced before and after the adapter cutover within a documented
   tolerance.
 - `ruff check` and `ruff format` on touched files.
@@ -621,13 +621,13 @@ Tasks:
 
 ## Explicit Non-Goals
 
-- Do not move Valmer CSV readers or HTTP fetchers into ms-markets.
-- Do not add Valmer-specific index identifiers, source suffixes, or quote-side
+- Do not move provider CSV readers or HTTP fetchers into ms-markets.
+- Do not add provider-specific index identifiers, source suffixes, or quote-side
   defaults to ms-markets.
 - Do not make helper-style key-node fields required for all `DiscountCurvesNode`
   publishers.
 - Do not replace the existing node-based `build_curve_from_curve_observation(...)`
   path; generic reconstruction is an additional builder path.
-- Keep futures helper support generic and tested independently from Valmer
+- Keep futures helper support generic and tested independently from any provider
   source parsing; connector migration should only map source rows into the
   generic key-node fields.
