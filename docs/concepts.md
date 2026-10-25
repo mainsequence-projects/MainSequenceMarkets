@@ -34,9 +34,10 @@ SQLAlchemy internals. There are three distinct layers, and each has an owner:
 
     The shared producer base classes, such as `AssetIndexedUpdater` and
     `StampedUpdater`, live under `msm.time_index`, `msm_portfolios.time_index`
-    and `msm_pricing.time_index`; see
-    [ADR 0048](ADR/0048-time-index-vocabulary-rename.md) for the names they had
-    before 3.0.0.
+    and `msm_pricing.time_index`. Through 3.x the pre-3.0 `*.data_nodes` import
+    paths and `*DataNode` names still resolve to the same objects, with a
+    `DeprecationWarning`; ms-markets 4.0 removes them
+    ([ADR 0048](ADR/0048-time-index-vocabulary-rename.md)).
 
 ```python
 from msm.api.assets import Asset       # row object — application code

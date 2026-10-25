@@ -132,6 +132,17 @@ and this project follows versioned releases.
   API routes use these reads. The `apps/v1` runtimes attach
   `PortfolioDatasetAvailability`.
 
+### Deprecated
+
+- The pre-3.0 import paths `msm.data_nodes`, `msm_portfolios.data_nodes`,
+  `msm_pricing.data_nodes` and `msm_portfolios.contrib.prices.data_nodes`, with
+  every submodule, are aliases of the renamed modules through 3.x. They
+  re-export the same objects and raise a `DeprecationWarning` at the importing
+  line. The pre-3.0 class names, such as `AssetIndexedDataNode`,
+  `PortfoliosDataNode` and `DiscountCurvesNode`, resolve from those paths and
+  from `msm_portfolios` with a warning. Stored configurations that name the old
+  paths still rebuild. ms-markets 4.0 removes the aliases.
+
 ### Fixed
 
 - UID column labels and descriptions name the identity each column holds.

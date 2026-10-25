@@ -6,8 +6,8 @@ from pathlib import Path
 def test_core_msm_does_not_import_msm_portfolios() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     core_root = repo_root / "src" / "msm"
-    # identity.py names moved msm_portfolios module paths as strings; it imports nothing from it.
-    allowed_cross_package_files = {"migrations/registry.py", "identity.py"}
+    # These name moved msm_portfolios module paths as strings; they import nothing from it.
+    allowed_cross_package_files = {"migrations/registry.py", "identity.py", "_deprecated_imports.py"}
     offenders: list[str] = []
 
     for path in core_root.rglob("*.py"):

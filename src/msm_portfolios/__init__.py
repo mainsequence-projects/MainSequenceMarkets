@@ -49,6 +49,12 @@ def __getattr__(name: str) -> Any:
         value = _logger.bind(sub_application="portfolios")
     else:
         if name not in _EXPORTS:
+            from msm._deprecated_imports import RENAMED_CLASS_NAMES, warn_renamed
+
+            current = RENAMED_CLASS_NAMES.get(name)
+            if current in _EXPORTS:
+                warn_renamed(f"{__name__}.{name}", f"{__name__}.{current}")
+                return getattr(import_module(_EXPORTS[current], __name__), current)
             raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
         module = import_module(_EXPORTS[name], __name__)
         value = getattr(module, name)
