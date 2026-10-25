@@ -12,8 +12,32 @@ direct account snapshots and virtual-fund-grouped views.
   - `items` contains the library `msm.api.accounts.Account` contract:
     `uid`, `unique_identifier`, `account_name`, `is_paper`,
     `account_is_active`, `holdings_data_node_uid`, and `metadata_json`
+- `POST /api/v1/account/`
+  - creates one `Account` identity row from the `msm.api.accounts.AccountCreate`
+    payload (`unique_identifier`, `account_name`, `is_paper`,
+    `account_is_active`, `account_group_uid`, `holdings_data_node_uid`,
+    `metadata_json`) and returns it with `201`
+  - `409` when the row cannot be stored, for example a duplicate
+    `unique_identifier`
+  - ADR 0047: providers register accounts here instead of writing the Account
+    table; the write runs as the Markets workload and records the acting
+    identity
+- `GET /api/v1/account/by-uids/?uid__in=<uid>&uid__in=<uid>`
+  - batch lookup by uid; `uid__in` is repeated or comma-separated, at most 500
+  - returns the matching `Account` rows in request order inside a
+    `ResourceCollection`; unknown uids are omitted, so `totalItems` is the
+    number found
+  - a bounded lookup for consumers that hydrate core columns from their own
+    rows, not a browsable collection: no `limit`, `offset`, search or
+    discovery route
 - `GET /api/v1/account/{uid}/`
   - returns one canonical `Account` row by uid
+- `PATCH /api/v1/account/{uid}/`
+  - updates the mutable fields of one `Account` row from the
+    `msm.api.accounts.AccountUpdate` payload (`account_name`, `is_paper`,
+    `account_is_active`, `account_group_uid`, `holdings_data_node_uid`,
+    `metadata_json`); omitted fields are unchanged
+  - `404` when the uid is unknown
 - `GET /api/v1/account/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for account detail
     pages

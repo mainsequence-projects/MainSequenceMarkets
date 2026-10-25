@@ -380,3 +380,29 @@ Deviations and open items:
   Organization admin must add to `.mainsequence/workflows/ms-markets-api.yaml`
   and push; this implementation does not edit the workflow file. Until then
   every call is caller-bound.
+
+### 2026-10-25: step 1, missing routes
+
+Added to `apps/v1`: account create and update; formula save, activate, retire
+and preview over `FormulaIndex`; batch lookups by uid (`uid__in`) for assets,
+accounts, portfolios and indexes; multi-portfolio values and weights frames;
+portfolio dataset registration, read and reconcile. Each follows the existing
+router and service layout, carries a Command Center contract and is registered
+in the adapter operation registry. Deviations and refinements:
+
+- Batch lookups are `GET <resource>/by-uids/?uid__in=` with repeated or
+  comma-separated uids, at most 500, returning the found rows in request order
+  inside a `ResourceCollection` without paging, search or a discovery route.
+  They are lookups, not collections, so they carry no
+  `command-center.resource_collection@v1` contract.
+- The multi-portfolio frames are `GET /portfolio/values/` and
+  `GET /portfolio/weights/` with `portfolio_uid__in`; every uid must be a
+  portfolio. `order` and `limit` apply to the merged result.
+- The `include` hydration named in the migration path is not implemented in
+  this step. The batch lookups give a sidecar owner the core columns in one
+  call, which is the hydration direction the Alpaca worked example needs first;
+  core-first `include` of provider sidecars needs the provider namespaces of
+  step 3.
+- Formula save takes the Index identity from the stored row and accepts only
+  the definition and inputs, so a route cannot change identity fields while
+  storing a formula; `PATCH /index/{uid}/` remains the identity update.

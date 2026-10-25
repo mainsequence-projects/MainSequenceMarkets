@@ -4,7 +4,8 @@ The `apps/v1` portfolio routes expose portfolio identity rows, detail-page
 composition, latest portfolio weights, and delete operations.
 
 The routes do not create or update portfolios. Portfolio construction remains a
-library workflow outside this API surface.
+library workflow outside this API surface. ADR 0047 adds the multi-portfolio
+frames, the batch lookup and the dataset catalog routes described below.
 
 ## Runtime Sources
 
@@ -18,6 +19,11 @@ library workflow outside this API surface.
 - Signal weights resolve from nullable `Portfolio.signal_uid`, which points to
   `SignalMetadataTable.signal_uid`. The API does not recompute signal identity
   from the TimeIndexTableUpdater build configuration or by scanning shared signal storage.
+- Values, weights and signal-weight reads resolve each portfolio's table from
+  the Markets catalog (`PortfolioDatasetAvailabilityTable`) and read it by uid
+  through `TimeIndexTableRef`; a portfolio without a catalog row reads the core
+  tables (ADR 0047, see the
+  [portfolios knowledge page](../../knowledge/msm_portfolios/portfolios/index.md)).
 
 Latest weights resolve through:
 
@@ -239,6 +245,86 @@ page-specific resolved metadata for consumers that need more than a field URL.
 When present, it is the canonical `SignalMetadataTable.signal_uid` used by
 `GET /api/v1/portfolio/{uid}/signals_weights/`. The signal-weights endpoint
 does not infer the signal by scanning shared signal-weight storage.
+
+## Batch Lookup By Uid
+
+```text
+GET /api/v1/portfolio/by-uids/?uid__in=<uid>&uid__in=<uid>
+```
+
+Returns the matching `Portfolio` rows in request order inside a
+`ResourceCollection`. `uid__in` is repeated or comma-separated, at most 500;
+unknown uids are omitted. A bounded lookup, not a browsable collection: no
+`limit`, `offset`, search or discovery route.
+
+## Values Frame For Several Portfolios
+
+```text
+GET /api/v1/portfolio/values/?portfolio_uid__in=<uid>&portfolio_uid__in=<uid>&start_date=&end_date=&order=desc&limit=500
+```
+
+Returns one `core.tabular_frame@v1` with columns `time_index`,
+`portfolio_identifier`, `portfolio_uid`, `close`, `return`, `calculated_close`
+and `close_time` for every requested portfolio. The portfolios are grouped by
+the `PortfoliosTS` instance the catalog records for them; each instance is read
+once, so comparing an Alpaca portfolio with an Interactive Brokers portfolio is
+one call whose two sources live in two namespaces. `order` sorts by
+`time_index` across all portfolios and `limit` (1 to 5000) bounds the merged
+result. Every uid must be a portfolio (`404` otherwise); `source.context`
+names the requested uids and the window.
+
+## Weights Frame For Several Portfolios
+
+```text
+GET /api/v1/portfolio/weights/?portfolio_uid__in=<uid>&weights_date=&as_of=true
+```
+
+Returns one `core.tabular_frame@v1` with one weight snapshot per portfolio:
+the latest snapshot, the latest at or before `weights_date` with `as_of=true`,
+or the exact `weights_date` snapshot with `as_of=false`. Columns are
+`time_index`, `portfolio_identifier`, `portfolio_uid`, `asset_identifier`,
+`weight`, `weight_before`, `price_current`, `price_before`, `volume_current`
+and `volume_before`. Portfolios are grouped by their `PortfolioWeightsTS`
+instance as for values.
+
+## Dataset Catalog
+
+```text
+POST /api/v1/portfolio/{uid}/datasets/
+GET  /api/v1/portfolio/{uid}/datasets/
+POST /api/v1/portfolio/datasets/reconcile/
+```
+
+A provider that computes a portfolio in its own namespace registers, per
+portfolio, the `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS`
+instances that hold its rows, and reconciles after each run (ADR 0047).
+
+- `POST /api/v1/portfolio/{uid}/datasets/` takes `values_meta_table_uid`
+  (required), `weights_meta_table_uid`, `signal_meta_table_uid` and
+  `reconcile` (default `true`). Each table must be a `TimeIndexMetaTable`
+  visible to the Markets workload that exposes the contract columns and index
+  names; extra provider columns are allowed. The row is upserted, the signal's
+  `SignalMetadata.meta_table_uid` is bound when the portfolio has a
+  `signal_uid`, and the values instance is reconciled unless `reconcile` is
+  `false`, in which case the row is `unavailable` with error code
+  `not_reconciled`. Returns the `PortfolioDatasetState` with `201`; `404` for
+  an unknown portfolio or a table that is not visible, `400` for a table that
+  does not satisfy its contract.
+- `GET /api/v1/portfolio/{uid}/datasets/` returns the catalog row, or `null`
+  when the portfolio exists and reads the core tables; `404` for an unknown
+  portfolio.
+- `POST /api/v1/portfolio/datasets/reconcile/` takes `portfolio_uids` and
+  `portfolio_identifiers` (at least one selector, at most 500 in all) and
+  returns a `PortfolioDatasetReconciliationResult`: the reconciled states, one
+  aggregate per instance however many portfolios it holds, plus
+  `skipped_portfolio_uids` for portfolios without a catalog row. `404` names
+  selectors that are not portfolios.
+
+`PortfolioDatasetState` carries `portfolio_uid`, `portfolio_identifier`, the
+three table uids, `population_state` (`populated`, `compatible_empty` or
+`unavailable`), `row_count`, `earliest_time_index`, `latest_time_index`,
+`reconciled_at` and `error`. Registration and reconciliation record the acting
+identity.
 
 ## Latest Portfolio Weights
 

@@ -20,6 +20,12 @@ provider-specific records. The API does not flatten those separate models into `
   - exposes `GET /api/v1/asset/discovery/`
   - returns the library `msm.api.assets.Asset` contract:
     `uid`, `unique_identifier`, and `asset_type`
+- `GET /api/v1/asset/by-uids/?uid__in=<uid>&uid__in=<uid>`
+  - batch lookup by uid (ADR 0047); `uid__in` is repeated or comma-separated,
+    at most 500
+  - returns the matching `Asset` identity rows in request order inside a
+    `ResourceCollection`; unknown uids are omitted
+  - not a browsable collection: no `limit`, `offset`, search or discovery route
 - `GET /api/v1/asset/monitor/frame/`
   - supports `search`, `limit`, `offset`, optional `asset_type`, and repeated
     `unique_identifiers`

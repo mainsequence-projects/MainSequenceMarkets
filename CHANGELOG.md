@@ -49,6 +49,21 @@ and this project follows versioned releases.
   action and row uid on the `apps.v1.identity` logger after a successful
   write. The Index routes derive their actor from the acting identity, so a
   requester-bound call acts for the requester.
+- Markets API routes the ADR 0047 boundary needs: `POST /api/v1/account/`
+  and `PATCH /api/v1/account/{uid}/` (account create and update over
+  `msm.api.accounts`); `POST /api/v1/index/{uid}/formulas/`,
+  `.../{definition_uid}/activate/`, `.../{definition_uid}/retire/`,
+  `.../formulas/preview/` and `.../{definition_uid}/preview/` (formula save,
+  activate, retire and preview over `FormulaIndex`, previews as
+  `core.tabular_frame@v1`); `GET .../by-uids/?uid__in=` batch lookups for
+  assets, accounts, portfolios and indexes (at most 500 uids, request order,
+  unknown uids omitted, no paging or discovery); `GET /api/v1/portfolio/values/`
+  and `GET /api/v1/portfolio/weights/` multi-portfolio frames grouped by
+  catalogued table; and `POST /api/v1/portfolio/{uid}/datasets/`,
+  `GET /api/v1/portfolio/{uid}/datasets/` and
+  `POST /api/v1/portfolio/datasets/reconcile/` for the portfolio dataset
+  catalog. All are registered in the Command Center adapter contract; the
+  mutating ones record the acting identity.
 - Pending operator action: for requester-bound calls the `markets-api`
   resource in `.mainsequence/workflows/ms-markets-api.yaml` must declare
   `acts_for_requester: true`, which only an Organization admin may push. This
