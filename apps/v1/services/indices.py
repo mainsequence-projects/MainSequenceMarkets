@@ -21,6 +21,7 @@ from apps.v1.schemas.indices import (
     IndexFormulaSummary,
     IndexType,
     IndexUpdate,
+    IndexWithIncludes,
     RelatedMetaTable,
 )
 from msm.analytics.indices import validate_formula_contract
@@ -225,14 +226,27 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
     )
 
 
-def get_indexes_by_uids(*, uids: Sequence[str]) -> list[Index]:
-    """Return the Index rows whose uid is listed, in request order; unknown uids are omitted."""
+def get_indexes_by_uids(
+    *, uids: Sequence[str], include: Sequence[str] | None = None
+) -> list[IndexWithIncludes]:
+    """Return the Index rows whose uid is listed, in request order; unknown uids are omitted.
 
+    ``include`` names provider sidecar MetaTables keyed by `Index.uid` whose rows
+    are attached under ``includes`` (ADR 0047 `include` hydration).
+    """
+
+    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=IndexTable, uids=normalize_lookup_uids(uids))
-    return [Index.model_validate(row) for row in rows]
+    return hydrate(
+        runtime.context,
+        model_cls=IndexWithIncludes,
+        core_model=IndexTable,
+        items=[Index.model_validate(row) for row in rows],
+        include=include,
+    )
 
 
 @registry_write("index", "save:formula")

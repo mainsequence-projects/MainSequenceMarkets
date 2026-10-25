@@ -4,7 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from apps.v1.schemas.assets import Asset, AssetCurrentPricingDetailsResponse, AssetDetailResponse
+from apps.v1.schemas.assets import (
+    Asset,
+    AssetCurrentPricingDetailsResponse,
+    AssetDetailResponse,
+    AssetWithIncludes,
+)
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.indices import RelatedMetaTable
 from apps.v1.services.assets import (
@@ -17,6 +22,7 @@ from apps.v1.services.assets import (
     list_asset_related_meta_tables,
     list_assets_response,
 )
+from apps.v1.services.includes import SidecarReadError
 from msm.api.http import (
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
@@ -164,7 +170,7 @@ def get_asset_monitor_frame_route(
 
 @router.get(
     "/by-uids/",
-    response_model=ResourceCollection[Asset],
+    response_model=ResourceCollection[AssetWithIncludes],
     summary="Look up assets by uid",
     description=(
         "Return the asset identity rows whose uid is listed in `uid__in` (repeated or "
@@ -173,16 +179,34 @@ def get_asset_monitor_frame_route(
         "browsable collection."
     ),
     operation_id="getAssetsByUids",
-    responses={400: {"model": ErrorResponse, "description": "Invalid or empty `uid__in`."}},
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
+        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
+        409: {"model": ErrorResponse, "description": "An included sidecar could not be read."},
+    },
 )
 def get_assets_by_uid_list(
     uid__in: Annotated[
         list[str],
         Query(alias="uid__in", description="Asset uids, repeated or comma-separated."),
     ],
-) -> ResourceCollection[Asset]:
+    include: Annotated[
+        list[str] | None,
+        Query(
+            description=(
+                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
+                "by this resource's uid; their rows are attached under `includes`. The Markets "
+                "workload needs `data_viewer` on each sidecar."
+            ),
+        ),
+    ] = None,
+) -> ResourceCollection[AssetWithIncludes]:
     try:
-        items = get_assets_by_uids(uids=uid__in)
+        items = get_assets_by_uids(uids=uid__in, include=include)
+    except SidecarReadError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return resource_collection_response(

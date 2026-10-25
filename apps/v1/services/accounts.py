@@ -10,6 +10,7 @@ from apps.v1.schemas.accounts import (
     Account,
     AccountCreate,
     AccountUpdate,
+    AccountWithIncludes,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -46,15 +47,28 @@ def get_account(*, uid: str) -> Account | None:
     return Account.model_validate(rows[0])
 
 
-def get_accounts_by_uids(*, uids: Sequence[str]) -> list[Account]:
-    """Return the accounts whose uid is listed, in request order; unknown uids are omitted."""
+def get_accounts_by_uids(
+    *, uids: Sequence[str], include: Sequence[str] | None = None
+) -> list[AccountWithIncludes]:
+    """Return the accounts whose uid is listed, in request order; unknown uids are omitted.
 
+    ``include`` names provider sidecar MetaTables keyed by `Account.uid` whose rows
+    are attached under ``includes`` (ADR 0047 `include` hydration).
+    """
+
+    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
     from msm.models import AccountTable
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=AccountTable, uids=normalize_lookup_uids(uids))
-    return [Account.model_validate(row) for row in rows]
+    return hydrate(
+        runtime.context,
+        model_cls=AccountWithIncludes,
+        core_model=AccountTable,
+        items=[Account.model_validate(row) for row in rows],
+        include=include,
+    )
 
 
 @registry_write("account", "create")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -50,6 +51,18 @@ def _contracts():
     IndexFormulaDefinition,
     IndexFormulaInput,
 ) = _contracts()
+
+
+class IndexWithIncludes(Index):
+    """`Index` plus the provider sidecar rows requested with `include` (ADR 0047)."""
+
+    includes: dict[str, dict[str, Any] | None] = Field(
+        default_factory=dict,
+        description=(
+            "Provider sidecar rows requested with `include`, keyed by sidecar MetaTable uid; "
+            "`null` when the sidecar has no row for this uid. Empty when nothing was included."
+        ),
+    )
 
 
 class IndexFormulaSaveRequest(BaseModel):

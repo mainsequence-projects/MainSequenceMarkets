@@ -255,7 +255,9 @@ GET /api/v1/portfolio/by-uids/?uid__in=<uid>&uid__in=<uid>
 Returns the matching `Portfolio` rows in request order inside a
 `ResourceCollection`. `uid__in` is repeated or comma-separated, at most 500;
 unknown uids are omitted. A bounded lookup, not a browsable collection: no
-`limit`, `offset`, search or discovery route.
+`limit`, `offset`, search or discovery route. `include=<sidecar MetaTable uid>`
+attaches provider sidecar rows under `includes[<uid>]`, as described for
+[accounts](accounts.md).
 
 ## Values Frame For Several Portfolios
 

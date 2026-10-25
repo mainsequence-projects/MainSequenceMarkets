@@ -30,6 +30,15 @@ direct account snapshots and virtual-fund-grouped views.
   - a bounded lookup for consumers that hydrate core columns from their own
     rows, not a browsable collection: no `limit`, `offset`, search or
     discovery route
+  - `include=<sidecar MetaTable uid>` (repeated or comma-separated, at most
+    10) attaches provider sidecar rows under `includes[<uid>]` on every item
+    (`null` when the sidecar has no row). A sidecar is a provider table with a
+    single-column foreign key to this resource's `uid`, proven from the
+    MetaTables catalog; each sidecar is read once for all returned uids. The
+    Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
+    `404` for a uid that is not a visible MetaTable, `400` for a table that is
+    not a sidecar of this resource). Columns come back as stored; Markets never
+    decrypts a provider column. `includes` is `{}` when nothing is included
 - `GET /api/v1/account/{uid}/`
   - returns one canonical `Account` row by uid
 - `PATCH /api/v1/account/{uid}/`

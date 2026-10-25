@@ -63,7 +63,11 @@ and this project follows versioned releases.
   `GET /api/v1/portfolio/{uid}/datasets/` and
   `POST /api/v1/portfolio/datasets/reconcile/` for the portfolio dataset
   catalog. All are registered in the Command Center adapter contract; the
-  mutating ones record the acting identity.
+  mutating ones record the acting identity. The by-uid lookups accept
+  `include=<sidecar MetaTable uid>` and attach provider sidecar rows under
+  `includes`, resolving the sidecar's foreign key to the core `uid` from the
+  MetaTables catalog and reading each sidecar once (ADR 0047 `include`
+  hydration; the Markets workload needs `data_viewer` on the sidecar).
 - A design note for the contracts package split and `msm.client` (ADR 0047,
   decision 2) under `docs/planning/implementation_tasks/`; the README now
   describes `msm.client` as planned rather than shipped.

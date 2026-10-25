@@ -20,6 +20,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioDetailResponse,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
+    PortfolioWithIncludes,
 )
 from msm.api.http import (
     BulkDeletePreflightResponse,
@@ -141,15 +142,28 @@ def get_portfolio_values_frame(
     return TabularFrameResponse.model_validate(response)
 
 
-def get_portfolios_by_uids(*, uids: Sequence[str]) -> list[Portfolio]:
-    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted."""
+def get_portfolios_by_uids(
+    *, uids: Sequence[str], include: Sequence[str] | None = None
+) -> list[PortfolioWithIncludes]:
+    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted.
 
+    ``include`` names provider sidecar MetaTables keyed by `Portfolio.uid` whose
+    rows are attached under ``includes`` (ADR 0047 `include` hydration).
+    """
+
+    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
     from msm.models import PortfolioTable
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=PortfolioTable, uids=normalize_lookup_uids(uids))
-    return [_validate_portfolio_row(row) for row in rows]
+    return hydrate(
+        runtime.context,
+        model_cls=PortfolioWithIncludes,
+        core_model=PortfolioTable,
+        items=[_validate_portfolio_row(row) for row in rows],
+        include=include,
+    )
 
 
 def get_portfolios_values_frame(

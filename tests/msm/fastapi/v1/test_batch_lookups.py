@@ -101,9 +101,10 @@ def test_rows_by_uids_issues_one_in_filter_and_keeps_request_order(monkeypatch) 
 def test_by_uids_routes_return_rows_in_a_collection_without_paging(monkeypatch, route, service_path, row):
     captured: dict[str, object] = {}
 
-    def fake_lookup(*, uids):
+    def fake_lookup(*, uids, include=None):
         captured["uids"] = list(uids)
-        return [row]
+        captured["include"] = include
+        return [{**row, "includes": {}}]
 
     monkeypatch.setattr(service_path, fake_lookup)
     other = str(uuid.uuid4())
@@ -113,13 +114,14 @@ def test_by_uids_routes_return_rows_in_a_collection_without_paging(monkeypatch, 
     assert response.status_code == 200
     assert captured["uids"] == [row["uid"], other]
     payload = response.json()
-    assert payload["items"] == [row]
+    assert payload["items"] == [{**row, "includes": {}}]
+    assert captured["include"] is None
     assert payload["pageInfo"]["totalItems"] == 1
     assert payload["pageInfo"]["hasNextPage"] is False
     operation = app.openapi()["paths"][route]["get"]
     assert operation["operationId"].endswith("ByUids")
     assert "x-ui-contract" not in operation
-    assert {parameter["name"] for parameter in operation["parameters"]} == {"uid__in"}
+    assert {parameter["name"] for parameter in operation["parameters"]} == {"uid__in", "include"}
 
 
 def test_by_uids_routes_reject_malformed_uids(monkeypatch) -> None:

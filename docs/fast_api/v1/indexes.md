@@ -39,6 +39,8 @@ previews are queries that persist nothing.
 lookup (ADR 0047): `uid__in` is repeated or comma-separated, at most 500, the
 matching rows return in request order inside a `ResourceCollection`, unknown
 uids are omitted, and there is no paging, search or discovery route.
+`include=<sidecar MetaTable uid>` attaches provider sidecar rows under
+`includes[<uid>]`, as described for [accounts](accounts.md).
 
 ## Identity Payload
 

@@ -398,11 +398,15 @@ in the adapter operation registry. Deviations and refinements:
 - The multi-portfolio frames are `GET /portfolio/values/` and
   `GET /portfolio/weights/` with `portfolio_uid__in`; every uid must be a
   portfolio. `order` and `limit` apply to the merged result.
-- The `include` hydration named in the migration path is not implemented in
-  this step. The batch lookups give a sidecar owner the core columns in one
-  call, which is the hydration direction the Alpaca worked example needs first;
-  core-first `include` of provider sidecars needs the provider namespaces of
-  step 3.
+- `include` hydration lives on the by-uid lookups: `include=<sidecar MetaTable
+  uid>` resolves the sidecar from the MetaTables catalog, requires a
+  single-column foreign key to the core table's `uid` (the sidecar rule of
+  decision 4), reads each sidecar once for the returned uids as the Markets
+  workload and attaches rows under `includes[<uid>]`. It works for a sidecar in
+  any namespace today, including `mainsequence.markets`, so the Alpaca account
+  listing can move before step 3. Search-driven list routes do not take
+  `include`; a consumer pages on its own sidecar and hydrates by uid, which is
+  the direction the worked example needs.
 - Formula save takes the Index identity from the stored row and accepts only
   the definition and inputs, so a route cannot change identity fields while
   storing a formula; `PATCH /index/{uid}/` remains the identity update.
