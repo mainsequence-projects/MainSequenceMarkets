@@ -153,8 +153,8 @@ contract, not the table schema, is the compatibility promise.
 
 Every handler and service authorizes against one identity: the requester on a
 requester-bound call, the caller otherwise, never both. The `markets-api`
-resource declares `acts_for_requester: true`, which an Organization admin must
-push. Services enforce domain policy: ownership and Team scoping for
+resource declares `acts_for_requester: true` in its workflow. Services enforce
+domain policy: ownership and Team scoping for
 portfolios, accounts, indexes and formula definitions, and application-level
 permissions such as "this application may register accounts". Writes keep
 running as the Markets workload, whose Writer grant is the single place writes
@@ -376,10 +376,10 @@ Deviations and open items:
   every service one identity to authorize against, and the platform's own
   grants still apply to requester-bound reads.
 - `acts_for_requester: true` on the `markets-api` resource is required for a
-  requester to be present. It is an Organization-level permission that an
-  Organization admin must add to `.mainsequence/workflows/ms-markets-api.yaml`
-  and push; this implementation does not edit the workflow file. Until then
-  every call is caller-bound.
+  requester to be present. It is an ordinary declaration in
+  `.mainsequence/workflows/ms-markets-api.yaml` pushed with the deployment;
+  this implementation does not edit the workflow file. Until then every call is
+  caller-bound.
 
 ### 2026-10-25: step 1, missing routes
 

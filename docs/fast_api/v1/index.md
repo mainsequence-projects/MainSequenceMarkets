@@ -229,11 +229,10 @@ policy decides who may trigger them.
 A requester is only present when the `markets-api` resource declares
 `acts_for_requester: true` in `.mainsequence/workflows/ms-markets-api.yaml`.
 That declaration lets the platform sign the person an application works for
-into the caller assertion, so it is an Organization-level permission: an
-Organization admin must add it and push the workflow. Until it is declared,
-every call is caller-bound and `acting_identity()` returns the caller, the
-calling application's workload User. The declaration is not in the repository
-yet; see the changelog.
+into the caller assertion; it is an ordinary workflow declaration pushed with
+the deployment. Until it is declared, every call is caller-bound and
+`acting_identity()` returns the caller, the calling application's workload
+User. The declaration is not in the repository yet; see the changelog.
 
 ## API Discoverability
 

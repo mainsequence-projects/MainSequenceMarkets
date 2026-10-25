@@ -71,11 +71,11 @@ and this project follows versioned releases.
 - A design note for the contracts package split and `msm.client` (ADR 0047,
   decision 2) under `docs/planning/implementation_tasks/`; the README now
   describes `msm.client` as planned rather than shipped.
-- Pending operator action: for requester-bound calls the `markets-api`
+- Pending workflow declaration: for requester-bound calls the `markets-api`
   resource in `.mainsequence/workflows/ms-markets-api.yaml` must declare
-  `acts_for_requester: true`, which only an Organization admin may push. This
-  release does not change the workflow file; until the declaration lands every
-  call is caller-bound and the API acts for the calling workload.
+  `acts_for_requester: true`. This release does not change the workflow file;
+  until the declaration lands every call is caller-bound and the API acts for
+  the calling workload.
 
 ### Changed
 
