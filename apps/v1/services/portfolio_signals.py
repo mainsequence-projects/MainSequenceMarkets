@@ -93,7 +93,12 @@ def delete_portfolio_signal_weights(
     weights_date: dt.datetime | None = None,
 ) -> PortfolioSignalWeightsDeleteResponse | None:
     runtime = _get_runtime()
-    response = _delete_signal_weights(runtime.context, uid=uid, weights_date=weights_date)
+    try:
+        response = _delete_signal_weights(runtime.context, uid=uid, weights_date=weights_date)
+    except Exception as exc:
+        if _is_signal_delete_conflict(exc):
+            raise PortfolioSignalDeleteConflictError(str(exc)) from exc
+        raise
     if response is None:
         return None
     return PortfolioSignalWeightsDeleteResponse.model_validate(response)

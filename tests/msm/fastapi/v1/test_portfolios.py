@@ -616,6 +616,7 @@ def test_delete_portfolio_returns_success(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 3,
         "deleted_values_count": 2,
+        "retained_datasets": [],
     }
 
 
@@ -804,6 +805,7 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
         "deleted_count": 1,
         "deleted_weights_count": 3,
         "deleted_values_count": 2,
+        "retained_datasets": [],
         "failed": [],
     }
 
@@ -851,6 +853,7 @@ def test_bulk_cascade_delete_portfolios_returns_success(monkeypatch) -> None:
         "deleted_virtual_funds_count": 1,
         "deleted_virtual_fund_holdings_sets_count": 1,
         "deleted_virtual_fund_holdings_count": 5,
+        "retained_datasets": [],
         "failed": [],
     }
     assert captured == {"uids": [str(deleted_uid)]}
@@ -1116,6 +1119,7 @@ def test_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 5,
         "deleted_values_count": 6,
+        "retained_datasets": [],
     }
     assert captured["context"] is runtime.context
     assert captured["uid"] == str(portfolio_uid)
@@ -1161,6 +1165,7 @@ def test_cascade_delete_portfolio_service_maps_source_response(monkeypatch) -> N
         "deleted_virtual_funds_count": 2,
         "deleted_virtual_fund_holdings_sets_count": 3,
         "deleted_virtual_fund_holdings_count": 8,
+        "retained_datasets": [],
     }
     assert captured["context"] is runtime.context
     assert captured["uid"] == str(portfolio_uid)
@@ -1259,6 +1264,10 @@ def test_public_delete_portfolio_blocks_target_position_references(monkeypatch) 
 
 
 def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._portfolio_dataset_tables",
+        lambda context, portfolio_identifier: None,
+    )
     portfolio = _portfolio_row()
     captured: dict[str, object] = {}
 
@@ -1302,6 +1311,7 @@ def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 4,
         "deleted_values_count": 5,
+        "retained_datasets": [],
     }
     assert captured["compile"]["portfolio_uid"] == uuid.UUID(str(portfolio["uid"]))
     assert captured["delete_weights"] == {
@@ -1530,6 +1540,10 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
 
 
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._portfolio_dataset_tables",
+        lambda context, portfolio_identifier: None,
+    )
     portfolio = _portfolio_row()
     weights_date = dt.datetime(2026, 6, 7, 10, 30, tzinfo=dt.UTC)
     captured: dict[str, object] = {}

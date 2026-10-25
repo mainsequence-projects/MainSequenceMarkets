@@ -274,7 +274,7 @@ def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
     monkeypatch.setattr(
         portfolios,
         "_portfolio_delete_preflight_item",
-        lambda context, uid: (True, ["VirtualFundTable references this portfolio."]),
+        lambda context, uid: (True, ["VirtualFundTable references this portfolio."], []),
     )
     monkeypatch.setattr(
         portfolios, "_portfolio_delete_impact", lambda: DeleteRowsImpact(impact=None)

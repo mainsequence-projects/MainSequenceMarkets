@@ -122,6 +122,10 @@ When `weights_date` is provided, rows at or after that timestamp are deleted.
 The API never calls `delete_after_date(None)` without a `signal_uid` dimension
 scope.
 
+When `SignalMetadata.meta_table_uid` names a `SignalWeightsTS` instance another
+application owns (ADR 0047), the route returns 409, deletes nothing and names
+the table. Delete those rows through the application that owns the table.
+
 Response:
 
 ```json
@@ -153,8 +157,14 @@ Response:
   "signal_metadata_uid": "signal-metadata-uid",
   "signal_uid": "canonical-signal-key",
   "deleted_count": 1,
-  "deleted_weights_count": 12
+  "deleted_weights_count": 12,
+  "retained_datasets": []
 }
 ```
+
+When the signal's weights live in a `SignalWeightsTS` instance another
+application owns, the route still deletes the metadata row and any core rows,
+leaves the instance's rows in place and lists the table in `retained_datasets`
+(`signal_uid`, `dataset: "signal_weights"`, `meta_table_uid`).
 
 Missing metadata rows return 404. Protected delete conflicts return 409.

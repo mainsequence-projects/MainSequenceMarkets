@@ -217,6 +217,17 @@ portfolio and strategy identities do not change. Dependent packages declare
   `PlatformTimeIndexMetaTable` storage class written by a
   `TimeIndexTableUpdater` producer, instead of a single DataNode storage
   contract.
+- Portfolio, portfolio-weights, signal and signal-weights deletes respect the
+  ADR 0047 catalog. They used to touch only the core tables, so a portfolio
+  catalogued in another application's contract instance reported zero rows
+  deleted and kept its data. `DELETE /portfolio/{uid}/weights/` and
+  `DELETE /portfolio-signal/{uid}/weights/` now return 409 and delete nothing
+  when the weights live in a table another application owns
+  (`PortfolioDatasetOwnershipError`, `SignalDatasetOwnershipError`). Portfolio
+  and signal deletes, including bulk and cascade, still delete the Markets rows
+  and any core rows, and list each table they left in place in a new
+  `retained_datasets` field. The bulk-delete preflight warns about those tables.
+  A catalog row that names the core table counts as core.
 - `compute_portfolio_configuration_hash` and `compute_signal_uid` no longer
   raise `TypeError` when a configuration holds a `datetime.date` or
   `datetime.time`, such as the execution window of `TimeWeighted`,

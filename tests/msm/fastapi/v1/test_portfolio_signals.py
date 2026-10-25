@@ -181,6 +181,7 @@ def test_delete_portfolio_signal_deletes_metadata_and_weights(monkeypatch) -> No
         "signal_uid": "example-signal",
         "deleted_count": 1,
         "deleted_weights_count": 3,
+        "retained_datasets": [],
     }
 
 
@@ -278,6 +279,7 @@ def test_public_delete_signal_metadata_reports_deleted_weights(monkeypatch) -> N
         "signal_uid": "example-signal",
         "deleted_count": 1,
         "deleted_weights_count": 4,
+        "retained_datasets": [],
     }
     assert captured["compile"] == {"signal_metadata_uid": signal_uid}
     assert captured["delete_weights"] == {

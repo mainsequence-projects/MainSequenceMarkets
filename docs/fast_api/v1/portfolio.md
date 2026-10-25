@@ -421,13 +421,43 @@ Returns:
   "detail": "Portfolio deleted.",
   "deleted_count": 1,
   "deleted_weights_count": 4,
-  "deleted_values_count": 4
+  "deleted_values_count": 4,
+  "retained_datasets": []
 }
 ```
 
 If protected rows, such as virtual funds or account target-position history,
 reference the portfolio, the route returns 409 and does not delete the
 portfolio.
+
+When the Markets catalog (`PortfolioDatasetAvailabilityTable`, ADR 0047) places
+the portfolio's values or weights in a contract instance another application
+owns, Markets does not delete that table's rows: only the owning application
+writes or deletes them. The route still deletes the portfolio row, its catalog
+row and any rows left in the core tables, and lists each table it left in
+place:
+
+```json
+{
+  "detail": "Portfolio deleted. Rows in 1 table another application owns were left in place; see retained_datasets.",
+  "deleted_count": 1,
+  "deleted_weights_count": 0,
+  "deleted_values_count": 0,
+  "retained_datasets": [
+    {
+      "portfolio_uid": "portfolio-uid",
+      "portfolio_identifier": "example-sleeve",
+      "dataset": "values",
+      "meta_table_uid": "provider-values-table-uid"
+    }
+  ]
+}
+```
+
+The deleted counts cover the core tables only. A catalog row that names the
+core table itself counts as core. `POST /api/v1/portfolio/bulk-delete/preflight/`
+reports each retained table as a warning before the delete, and the bulk and
+cascade deletes return the same `retained_datasets` list.
 
 Storage cleanup uses each storage table's
 `TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)` API, scoped
@@ -462,6 +492,10 @@ Returns:
 Weight deletion itself is scoped by `Portfolio.unique_identifier`; the API never
 calls `delete_after_date(None)` without that dimension scope. Protected
 portfolio references only matter for deleting the portfolio identity row.
+
+When the catalog places the portfolio's weights in a `PortfolioWeightsTS`
+instance another application owns, the route returns 409, deletes nothing and
+names the table. Delete those rows through the application that owns the table.
 
 ## Bulk Delete Portfolios
 

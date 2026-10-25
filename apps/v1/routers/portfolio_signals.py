@@ -165,7 +165,9 @@ def update_portfolio_signal_by_uid(
         "Delete historical SignalWeightsStorage rows for one signal metadata row "
         "through the TimeIndexMetaTable tail-delete API. When weights_date is "
         "provided, rows at or after that timestamp are deleted. Without "
-        "weights_date, all storage rows for the signal_uid are deleted."
+        "weights_date, all storage rows for the signal_uid are deleted. When the "
+        "signal's weights live in a SignalWeightsTS instance another application "
+        "owns, the route returns 409 and deletes nothing."
     ),
     operation_id="deletePortfolioSignalWeights",
     status_code=status.HTTP_200_OK,
@@ -173,7 +175,11 @@ def update_portfolio_signal_by_uid(
         404: {
             "model": ErrorResponse,
             "description": "The requested signal metadata uid was not found.",
-        }
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The signal's weights live in a table another application owns.",
+        },
     },
 )
 def remove_portfolio_signal_weights(
@@ -185,6 +191,8 @@ def remove_portfolio_signal_weights(
 ) -> PortfolioSignalWeightsDeleteResponse:
     try:
         response = delete_portfolio_signal_weights(uid=uid, weights_date=weights_date)
+    except PortfolioSignalDeleteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if response is None:
@@ -198,7 +206,9 @@ def remove_portfolio_signal_weights(
     summary="Delete portfolio signal",
     description=(
         "Delete one SignalMetadata row and its historical SignalWeightsStorage rows. "
-        "Storage cleanup uses the TimeIndexMetaTable tail-delete API scoped by signal_uid."
+        "Storage cleanup uses the TimeIndexMetaTable tail-delete API scoped by signal_uid. "
+        "Weights in a SignalWeightsTS instance another application owns stay in place and "
+        "are listed in retained_datasets."
     ),
     operation_id="deletePortfolioSignal",
     status_code=status.HTTP_200_OK,

@@ -473,13 +473,18 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightR
     target_uids = list(dict.fromkeys(uids))
     matched_count = 0
     blockers: list[str] = []
+    warnings: list[str] = []
     for uid in target_uids:
-        exists, resource_blockers = _portfolio_delete_preflight_item(runtime.context, uid=uid)
+        exists, resource_blockers, resource_warnings = _portfolio_delete_preflight_item(
+            runtime.context,
+            uid=uid,
+        )
         if not exists:
             blockers.append(f"Portfolio {uid} was not found.")
             continue
         matched_count += 1
         blockers.extend(f"Portfolio {uid}: {blocker}" for blocker in resource_blockers)
+        warnings.extend(f"Portfolio {uid}: {warning}" for warning in resource_warnings)
     impact = _portfolio_delete_impact()
     blockers.extend(impact.blockers)
 
@@ -494,7 +499,7 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightR
         detail=detail,
         matched_count=matched_count,
         blockers=blockers,
-        warnings=impact.warnings,
+        warnings=[*warnings, *impact.warnings],
         impact=impact.impact,
     )
 
@@ -597,15 +602,31 @@ def _portfolio_delete_impact():
     return delete_rows_impact(PortfolioTable)
 
 
-def _portfolio_delete_preflight_item(context, *, uid: str) -> tuple[bool, list[str]]:
+def _portfolio_delete_preflight_item(
+    context,
+    *,
+    uid: str,
+) -> tuple[bool, list[str], list[str]]:
     from msm_portfolios.services import public_api
 
     existing = public_api._get_portfolio_row(context, uid=uid)
     if existing is None:
-        return False, []
-    portfolio_uid = uuid.UUID(str(public_api._build_portfolio_row(existing)["uid"]))
+        return False, [], []
+    portfolio = public_api._build_portfolio_row(existing)
+    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
+    portfolio_identifier = str(portfolio.get("unique_identifier") or "")
     blockers = public_api._portfolio_delete_blockers(context, portfolio_uid=portfolio_uid)
-    return True, blockers
+    retained = public_api._retained_portfolio_datasets(
+        public_api._portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
+        portfolio_uid=portfolio_uid,
+        portfolio_identifier=portfolio_identifier,
+    )
+    warnings = [
+        f"its {item['dataset']} rows in table {item['meta_table_uid']} stay in place; "
+        "the application that owns that table deletes them."
+        for item in retained
+    ]
+    return True, blockers, warnings
 
 
 def _bulk_cascade_delete_portfolio_records(context, **kwargs):

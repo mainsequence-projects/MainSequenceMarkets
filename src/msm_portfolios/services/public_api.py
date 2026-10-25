@@ -30,6 +30,7 @@ from msm.services.assets.reference_details import asset_reference_details
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services.portfolio_reads import (
+    PortfolioDatasetTables,
     latest_portfolio_weights,
     portfolio_values,
     resolve_portfolio_dataset_tables,
@@ -47,6 +48,25 @@ class PortfolioDeleteConflictError(ValueError):
 
 class SignalDeleteConflictError(ValueError):
     """Raised when a signal cannot be deleted because protected rows reference it."""
+
+
+class PortfolioDatasetOwnershipError(PortfolioDeleteConflictError):
+    """Raised when a delete would remove rows from a table another application owns.
+
+    ADR 0047: a provider owns the contract instances it registers in the Markets
+    catalog. Markets reads them; only the owning application writes or deletes
+    their rows.
+    """
+
+
+class SignalDatasetOwnershipError(SignalDeleteConflictError):
+    """Raised when a delete would remove signal rows from a table another application owns."""
+
+
+PROVIDER_TABLE_DELETE_GUIDANCE = (
+    "Markets does not delete rows in a table another application owns (ADR 0047); "
+    "delete them through the application that owns the table."
+)
 
 
 def list_portfolio_rows_response(
@@ -619,6 +639,7 @@ def delete_signal_metadata_record(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = uuid.UUID(str(signal["uid"]))
     signal_uid = _string_or_empty(signal.get("signal_uid"))
+    retained_datasets = _retained_signal_datasets(existing, signal_uid=signal_uid)
     deleted_weights_count = _delete_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -648,11 +669,12 @@ def delete_signal_metadata_record(
         )
 
     return {
-        "detail": "Signal metadata deleted.",
+        "detail": _deleted_detail("Signal metadata deleted.", retained_datasets),
         "signal_metadata_uid": str(signal_metadata_uid),
         "signal_uid": signal_uid,
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -669,6 +691,15 @@ def delete_signal_weights(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = str(signal["uid"])
     signal_uid = _string_or_empty(signal.get("signal_uid"))
+    owned_table_uid = _provider_owned_table_uid(
+        existing.get("meta_table_uid"),
+        core_storage=SignalWeightsStorage,
+    )
+    if owned_table_uid is not None:
+        raise SignalDatasetOwnershipError(
+            f"Signal {signal_uid!r} stores its weights in table {owned_table_uid}, which "
+            f"another application owns. {PROVIDER_TABLE_DELETE_GUIDANCE}"
+        )
     deleted_count = _delete_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -699,6 +730,11 @@ def delete_portfolio_record(
     _raise_if_portfolio_delete_is_blocked(
         context,
         portfolio_uid=portfolio_uid,
+    )
+    retained_datasets = _retained_portfolio_datasets(
+        _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
+        portfolio_uid=portfolio_uid,
+        portfolio_identifier=portfolio_identifier,
     )
     deleted_weights_count = _delete_portfolio_weight_rows(
         context,
@@ -743,10 +779,11 @@ def delete_portfolio_record(
         )
 
     return {
-        "detail": "Portfolio deleted.",
+        "detail": _deleted_detail("Portfolio deleted.", retained_datasets),
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -762,6 +799,11 @@ def cascade_delete_portfolio_record(
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
+    retained_datasets = _retained_portfolio_datasets(
+        _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
+        portfolio_uid=portfolio_uid,
+        portfolio_identifier=portfolio_identifier,
+    )
     virtual_fund_uids = _virtual_fund_uids_for_portfolio(context, portfolio_uid=portfolio_uid)
     deleted_virtual_fund_holdings_count = _delete_virtual_fund_holding_rows(
         context,
@@ -798,7 +840,7 @@ def cascade_delete_portfolio_record(
 
     row = rows[0]
     return {
-        "detail": "Portfolio cascade deleted.",
+        "detail": _deleted_detail("Portfolio cascade deleted.", retained_datasets),
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
@@ -808,6 +850,7 @@ def cascade_delete_portfolio_record(
             row.get("deleted_virtual_fund_holdings_sets_count")
         ),
         "deleted_virtual_fund_holdings_count": deleted_virtual_fund_holdings_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -824,6 +867,17 @@ def delete_portfolio_weights(
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
+    tables = _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier)
+    owned_table_uid = _provider_owned_table_uid(
+        tables.weights_meta_table_uid if tables is not None else None,
+        core_storage=PortfolioWeightsStorage,
+    )
+    if owned_table_uid is not None:
+        raise PortfolioDatasetOwnershipError(
+            f"Portfolio {portfolio_identifier!r} stores its weights in table "
+            f"{owned_table_uid}, which another application owns. "
+            f"{PROVIDER_TABLE_DELETE_GUIDANCE}"
+        )
 
     deleted_count = _delete_portfolio_weight_rows(
         context,
@@ -847,6 +901,7 @@ def bulk_delete_portfolio_records(
     deleted_count = 0
     deleted_weights_count = 0
     deleted_values_count = 0
+    retained_datasets: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
 
     for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
@@ -859,6 +914,7 @@ def bulk_delete_portfolio_records(
             deleted_count += int(deleted.get("deleted_count", 1))
             deleted_weights_count += _int_or_zero(deleted.get("deleted_weights_count"))
             deleted_values_count += _int_or_zero(deleted.get("deleted_values_count"))
+            retained_datasets.extend(deleted.get("retained_datasets") or [])
         else:
             failed.append({"uid": uid, "reason": "Portfolio was not found."})
 
@@ -877,6 +933,7 @@ def bulk_delete_portfolio_records(
         "deleted_count": deleted_count,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
+        "retained_datasets": retained_datasets,
         "failed": failed,
     }
 
@@ -895,6 +952,7 @@ def bulk_cascade_delete_portfolio_records(
         "deleted_virtual_fund_holdings_sets_count": 0,
         "deleted_virtual_fund_holdings_count": 0,
     }
+    retained_datasets: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
 
     for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
@@ -906,6 +964,7 @@ def bulk_cascade_delete_portfolio_records(
         if deleted:
             for key in totals:
                 totals[key] += _int_or_zero(deleted.get(key))
+            retained_datasets.extend(deleted.get("retained_datasets") or [])
         else:
             failed.append({"uid": uid, "reason": "Portfolio was not found."})
 
@@ -926,8 +985,101 @@ def bulk_cascade_delete_portfolio_records(
     return {
         "detail": detail,
         **totals,
+        "retained_datasets": retained_datasets,
         "failed": failed,
     }
+
+
+def _portfolio_dataset_tables(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_identifier: str,
+) -> PortfolioDatasetTables | None:
+    """Return the catalogued instance tables of one portfolio, or ``None`` for the core tables."""
+
+    if not portfolio_identifier:
+        return None
+    return resolve_portfolio_dataset_tables(
+        portfolio_identifier,
+        repository_context=context,
+    ).get(portfolio_identifier)
+
+
+def _provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
+    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
+
+    ``None`` means the core table, which Markets owns and deletes from. Any other
+    uid is a contract instance registered by another application.
+    """
+
+    if meta_table_uid in (None, ""):
+        return None
+    core_meta_table = core_storage.get_time_index_meta_table()
+    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
+        meta_table_uid
+    ):
+        return None
+    return str(meta_table_uid)
+
+
+def _retained_portfolio_datasets(
+    tables: PortfolioDatasetTables | None,
+    *,
+    portfolio_uid: uuid.UUID,
+    portfolio_identifier: str,
+) -> list[dict[str, str]]:
+    """List the portfolio datasets a delete leaves in tables other applications own."""
+
+    if tables is None:
+        return []
+    retained: list[dict[str, str]] = []
+    for dataset, meta_table_uid, core_storage in (
+        ("values", tables.values_meta_table_uid, PortfoliosStorage),
+        ("weights", tables.weights_meta_table_uid, PortfolioWeightsStorage),
+    ):
+        owned_table_uid = _provider_owned_table_uid(meta_table_uid, core_storage=core_storage)
+        if owned_table_uid is not None:
+            retained.append(
+                {
+                    "portfolio_uid": str(portfolio_uid),
+                    "portfolio_identifier": portfolio_identifier,
+                    "dataset": dataset,
+                    "meta_table_uid": owned_table_uid,
+                }
+            )
+    return retained
+
+
+def _retained_signal_datasets(
+    signal_metadata_row: Mapping[str, Any],
+    *,
+    signal_uid: str,
+) -> list[dict[str, str]]:
+    """List the signal dataset a delete leaves in a table another application owns."""
+
+    owned_table_uid = _provider_owned_table_uid(
+        signal_metadata_row.get("meta_table_uid"),
+        core_storage=SignalWeightsStorage,
+    )
+    if owned_table_uid is None:
+        return []
+    return [
+        {
+            "signal_uid": signal_uid,
+            "dataset": "signal_weights",
+            "meta_table_uid": owned_table_uid,
+        }
+    ]
+
+
+def _deleted_detail(detail: str, retained_datasets: Sequence[Mapping[str, Any]]) -> str:
+    if not retained_datasets:
+        return detail
+    return (
+        f"{detail} Rows in {len(retained_datasets)} table"
+        f"{'s' if len(retained_datasets) != 1 else ''} another application owns were left in "
+        "place; see retained_datasets."
+    )
 
 
 def _raise_if_portfolio_delete_is_blocked(

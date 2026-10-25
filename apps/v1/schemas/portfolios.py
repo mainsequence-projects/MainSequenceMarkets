@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -166,6 +166,24 @@ class PortfolioDeleteFailure(BaseModel):
     reason: str
 
 
+class RetainedPortfolioDataset(BaseModel):
+    """A portfolio dataset a delete left in a table another application owns (ADR 0047)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    portfolio_uid: str
+    portfolio_identifier: str | None = None
+    dataset: Literal["values", "weights"] = Field(
+        description="Which catalogued dataset the table holds for this portfolio."
+    )
+    meta_table_uid: str = Field(
+        description=(
+            "TimeIndexMetaTable uid of the contract instance. Markets does not delete its rows; "
+            "the application that owns the table does."
+        )
+    )
+
+
 class PortfolioDeleteResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -173,6 +191,13 @@ class PortfolioDeleteResponse(BaseModel):
     deleted_count: int = 0
     deleted_weights_count: int = 0
     deleted_values_count: int = 0
+    retained_datasets: list[RetainedPortfolioDataset] = Field(
+        default_factory=list,
+        description=(
+            "Catalogued datasets whose rows stay in tables other applications own. "
+            "The deleted counts cover only the Markets core tables."
+        ),
+    )
 
 
 class PortfolioBulkDeleteResponse(PortfolioDeleteResponse):

@@ -672,7 +672,9 @@ def get_portfolio_values_frame_by_uid(
         "Delete historical portfolio weight rows for one portfolio through the "
         "TimeIndexMetaTable tail-delete API. When `weights_date` is provided, "
         "rows at or after that timestamp are deleted. Without `weights_date`, "
-        "all weight rows for the portfolio identifier are deleted."
+        "all weight rows for the portfolio identifier are deleted. When the Markets "
+        "catalog places the portfolio's weights in a PortfolioWeightsTS instance "
+        "another application owns, the route returns 409 and deletes nothing."
     ),
     operation_id="deletePortfolioWeights",
     status_code=status.HTTP_200_OK,
@@ -680,6 +682,10 @@ def get_portfolio_values_frame_by_uid(
         404: {
             "model": ErrorResponse,
             "description": "The requested portfolio uid was not found.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The portfolio's weights live in a table another application owns.",
         },
     },
 )
@@ -693,6 +699,8 @@ def remove_portfolio_weights(
     try:
         response = delete_portfolio_weights(uid=uid, weights_date=weights_date)
     except ValueError as exc:
+        if exc.__class__.__name__ == "PortfolioDatasetOwnershipError":
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
@@ -735,7 +743,9 @@ def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
     summary="Delete portfolio",
     description=(
         "Delete one portfolio identity row. The route returns 409 when protected "
-        "rows, such as account target-position history, still reference the portfolio."
+        "rows, such as account target-position history, still reference the portfolio. "
+        "Values and weights catalogued in tables another application owns stay in place "
+        "and are listed in retained_datasets."
     ),
     operation_id="deletePortfolio",
     status_code=status.HTTP_200_OK,
