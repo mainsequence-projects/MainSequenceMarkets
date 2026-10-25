@@ -1319,15 +1319,14 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
     def fake_compile(statement, **kwargs):
         captured["statement"] = statement
         captured.update(kwargs)
-        return "compiled-values-select"
+        return statement
 
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {
+    def fake_execute(operation, context):
+        # ADR 0047: the read first resolves the portfolio's dataset instance from the
+        # Markets catalog; no row means the core PortfoliosStorage table.
+        if "portfoliodatasetavailability" in str(operation):
+            return {"rows": []}
+        return {
             "rows": [
                 {
                     "time_index": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
@@ -1338,7 +1337,15 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
                     "close_time": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
                 }
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.compile_markets_statement",
+        fake_compile,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.execute_markets_operation",
+        fake_execute,
     )
 
     from msm_portfolios.services.public_api import get_portfolio_values_frame_response
@@ -1377,15 +1384,16 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
     def fake_compile(statement, **kwargs):
         captured["statement"] = statement
         captured.update(kwargs)
-        return "compiled-signal-select"
+        return statement
 
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {
+    def fake_execute(operation, context):
+        # No catalog row and no SignalMetadata.meta_table_uid: the core table is read.
+        sql = str(operation)
+        if "portfoliodatasetavailability" in sql:
+            return {"rows": []}
+        if "signalweightsts" not in sql:
+            return {"rows": [{"meta_table_uid": None}]}
+        return {
             "rows": [
                 {
                     "time_index": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
@@ -1394,7 +1402,15 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
                     "signal_weight": 0.6,
                 }
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.compile_markets_statement",
+        fake_compile,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.execute_markets_operation",
+        fake_execute,
     )
 
     from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response

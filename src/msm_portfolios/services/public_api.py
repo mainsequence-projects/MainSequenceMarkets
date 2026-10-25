@@ -28,6 +28,12 @@ from msm.repositories.base import compile_markets_statement, execute_markets_ope
 from msm.services.assets.reference_details import asset_reference_details
 from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.services.portfolio_reads import (
+    latest_portfolio_weights,
+    portfolio_values,
+    resolve_portfolio_dataset_tables,
+    signal_weights,
+)
 from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
@@ -328,22 +334,14 @@ def get_portfolio_weights_snapshot_response(
     portfolio = _build_portfolio_row(portfolio_row)
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
 
-    snapshot_time = weights_date or _portfolio_weights_snapshot_time(
-        context,
-        portfolio_identifier=portfolio_identifier,
+    # ADR 0047: the weights table is resolved from the Markets catalog per portfolio;
+    # an exact ``weights_date`` reads that snapshot, otherwise the latest (or earliest).
+    weight_rows = latest_portfolio_weights(
+        portfolio_identifier,
+        weights_date=weights_date,
+        as_of=False,
         order=order,
-    )
-    if snapshot_time is None:
-        return _empty_weights_snapshot(
-            portfolio=portfolio,
-            portfolio_identifier=portfolio_identifier,
-            warning=None,
-        )
-
-    weight_rows = _portfolio_weights_rows(
-        context,
-        portfolio_identifier=portfolio_identifier,
-        weights_date=snapshot_time,
+        repository_context=context,
     )
     if not weight_rows:
         return _empty_weights_snapshot(
@@ -351,6 +349,7 @@ def get_portfolio_weights_snapshot_response(
             portfolio_identifier=portfolio_identifier,
             warning=None,
         )
+    snapshot_time = weights_date or _datetime_or_none(weight_rows[0].get("time_index"))
 
     asset_references = (
         _asset_references_by_unique_identifier(context, rows=weight_rows)
@@ -394,7 +393,7 @@ def get_portfolio_values_frame_response(
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
     rows = _portfolio_values_rows(
         context,
-        portfolio_identifier=portfolio_identifier,
+        portfolio_identifiers=[portfolio_identifier],
         start_date=start_date,
         end_date=end_date,
         order=order,
@@ -466,6 +465,7 @@ def get_portfolio_signal_weights_frame_response(
     rows = _portfolio_signal_weight_rows(
         context,
         signal_uid=signal_uid,
+        portfolio_identifier=_string_or_empty(portfolio.get("unique_identifier")),
         start_date=start_date,
         end_date=end_date,
         order=order,
@@ -1336,121 +1336,80 @@ def _get_portfolio_metadata_row(
     return rows[0] if rows else None
 
 
-def _portfolio_weights_snapshot_time(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_identifier: str,
-    order: Literal["asc", "desc"],
-) -> dt.datetime | None:
-    aggregate = (
-        func.min(PortfolioWeightsStorage.time_index)
-        if order == "asc"
-        else func.max(PortfolioWeightsStorage.time_index)
-    )
-    statement = select(aggregate.label("time_index")).where(
-        PortfolioWeightsStorage.portfolio_identifier == portfolio_identifier
-    )
-    result = execute_markets_operation(
-        compile_markets_statement(
-            statement,
-            context=context,
-            operation="select",
-        ),
-        context=context,
-    )
-    row = _first_operation_row(result)
-    if row is None:
-        return None
-    return _datetime_or_none(row.get("time_index"))
-
-
-def _portfolio_weights_rows(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_identifier: str,
-    weights_date: dt.datetime,
-) -> list[dict[str, Any]]:
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=PortfolioWeightsStorage,
-            filters={
-                "portfolio_identifier": portfolio_identifier,
-                "time_index": weights_date,
-            },
-            limit=MAX_PORTFOLIO_SCAN_LIMIT,
-        )
-    )
-
-
 def _portfolio_values_rows(
     context: MarketsRepositoryContext,
     *,
-    portfolio_identifier: str,
+    portfolio_identifiers: Sequence[str],
     start_date: dt.datetime | None,
     end_date: dt.datetime | None,
     order: Literal["asc", "desc"],
     limit: int,
 ) -> list[dict[str, Any]]:
-    statement = select(PortfoliosStorage).where(
-        PortfoliosStorage.portfolio_identifier == portfolio_identifier
+    """Read values for one or more portfolios through the catalog-aware read service.
+
+    ADR 0047: each portfolio's ``PortfoliosTS`` instance comes from the Markets
+    catalog and is read by uid; portfolios without a catalog row read the core
+    table. Rows are ordered by time index as requested and bounded by ``limit``.
+    """
+
+    rows = portfolio_values(
+        list(portfolio_identifiers),
+        start=start_date,
+        end=end_date,
+        repository_context=context,
     )
-    statement = _apply_time_range(
-        statement,
-        time_column=PortfoliosStorage.time_index,
-        start_date=start_date,
-        end_date=end_date,
+    rows.sort(
+        key=lambda row: (
+            _sort_time(row.get("time_index")),
+            _string_or_empty(row.get("portfolio_identifier")),
+        ),
+        reverse=order == "desc",
     )
-    statement = statement.order_by(
-        PortfoliosStorage.time_index.asc()
-        if order == "asc"
-        else PortfoliosStorage.time_index.desc()
-    )
-    statement = statement.limit(limit)
-    return _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
+    return rows[:limit]
 
 
 def _portfolio_signal_weight_rows(
     context: MarketsRepositoryContext,
     *,
     signal_uid: str,
+    portfolio_identifier: str | None = None,
     start_date: dt.datetime | None,
     end_date: dt.datetime | None,
     order: Literal["asc", "desc"],
     limit: int,
 ) -> list[dict[str, Any]]:
-    statement = select(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid == signal_uid)
-    statement = _apply_time_range(
-        statement,
-        time_column=SignalWeightsStorage.time_index,
-        start_date=start_date,
-        end_date=end_date,
+    """Read signal weights through the catalog-aware read service.
+
+    The ``SignalWeightsTS`` instance is the portfolio's catalogued signal table
+    when the portfolio is known, else the signal's own metadata reference, else
+    the core table.
+    """
+
+    meta_table_uid: str | None = None
+    if portfolio_identifier:
+        resolved = resolve_portfolio_dataset_tables(
+            portfolio_identifier,
+            repository_context=context,
+        ).get(portfolio_identifier)
+        meta_table_uid = resolved.signal_meta_table_uid if resolved is not None else None
+    return signal_weights(
+        signal_uid,
+        start=start_date,
+        end=end_date,
+        order=order,
+        limit=limit,
+        meta_table_uid=meta_table_uid,
+        repository_context=context,
     )
-    statement = statement.order_by(
-        SignalWeightsStorage.time_index.asc()
-        if order == "asc"
-        else SignalWeightsStorage.time_index.desc()
-    )
-    statement = statement.limit(limit)
-    return _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
+
+
+def _sort_time(value: Any) -> float:
+    moment = _datetime_or_none(value)
+    if moment is None:
+        return float("-inf")
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.UTC)
+    return moment.timestamp()
 
 
 def _apply_time_range(

@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
 from msm.data_nodes.assets.storage import AssetSnapshotsStorage  # noqa: E402
+from msm.models import PortfolioDatasetAvailabilityTable  # noqa: E402
 from msm.services.assets import asset_reference_details  # noqa: E402
 from msm_portfolios.data_nodes.portfolios.storage import (  # noqa: E402
     PortfolioWeightsStorage,
@@ -32,6 +33,10 @@ def build_portfolio_read_services_example() -> dict[str, Any]:
 
     def portfolio_executor(statement: Any) -> dict[str, Any]:
         tables = _referenced_tables(statement)
+        if PortfolioDatasetAvailabilityTable.__table__.name in tables:
+            # The reads first resolve each portfolio's dataset instance from the
+            # Markets catalog (ADR 0047). No catalog row means the core tables.
+            return {"rows": []}
         if PortfolioWeightsStorage.__table__.name in tables:
             return {
                 "rows": [
