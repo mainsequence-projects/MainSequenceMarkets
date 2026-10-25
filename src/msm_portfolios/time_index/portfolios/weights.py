@@ -42,14 +42,27 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         *args,
         portfolio_configuration: Any | None = None,
         portfolio_rebalance: PortfolioRebalance | None = None,
+        rebalance_output_table: OutputTable | None = None,
         namespace: str | None = None,
         **kwargs,
     ):
+        """Create the executed-weights updater.
+
+        ``output_table`` binds these weights to a ``PortfolioWeightsTS`` instance and
+        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to a
+        ``PortfolioRebalanceStateTS`` instance (ADR 0047). Neither enters ``update_hash``:
+        MetaTables keys each update record by update hash and output table.
+        """
         self._portfolio_configuration = portfolio_configuration
         self.portfolio_rebalance = portfolio_rebalance
+        self._rebalance_output_table = rebalance_output_table
         super().__init__(config, *args, namespace=namespace, **kwargs)
         if portfolio_configuration is not None:
             self.set_portfolio_configuration(portfolio_configuration)
+
+    def _initialize_configuration(self, init_kwargs: dict) -> None:
+        init_kwargs.pop("rebalance_output_table", None)
+        super()._initialize_configuration(init_kwargs=init_kwargs)
 
     def set_portfolio_configuration(
         self,
@@ -73,7 +86,13 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         if portfolio_rebalance is not None:
             self.portfolio_rebalance = portfolio_rebalance
         if self.portfolio_rebalance is None:
-            self.portfolio_rebalance = PortfolioRebalance(namespace=self.hash_namespace)
+            rebalance_kwargs: dict[str, Any] = {}
+            if self._rebalance_output_table is not None:
+                rebalance_kwargs["output_table"] = self._rebalance_output_table
+            self.portfolio_rebalance = PortfolioRebalance(
+                namespace=self.hash_namespace,
+                **rebalance_kwargs,
+            )
         self.portfolio_rebalance.set_portfolio_configuration(
             portfolio_configuration,
             portfolio_identifier=portfolio_identifier,

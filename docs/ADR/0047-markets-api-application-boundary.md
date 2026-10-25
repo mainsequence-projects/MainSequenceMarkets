@@ -361,6 +361,20 @@ Implemented in `msm_portfolios.time_index.contract_instances`,
 - Signals: `SignalMetadataTable.meta_table_uid` is set by registration when the
   portfolio has a `signal_uid`, so a signal read without a portfolio still
   resolves its instance.
+- The engine outputs follow the same pattern. `PortfolioRebalanceStateTS`,
+  `PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` are contracts with
+  factories in `contract_instances`, and `PortfoliosUpdater` takes
+  `weights_output_table=` and `rebalance_output_table=` for the
+  `PortfolioWeights` and `PortfolioRebalance` updaters it builds, so a provider
+  can keep every row of a computed portfolio in its own namespace. Output
+  tables do not enter `update_hash`; MetaTables keys each update record by
+  update hash and output table, so a provider-bound updater gets its own record
+  without a new identity. The catalog still records values, weights and signal
+  instances only.
+- Deletes respect the catalog. Markets does not delete rows in a table another
+  application owns: weight and signal-weight deletes return 409 for such a
+  portfolio, and portfolio and signal deletes remove the Markets rows and list
+  the instances they left in place in `retained_datasets`.
 
 ### 2026-10-25: step 1, decision 3 (acting identity)
 

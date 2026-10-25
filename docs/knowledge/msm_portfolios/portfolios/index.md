@@ -389,7 +389,9 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
+from msm_portfolios.time_index import PortfoliosUpdater
 from msm_portfolios.time_index.contract_instances import (
+    configured_portfolio_rebalance_state_storage,
     configured_portfolio_weights_storage,
     configured_portfolios_storage,
     configured_signal_weights_storage,
@@ -430,6 +432,33 @@ Markets registry; the Markets migration provider still lists only the core
 tables. The provider may add columns beyond the contract; Markets reads the
 contract columns and ignores the rest. `PortfolioCanonicalUpdater` subclasses
 accept the instance through `output_table=`.
+
+The engine outputs are contracts too: `configured_portfolio_rebalance_state_storage`,
+`configured_portfolio_calendar_events_storage` and
+`configured_portfolio_event_ledger_storage` build `PortfolioRebalanceStateTS`,
+`PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` instances with the same
+arguments. `PortfoliosUpdater` builds its own `PortfolioWeights` and
+`PortfolioRebalance` updaters, so it takes their instances as well:
+
+```python
+ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
+    instance_key="main", namespace="my-provider",
+    storage_app="my_provider", base=ProviderBase,
+)
+
+updater = PortfoliosUpdater(
+    portfolio_configuration=portfolio_configuration,
+    namespace="my-provider",
+    output_table=ProviderPortfoliosStorage,
+    weights_output_table=ProviderPortfolioWeightsStorage,
+    rebalance_output_table=ProviderRebalanceStateStorage,
+)
+```
+
+`PortfolioWeights` alone takes `output_table=` and `rebalance_output_table=`.
+Instance tables change where rows land, not identities: none of them enters
+`update_hash`, and MetaTables keys each update record by update hash and output
+table.
 
 Markets keeps the catalog in `PortfolioDatasetAvailabilityTable`
 (`msm.models.portfolio_dataset_availability`, identifier

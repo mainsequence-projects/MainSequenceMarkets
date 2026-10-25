@@ -1,12 +1,16 @@
 """Contract-plus-instance factories for the portfolio time-series contracts (ADR 0047).
 
-``PortfoliosTS``, ``PortfolioWeightsTS`` and ``SignalWeightsTS`` are storage
-contracts: ms-markets owns their columns, dtypes, time index and index names.
-The core tables declared in ``msm_portfolios.time_index.portfolios.storage`` and
+``PortfoliosTS``, ``PortfolioWeightsTS``, ``SignalWeightsTS`` and the engine
+outputs ``PortfolioRebalanceStateTS``, ``PortfolioCalendarEventsTS`` and
+``PortfolioEventLedgerTS`` are storage contracts: ms-markets owns their columns,
+dtypes, time index and index names. The core tables declared in
+``msm_portfolios.time_index.portfolios.storage`` and
 ``msm_portfolios.time_index.signals.storage`` are the Markets-owned instance. A
 provider builds its own instance with the factories here, under its own
 MetaTables namespace and physical-name app segment, migrates it with its own
-provider and binds its nodes to it with ``output_table=``. The MetaTable
+provider and binds its updaters to it with ``output_table=``.
+``PortfoliosUpdater`` also takes ``weights_output_table=`` and
+``rebalance_output_table=`` for the updaters it builds internally. The MetaTable
 identifier of an instance is stable and derived from the contract name and the
 instance key: ``PortfoliosTS.<instance_key>``, prefixed with the namespace when
 that namespace is not the default Markets one.
@@ -26,10 +30,17 @@ from sqlalchemy.orm import DeclarativeBase
 from metatables import PlatformTimeIndexMetaTable, schema_index_name, schema_table_name
 from msm.base import MARKETS_TABLE_APP, MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
+from msm.models.calendars import CalendarTable
 from msm.models.portfolios.core import PortfolioTable
 from msm.models.portfolios.signals import SignalMetadataTable
 from msm.settings import markets_identifier, markets_namespace
-from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage, PortfolioWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import (
+    PortfolioCalendarEventsStorage,
+    PortfolioEventLedgerStorage,
+    PortfolioRebalanceStateStorage,
+    PortfoliosStorage,
+    PortfolioWeightsStorage,
+)
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 
 CONTRACT_INSTANCE_CONTRACT_COMPONENT = "storage_contract"
@@ -38,6 +49,9 @@ CONTRACT_INSTANCE_KEY_COMPONENT = "instance_key"
 PORTFOLIOS_CONTRACT = "PortfoliosTS"
 PORTFOLIO_WEIGHTS_CONTRACT = "PortfolioWeightsTS"
 SIGNAL_WEIGHTS_CONTRACT = "SignalWeightsTS"
+PORTFOLIO_REBALANCE_STATE_CONTRACT = "PortfolioRebalanceStateTS"
+PORTFOLIO_CALENDAR_EVENTS_CONTRACT = "PortfolioCalendarEventsTS"
+PORTFOLIO_EVENT_LEDGER_CONTRACT = "PortfolioEventLedgerTS"
 
 _INSTANCE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,62}$")
 
@@ -101,11 +115,40 @@ PORTFOLIO_STORAGE_CONTRACTS: Mapping[str, PortfolioStorageContract] = {
         ),
         dimension="signal_uid",
     ),
+    PORTFOLIO_REBALANCE_STATE_CONTRACT: PortfolioStorageContract(
+        name=PORTFOLIO_REBALANCE_STATE_CONTRACT,
+        core_storage=PortfolioRebalanceStateStorage,
+        foreign_keys=(
+            ContractForeignKey("portfolio_identifier", PortfolioTable, "unique_identifier"),
+            ContractForeignKey("asset_identifier", AssetTable, "unique_identifier"),
+        ),
+        dimension="portfolio_identifier",
+    ),
+    PORTFOLIO_CALENDAR_EVENTS_CONTRACT: PortfolioStorageContract(
+        name=PORTFOLIO_CALENDAR_EVENTS_CONTRACT,
+        core_storage=PortfolioCalendarEventsStorage,
+        foreign_keys=(
+            ContractForeignKey("calendar_identifier", CalendarTable, "unique_identifier"),
+        ),
+        dimension="calendar_identifier",
+    ),
+    PORTFOLIO_EVENT_LEDGER_CONTRACT: PortfolioStorageContract(
+        name=PORTFOLIO_EVENT_LEDGER_CONTRACT,
+        core_storage=PortfolioEventLedgerStorage,
+        foreign_keys=(
+            ContractForeignKey("portfolio_identifier", PortfolioTable, "unique_identifier"),
+            ContractForeignKey("asset_identifier", AssetTable, "unique_identifier"),
+            ContractForeignKey("amount_asset_identifier", AssetTable, "unique_identifier"),
+            ContractForeignKey("price_asset_identifier", AssetTable, "unique_identifier"),
+            ContractForeignKey("valuation_asset_identifier", AssetTable, "unique_identifier"),
+        ),
+        dimension="portfolio_identifier",
+    ),
 }
 
 
 def portfolio_storage_contract(name: str) -> PortfolioStorageContract:
-    """Return the contract definition for ``PortfoliosTS``, ``PortfolioWeightsTS`` or ``SignalWeightsTS``."""
+    """Return the definition of one portfolio time-series contract by name."""
 
     try:
         return PORTFOLIO_STORAGE_CONTRACTS[str(name)]
@@ -254,6 +297,60 @@ def configured_signal_weights_storage(
     )
 
 
+def configured_portfolio_rebalance_state_storage(
+    *,
+    instance_key: str,
+    namespace: str | None = None,
+    storage_app: str = MARKETS_TABLE_APP,
+    base: type[DeclarativeBase] | None = None,
+) -> type[PlatformTimeIndexMetaTable]:
+    """Build one ``PortfolioRebalanceStateTS`` instance (rebalance intents and fills)."""
+
+    return configured_contract_instance_storage(
+        PORTFOLIO_REBALANCE_STATE_CONTRACT,
+        instance_key=instance_key,
+        namespace=namespace,
+        storage_app=storage_app,
+        base=base,
+    )
+
+
+def configured_portfolio_calendar_events_storage(
+    *,
+    instance_key: str,
+    namespace: str | None = None,
+    storage_app: str = MARKETS_TABLE_APP,
+    base: type[DeclarativeBase] | None = None,
+) -> type[PlatformTimeIndexMetaTable]:
+    """Build one ``PortfolioCalendarEventsTS`` instance (session open and close events)."""
+
+    return configured_contract_instance_storage(
+        PORTFOLIO_CALENDAR_EVENTS_CONTRACT,
+        instance_key=instance_key,
+        namespace=namespace,
+        storage_app=storage_app,
+        base=base,
+    )
+
+
+def configured_portfolio_event_ledger_storage(
+    *,
+    instance_key: str,
+    namespace: str | None = None,
+    storage_app: str = MARKETS_TABLE_APP,
+    base: type[DeclarativeBase] | None = None,
+) -> type[PlatformTimeIndexMetaTable]:
+    """Build one ``PortfolioEventLedgerTS`` instance (the position-aware engine's ledger)."""
+
+    return configured_contract_instance_storage(
+        PORTFOLIO_EVENT_LEDGER_CONTRACT,
+        instance_key=instance_key,
+        namespace=namespace,
+        storage_app=storage_app,
+        base=base,
+    )
+
+
 def contract_columns_satisfied(contract: str, column_names: Any) -> bool:
     """Return whether a registered table exposes every contract column.
 
@@ -368,12 +465,18 @@ __all__ = [
     "CONTRACT_INSTANCE_CONTRACT_COMPONENT",
     "CONTRACT_INSTANCE_KEY_COMPONENT",
     "PORTFOLIOS_CONTRACT",
+    "PORTFOLIO_CALENDAR_EVENTS_CONTRACT",
+    "PORTFOLIO_EVENT_LEDGER_CONTRACT",
+    "PORTFOLIO_REBALANCE_STATE_CONTRACT",
     "PORTFOLIO_STORAGE_CONTRACTS",
     "PORTFOLIO_WEIGHTS_CONTRACT",
     "SIGNAL_WEIGHTS_CONTRACT",
     "ContractForeignKey",
     "PortfolioStorageContract",
     "configured_contract_instance_storage",
+    "configured_portfolio_calendar_events_storage",
+    "configured_portfolio_event_ledger_storage",
+    "configured_portfolio_rebalance_state_storage",
     "configured_portfolio_weights_storage",
     "configured_portfolios_storage",
     "configured_signal_weights_storage",

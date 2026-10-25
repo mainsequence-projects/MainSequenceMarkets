@@ -20,6 +20,9 @@ from msm.models import AssetTable, PortfolioTable, SignalMetadataTable
 from msm_portfolios.time_index.contract_instances import (
     PORTFOLIO_STORAGE_CONTRACTS,
     configured_contract_instance_storage,
+    configured_portfolio_calendar_events_storage,
+    configured_portfolio_event_ledger_storage,
+    configured_portfolio_rebalance_state_storage,
     configured_portfolio_weights_storage,
     configured_portfolios_storage,
     configured_signal_weights_storage,
@@ -27,7 +30,13 @@ from msm_portfolios.time_index.contract_instances import (
     contract_instance_identifier,
     contract_instance_table_name,
 )
-from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
+from msm_portfolios.time_index.portfolios.storage import (
+    PortfolioCalendarEventsStorage,
+    PortfolioEventLedgerStorage,
+    PortfolioRebalanceStateStorage,
+    PortfoliosStorage,
+    PortfolioWeightsStorage,
+)
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
@@ -38,6 +47,21 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
         (configured_portfolios_storage, "PortfoliosTS", PortfoliosStorage),
         (configured_portfolio_weights_storage, "PortfolioWeightsTS", PortfolioWeightsStorage),
         (configured_signal_weights_storage, "SignalWeightsTS", SignalWeightsStorage),
+        (
+            configured_portfolio_rebalance_state_storage,
+            "PortfolioRebalanceStateTS",
+            PortfolioRebalanceStateStorage,
+        ),
+        (
+            configured_portfolio_calendar_events_storage,
+            "PortfolioCalendarEventsTS",
+            PortfolioCalendarEventsStorage,
+        ),
+        (
+            configured_portfolio_event_ledger_storage,
+            "PortfolioEventLedgerTS",
+            PortfolioEventLedgerStorage,
+        ),
     ],
 )
 def test_instances_share_the_contract_schema_under_a_provider_namespace(factory, contract, core):
@@ -94,6 +118,42 @@ def test_instances_keep_the_contract_foreign_keys_to_core_registries() -> None:
     assert targets(weights, "asset_identifier") == [asset]
     assert targets(signals, "signal_uid") == [f"{SignalMetadataTable.__table__.fullname}.signal_uid"]
     assert targets(signals, "asset_identifier") == [asset]
+
+
+@pytest.mark.parametrize(
+    ("factory", "core"),
+    [
+        (configured_portfolio_rebalance_state_storage, PortfolioRebalanceStateStorage),
+        (configured_portfolio_calendar_events_storage, PortfolioCalendarEventsStorage),
+        (configured_portfolio_event_ledger_storage, PortfolioEventLedgerStorage),
+    ],
+)
+def test_engine_output_instances_keep_every_core_foreign_key(factory, core) -> None:
+    instance = factory(instance_key="fk_check", namespace="ns-a")
+
+    def foreign_keys(model):
+        return sorted(
+            (fk.parent.name, fk.target_fullname, fk.ondelete)
+            for fk in model.__table__.foreign_keys
+        )
+
+    assert foreign_keys(instance) == foreign_keys(core)
+
+
+def test_every_contract_declares_the_core_table_foreign_keys() -> None:
+    for definition in PORTFOLIO_STORAGE_CONTRACTS.values():
+        declared = sorted(
+            (
+                foreign_key.source_column,
+                f"{foreign_key.target_table.__table__.fullname}.{foreign_key.target_column}",
+            )
+            for foreign_key in definition.foreign_keys
+        )
+        core = sorted(
+            (fk.parent.name, fk.target_fullname)
+            for fk in definition.core_storage.__table__.foreign_keys
+        )
+        assert declared == core, definition.name
 
 
 def test_identifier_is_stable_and_derived_from_contract_and_instance_key() -> None:

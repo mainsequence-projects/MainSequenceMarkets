@@ -19,6 +19,16 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- The portfolio engine can write every output to a provider's own instances
+  (ADR 0047). `PortfolioRebalanceStateTS`, `PortfolioCalendarEventsTS` and
+  `PortfolioEventLedgerTS` are storage contracts with the factories
+  `configured_portfolio_rebalance_state_storage`,
+  `configured_portfolio_calendar_events_storage` and
+  `configured_portfolio_event_ledger_storage`. `PortfoliosUpdater` takes
+  `weights_output_table=` and `rebalance_output_table=` for the
+  `PortfolioWeights` and `PortfolioRebalance` updaters it builds, and
+  `PortfolioWeights` takes `rebalance_output_table=`. Output tables do not
+  enter `update_hash`, so no existing identity changes.
 - [ADR 0047](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0047-markets-api-application-boundary/)
   proposes the
   Markets API as the application boundary: provider-owned namespaces and

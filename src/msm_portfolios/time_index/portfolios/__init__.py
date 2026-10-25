@@ -47,9 +47,22 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         portfolio_resolver: Any | None = None,
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
+        weights_output_table: OutputTable | None = None,
+        rebalance_output_table: OutputTable | None = None,
         namespace: str | None = None,
         **kwargs,
     ):
+        """Create the valuation updater.
+
+        ``output_table`` binds the portfolio values to a ``PortfoliosTS`` instance. The
+        updaters built internally follow the same instance pattern (ADR 0047):
+        ``weights_output_table`` binds ``PortfolioWeights`` to a ``PortfolioWeightsTS``
+        instance and ``rebalance_output_table`` binds ``PortfolioRebalance`` to a
+        ``PortfolioRebalanceStateTS`` instance. None of them enters ``update_hash``;
+        MetaTables keys each update record by update hash and output table.
+        """
+        self._weights_output_table = weights_output_table
+        self._rebalance_output_table = rebalance_output_table
         self.portfolio_configuration = portfolio_configuration
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_resolver = portfolio_resolver
@@ -71,6 +84,8 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             "portfolio_resolver",
             "portfolio_description",
             "metadata_updater",
+            "weights_output_table",
+            "rebalance_output_table",
         ):
             init_kwargs.pop(runtime_key, None)
         init_kwargs["table_updater_class_import_path"] = _class_import_path(PortfoliosUpdater)
@@ -127,9 +142,15 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if self.portfolio_configuration is None:
             raise ValueError("PortfolioWeights requires a portfolio configuration.")
         if self.portfolio_weights is None:
+            instance_tables: dict[str, OutputTable] = {}
+            if self._weights_output_table is not None:
+                instance_tables["output_table"] = self._weights_output_table
+            if self._rebalance_output_table is not None:
+                instance_tables["rebalance_output_table"] = self._rebalance_output_table
             self.portfolio_weights = PortfolioWeights(
                 portfolio_configuration=self.portfolio_configuration,
                 namespace=self._canonical_namespace(),
+                **instance_tables,
             )
         self.portfolio_weights.set_portfolio_configuration(
             self.portfolio_configuration,
