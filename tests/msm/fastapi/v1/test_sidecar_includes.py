@@ -167,3 +167,84 @@ def test_account_lookup_service_hydrates_through_the_includes_service(monkeypatc
     assert seen["context"] == "ctx" and seen["core_model"] is AccountTable and seen["model_cls"] is AccountWithIncludes
     assert seen["include"] == [SIDECAR_UID]
     assert rows[0].includes == {SIDECAR_UID: {"is_paper": True}}
+
+
+def _encrypted_sidecar(*, encrypt_join: bool = False):
+    sidecar = _sidecar()
+    sidecar.columns = [
+        {"name": "account_uid", "encryption": {"secret": "provider-keyring"} if encrypt_join else None},
+        {"name": "is_paper"},
+        {"name": "api_secret", "encryption": {"secret": "provider-keyring"}},
+    ]
+    return sidecar
+
+
+def test_include_never_selects_or_returns_encrypted_columns(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    statements: list[str] = []
+    monkeypatch.setattr(
+        includes,
+        "compile_markets_statement",
+        lambda statement, **_kwargs: statements.append(
+            str(statement.compile(compile_kwargs={"literal_binds": True}))
+        )
+        or statement,
+    )
+    monkeypatch.setattr(
+        includes,
+        "execute_markets_operation",
+        lambda _operation, **_kwargs: {
+            "rows": [
+                {
+                    "account_uid": account_uid,
+                    "is_paper": True,
+                    # A backend that ignored the column list must still not leak the envelope.
+                    "api_secret": "mt1.key-1.c2VhbGVk",
+                }
+            ]
+        },
+    )
+    (sidecar,) = includes.resolve_sidecar_includes(
+        [SIDECAR_UID], core_model=AccountTable, meta_table_lookup=lambda _u: [_encrypted_sidecar()]
+    )
+
+    hydrated = includes.read_sidecar_rows(object(), core_uids=[account_uid], includes=[sidecar])
+
+    assert sidecar.columns == ("account_uid", "is_paper")
+    assert sidecar.withheld_columns == ("api_secret",)
+    assert "api_secret" not in statements[0]
+    assert hydrated[str(account_uid)][SIDECAR_UID] == {
+        "account_uid": str(account_uid),
+        "is_paper": True,
+    }
+
+
+def test_include_drops_envelope_values_in_columns_the_catalog_does_not_flag(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    monkeypatch.setattr(includes, "compile_markets_statement", lambda statement, **_kwargs: statement)
+    monkeypatch.setattr(
+        includes,
+        "execute_markets_operation",
+        lambda _operation, **_kwargs: {
+            "rows": [{"account_uid": account_uid, "is_paper": False, "api_key_id": "mt1.key-1.c2VhbGVk"}]
+        },
+    )
+    (sidecar,) = includes.resolve_sidecar_includes(
+        [SIDECAR_UID], core_model=AccountTable, meta_table_lookup=lambda _u: [_sidecar()]
+    )
+
+    hydrated = includes.read_sidecar_rows(object(), core_uids=[account_uid], includes=[sidecar])
+
+    assert hydrated[str(account_uid)][SIDECAR_UID] == {
+        "account_uid": str(account_uid),
+        "is_paper": False,
+    }
+
+
+def test_include_refuses_a_sidecar_whose_join_column_is_encrypted() -> None:
+    with pytest.raises(ValueError, match="encrypts its join column"):
+        includes.resolve_sidecar_includes(
+            [SIDECAR_UID],
+            core_model=AccountTable,
+            meta_table_lookup=lambda _u: [_encrypted_sidecar(encrypt_join=True)],
+        )

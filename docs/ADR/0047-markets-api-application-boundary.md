@@ -235,8 +235,10 @@ Under this ADR:
 - The sidecar moves to the provider's namespace. Its foreign key, its encrypted
   columns and the provider's migration provider are unchanged. The encrypted
   columns are the reason the sidecar must stay provider-owned: only a process
-  holding the provider's keyring can open them, and the Markets workload must
-  not be granted the sidecar for `include`, which returns columns as stored.
+  holding the provider's keyring can open them. `include` never returns them:
+  Markets skips every column the catalog marks as application-encrypted and
+  drops any encryption-envelope value, so a `data_viewer` grant for `include`
+  exposes only the plain columns.
 - `Account.upsert` and the active-flag update go through the Markets account
   create and update routes, `POST /api/v1/account/` and
   `PATCH /api/v1/account/{uid}/`. The holdings snapshot uses the existing
@@ -408,7 +410,9 @@ in the adapter operation registry. Deviations and refinements:
   decision 4), reads each sidecar once for the returned uids as the Markets
   workload and attaches rows under `includes[<uid>]`. It works for a sidecar in
   any namespace today, including `mainsequence.markets`, so a provider's
-  account listing can move before step 3. Search-driven list routes do not take
+  account listing can move before step 3. Columns the catalog marks as
+  application-encrypted (MetaTables ADR 0025) are never selected, and any value
+  that is an encryption envelope is dropped. Search-driven list routes do not take
   `include`; a consumer pages on its own sidecar and hydrates by uid, which is
   the direction the worked example needs.
 - Formula save takes the Index identity from the stored row and accepts only

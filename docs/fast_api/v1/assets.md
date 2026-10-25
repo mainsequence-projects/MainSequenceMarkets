@@ -33,8 +33,10 @@ provider-specific records. The API does not flatten those separate models into `
     MetaTables catalog; each sidecar is read once for all returned uids. The
     Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
     `404` for a uid that is not a visible MetaTable, `400` for a table that is
-    not a sidecar of this resource). Columns come back as stored; Markets never
-    decrypts a provider column. `includes` is `{}` when nothing is included
+    not a sidecar of this resource). Plain columns come back as stored; Markets
+    never decrypts a provider column, never selects a column the catalog marks
+    as application-encrypted and drops any encryption-envelope value, so
+    `include` never returns ciphertext. `includes` is `{}` when nothing is included
 - `GET /api/v1/asset/monitor/frame/`
   - supports `search`, `limit`, `offset`, optional `asset_type`, and repeated
     `unique_identifiers`

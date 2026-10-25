@@ -217,6 +217,13 @@ portfolio and strategy identities do not change. Dependent packages declare
   `PlatformTimeIndexMetaTable` storage class written by a
   `TimeIndexTableUpdater` producer, instead of a single DataNode storage
   contract.
+- `include` on the by-uid lookups no longer returns application-encrypted
+  sidecar columns. Markets skips every column the MetaTables catalog marks with
+  `encryption` (MetaTables ADR 0025) and drops any value that is an `mt1.`
+  encryption envelope, so a provider can grant the Markets workload
+  `data_viewer` on a sidecar that holds credentials without its ciphertext
+  reaching Markets responses. A sidecar whose join column is encrypted is
+  refused.
 - Portfolio, portfolio-weights, signal and signal-weights deletes respect the
   ADR 0047 catalog. They used to touch only the core tables, so a portfolio
   catalogued in another application's contract instance reported zero rows

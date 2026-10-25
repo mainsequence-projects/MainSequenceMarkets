@@ -8,7 +8,10 @@ the Markets workload ``data_viewer`` on that table. The by-uid lookups accept
 MetaTables catalog, proves the foreign key, reads the sidecar rows for the
 returned core uids in one statement per sidecar and attaches them under
 ``includes[<meta_table_uid>]``. Markets never writes a sidecar and never
-decrypts a provider column; values come back as stored.
+decrypts a provider column. Plain values come back as stored; a column the
+catalog marks as application-encrypted (MetaTables ADR 0025) is never selected,
+and any value that is an encryption envelope is dropped, so ``include`` never
+returns ciphertext.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import column, select, table
+
+from metatables.envelope_contract import is_envelope
 
 from msm.api.base import operation_result_rows
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
@@ -45,6 +50,8 @@ class SidecarInclude:
     physical_schema: str | None
     join_column: str
     columns: tuple[str, ...]
+    withheld_columns: tuple[str, ...] = ()
+    """Columns the catalog marks as application-encrypted; never selected or returned."""
 
 
 def default_meta_table_lookup(uids: Sequence[str]) -> Sequence[Any]:
@@ -110,6 +117,12 @@ def resolve_sidecar_includes(
         physical = str(getattr(meta_table, "physical_table_name", "") or "")
         if not physical:
             raise ValueError(f"include {meta_table_uid!r} has no physical table name")
+        columns, withheld = _column_names(meta_table)
+        if join_column in withheld:
+            raise ValueError(
+                f"include {meta_table_uid!r} encrypts its join column {join_column!r} "
+                "and is not a sidecar Markets can read"
+            )
         schema = getattr(meta_table, "physical_schema", None)
         resolved.append(
             SidecarInclude(
@@ -119,7 +132,8 @@ def resolve_sidecar_includes(
                 physical_table_name=physical,
                 physical_schema=None if schema in (None, "", "public") else str(schema),
                 join_column=join_column,
-                columns=_column_names(meta_table),
+                columns=columns,
+                withheld_columns=withheld,
             )
         )
     return resolved
@@ -165,7 +179,9 @@ def read_sidecar_rows(
             key = _uid_key(row.get(include.join_column))
             if key in hydrated:
                 hydrated[key][include.meta_table_uid] = {
-                    name: _json_value(value) for name, value in row.items()
+                    name: _json_value(value)
+                    for name, value in row.items()
+                    if name not in include.withheld_columns and not is_envelope(value)
                 }
     return hydrated
 
@@ -239,17 +255,24 @@ def _bound_uid(model: type[Any]) -> str | None:
     return str(value) if value not in (None, "") else None
 
 
-def _column_names(meta_table: Any) -> tuple[str, ...]:
+def _column_names(meta_table: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return the catalog's plain columns and the application-encrypted columns it withholds."""
+
     names: list[str] = []
+    withheld: list[str] = []
     for item in getattr(meta_table, "columns", None) or ():
         name = _get(item, "name")
-        if name not in (None, ""):
+        if name in (None, ""):
+            continue
+        if _get(item, "encryption"):
+            withheld.append(str(name))
+        else:
             names.append(str(name))
-    if not names:
+    if not names and not withheld:
         raise ValueError(
             f"include {getattr(meta_table, 'uid', '')!s} declares no columns in the catalog"
         )
-    return tuple(names)
+    return tuple(names), tuple(withheld)
 
 
 def _get(item: Any, key: str) -> Any:
