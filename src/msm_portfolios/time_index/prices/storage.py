@@ -336,7 +336,8 @@ def _copy_interpolated_prices_table(
 
     asset_table = AssetTable.__table__
     if asset_table.metadata is not metadata:
-        asset_table = metadata.tables.get(asset_table.key) or asset_table.to_metadata(metadata)
+        copied = metadata.tables.get(asset_table.key)
+        asset_table = copied if copied is not None else asset_table.to_metadata(metadata)
     columns = [column._copy() for column in InterpolatedPricesStorage.__table__.columns]
     table = Table(
         table_name,

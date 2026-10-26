@@ -54,3 +54,39 @@ def test_instances_are_cached_and_validate_their_key() -> None:
     assert first is configured_time_index_instance(DiscountCurvesStorage, instance_key="cache", namespace="ns-c")
     with pytest.raises(ValueError, match="instance_key"):
         configured_time_index_instance(DiscountCurvesStorage, instance_key="bad key")
+
+
+def test_instances_on_a_provider_base_share_copied_targets_and_attach() -> None:
+    """Several Asset foreign keys on one base reuse one copied target (was a TypeError)."""
+
+    from msm.api.remote import use_remote_backend, use_runtime_backend
+    from msm.models import AssetTable
+    from msm.models.registration import resolve_markets_meta_table_models
+    from msm.time_index.execution.storage import TradesStorage
+
+    class ProviderBase(DeclarativeBase):
+        metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+    trades = configured_time_index_instance(
+        TradesStorage, instance_key="main", namespace="ns-base", storage_app="ns_base", base=ProviderBase
+    )
+    curves = configured_time_index_instance(
+        DiscountCurvesStorage, instance_key="main", namespace="ns-base", storage_app="ns_base", base=ProviderBase
+    )
+
+    assert trades.__table__.metadata is ProviderBase.metadata
+    assert AssetTable.__table__.fullname in ProviderBase.metadata.tables
+    assert curves.__table__.name in ProviderBase.metadata.tables
+
+    resolved = resolve_markets_meta_table_models([trades])
+    assert resolved[-1] is trades and AssetTable in resolved
+
+    class _Backend:
+        def call(self, resource, operation, arguments):  # pragma: no cover - never called
+            raise AssertionError("attachment must not call the API")
+
+    use_remote_backend(_Backend())
+    try:
+        assert resolve_markets_meta_table_models([trades]) == [trades]
+    finally:
+        use_runtime_backend()

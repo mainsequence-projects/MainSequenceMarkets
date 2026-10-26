@@ -14,9 +14,12 @@ from metatables import (
     time_indexed_registration_request_from_sqlalchemy_model,
 )
 from mainsequence.logconf import logger as _mainsequence_logger
+from sqlalchemy import Table
 
 from msm.base import (
     MarketsBase,
+    MarketsMetaTableMixin,
+    MarketsTimeIndexMetaTableMixin,
     markets_meta_table_identifier as _markets_meta_table_identifier,
     markets_table_storage_name,
 )
@@ -79,6 +82,13 @@ def resolve_markets_meta_table_models(
 def _normalize_markets_meta_table_model_class(model: type[Any]) -> type[MarketsBase]:
     if issubclass(model, MarketsBase):
         return model
+    # A provider instance built on the provider's own declarative base
+    # (msm.storage_instances, the portfolio contract factories) carries the
+    # Markets mixins and a mapped table without subclassing MarketsBase.
+    if issubclass(model, (MarketsMetaTableMixin, MarketsTimeIndexMetaTableMixin)) and isinstance(
+        getattr(model, "__table__", None), Table
+    ):
+        return model
 
     table_model = getattr(model, "__table__", None)
     if isinstance(table_model, type) and issubclass(table_model, MarketsBase):
@@ -86,8 +96,9 @@ def _normalize_markets_meta_table_model_class(model: type[Any]) -> type[MarketsB
 
     raise ValueError(
         "Markets MetaTable model selectors must be built-in names, "
-        "MarketsBase subclasses, or row API classes with __table__ pointing to "
-        f"a MarketsBase subclass. Got {model.__module__}.{model.__qualname__}."
+        "MarketsBase subclasses, Markets storage instances on a provider base, or "
+        "row API classes with __table__ pointing to a MarketsBase subclass. Got "
+        f"{model.__module__}.{model.__qualname__}."
     )
 
 

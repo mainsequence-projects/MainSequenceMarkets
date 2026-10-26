@@ -275,6 +275,15 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Fixed
 
+- Building a storage instance on a provider's declarative base raised
+  `TypeError: Boolean value of this clause is not defined` once the base already
+  held a copied foreign-key target (any table with two foreign keys to one
+  Markets table, such as trades or the event ledger, or a second instance on the
+  same base); the copied target is now reused. `msm.start_engine` accepts such
+  instances: they are not `MarketsBase` subclasses but carry the Markets mixins.
+- The portfolio guide's provider example passed `namespace=` to
+  `PortfoliosUpdater`, which is the hash namespace and rotates `update_hash`.
+
 - Under the remote backend, `PersistedCalendarSchedule.schedule` (calendar-relative
   rebalancing) and `FormulaIndex.activate()`/`retire()` ran compiled SQL in the
   calling process and failed; they now run through dispatched row methods.

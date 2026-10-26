@@ -149,9 +149,8 @@ def _copy_table(
         for element in foreign_key.elements:
             target_table = element.column.table
             if target_table.metadata is not metadata:
-                target_table = metadata.tables.get(target_table.key) or target_table.to_metadata(
-                    metadata
-                )
+                copied = metadata.tables.get(target_table.key)
+                target_table = copied if copied is not None else target_table.to_metadata(metadata)
             targets.append(f"{target_table.fullname}.{element.column.name}")
         constraints.append(
             ForeignKeyConstraint(

@@ -448,12 +448,15 @@ ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
 
 updater = PortfoliosUpdater(
     portfolio_configuration=portfolio_configuration,
-    namespace="my-provider",
     output_table=ProviderPortfoliosStorage,
     weights_output_table=ProviderPortfolioWeightsStorage,
     rebalance_output_table=ProviderRebalanceStateStorage,
 )
 ```
+
+Do not pass `namespace=` to the updater: on an updater it is the MetaTables
+hash namespace, which changes `update_hash`. The instance's namespace comes from
+its factory.
 
 `PortfolioWeights` alone takes `output_table=` and `rebalance_output_table=`.
 `InterpolatedPrices` takes `storage_namespace=`, `storage_app=` and
