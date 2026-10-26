@@ -443,8 +443,10 @@ route for:
   then switches back. It runs as an operator with read access to the source
   and write access to the target, not through the Markets API.
 
-Still open: adopting the daily index-values table in `msm_migrations`; a
-catalog-aware reverse lookup of the portfolios holding given assets; a
+Still open: the Index dataset catalog recognises only the Markets-named
+`IndexValuesTS.<cadence>` tables, so a provider's own instance of that contract
+(decision 4: a provider that builds its table from a Markets contract owns it in
+its namespace) is not discovered yet; a catalog-aware reverse lookup of the portfolios holding given assets; a
 valuation-context read (curves, building details, bindings, observations and
 fixings in one call); column metadata on `list_related_meta_tables`; set-based
 upserts on the pricing composites; count and projection reads on current
