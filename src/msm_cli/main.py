@@ -29,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "rename-preflight" and args.preflight:
         return rename_preflight_command(args)
+    if args.command == "series" and args.series:
+        return series_command(args)
     parser.print_help()
     return 1
 
@@ -83,6 +85,45 @@ def rename_preflight_command(args: argparse.Namespace) -> int:
             ],
         )
     return 0 if all(r["classification"] == "TimeIndexMetaTable" for r in report) else 1
+
+
+def series_command(args: argparse.Namespace) -> int:
+    """Run ``msm series move|rollback`` over the moves a provider callable returns (ADR 0047)."""
+
+    from msm.storage_copies import run_series_moves
+    from msm_cli.rename_preflight import load_objects
+
+    report = run_series_moves(
+        load_objects(args.moves),
+        rollback=args.series == "rollback",
+        dry_run=not args.execute,
+    )
+    if args.emit_json:
+        print(json.dumps(report.summary(), indent=2, default=str))
+        return 0 if report.succeeded else 1
+    rows: list[list[Any]] = []
+    for result in report.results:
+        if not result.copies:
+            rows.append([result.kind, result.label, result.status, result.detail, "", "", ""])
+        for copy in result.copies:
+            rows.append(
+                [
+                    result.kind,
+                    result.label,
+                    result.status,
+                    f"{copy.source_table} -> {copy.target_table}",
+                    sum(key.source_rows for key in copy.keys),
+                    sum(key.target_rows for key in copy.keys),
+                    sum(key.missing_rows for key in copy.keys),
+                ]
+            )
+    action = "Rollback" if report.rollback else "Move"
+    _print_table(
+        f"{action} of time series{' (dry run: nothing written)' if report.dry_run else ''}",
+        ["Kind", "Move", "Status", "Copy", "Source rows", "Target rows", "Missing"],
+        rows,
+    )
+    return 0 if report.succeeded else 1
 
 
 def copy_msm_skills_command(
@@ -263,6 +304,32 @@ def _build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, default=10_000, help="Rows to read from each table."
     )
     for sub in (scan_parser, rotation_parser, uids_parser):
+        sub.add_argument(
+            "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
+        )
+
+    series_parser = subparsers.add_parser(
+        "series",
+        help="Move time series into a provider's instances, or roll them back (ADR 0047).",
+    )
+    series = series_parser.add_subparsers(dest="series")
+    for name, help_text in (
+        ("move", "Copy core rows into the instances, then record them in Markets."),
+        ("rollback", "Copy the instances' new rows back, then remove the Markets records."),
+    ):
+        sub = series.add_parser(name, help=help_text)
+        sub.add_argument(
+            "moves",
+            help=(
+                "module:callable returning TableSeriesMove, PortfolioSeriesMove or "
+                "SignalSeriesMove objects, after attaching the provider's runtime."
+            ),
+        )
+        sub.add_argument(
+            "--execute",
+            action="store_true",
+            help="Copy and update Markets; without it only count the rows.",
+        )
         sub.add_argument(
             "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
         )

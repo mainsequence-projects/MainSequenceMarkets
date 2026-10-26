@@ -162,7 +162,11 @@ with `output_table=`. Markets finds the instance through the catalog of the
 series: pricing market-data bindings carry its `storage_table_uid`, the Index
 dataset catalog its table uid, the portfolio catalog its values, weights and
 signal tables (`PortfolioDatasets.register`; `register_signal` for a signal
-that is not a portfolio's current one). `PortfolioDatasets.unregister` removes
+that is not a portfolio's current one). Rows a series already has in a core
+table move with `msm.storage_copies.copy_time_index_rows`, which writes only the
+rows the instance lacks and verifies every key; `TableSeriesMove`,
+`PortfolioSeriesMove` and `SignalSeriesMove` add the catalog steps and the
+rollback (`msm series move|rollback`). `PortfolioDatasets.unregister` removes
 a portfolio's catalog row to roll a move back; its reads return to the core
 tables and the instance keeps its rows. `unregister_signal` undoes
 `register_signal` for one signal.

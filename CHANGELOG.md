@@ -19,6 +19,14 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Moving existing history into provider instances (ADR 0047):
+  `msm.storage_copies.copy_time_index_rows` copies the rows of some keys that a
+  target table lacks from another table of the same contract, through the
+  `TimeIndexRowsCopy` updater, and verifies every key; a second pass fills only
+  the gaps. `TableSeriesMove`, `msm_portfolios.services.series_moves`
+  `PortfolioSeriesMove` and `SignalSeriesMove` move a series and roll it back,
+  including the catalog and signal-binding calls in a fixed order, and
+  `run_series_moves` / `msm series move|rollback` run a provider's moves.
 - Remote reads and lifecycle calls providers need (ADR 0047): `filter` and
   `count` take `<field>__gte`, `__gt`, `__lte` and `__lt` range bounds
   (`msm.repositories.crud` `range_filters`); `AssetSnapshots.latest` returns

@@ -206,6 +206,7 @@ PINNED_METATABLE_IDENTIFIERS = {
 }
 
 PINNED_UPDATER_PATHS = (
+    "msm.storage_copies:TimeIndexRowsCopy",
     "msm.time_index.accounts.virtual_funds:VirtualFundHoldings",
     "msm.time_index.accounts:AccountHoldings",
     "msm.time_index.accounts:HoldingsUpdater",

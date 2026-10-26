@@ -522,6 +522,65 @@ Who may read is a separate, narrow grant: the Markets workload needs
 `data_viewer` on each provider's time-series tables, or the call is
 requester-bound and the person's own grants apply.
 
+### Moving Existing History
+
+A portfolio that was already built into the core tables keeps its history
+there until it is copied: portfolio and signal history is not recomputed.
+`msm_portfolios.services.series_moves` moves it and rolls it back the same way
+for every provider:
+
+```python
+from msm_portfolios.services.series_moves import (
+    PortfolioSeriesMove,
+    PortfolioSeriesTables,
+    SignalSeriesMove,
+)
+from msm.storage_copies import run_series_moves
+
+instances = PortfolioSeriesTables(
+    values=ProviderPortfoliosStorage,
+    weights=ProviderPortfolioWeightsStorage,
+    rebalance_state=ProviderPortfolioRebalanceStateStorage,
+    signal_weights=ProviderSignalWeightsStorage,
+)
+moves = [
+    PortfolioSeriesMove(
+        portfolio.unique_identifier,
+        instances,
+        portfolio_uid=portfolio.uid,
+        signal_uids=earlier_signal_uids,
+        with_current_signal=True,
+        on_copied=lambda: use_provider_tables(portfolio),
+        on_rolled_back=lambda: use_core_tables(portfolio),
+    ),
+]
+report = run_series_moves(moves, dry_run=True)  # counts only
+report = run_series_moves(moves, dry_run=False)
+report = run_series_moves(moves, rollback=True, dry_run=False)
+```
+
+A move copies, per key, the signal weights of the signals that move with the
+portfolio, then its rebalance state, weights, values and event ledger, writing
+only the rows the instance lacks (`msm.storage_copies.copy_time_index_rows`).
+When every key is complete it calls `on_copied`, where the provider points its
+updaters at the instances, binds the moved signals that are not the portfolio's
+current one with `register_signal`, and writes the catalog row last with
+`register`. If a key is still missing rows the move stops as `incomplete` and
+nothing in Markets changes; running it again copies only the gaps.
+
+A rollback copies the rows the instances gained since the move back into the
+core tables, removes the catalog row (`unregister`), clears the moved signals'
+bindings (`unregister_signal`) and calls `on_rolled_back`. The instances keep
+their rows. `SignalSeriesMove` does the same for signals moved on their own;
+`run_series_moves` runs signals before portfolios on a move and portfolios
+first on a rollback. Calendar events are not copied: the engine rebuilds them.
+
+`msm series move module:callable [--execute]` and `msm series rollback ...`
+run the moves a provider callable returns; without `--execute` they only count.
+The operator needs `data_viewer` on the tables read, write access to the tables
+written (a rollback writes the core tables) and the write-policy resource
+`portfolio-datasets`; pause the provider's runs while a move or rollback runs.
+
 ## Repair legacy midnight-indexed portfolio values
 
 Portfolio values written by the former daily resampling path may carry a UTC

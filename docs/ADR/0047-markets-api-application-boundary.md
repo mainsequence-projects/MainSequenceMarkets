@@ -433,6 +433,15 @@ route for:
   `AccountHoldingsSnapshots.get_many` returns several snapshots in one call; and
   `PortfolioDatasets.unregister` removes a catalog row to roll a move back;
   `unregister_signal` undoes `register_signal` for one signal.
+- Moving a provider's existing history is one Markets procedure, not one per
+  provider: `msm.storage_copies.copy_time_index_rows` (copy only the missing
+  rows of some keys, verify every key) and the series moves built on it
+  (`TableSeriesMove`, `PortfolioSeriesMove`, `SignalSeriesMove`,
+  `msm series move|rollback`) fix the order: copy, verify, switch the
+  provider's updaters, bind signals, catalog row last; a rollback copies the
+  rows the instances gained back, removes the catalog row and signal bindings,
+  then switches back. It runs as an operator with read access to the source
+  and write access to the target, not through the Markets API.
 
 Still open: adopting the daily index-values table in `msm_migrations`; a
 catalog-aware reverse lookup of the portfolios holding given assets; a
