@@ -309,10 +309,13 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
     decoded: dict[str, Any] = {}
     fields = getattr(cls, "model_fields", {})
     for name, value in arguments.items():
-        if operation == "filter" and name not in ("limit",):
-            base = name.removesuffix("_contains")
-            if name == base and base in fields and value is not None:
-                value = _validate_simple(fields[base].annotation, value)
+        if operation in ("filter", "count") and name not in ("limit", "offset", "order_by"):
+            if name.endswith("__in") and isinstance(value, list):
+                base = name.removesuffix("__in")
+                if base in fields:
+                    value = [_validate_simple(fields[base].annotation, item) for item in value]
+            elif not name.endswith("_contains") and name in fields and value is not None:
+                value = _validate_simple(fields[name].annotation, value)
             decoded[name] = value
             continue
         annotation = hints.get(name)
@@ -321,12 +324,49 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
 
 
 def _validate_simple(annotation: Any, value: Any) -> Any:
-    if value is None or isinstance(value, Mapping):
+    """Validate ``value`` against ``annotation`` when it only names plain types.
+
+    Payload parameters (Pydantic models, mappings) are left as JSON for the
+    method to validate itself, exactly as it does for a caller's mapping.
+    """
+
+    if value is None or isinstance(value, Mapping) or not _is_simple_annotation(annotation):
         return value
     try:
         return TypeAdapter(annotation).validate_python(value)
     except Exception:
         return value
+
+
+_SIMPLE_TYPES = (uuid.UUID, int, float, bool, str, bytes)
+
+
+def _is_simple_annotation(annotation: Any) -> bool:
+    import datetime as dt
+    import decimal
+    import enum
+
+    if annotation in (None, type(None), Any):
+        return annotation is not Any
+    origin = typing.get_origin(annotation)
+    if origin is typing.Literal:
+        return True
+    if origin is not None:
+        arguments = [argument for argument in typing.get_args(annotation) if argument is not Ellipsis]
+        if origin in (list, tuple, set, frozenset) or str(origin) in (
+            "<class 'collections.abc.Sequence'>",
+            "<class 'collections.abc.Set'>",
+        ):
+            return all(_is_simple_annotation(argument) for argument in arguments)
+        if origin in (typing.Union,) or str(origin) == "<class 'types.UnionType'>":
+            return all(_is_simple_annotation(argument) for argument in arguments)
+        return False
+    if isinstance(annotation, type):
+        return issubclass(
+            annotation,
+            (*_SIMPLE_TYPES, dt.date, dt.time, dt.timedelta, decimal.Decimal, enum.Enum),
+        )
+    return False
 
 
 def encode_result(result: Any) -> Any:
@@ -346,8 +386,10 @@ def decode_result(cls: type, operation: str, func: Callable[..., Any], data: Any
         return cls.model_validate(data)
     if operation == "get_many_by_unique_identifier":
         return {str(key): cls.model_validate(value) for key, value in dict(data).items()}
-    if operation in {"filter", "filter_by_uids"}:
+    if operation in {"filter", "filter_by_uids", "upsert_many"}:
         return [cls.model_validate(item) for item in data]
+    if operation == "count":
+        return int(data)
     annotation = _type_hints(func).get("return")
     if annotation is None:
         return data

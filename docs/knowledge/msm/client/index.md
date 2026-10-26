@@ -91,6 +91,44 @@ asset pricing details).
 Code that catches `ValueError` or `LookupError` behaves the same under both
 backends.
 
+## Set-Based Operations
+
+Every table row class offers the same set-based calls under both backends, so a
+provider never loops over rows through the API:
+
+```python
+Asset.upsert_many([{"unique_identifier": "ACME", "asset_type": "equity"}, ...])
+AccountHoldingsSet.filter(account_uid=uid, order_by="-time_index", limit=50, offset=0)
+AccountHoldingsSet.count(account_uid=uid)
+Asset.filter(unique_identifier__in=["A", "B"])
+```
+
+`upsert_many` validates each payload through the row module's `<Row>Upsert`
+model and writes them in one statement on `__upsert_keys__`. `filter` takes
+equality, `<field>_contains` and `<field>__in` filters, `order_by` (`-column`
+for descending), `limit` and `offset`; `count` takes the same filters.
+
+## Holdings And Asset Snapshots
+
+Account holdings and asset snapshots are Markets tables that applications
+publish into rather than write:
+
+```python
+from msm.api.accounts import AccountHoldingsSnapshots
+from msm.api.assets import AssetSnapshots
+
+AccountHoldingsSnapshots.publish(
+    account_uid=account_uid,
+    holdings_date=as_of,
+    positions=[{"asset_identifier": "ACME", "quantity": "10", "extra_details": {"source": "feed"}}],
+    overwrite=True,
+)
+latest = AccountHoldingsSnapshots.get(account_uid=account_uid)
+AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}])
+```
+
+Their write-policy resources are `account-holdings` and `asset-snapshots`.
+
 ## Portfolio Time Series
 
 Time series are not row calls. Read portfolio values and weights from the

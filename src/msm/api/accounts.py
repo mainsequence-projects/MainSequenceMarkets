@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.base import MarketsMetaTableRow, PayloadWithRenamedFields, pre_3_0_field
+from msm.api.remote import RemoteRowOperations
 from msm.models import (
     AccountGroupTable,
     AccountHoldingsSetTable,
@@ -580,7 +581,86 @@ def _is_missing(value: Any) -> bool:
     return bool(pd.isna(value))
 
 
+
+class AccountHoldingsSnapshots(RemoteRowOperations, BaseModel):
+    """Publish and read account holdings snapshots through Markets (ADR 0047).
+
+    Holdings rows live in the Markets ``AccountHoldingsStorage`` table, which an
+    application does not write directly: ``publish`` creates the holdings set and
+    its rows in one Markets operation, as ``POST /account/{uid}/add-holdings/``
+    does, and ``get`` returns one snapshot. Under the remote backend both run on
+    the Markets API.
+    """
+
+    __resource__: ClassVar[str] = "account-holdings"
+    __required_tables__: ClassVar[list[str]] = [
+        "Account",
+        "Asset",
+        "AccountHoldingsSet",
+        "AccountHoldingsStorage",
+        "AssetSnapshotsStorage",
+    ]
+
+    @classmethod
+    def publish(
+        cls,
+        *,
+        account_uid: uuid.UUID | str,
+        holdings_date: dt.datetime,
+        positions: list[dict[str, Any]],
+        overwrite: bool = False,
+        include_asset_detail: bool = False,
+    ) -> dict[str, Any] | None:
+        """Write one holdings snapshot; ``None`` when the account does not exist.
+
+        Each position has ``asset_identifier`` (or ``asset_uid``), ``quantity``
+        and optionally ``direction``, ``position_type``, ``target_trade_time``
+        and ``extra_details``. Without ``overwrite`` an existing snapshot at
+        ``holdings_date`` raises ``ValueError``.
+        """
+
+        from msm.services import add_account_holdings_snapshot_response
+
+        return add_account_holdings_snapshot_response(
+            cls._context(),
+            account_uid=str(account_uid),
+            holdings_date=holdings_date,
+            positions=[dict(position) for position in positions],
+            overwrite=overwrite,
+            include_asset_detail=include_asset_detail,
+        )
+
+    @classmethod
+    def get(
+        cls,
+        *,
+        account_uid: uuid.UUID | str,
+        holdings_date: dt.datetime | None = None,
+        order: str = "desc",
+        include_asset_detail: bool = False,
+    ) -> dict[str, Any] | None:
+        """One holdings snapshot: at ``holdings_date``, or the latest (``order="desc"``) or earliest."""
+
+        from msm.services import get_account_holdings_snapshot_response
+
+        return get_account_holdings_snapshot_response(
+            cls._context(),
+            account_uid=str(account_uid),
+            order=order,
+            limit=1,
+            include_asset_detail=include_asset_detail,
+            holdings_date=holdings_date,
+        )
+
+    @classmethod
+    def _context(cls):
+        from msm.bootstrap import resolve_runtime
+
+        return resolve_runtime(models=cls.__required_tables__, row_model_name=cls.__name__).context
+
+
 __all__ = [
+    "AccountHoldingsSnapshots",
     "Account",
     "AccountCreate",
     "AccountGroup",

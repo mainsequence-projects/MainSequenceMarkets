@@ -316,3 +316,70 @@ def test_pricing_composites_run_remotely_including_their_own_delete(monkeypatch,
     assert PricingMarketDataSet.get_by_key("missing") is None
     assert PricingMarketDataSet.delete(set_uid) == {"deleted_count": 1}
     assert deleted == [str(set_uid)]
+
+
+def test_bulk_count_and_ordering_run_remotely(monkeypatch, remote) -> None:
+    from msm.api.accounts import AccountHoldingsSet
+
+    account_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "msm.repositories.crud.bulk_upsert_model",
+        lambda context, *, model, values, conflict_columns: {
+            "rows": [{"uid": str(uuid.uuid4()), **value} for value in values]
+        },
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model",
+        lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 3}]},
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.search_model",
+        lambda context, **kwargs: seen.setdefault("search", kwargs) and {"rows": []},
+    )
+
+    rows = Asset.upsert_many([{"unique_identifier": "A", "asset_type": "Equity"}])
+    total = AccountHoldingsSet.count(account_uid=str(account_uid))
+    AccountHoldingsSet.filter(account_uid=str(account_uid), order_by="-time_index", offset=5)
+
+    assert [row.asset_type for row in rows] == ["equity"]
+    assert total == 3
+    assert seen["count"]["filters"] == {"account_uid": account_uid}
+    assert seen["search"]["order_by"] == ["-time_index"] and seen["search"]["offset"] == 5
+
+
+def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> None:
+    from msm.api.accounts import AccountHoldingsSnapshots
+    from msm.api.assets import AssetSnapshots
+
+    account_uid = str(uuid.uuid4())
+    published: dict[str, Any] = {}
+
+    def add_snapshot(context, **kwargs):
+        published["holdings"] = kwargs
+        return {"account_uid": kwargs["account_uid"], "holdings": [{"asset_identifier": "A"}]}
+
+    class FakeSnapshotUpdater:
+        def set_snapshots(self, rows):
+            published["snapshots"] = rows
+            return self
+
+        def run(self):
+            return False, None
+
+    monkeypatch.setattr("msm.services.add_account_holdings_snapshot_response", add_snapshot)
+    monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", FakeSnapshotUpdater)
+
+    snapshot = AccountHoldingsSnapshots.publish(
+        account_uid=account_uid,
+        holdings_date=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
+        positions=[{"asset_identifier": "A", "quantity": "10", "extra_details": {"source": "feed"}}],
+    )
+    written = AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
+
+    assert snapshot["holdings"] == [{"asset_identifier": "A"}]
+    assert published["holdings"]["account_uid"] == account_uid
+    assert published["holdings"]["positions"][0]["extra_details"] == {"source": "feed"}
+    assert published["holdings"]["holdings_date"] == dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
+    assert written == 1
+    assert published["snapshots"] == [{"asset_identifier": "A", "name": "Acme"}]

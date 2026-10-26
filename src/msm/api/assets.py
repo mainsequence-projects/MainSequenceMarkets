@@ -707,7 +707,39 @@ class OpenFigiDetailsUpdate(BaseModel):
     raw_payload: dict[str, Any] | None = None
 
 
+
+class AssetSnapshots(RemoteRowOperations, BaseModel):
+    """Publish asset snapshots (display name, ticker ...) into Markets (ADR 0047).
+
+    Snapshots live in the Markets ``AssetSnapshotsStorage`` table, which Markets
+    reads for asset details. An application publishes them with ``publish``;
+    under the remote backend that runs on the Markets API, so the application
+    needs no grant on the table.
+    """
+
+    __resource__: ClassVar[str] = "asset-snapshots"
+
+    @classmethod
+    def publish(cls, snapshots: list[dict[str, Any]]) -> int:
+        """Write snapshot rows (``asset_identifier``, ``time_index``, ``name``, ``ticker`` ...).
+
+        Returns the number of rows written.
+        """
+
+        if not snapshots:
+            return 0
+        from msm.bootstrap import resolve_runtime
+        from msm.time_index.assets import AssetSnapshot
+
+        resolve_runtime(models=["Asset", "AssetSnapshotsStorage"], row_model_name=cls.__name__)
+        error, _ = AssetSnapshot().set_snapshots([dict(row) for row in snapshots]).run()
+        if error:
+            raise RuntimeError("Asset snapshot publication failed.")
+        return len(snapshots)
+
+
 __all__ = [
+    "AssetSnapshots",
     "Asset",
     "AssetCategory",
     "AssetCategoryCreate",

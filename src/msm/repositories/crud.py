@@ -334,6 +334,7 @@ def build_search_model_operation(
     contains_filters: Mapping[str, str] | None = None,
     limit: int = 500,
     offset: int = 0,
+    order_by: Sequence[str] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = _filtered_model_select(
         model,
@@ -341,6 +342,13 @@ def build_search_model_operation(
         in_filters=in_filters,
         contains_filters=contains_filters,
     )
+    for column_name in order_by or ():
+        descending = str(column_name).startswith("-")
+        name = str(column_name).removeprefix("-")
+        if name not in model.__table__.c:
+            raise ValueError(f"{model.__name__} cannot order by unknown column {name!r}.")
+        column = model.__table__.c[name]
+        statement = statement.order_by(column.desc() if descending else column.asc())
     statement = statement.limit(limit)
     if offset:
         statement = statement.offset(offset)
@@ -360,6 +368,7 @@ def search_model(
     contains_filters: Mapping[str, str] | None = None,
     limit: int = 500,
     offset: int = 0,
+    order_by: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_search_model_operation(
@@ -368,6 +377,7 @@ def search_model(
             filters=filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            order_by=order_by,
             limit=limit,
             offset=offset,
         ),

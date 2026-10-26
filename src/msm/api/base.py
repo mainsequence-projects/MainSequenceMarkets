@@ -227,16 +227,91 @@ class MarketsMetaTableRow(BaseModel):
         return {str(getattr(row, "unique_identifier")): row for row in rows}
 
     @classmethod
-    def filter(cls: type[RowT], *, limit: int = 500, **filters: Any) -> list[RowT]:
+    def filter(
+        cls: type[RowT],
+        *,
+        limit: int = 500,
+        offset: int = 0,
+        order_by: str | Sequence[str] | None = None,
+        **filters: Any,
+    ) -> list[RowT]:
         """Filter rows through the active markets runtime.
 
         Keyword arguments ending in `_contains` compile to SQL `contains`
-        filters. Other keyword arguments compile to equality filters.
+        filters, arguments ending in `__in` to `IN` filters, and the others to
+        equality filters. `order_by` names columns, `-column` for descending.
         """
 
         from msm.repositories.crud import search_model
 
+        exact_filters, in_filters, contains_filters = cls._split_filters(filters)
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=exact_filters,
+            in_filters=in_filters,
+            contains_filters=contains_filters,
+            limit=limit,
+            offset=offset,
+            order_by=_order_by(cls, order_by),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def count(cls, **filters: Any) -> int:
+        """Count rows matching the same filters as :meth:`filter`."""
+
+        from msm.repositories.crud import count_model
+
+        exact_filters, in_filters, contains_filters = cls._split_filters(filters)
+        result = count_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=exact_filters,
+            in_filters=in_filters,
+            contains_filters=contains_filters,
+        )
+        rows = operation_result_rows(result)
+        if not rows:
+            return 0
+        row = rows[0]
+        for key in ("count", "count_1"):
+            if key in row:
+                return int(row[key] or 0)
+        return int(next(iter(row.values()), 0) or 0)
+
+    @classmethod
+    def upsert_many(
+        cls: type[RowT],
+        payloads: Sequence[BaseModel | Mapping[str, Any]],
+    ) -> list[RowT]:
+        """Upsert many rows on ``__upsert_keys__`` in one statement.
+
+        Each payload is validated through the row module's ``<Row>Upsert`` model
+        when it defines one, as :meth:`upsert` does.
+        """
+
+        from msm.repositories.crud import bulk_upsert_model
+
+        if not cls.__upsert_keys__:
+            raise NotImplementedError(f"{cls.__name__} does not define upsert keys.")
+        if not payloads:
+            return []
+        values = [_upsert_values(cls, payload) for payload in payloads]
+        result = bulk_upsert_model(
+            cls._active_context(),
+            model=cls.__table__,
+            values=values,
+            conflict_columns=cls.__upsert_keys__,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def _split_filters(
+        cls, filters: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, list[Any]], dict[str, str]]:
         exact_filters: dict[str, Any] = {}
+        in_filters: dict[str, list[Any]] = {}
         contains_filters: dict[str, str] = {}
         for key, value in filters.items():
             if value in (None, ""):
@@ -246,17 +321,14 @@ class MarketsMetaTableRow(BaseModel):
                 cls._require_column(field_name)
                 contains_filters[field_name] = str(value)
                 continue
+            if key.endswith("__in"):
+                field_name = key.removesuffix("__in")
+                cls._require_column(field_name)
+                in_filters[field_name] = list(value)
+                continue
             cls._require_column(key)
             exact_filters[key] = value
-
-        result = search_model(
-            cls._active_context(),
-            model=cls.__table__,
-            filters=exact_filters,
-            contains_filters=contains_filters,
-            limit=limit,
-        )
-        return [cls.model_validate(row) for row in operation_result_rows(result)]
+        return exact_filters, in_filters, contains_filters
 
     @classmethod
     def _active_context(cls):
@@ -332,6 +404,28 @@ def _row_values(
 
             warn_renamed(f"{row.__name__}.{previous}", f"{row.__name__}.{current}")
     return values
+
+
+def _order_by(row: type[Any], order_by: str | Sequence[str] | None) -> list[str]:
+    if order_by in (None, ""):
+        return []
+    names = [order_by] if isinstance(order_by, str) else list(order_by)
+    for name in names:
+        row._require_column(str(name).removeprefix("-"))
+    return [str(name) for name in names]
+
+
+def _upsert_values(row: type[Any], payload: BaseModel | Mapping[str, Any]) -> dict[str, Any]:
+    import sys
+
+    module = sys.modules.get(row.__module__)
+    payload_model = getattr(module, f"{row.__name__}Upsert", None) if module is not None else None
+    if isinstance(payload_model, type) and issubclass(payload_model, BaseModel):
+        if not isinstance(payload, payload_model):
+            data = payload.model_dump(exclude_unset=True) if isinstance(payload, BaseModel) else payload
+            payload = payload_model.model_validate(data)
+        return _row_values(row, payload, {})
+    return _row_values(row, payload, {})
 
 
 def _payload_values(payload: Payload, kwargs: Mapping[str, Any]) -> dict[str, Any]:

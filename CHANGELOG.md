@@ -19,6 +19,13 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Set-based row operations on every table row class, under both backends:
+  `upsert_many(payloads)` (one bulk upsert on `__upsert_keys__`, each payload
+  validated through `<Row>Upsert`), `count(**filters)`, and `filter(...)` with
+  `order_by`, `offset` and `<field>__in`. `msm.repositories.crud.search_model`
+  gains `order_by`. `AccountHoldingsSnapshots.publish/get` and
+  `AssetSnapshots.publish` publish holdings and asset snapshots into Markets, so
+  an application on the remote backend needs no grant on those tables.
 - `msm.client` and the remote row backend (ADR 0047, decision 2). With
   `use_remote_backend(MarketsClient.from_environment().backend)` or
   `MSM_API_BACKEND=remote`, every public class method of a Markets row class
