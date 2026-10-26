@@ -28,6 +28,10 @@ portfolio and strategy identities do not change. Dependent packages declare
   `FormulaIndex.activate_definition` and `retire_definition` back
   `activate()`/`retire()`; `GET /portfolio/values/` takes `offset` and
   `MarketsClient.portfolio_values` pages past 5,000 rows.
+  `CurrencySpot` and `Future` gain `upsert_many` and `filter`;
+  `AccountHoldingsSnapshots.get_many` returns several snapshots in one call
+  (`msm.services.get_account_holdings_snapshots_response`);
+  `PortfolioDatasets.unregister` removes a catalog row for a rollback.
 - Provider time series (ADR 0047): `msm.storage_instances.configured_time_index_instance`
   builds a provider-owned instance of any Markets time-index storage, with its
   columns, foreign keys and grain index, in the provider's namespace and Alembic
@@ -267,6 +271,9 @@ portfolio and strategy identities do not change. Dependent packages declare
   calling process and failed; they now run through dispatched row methods.
 - `Index.upsert_many` now applies `Index.upsert`'s `calculation_method` guard
   to every existing index.
+- A holdings snapshot read scanned at most 500 holdings rows in no order, so
+  for a larger account the latest (or earliest) snapshot could be missed. The
+  scan is ordered by time, and a dated read filters on that date.
 
 - UID column labels and descriptions name the identity each column holds.
   The three `PortfolioTable.*_data_node_uid` columns are labelled as

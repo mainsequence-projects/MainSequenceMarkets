@@ -68,6 +68,7 @@ _EXPORTS = {
     "get_account_frontend_detail_summary": ".accounts",
     "get_account_holdings_by_fund_response": ".accounts",
     "get_account_holdings_snapshot_response": ".accounts",
+    "get_account_holdings_snapshots_response": ".accounts",
     "get_account_target_positions_snapshot_response": ".target_positions",
     "get_asset_frontend_detail_summary": ".asset_master_lists",
     "get_asset_record": ".asset_master_lists",

@@ -403,6 +403,9 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
             {"registration": {"signal_uid": "s", "signal_meta_table_uid": "t"}},
         ),
         ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
+        ("portfolio-datasets", "unregister", {"portfolio_uid": str(uuid.uuid4())}),
+        ("currency-spot", "upsert_many", {"payloads": []}),
+        ("future", "upsert_many", {"payloads": []}),
         ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),
     ],
 )
@@ -653,3 +656,37 @@ def test_portfolio_values_page_past_one_request() -> None:
     sent.clear()
     client.portfolio_values(["p"], limit=10, offset=30)
     assert sent == [{"portfolio_uid__in": "p", "limit": 10, "offset": 30}]
+
+
+def test_composite_batches_and_holdings_snapshots_run_remotely(monkeypatch, remote) -> None:
+    from msm.api import assets as assets_api
+    from msm.api.accounts import AccountHoldingsSnapshots
+
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    base, quote, pair = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    monkeypatch.setattr(
+        assets_api,
+        "search_model",
+        lambda context, *, model, **kwargs: {
+            "rows": [
+                {"uid": str(pair), "unique_identifier": "EUR/USD", "asset_type": "currency_spot"}
+                if model.__name__ == "AssetTable"
+                else {"asset_uid": str(pair), "base_currency_uid": str(base), "quote_currency_uid": str(quote)}
+            ]
+        },
+    )
+    seen: dict[str, Any] = {}
+
+    def snapshots(context, **kwargs):
+        seen.update(kwargs)
+        return [{"holdings_set_uid": "s", "holdings_date": "2026-01-02T00:00:00Z", "holdings": []}]
+
+    monkeypatch.setattr("msm.services.get_account_holdings_snapshots_response", snapshots)
+
+    spots = CurrencySpot.filter(asset_uids=[pair])
+    history = AccountHoldingsSnapshots.get_many(account_uid=str(uuid.uuid4()), limit=3)
+
+    assert [(spot.uid, spot.base_currency_uid) for spot in spots] == [(pair, base)]
+    assert history[0]["holdings_set_uid"] == "s" and seen["limit"] == 3
+    assert recording.calls == [("currency-spot", "filter"), ("account-holdings", "get_many")]

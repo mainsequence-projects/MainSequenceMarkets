@@ -428,6 +428,10 @@ route for:
   portfolio's current one, so a producer whose signal uid changes each run keeps
   every signal in its own instance.
 - `Index.upsert_many` applies `Index.upsert`'s calculation-method guard.
+- `CurrencySpot` and `Future` gained `upsert_many` and `filter`, so registering
+  pairs and contracts is one call and their details are readable remotely;
+  `AccountHoldingsSnapshots.get_many` returns several snapshots in one call; and
+  `PortfolioDatasets.unregister` removes a catalog row to roll a move back.
 
 Still open: adopting the daily index-values table in `msm_migrations`; a
 catalog-aware reverse lookup of the portfolios holding given assets; a
@@ -435,7 +439,8 @@ valuation-context read (curves, building details, bindings, observations and
 fixings in one call); column metadata on `list_related_meta_tables`; set-based
 upserts on the pricing composites; count and projection reads on current
 pricing details; provider instances and a catalog for pricing details; frame
-reads of rebalance state and signal weights.
+reads of rebalance state and signal weights; catalog slots for the rebalance
+state, calendar events and event ledger instances; grouped membership counts.
 
 ### 2026-10-26: step 2, remote row backend and `msm.client`
 

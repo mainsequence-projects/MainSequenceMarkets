@@ -1438,7 +1438,7 @@ def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
     monkeypatch.setattr(
         account_services,
         "_search_account_holdings_rows",
-        lambda context, account_uid, limit: [
+        lambda context, account_uid, limit, **_kwargs: [
             {
                 "time_index": older_time,
                 "account_uid": str(account_uid),
@@ -2371,7 +2371,7 @@ def test_core_account_holdings_snapshot_returns_empty_for_no_data(monkeypatch) -
     monkeypatch.setattr(
         account_services,
         "_search_account_holdings_rows",
-        lambda context, account_uid, limit: [],
+        lambda context, account_uid, limit, **_kwargs: [],
     )
 
     snapshot = account_services.get_account_holdings_snapshot_response(

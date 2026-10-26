@@ -116,6 +116,12 @@ equality, `<field>_contains`, `<field>__in` and `<field>__gte`/`__gt`/`__lte`/
 `count` takes the same filters. Remote values are typed by the row model's
 field, so a date bound arrives as a date.
 
+The typed asset composites batch as well: `CurrencySpot.upsert_many` and
+`Future.upsert_many` write the assets and their details in one statement each,
+and `CurrencySpot.filter(asset_uids=, base_currency_uids=, quote_currency_uids=)`
+and `Future.filter(asset_uids=, underlying_index_uids=, kinds=)` read them with
+their details.
+
 ## Holdings And Asset Snapshots
 
 Account holdings and asset snapshots are Markets tables that applications
@@ -132,6 +138,7 @@ AccountHoldingsSnapshots.publish(
     overwrite=True,
 )
 latest = AccountHoldingsSnapshots.get(account_uid=account_uid)
+history = AccountHoldingsSnapshots.get_many(account_uid=account_uid, limit=10)
 AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}])
 current = AssetSnapshots.latest(tickers=["ACME"])
 ```
@@ -155,7 +162,9 @@ with `output_table=`. Markets finds the instance through the catalog of the
 series: pricing market-data bindings carry its `storage_table_uid`, the Index
 dataset catalog its table uid, the portfolio catalog its values, weights and
 signal tables (`PortfolioDatasets.register`; `register_signal` for a signal
-that is not a portfolio's current one).
+that is not a portfolio's current one). `PortfolioDatasets.unregister` removes
+a portfolio's catalog row to roll a move back; its reads return to the core
+tables and the instance keeps its rows.
 
 ## Portfolio Time Series
 

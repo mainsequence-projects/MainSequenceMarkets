@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from enum import Enum
 from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from msm.api.assets import Asset
+from msm.api.assets import (
+    Asset,
+    _bulk_upsert_composite_assets,
+    _composite_rows,
+    _filter_composites,
+    _last_by_identifier,
+)
 from msm.api.base import _dedupe_models, _warn_deprecated_create_schemas, operation_result_rows
 from msm.api.remote import RemoteRowOperations
 from msm.constants import ASSET_TYPE_FUTURE, ASSET_TYPE_FUTURE_DEFINITION
@@ -20,9 +26,23 @@ from msm.models import (
     IndexTable,
     IndexTypeTable,
 )
-from msm.repositories.crud import upsert_model
+from msm.repositories.crud import bulk_upsert_model, upsert_model
 
 FUTURE_ASSET_TYPE = ASSET_TYPE_FUTURE
+_FUTURE_DETAIL_FIELDS = (
+    "kind",
+    "underlying_index_uid",
+    "quote_unit",
+    "settlement_asset",
+    "margin_asset",
+    "settlement_model",
+    "settlement_method",
+    "contract_size",
+    "contract_unit",
+    "expires_at",
+    "settles_at",
+    "metadata",
+)
 
 
 class FutureKind(str, Enum):
@@ -197,6 +217,65 @@ class Future(RemoteRowOperations, BaseModel):
                 "unique_identifier": future_asset.unique_identifier,
                 "asset_type": future_asset.asset_type,
             }
+        )
+
+    @classmethod
+    def upsert_many(
+        cls,
+        payloads: Sequence[FutureUpsert | Mapping[str, Any]],
+    ) -> list[Future]:
+        """Upsert many futures: one statement for the assets, one for their contract details."""
+
+        values = _last_by_identifier(
+            _validate_payload(FutureUpsert, payload, {}).model_dump() for payload in payloads
+        )
+        if not values:
+            return []
+        context = cls._active_context()
+        upsert_model(
+            context,
+            model=AssetTypeTable,
+            values=ASSET_TYPE_FUTURE_DEFINITION.as_payload(),
+            conflict_columns=("asset_type",),
+        )
+        assets = _bulk_upsert_composite_assets(context, values, asset_type=FUTURE_ASSET_TYPE)
+        details = operation_result_rows(
+            bulk_upsert_model(
+                context,
+                model=FutureAssetDetailsTable,
+                values=[
+                    {
+                        "asset_uid": assets[item["unique_identifier"]]["uid"],
+                        **{field: item[field] for field in _FUTURE_DETAIL_FIELDS},
+                    }
+                    for item in values
+                ],
+                conflict_columns=("asset_uid",),
+            )
+        )
+        return _composite_rows(cls, details, {row["uid"]: row for row in assets.values()})
+
+    @classmethod
+    def filter(
+        cls,
+        *,
+        asset_uids: list[uuid.UUID] | None = None,
+        underlying_index_uids: list[uuid.UUID] | None = None,
+        kinds: list[str] | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[Future]:
+        """Futures by asset or underlying index uids and kind, ordered by asset uid."""
+
+        return _filter_composites(
+            cls,
+            FutureAssetDetailsTable,
+            {"asset_uid": asset_uids, "underlying_index_uid": underlying_index_uids},
+            limit=limit,
+            offset=offset,
+            extra_in_filters={
+                "kind": [_normalize_future_enum(FutureKind, kind) for kind in kinds or ()]
+            },
         )
 
     @classmethod

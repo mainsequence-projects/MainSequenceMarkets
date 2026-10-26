@@ -18,6 +18,7 @@ from msm_portfolios.services.portfolio_datasets import (
     reconcile_portfolio_dataset_availability,
     register_portfolio_datasets,
     register_signal_dataset,
+    unregister_portfolio_datasets,
     verify_contract_instance,
 )
 
@@ -235,6 +236,48 @@ def test_register_signal_requires_a_signal_metadata_row(monkeypatch) -> None:
             verify_tables=False,
         )
     assert store.updates == []
+
+
+def test_unregister_removes_the_catalog_row_and_its_signal_binding(monkeypatch) -> None:
+    growth = _portfolio("growth", signal_uid="growth-signal")
+    catalog_row = {
+        "uid": uuid.uuid4(),
+        "portfolio_uid": growth["uid"],
+        "values_meta_table_uid": "values-uid",
+        "weights_meta_table_uid": None,
+        "signal_meta_table_uid": "signal-uid",
+        "population_state": "populated",
+        "row_count": 3,
+        "reconciled_at": NOW,
+    }
+    store = _Store([growth], catalog=[catalog_row])
+    store.install(monkeypatch)
+    deleted: list[Any] = []
+    monkeypatch.setattr(
+        portfolio_datasets,
+        "delete_model",
+        lambda _context, *, model, uid: deleted.append((model, uid)) or {},
+    )
+    signal_row_uid = uuid.uuid4()
+    original_search = store._search
+
+    def search(_context, *, model, filters=None, **kwargs):
+        if model is SignalMetadataTable:
+            return {"rows": [{"uid": signal_row_uid, "signal_uid": filters["signal_uid"], "meta_table_uid": "signal-uid"}]}
+        return original_search(_context, model=model, filters=filters, **kwargs)
+
+    monkeypatch.setattr(portfolio_datasets, "search_model", search)
+
+    state = unregister_portfolio_datasets(object(), portfolio_uid=str(growth["uid"]))
+
+    assert state is not None and state.values_meta_table_uid == "values-uid"
+    assert deleted == [(PortfolioDatasetAvailabilityTable, catalog_row["uid"])]
+    assert store.updates == [{"model": SignalMetadataTable, "uid": signal_row_uid, "meta_table_uid": None}]
+
+    store.catalog.clear()
+    assert unregister_portfolio_datasets(object(), portfolio_uid=growth["uid"]) is None
+    with pytest.raises(LookupError, match="was not found"):
+        unregister_portfolio_datasets(object(), portfolio_uid=uuid.uuid4())
 
 
 def test_verify_contract_instance_allows_extra_columns_but_requires_grain() -> None:

@@ -188,10 +188,13 @@ def get_account_holdings_snapshot_response(
         return None
 
     resolved_account_uid = str(account_row["uid"])
+    target_time = _datetime_or_none(holdings_date)
     rows = _search_account_holdings_rows(
         context,
         account_uid=resolved_account_uid,
         limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
+        descending=str(order).lower() != "asc",
+        holdings_dates=None if target_time is None else [target_time],
     )
     snapshot_rows = _select_account_holdings_snapshot_rows(
         rows,
@@ -391,12 +394,89 @@ def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[s
     return rows[0] if rows else None
 
 
+def get_account_holdings_snapshots_response(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    holdings_dates: Sequence[dt.datetime | str] | None = None,
+    order: str = "desc",
+    limit: int = 10,
+    include_asset_detail: bool = False,
+) -> list[dict[str, Any]] | None:
+    """Several holdings snapshots of one account; ``None`` when the account does not exist.
+
+    ``holdings_dates`` selects those snapshots, in that order, skipping dates
+    without one; otherwise the latest (``order="desc"``) or earliest ``limit``
+    snapshots are returned.
+    """
+
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+    if str(order).lower() not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'.")
+    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
+    if account_row is None:
+        return None
+
+    resolved_account_uid = str(account_row["uid"])
+    wanted = None
+    if holdings_dates is not None:
+        wanted = [value for value in (_datetime_or_none(item) for item in holdings_dates) if value]
+    rows_by_time: dict[dt.datetime, list[dict[str, Any]]] = {}
+    offset = 0
+    while True:
+        page = _search_account_holdings_rows(
+            context,
+            account_uid=resolved_account_uid,
+            limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
+            descending=str(order).lower() == "desc",
+            holdings_dates=wanted,
+            offset=offset,
+        )
+        for row in page:
+            row_time = _datetime_or_none(row.get("time_index"))
+            if row_time is not None:
+                rows_by_time.setdefault(row_time, []).append(dict(row))
+        # Rows arrive ordered by time, so a page that reaches a later snapshot
+        # than the last one wanted means every wanted snapshot is complete.
+        if len(page) < MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT or (
+            wanted is None and len(rows_by_time) > limit
+        ):
+            break
+        offset += MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT
+
+    if wanted is not None:
+        times = [value for value in dict.fromkeys(wanted) if value in rows_by_time]
+    else:
+        times = sorted(rows_by_time, reverse=str(order).lower() == "desc")[:limit]
+    selected = [row for value in times for row in rows_by_time[value]]
+    asset_references = (
+        _asset_snapshot_references_by_unique_identifier(context, rows=selected)
+        if include_asset_detail and selected
+        else {}
+    )
+    return [
+        _build_account_holdings_snapshot(
+            account_uid=resolved_account_uid,
+            rows=rows_by_time[value],
+            asset_references=asset_references,
+            include_asset_detail=include_asset_detail,
+        )
+        for value in times
+    ]
+
+
 def _search_account_holdings_rows(
     context: MarketsRepositoryContext,
     *,
     account_uid: str,
     limit: int,
+    descending: bool = True,
+    holdings_dates: Sequence[dt.datetime] | None = None,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
+    """Holdings rows of one account ordered by time, newest first unless ``descending`` is false."""
+
     from msm.time_index.accounts.storage import AccountHoldingsStorage
     from msm.repositories.crud import search_model
 
@@ -407,7 +487,10 @@ def _search_account_holdings_rows(
                 context,
                 model=AccountHoldingsStorage,
                 filters={"account_uid": account_uid},
+                in_filters={"time_index": list(holdings_dates)} if holdings_dates else None,
                 limit=limit,
+                offset=offset,
+                order_by=["-time_index" if descending else "time_index"],
             )
         )
         if isinstance(row, Mapping)
@@ -755,6 +838,7 @@ __all__ = [
     "get_account_by_uid",
     "get_account_frontend_detail_summary",
     "get_account_holdings_snapshot_response",
+    "get_account_holdings_snapshots_response",
     "get_account_by_unique_identifier",
     "list_account_rows_response",
     "search_account_allocation_models",

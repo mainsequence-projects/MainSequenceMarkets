@@ -67,6 +67,18 @@ class PortfolioDatasets(RemoteRowOperations, BaseModel):
         return register_signal_dataset(cls._context(), registration)
 
     @classmethod
+    def unregister(cls, *, portfolio_uid: uuid.UUID | str) -> PortfolioDatasetState | None:
+        """Remove the portfolio's catalog row; its reads return to the core tables.
+
+        For rolling back a move to provider instances. The instance tables keep
+        their rows; ``None`` when the portfolio had no catalog row.
+        """
+
+        from msm_portfolios.services.portfolio_datasets import unregister_portfolio_datasets
+
+        return unregister_portfolio_datasets(cls._context(), portfolio_uid=portfolio_uid)
+
+    @classmethod
     def reconcile(
         cls,
         *,

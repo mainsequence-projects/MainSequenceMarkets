@@ -653,6 +653,29 @@ class AccountHoldingsSnapshots(RemoteRowOperations, BaseModel):
         )
 
     @classmethod
+    def get_many(
+        cls,
+        *,
+        account_uid: uuid.UUID | str,
+        holdings_dates: list[dt.datetime] | None = None,
+        order: str = "desc",
+        limit: int = 10,
+        include_asset_detail: bool = False,
+    ) -> list[dict[str, Any]] | None:
+        """Several snapshots in one call: at ``holdings_dates``, or the latest or earliest ``limit``."""
+
+        from msm.services import get_account_holdings_snapshots_response
+
+        return get_account_holdings_snapshots_response(
+            cls._context(),
+            account_uid=str(account_uid),
+            holdings_dates=holdings_dates,
+            order=order,
+            limit=limit,
+            include_asset_detail=include_asset_detail,
+        )
+
+    @classmethod
     def _context(cls):
         from msm.bootstrap import resolve_runtime
 

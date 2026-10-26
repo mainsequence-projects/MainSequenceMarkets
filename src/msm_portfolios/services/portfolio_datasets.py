@@ -26,7 +26,7 @@ from msm.repositories.base import (
     compile_markets_statement,
     execute_markets_operation,
 )
-from msm.repositories.crud import search_model, update_model, upsert_model
+from msm.repositories.crud import delete_model, search_model, update_model, upsert_model
 from msm_portfolios.time_index.contract_instances import (
     PORTFOLIO_WEIGHTS_CONTRACT,
     PORTFOLIOS_CONTRACT,
@@ -458,6 +458,62 @@ def register_signal_dataset(
     return typed
 
 
+def unregister_portfolio_datasets(
+    context: MarketsOperationContext,
+    *,
+    portfolio_uid: uuid.UUID | str,
+) -> PortfolioDatasetState | None:
+    """Remove one portfolio's catalog row so its reads return to the core tables.
+
+    The instance tables and their rows stay. When the portfolio's signal is
+    bound to the catalogued signal instance, that binding is cleared as well.
+    Returns the removed row's state, or ``None`` when there was no catalog row.
+    """
+
+    resolved_uid = uuid.UUID(str(portfolio_uid))
+    portfolio = _portfolio_row(context, portfolio_uid=resolved_uid)
+    if portfolio is None:
+        raise LookupError(f"Portfolio {resolved_uid!s} was not found")
+    existing = _catalog_rows(context, portfolio_uids=[resolved_uid])
+    if not existing:
+        return None
+    row = existing[0]
+    delete_model(context, model=PortfolioDatasetAvailabilityTable, uid=row["uid"])
+    signal_uid = portfolio.get("signal_uid")
+    signal_table = row.get("signal_meta_table_uid")
+    if signal_uid and signal_table:
+        _unbind_signal_metadata_table(
+            context,
+            signal_uid=str(signal_uid),
+            meta_table_uid=str(signal_table),
+        )
+    return _state_from_row(portfolio=portfolio, row=row)
+
+
+def _unbind_signal_metadata_table(
+    context: MarketsOperationContext,
+    *,
+    signal_uid: str,
+    meta_table_uid: str,
+) -> None:
+    rows = operation_result_rows(
+        search_model(
+            context,
+            model=SignalMetadataTable,
+            filters={"signal_uid": signal_uid},
+            limit=1,
+        )
+    )
+    if rows and str(rows[0].get("meta_table_uid") or "") == meta_table_uid:
+        update_model(
+            context,
+            model=SignalMetadataTable,
+            uid=rows[0]["uid"],
+            values={"meta_table_uid": None},
+            returning=False,
+        )
+
+
 def _bind_signal_metadata_table(
     context: MarketsOperationContext,
     *,
@@ -577,5 +633,6 @@ __all__ = [
     "reconcile_portfolio_dataset_availability",
     "register_portfolio_datasets",
     "register_signal_dataset",
+    "unregister_portfolio_datasets",
     "verify_contract_instance",
 ]
