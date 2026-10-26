@@ -140,9 +140,9 @@ def active_remote_backend() -> RemoteBackend | None:
         return None
     with _remote_backend_lock:
         if _remote_backend is None:
-            from msm.client import MarketsClient
+            from msm.client import LazyRemoteBackend
 
-            _remote_backend = MarketsClient.from_environment().backend
+            _remote_backend = LazyRemoteBackend()
             logger.info("msm.api row classes use the remote Markets API backend.")
     return _remote_backend
 

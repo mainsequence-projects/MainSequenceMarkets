@@ -166,3 +166,39 @@ def test_a_401_refreshes_the_release_token_once(monkeypatch) -> None:
 
     assert client.run_row_operation("asset", "get_by_uid", {"uid": "x"}) == "ok"
     assert sent == ["Bearer token-1", "Bearer token-2"]
+
+
+def test_lazy_backend_finds_the_api_on_its_first_call_only() -> None:
+    from msm.client import LazyRemoteBackend
+
+    created: list[int] = []
+
+    class Client:
+        def run_row_operation(self, resource, operation, arguments):
+            return (resource, operation, dict(arguments))
+
+    def factory():
+        created.append(1)
+        return Client()
+
+    backend = LazyRemoteBackend(factory)
+    assert created == []
+    assert backend.call("asset", "get_by_uid", {"uid": "x"}) == ("asset", "get_by_uid", {"uid": "x"})
+    backend.call("asset", "get_by_uid", {"uid": "y"})
+    assert created == [1]
+
+
+def test_msm_api_backend_env_selects_a_lazy_backend(monkeypatch) -> None:
+    from msm.api import remote
+    from msm.client import LazyRemoteBackend
+
+    monkeypatch.setenv(remote.MSM_API_BACKEND_ENV, "remote")
+    monkeypatch.setattr(remote, "_remote_backend", None)
+    monkeypatch.setattr(
+        "msm.client.MarketsClient.from_environment",
+        classmethod(lambda cls: pytest.fail("discovery must wait for the first row call")),
+    )
+    try:
+        assert isinstance(remote.active_remote_backend(), LazyRemoteBackend)
+    finally:
+        remote.use_runtime_backend()

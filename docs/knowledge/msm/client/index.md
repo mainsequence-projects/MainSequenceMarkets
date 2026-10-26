@@ -22,8 +22,10 @@ from msm.client import MarketsClient
 use_remote_backend(MarketsClient.from_environment().backend)
 ```
 
-or set `MSM_API_BACKEND=remote` before the first row call. The choice is
-process-wide and applies only to row classes whose table lives in the Markets
+or `use_remote_backend(LazyRemoteBackend())`, which finds the Markets API on
+the first row call so a process that never touches a Markets registry never
+needs to see it, or set `MSM_API_BACKEND=remote` (lazy as well) before the
+first row call. The choice is process-wide and applies only to row classes whose table lives in the Markets
 namespace. A provider's own row classes, over tables in the provider's
 namespace, keep the runtime backend, so one provider process writes its own
 tables with MetaTables and Markets registries through the API.

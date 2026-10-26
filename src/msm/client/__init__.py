@@ -10,17 +10,24 @@ grants on ``mainsequence.markets``::
 
     use_remote_backend(MarketsClient.from_environment().backend)
 
-or set ``MSM_API_BACKEND=remote``. Portfolio time series are read with
+or ``use_remote_backend(LazyRemoteBackend())``, which finds the API on the first
+row call, or set ``MSM_API_BACKEND=remote`` (lazy as well). Portfolio time series are read with
 ``MarketsClient.portfolio_values(...)`` and ``portfolio_weights(...)``.
 """
 
 from __future__ import annotations
 
-from msm.client.client import MarketsClient, RemoteRowBackend, tabular_frame_to_pandas
+from msm.client.client import (
+    LazyRemoteBackend,
+    MarketsClient,
+    RemoteRowBackend,
+    tabular_frame_to_pandas,
+)
 from msm.client.discovery import MarketsApiEndpoint, MarketsApiResolutionError
 
 __all__ = [
     "MarketsApiEndpoint",
+    "LazyRemoteBackend",
     "MarketsApiResolutionError",
     "MarketsClient",
     "RemoteRowBackend",

@@ -145,6 +145,30 @@ class RemoteRowBackend:
         return self.client.run_row_operation(resource, operation, arguments)
 
 
+class LazyRemoteBackend:
+    """A remote backend that finds the Markets API on its first row call.
+
+    Selecting the remote backend at process start then costs nothing, and a process
+    that never touches a Markets registry never needs to see the Markets API.
+    """
+
+    def __init__(self, factory: Callable[[], MarketsClient] | None = None) -> None:
+        self._factory = factory or MarketsClient.from_environment
+        self._client: MarketsClient | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def client(self) -> MarketsClient:
+        if self._client is None:
+            with self._lock:
+                if self._client is None:
+                    self._client = self._factory()
+        return self._client
+
+    def call(self, resource: str, operation: str, arguments: Mapping[str, Any]) -> Any:
+        return self.client.run_row_operation(resource, operation, arguments)
+
+
 def tabular_frame_to_pandas(frame: Mapping[str, Any]) -> Any:
     """Build a pandas DataFrame from a ``core.tabular_frame@v1`` response."""
 
@@ -168,4 +192,10 @@ def _error_detail(response: Any) -> tuple[str, str | None]:
     return str(body), None
 
 
-__all__ = ["API_PREFIX", "MarketsClient", "RemoteRowBackend", "tabular_frame_to_pandas"]
+__all__ = [
+    "API_PREFIX",
+    "LazyRemoteBackend",
+    "MarketsClient",
+    "RemoteRowBackend",
+    "tabular_frame_to_pandas",
+]
