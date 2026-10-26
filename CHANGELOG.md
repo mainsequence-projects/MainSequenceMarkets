@@ -19,6 +19,19 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- `msm.client` and the remote row backend (ADR 0047, decision 2). With
+  `use_remote_backend(MarketsClient.from_environment().backend)` or
+  `MSM_API_BACKEND=remote`, every public class method of a Markets row class
+  (`Asset.upsert`, `Portfolio.get_by_uid`, `CurrencySpot.upsert`,
+  `Index.get_formula` ...) runs through the Markets API instead of MetaTables,
+  so an application needs no grant on `mainsequence.markets`. A provider's own
+  row classes keep the runtime backend. The client discovers the `api` release
+  of the `MainSequenceMarkets` repository in the caller's Environment and
+  authenticates with its release token; `MARKETS_API_URL` and
+  `MARKETS_API_TOKEN` select a local API. New routes `GET /rows/` and
+  `POST /rows/{resource}/{operation}/` serve it; writes go through the registry
+  write policy. `MarketsClient.portfolio_values` and `portfolio_weights` read
+  catalogued portfolio time series.
 - Registry write policy (ADR 0047, decision 3). `apps.v1.policy` runs before
   every `registry_write` service: an application (workload identity) may create,
   update or delete registry rows only when the Main Sequence Constant

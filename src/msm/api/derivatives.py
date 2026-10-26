@@ -11,6 +11,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.assets import Asset
 from msm.api.base import _dedupe_models, _warn_deprecated_create_schemas, operation_result_rows
+from msm.api.remote import RemoteRowOperations
 from msm.constants import ASSET_TYPE_FUTURE, ASSET_TYPE_FUTURE_DEFINITION
 from msm.models import (
     AssetTable,
@@ -86,7 +87,7 @@ def _normalize_unit(value: str) -> str:
     return normalized
 
 
-class Future(BaseModel):
+class Future(RemoteRowOperations, BaseModel):
     """Typed future asset with contract terms backed by a detail MetaTable row."""
 
     model_config = ConfigDict(extra="ignore", frozen=True, use_enum_values=True)

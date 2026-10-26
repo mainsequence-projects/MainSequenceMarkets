@@ -93,6 +93,15 @@ class MarketsMetaTableRow(BaseModel):
 
     uid: uuid.UUID
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Let the subclass's public class methods run on the remote backend (ADR 0047)."""
+
+        super().__pydantic_init_subclass__(**kwargs)
+        from msm.api.remote import install_remote_dispatch
+
+        install_remote_dispatch(cls)
+
     @model_validator(mode="before")
     @classmethod
     def _reconcile_renamed_columns(cls, data: Any) -> Any:
@@ -371,6 +380,14 @@ def _warn_deprecated_create_schemas(row_model_name: str) -> None:
         stacklevel=3,
     )
 
+
+def _install_base_dispatch() -> None:
+    from msm.api.remote import install_remote_dispatch
+
+    install_remote_dispatch(MarketsMetaTableRow, register=False)
+
+
+_install_base_dispatch()
 
 MarketsRow = MarketsMetaTableRow
 

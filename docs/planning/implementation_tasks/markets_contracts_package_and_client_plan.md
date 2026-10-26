@@ -3,7 +3,11 @@
 ## Status
 
 Design note, drafted 2026-10-25 for [ADR 0047](../../ADR/0047-markets-api-application-boundary.md)
-decision 2 and migration path step 2. Nothing in it is implemented. Step 1
+decision 2 and migration path step 2. Updated 2026-10-26: the remote row
+backend, `msm.client` and the registry write policy are implemented, with the
+deviations recorded in the ADR's "step 2" implementation note (per-method
+dispatch instead of a `RowBackend` protocol, mixed backends per row class,
+release name `api`). The distribution split (order of work, step 5) is not. Step 1
 (the acting identity, the portfolio dataset catalog, the catalog-aware reads
 and the missing routes) is on `development`; this note is the hand-off for
 the packaging split. It records what the split must preserve, where the

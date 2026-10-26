@@ -408,6 +408,36 @@ Deviations and open items:
   a branch that carries the declaration must therefore come from an
   Organization admin.
 
+### 2026-10-26: step 2, remote row backend and `msm.client`
+
+Implemented in `msm.api.remote`, `msm.client` and `apps/v1/routers/rows.py`;
+the distribution split into `ms-markets-contracts` is not done yet, so an
+application still installs `ms-markets`. Deviations and refinements:
+
+- No `RowBackend` protocol with one method per CRUD verb. Every public class
+  method of a Markets row class (including composites such as `CurrencySpot`
+  and `FormulaIndex`, and extras such as `Index.get_formula`) is wrapped when
+  the class is defined. Under `runtime` the original method runs unchanged;
+  under `remote` the bound arguments go to `POST /rows/{resource}/{operation}/`,
+  which runs the same method on the Markets runtime. The remote operations are
+  the row classes' own methods, so the backends cannot drift, and methods with
+  their own SQL (the typed asset upserts, `Index.upsert`'s calculation-method
+  check) need no remote rewrite.
+- Mixed backends are allowed, per row class rather than per process: the
+  remote backend serves row classes whose table is in the Markets namespace,
+  and a provider's own row classes keep the runtime. A provider process
+  therefore writes its own tables with MetaTables and Markets registries through
+  the API.
+- The Markets API release is named `api`, from `source_path: api/main.py`, not
+  `markets-api` (the workflow key). Discovery selects the FastAPI release named
+  `api` of the `MainSequenceMarkets` CodeRepository in the caller's
+  Environment; a consumer's workflow grants `reader` on that repository's
+  branch, as the Markets API does for MetaTables.
+- Remote `delete` runs the resource's service delete with its preflight
+  checks, and exists only where one exists.
+- Registry writes through these routes are subject to the registry write
+  policy of decision 3.
+
 ### 2026-10-25: step 1, missing routes
 
 Added to `apps/v1`: account create and update; formula save, activate, retire

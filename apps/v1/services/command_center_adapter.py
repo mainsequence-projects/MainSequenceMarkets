@@ -56,6 +56,7 @@ READ_OPERATION_IDS = frozenset(
         "listAssets",
         "getAssetsByUids",
         "getAccountsByUids",
+        "describeRowOperations",
         "getIndexesByUids",
         "getPortfoliosByUids",
         "getPortfolioDatasets",
@@ -160,6 +161,7 @@ RESOURCE_OPERATION_IDS = READ_OPERATION_IDS - QUERY_OPERATION_IDS
 
 MUTATION_OPERATION_IDS = frozenset(
     {
+        "runRowOperation",
         "deleteAsset",
         "createAssetCategory",
         "bulkDeleteAssetCategories",

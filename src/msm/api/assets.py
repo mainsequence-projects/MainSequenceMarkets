@@ -16,6 +16,7 @@ from pydantic import (
     model_validator,
 )
 
+from msm.api.remote import RemoteRowOperations
 from msm.api.base import (
     MarketsMetaTableRow,
     _dedupe_models,
@@ -251,7 +252,7 @@ class AssetTypeUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class CurrencySpot(BaseModel):
+class CurrencySpot(RemoteRowOperations, BaseModel):
     """Typed currency spot asset with base and quote currency references."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -393,7 +394,7 @@ def _normalize_bond_status(value: BondStatus | str) -> str:
     return normalized
 
 
-class Bond(BaseModel):
+class Bond(RemoteRowOperations, BaseModel):
     """Typed bond asset with issuer, currency, and lifecycle detail."""
 
     model_config = ConfigDict(extra="ignore", frozen=True, use_enum_values=True)

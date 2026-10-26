@@ -9,6 +9,7 @@ import pandas as pd
 from metatables import MetaTable
 from pydantic import BaseModel, ConfigDict
 
+from msm.api.remote import RemoteRowOperations
 from msm.analytics.indices import (
     IndexFormulaDefinition,
     IndexFormulaInput,
@@ -62,7 +63,7 @@ _NUMERIC_DATA_TYPES = {
 }
 
 
-class FormulaIndex(BaseModel):
+class FormulaIndex(RemoteRowOperations, BaseModel):
     """Canonical Index identity with one persisted formula version and its inputs."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
