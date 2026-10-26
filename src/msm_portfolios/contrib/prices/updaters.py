@@ -749,10 +749,17 @@ class InterpolatedPrices(AssetIndexedUpdater):
         self,
         interpolation_config: InterpolatedPricesConfig,
         *args,
+        storage_namespace: str | None = None,
+        storage_app: str | None = None,
+        storage_base: Any | None = None,
         **kwargs,
     ):
         """
         Initializes the InterpolatedPrices object.
+
+        ``storage_namespace``, ``storage_app`` and ``storage_base`` place the output
+        table in a provider's own namespace (ADR 0047); they change where rows land,
+        not ``update_hash``.
         """
         self.interpolation_config = interpolation_config
         intraday_bar_interpolation_rule = interpolation_config.intraday_bar_interpolation_rule
@@ -782,6 +789,9 @@ class InterpolatedPrices(AssetIndexedUpdater):
             source_cadence=source_cadence,
             upsample_frequency_id=upsample_frequency_id,
             intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+            namespace=storage_namespace,
+            storage_app=storage_app,
+            base=storage_base,
         )
 
         self.asset_category_unique_id = asset_category_unique_id
@@ -806,6 +816,11 @@ class InterpolatedPrices(AssetIndexedUpdater):
             *args,
             **kwargs,
         )
+
+    def _initialize_configuration(self, init_kwargs: dict) -> None:
+        for runtime_key in ("storage_namespace", "storage_app", "storage_base"):
+            init_kwargs.pop(runtime_key, None)
+        super()._initialize_configuration(init_kwargs=init_kwargs)
 
     def dependencies(self):
         return {"bars_ts": self.bars_ts}

@@ -64,6 +64,9 @@ WRITE_OPERATIONS = frozenset(
         "add_many",
         "create_index_curve_selection",
         "upsert_index_curve_selection",
+        "publish",
+        "register",
+        "reconcile",
     }
 )
 """Operations that create, update or delete registry rows; the API wraps them in

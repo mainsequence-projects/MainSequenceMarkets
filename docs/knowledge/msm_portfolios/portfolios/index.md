@@ -456,6 +456,15 @@ updater = PortfoliosUpdater(
 ```
 
 `PortfolioWeights` alone takes `output_table=` and `rebalance_output_table=`.
+`InterpolatedPrices` takes `storage_namespace=`, `storage_app=` and
+`storage_base=` to keep its derived table in the provider's namespace; the
+table keeps its storage identity and identifier suffix, and none of the three
+enters `update_hash`.
+
+An application on the remote row backend registers and reconciles the catalog
+with `msm_portfolios.api.datasets.PortfolioDatasets.register(...)`,
+`.reconcile(...)` and `.get(...)`, which run the services below on the Markets
+API (write-policy resource `portfolio-datasets`).
 Instance tables change where rows land, not identities: none of them enters
 `update_hash`, and MetaTables keys each update record by update hash and output
 table.

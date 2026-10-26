@@ -75,6 +75,7 @@ def _load_row_classes() -> dict[str, type]:
     import msm.api.issuers  # noqa: F401
     import msm.api.portfolios  # noqa: F401
     import msm.api.virtual_funds  # noqa: F401
+    import msm_portfolios.api.datasets  # noqa: F401
     import msm_portfolios.api.market_metadata  # noqa: F401
     import msm_portfolios.api.portfolios  # noqa: F401
     import msm_pricing.api.curve_building_details  # noqa: F401

@@ -6,7 +6,7 @@ import datetime
 import hashlib
 import json
 from functools import lru_cache
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from sqlalchemy import (
     Boolean,
@@ -166,15 +166,50 @@ def interpolated_prices_output_table_name(
     )
 
 
-@lru_cache(maxsize=256)
 def configured_interpolated_prices_storage(
     *,
     source_time_index_meta_table_uid: str,
     source_cadence: str,
     upsample_frequency_id: str | None,
     intraday_bar_interpolation_rule: str,
+    namespace: str | None = None,
+    storage_app: str | None = None,
+    base: type[Any] | None = None,
 ) -> type[MarketsBase]:
-    """Build the storage class for one interpolated-price storage identity."""
+    """Build the storage class for one interpolated-price storage identity.
+
+    By default the table lives in the Markets namespace and registry. A provider
+    that interpolates its own bars passes its ``namespace``, ``storage_app`` and,
+    when its own Alembic provider migrates the table, its declarative ``base``
+    (ADR 0047): the table is then ``<storage_app>__interpolated_prices__<suffix>``
+    in that namespace, with the same identifier, columns and storage identity.
+    """
+
+    if namespace is not None or storage_app is not None or base is not None:
+        return _provider_interpolated_prices_storage(
+            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+            source_cadence=source_cadence,
+            upsample_frequency_id=upsample_frequency_id,
+            intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+            namespace=namespace,
+            storage_app=storage_app or MARKETS_TABLE_APP,
+            base=base,
+        )
+    return _markets_interpolated_prices_storage(
+        source_time_index_meta_table_uid,
+        source_cadence,
+        upsample_frequency_id,
+        intraday_bar_interpolation_rule,
+    )
+
+
+@lru_cache(maxsize=256)
+def _markets_interpolated_prices_storage(
+    source_time_index_meta_table_uid: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+) -> type[MarketsBase]:
 
     components = interpolated_prices_storage_identity_components(
         source_time_index_meta_table_uid=source_time_index_meta_table_uid,
@@ -207,28 +242,113 @@ def configured_interpolated_prices_storage(
     )
 
 
+def _provider_interpolated_prices_storage(
+    *,
+    source_time_index_meta_table_uid: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+    namespace: str | None,
+    storage_app: str,
+    base: type[Any] | None,
+) -> type[MarketsBase]:
+    from msm.settings import markets_namespace
+
+    app = str(storage_app).strip()
+    if not app:
+        raise ValueError("storage_app must be a non-empty app segment.")
+    return _cached_provider_interpolated_prices_storage(
+        source_time_index_meta_table_uid,
+        source_cadence,
+        upsample_frequency_id,
+        intraday_bar_interpolation_rule,
+        markets_namespace(namespace),
+        app,
+        base or MarketsBase,
+    )
+
+
+@lru_cache(maxsize=256)
+def _cached_provider_interpolated_prices_storage(
+    source_time_index_meta_table_uid: str,
+    source_cadence: str,
+    upsample_frequency_id: str | None,
+    intraday_bar_interpolation_rule: str,
+    namespace: str,
+    storage_app: str,
+    base: type[Any],
+) -> type[MarketsBase]:
+    from metatables import schema_table_name
+
+    from msm.settings import markets_identifier
+
+    components = interpolated_prices_storage_identity_components(
+        source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+        source_cadence=source_cadence,
+        upsample_frequency_id=upsample_frequency_id,
+        intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+    )
+    suffix = _interpolated_prices_storage_identity_suffix(components)
+    table_name = schema_table_name(storage_app, "interpolated_prices", suffix=suffix)
+    authored_identifier = f"InterpolatedPricesTS.{suffix}"
+    table = _copy_interpolated_prices_table(
+        table_name,
+        metadata=base.metadata,
+        info={
+            "namespace": namespace,
+            "identifier": markets_identifier(authored_identifier, namespace=namespace),
+            "markets_storage_app": storage_app,
+        },
+    )
+    return type(
+        f"InterpolatedPricesStorage_{storage_app}_{suffix}",
+        (MarketsTimeIndexMetaTableMixin, base),
+        {
+            "__module__": __name__,
+            "__table__": table,
+            "__metatable_identifier__": authored_identifier,
+            "__metatable_namespace__": namespace,
+            "__markets_storage_app__": storage_app,
+            "__metatable_description__": InterpolatedPricesStorage.__metatable_description__,
+            "__metatable_extra_hash_components__": components,
+            "__time_index_name__": InterpolatedPricesStorage.__time_index_name__,
+            "__cadence__": components[INTERPOLATED_PRICES_UPSAMPLE_FREQUENCY_COMPONENT],
+            "__index_names__": list(InterpolatedPricesStorage.__index_names__),
+        },
+    )
+
+
 def _interpolated_prices_storage_identity_suffix(components: dict[str, str]) -> str:
     encoded = json.dumps(components, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()[:16]
 
 
-def _copy_interpolated_prices_table(table_name: str) -> Table:
-    existing = MarketsBase.metadata.tables.get(table_name)
+def _copy_interpolated_prices_table(
+    table_name: str,
+    *,
+    metadata: Any = None,
+    info: dict[str, Any] | None = None,
+) -> Table:
+    metadata = MarketsBase.metadata if metadata is None else metadata
+    existing = metadata.tables.get(table_name)
     if isinstance(existing, Table):
         return existing
 
+    asset_table = AssetTable.__table__
+    if asset_table.metadata is not metadata:
+        asset_table = metadata.tables.get(asset_table.key) or asset_table.to_metadata(metadata)
     columns = [column._copy() for column in InterpolatedPricesStorage.__table__.columns]
     table = Table(
         table_name,
-        MarketsBase.metadata,
+        metadata,
         *columns,
         ForeignKeyConstraint(
             [ASSET_IDENTIFIER_DIMENSION],
-            [f"{AssetTable.__table__.fullname}.unique_identifier"],
+            [f"{asset_table.fullname}.unique_identifier"],
             ondelete="RESTRICT",
         ),
         schema=InterpolatedPricesStorage.__table__.schema,
-        info=dict(InterpolatedPricesStorage.__table__.info or {}),
+        info=dict(info if info is not None else (InterpolatedPricesStorage.__table__.info or {})),
     )
     Index(
         schema_index_name(

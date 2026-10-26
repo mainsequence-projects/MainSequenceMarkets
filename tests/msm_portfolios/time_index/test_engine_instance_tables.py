@@ -99,3 +99,56 @@ def test_portfolio_weights_binds_its_rebalance_updater_without_changing_its_hash
     assert provider.update_hash == core.update_hash
     assert provider.portfolio_rebalance.update_hash == core.portfolio_rebalance.update_hash
     assert storage_only_provider.update_hash == storage_only_core.update_hash
+
+
+def test_interpolated_prices_can_live_in_a_provider_namespace() -> None:
+    from msm.time_index.assets.storage import AssetSnapshotsStorage
+    from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
+    from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
+    from tests.identity.test_pinned_identities import (
+        PRICES_TABLE_UID,
+        SOURCE_TABLE_UID,
+        _interpolated_prices_storage,
+    )
+    from msm.time_index.assets import AssetSnapshot
+
+    provider_storage = configured_interpolated_prices_storage(
+        source_time_index_meta_table_uid=SOURCE_TABLE_UID,
+        source_cadence="1d",
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
+        namespace="my-provider",
+        storage_app="my_provider",
+    )
+    core_storage = _interpolated_prices_storage()
+
+    assert provider_storage is not core_storage
+    assert provider_storage.__table__.name.startswith("my_provider__interpolated_prices__")
+    assert provider_storage.__table__.info["namespace"] == "my-provider"
+    assert provider_storage.__metatable_identifier__.endswith(
+        core_storage.__metatable_identifier__.split(".", 1)[1]
+    )
+    assert provider_storage.__metatable_extra_hash_components__ == (
+        core_storage.__metatable_extra_hash_components__
+    )
+
+    with (
+        _bound(AssetSnapshotsStorage, SOURCE_TABLE_UID, cadence="1d"),
+        _bound(core_storage, PRICES_TABLE_UID),
+        _bound(provider_storage, "c0000000-0000-4000-8000-000000000001"),
+    ):
+        config = InterpolatedPricesConfig(
+            source_price_instance=AssetSnapshot(),
+            intraday_bar_interpolation_rule="ffill",
+            upsample_frequency_id="1d",
+            asset_list=["ASSET_A"],
+        )
+        core = InterpolatedPrices(config)
+        provider = InterpolatedPrices(
+            config, storage_namespace="my-provider", storage_app="my_provider"
+        )
+
+    assert core.output_table is core_storage
+    assert provider.output_table is provider_storage
+    assert provider.update_hash == core.update_hash
+    assert "storage_namespace" not in provider.build_configuration

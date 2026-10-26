@@ -383,3 +383,63 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
     assert published["holdings"]["holdings_date"] == dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
     assert written == 1
     assert published["snapshots"] == [{"asset_identifier": "A", "name": "Acme"}]
+
+
+@pytest.mark.parametrize(
+    ("resource", "operation", "arguments"),
+    [
+        ("asset-snapshots", "publish", {"snapshots": [{"asset_identifier": "A"}]}),
+        (
+            "account-holdings",
+            "publish",
+            {"account_uid": str(uuid.uuid4()), "holdings_date": "2026-01-02T00:00:00Z", "positions": []},
+        ),
+        ("portfolio-datasets", "register", {"registration": {"portfolio_uid": str(uuid.uuid4())}}),
+        ("portfolio-datasets", "reconcile", {"portfolio_uids": [str(uuid.uuid4())]}),
+        ("asset", "upsert_many", {"payloads": [{"unique_identifier": "A"}]}),
+    ],
+)
+def test_every_publication_and_catalog_write_is_policy_checked(
+    monkeypatch, remote, resource, operation, arguments
+) -> None:
+    from msm.api.remote import WRITE_OPERATIONS
+
+    monkeypatch.setattr(policy, "resolve_identity_type", lambda uid: "workload")
+
+    assert operation in WRITE_OPERATIONS
+    with pytest.raises(MarketsAccessError, match="MARKETS_REGISTRY_WRITERS"):
+        remote.client.run_row_operation(resource, operation, arguments)
+
+
+def test_portfolio_datasets_register_runs_remotely(monkeypatch, remote) -> None:
+    from msm_portfolios.api.datasets import PortfolioDatasets
+    from msm_portfolios.services.portfolio_datasets import PortfolioDatasetState
+
+    portfolio_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def register(context, registration, *, reconcile=True, **kwargs):
+        seen.update({"registration": dict(registration), "reconcile": reconcile})
+        return PortfolioDatasetState(
+            portfolio_uid=portfolio_uid,
+            portfolio_identifier="provider-sleeve",
+            values_meta_table_uid="values-uid",
+            population_state="compatible_empty",
+            reconciled_at=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
+        )
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_datasets.register_portfolio_datasets", register
+    )
+
+    state = PortfolioDatasets.register(
+        {"portfolio_uid": str(portfolio_uid), "values_meta_table_uid": "values-uid"},
+        reconcile=False,
+    )
+
+    assert isinstance(state, PortfolioDatasetState)
+    assert state.portfolio_uid == portfolio_uid
+    assert seen == {
+        "registration": {"portfolio_uid": str(portfolio_uid), "values_meta_table_uid": "values-uid"},
+        "reconcile": False,
+    }

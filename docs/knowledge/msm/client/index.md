@@ -134,6 +134,19 @@ AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name"
 
 Their write-policy resources are `account-holdings` and `asset-snapshots`.
 
+## Provider Time Series
+
+Time series a provider produces live in its own namespace (ADR 0047). Besides
+the portfolio contracts, `msm.storage_instances.configured_time_index_instance`
+builds an instance of any Markets time-index storage (discount curves, index
+fixings, pricing details, index values, orders, trades ...) with the core
+storage's columns, foreign keys and grain index, under the provider's
+`namespace`, `storage_app` and Alembic `base`; the provider binds its updater
+with `output_table=`. Markets finds the instance through the catalog of the
+series: pricing market-data bindings carry its `storage_table_uid`, the Index
+dataset catalog its table uid, the portfolio catalog its values, weights and
+signal tables (`PortfolioDatasets.register`).
+
 ## Portfolio Time Series
 
 Time series are not row calls. Read portfolio values and weights from the

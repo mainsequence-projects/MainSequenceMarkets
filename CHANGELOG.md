@@ -19,6 +19,14 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Provider time series (ADR 0047): `msm.storage_instances.configured_time_index_instance`
+  builds a provider-owned instance of any Markets time-index storage, with its
+  columns, foreign keys and grain index, in the provider's namespace and Alembic
+  base. `configured_interpolated_prices_storage` takes `namespace`,
+  `storage_app` and `base`, and `InterpolatedPrices` takes `storage_namespace`,
+  `storage_app` and `storage_base`, without changing `update_hash`.
+  `msm_portfolios.api.datasets.PortfolioDatasets.register/reconcile/get` run the
+  portfolio dataset catalog services through the remote backend.
 - Set-based row operations on every table row class, under both backends:
   `upsert_many(payloads)` (one bulk upsert on `__upsert_keys__`, each payload
   validated through `<Row>Upsert`), `count(**filters)`, and `filter(...)` with
