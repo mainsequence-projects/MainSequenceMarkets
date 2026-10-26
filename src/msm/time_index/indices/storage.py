@@ -310,8 +310,12 @@ def _copy_index_values_table(
     if isinstance(existing, Table):
         return existing
 
-    index_table = _target_in(metadata, IndexTable.__table__)
-    definition_table = _target_in(metadata, IndexFormulaDefinitionTable.__table__)
+    from msm.storage_instances import markets_reference_table
+
+    index_table = markets_reference_table(IndexTable.__table__, metadata, ["unique_identifier"])
+    definition_table = markets_reference_table(
+        IndexFormulaDefinitionTable.__table__, metadata, ["uid"]
+    )
     columns = [column._copy() for column in IndexValuesStorage.__table__.columns]
     table = Table(
         table_name,
@@ -353,15 +357,6 @@ def _copy_index_values_table(
         table.c.observation_status,
     )
     return table
-
-
-def _target_in(metadata: Any, core_table: Table) -> Table:
-    """A Markets foreign-key target as it exists in ``metadata``, copied there once."""
-
-    if core_table.metadata is metadata:
-        return core_table
-    copied = metadata.tables.get(core_table.key)
-    return copied if copied is not None else core_table.to_metadata(metadata)
 
 
 __all__ = [

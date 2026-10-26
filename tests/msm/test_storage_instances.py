@@ -90,3 +90,27 @@ def test_instances_on_a_provider_base_share_copied_targets_and_attach() -> None:
         assert resolve_markets_meta_table_models([trades]) == [trades]
     finally:
         use_runtime_backend()
+
+
+def test_a_provider_base_holds_only_reference_copies_of_markets_tables() -> None:
+    """Copied targets keep only their key column, so the provider metadata sorts on its own."""
+
+    from msm_portfolios.time_index.contract_instances import (
+        configured_portfolio_event_ledger_storage,
+        configured_portfolio_weights_storage,
+    )
+
+    class OwnBase(DeclarativeBase):
+        metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+    kwargs = {"instance_key": "main", "namespace": "ns-ref", "storage_app": "ns_ref", "base": OwnBase}
+    configured_portfolio_weights_storage(**kwargs)
+    configured_portfolio_event_ledger_storage(**kwargs)
+
+    sorted_names = [table.name for table in OwnBase.metadata.sorted_tables]
+    assert "ns_ref__portfolioweightsts__main" in sorted_names
+    portfolio = OwnBase.metadata.tables["ms_markets__portfolio"]
+    asset = OwnBase.metadata.tables["ms_markets__asset"]
+    assert [column.name for column in portfolio.c] == ["unique_identifier"]
+    assert [column.name for column in asset.c] == ["unique_identifier"]
+    assert not portfolio.foreign_keys and not asset.foreign_keys

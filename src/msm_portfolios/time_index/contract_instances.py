@@ -34,6 +34,7 @@ from msm.models.calendars import CalendarTable
 from msm.models.portfolios.core import PortfolioTable
 from msm.models.portfolios.signals import SignalMetadataTable
 from msm.settings import markets_identifier, markets_namespace
+from msm.storage_instances import markets_reference_table
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioEventLedgerStorage,
@@ -424,7 +425,9 @@ def _copy_contract_table(
 
     constraints: list[ForeignKeyConstraint] = []
     for foreign_key in definition.foreign_keys:
-        target = _target_table(foreign_key.target_table, metadata=metadata)
+        target = markets_reference_table(
+            foreign_key.target_table.__table__, metadata, [foreign_key.target_column]
+        )
         constraints.append(
             ForeignKeyConstraint(
                 [foreign_key.source_column],
@@ -447,18 +450,6 @@ def _copy_contract_table(
         unique=True,
     )
     return table
-
-
-def _target_table(model: type[Any], *, metadata: MetaData) -> Table:
-    """Return the FK target table inside ``metadata``, copying it from the core registry if needed."""
-
-    core_table: Table = model.__table__
-    if core_table.metadata is metadata:
-        return core_table
-    existing = metadata.tables.get(core_table.key)
-    if isinstance(existing, Table):
-        return existing
-    return core_table.to_metadata(metadata)
 
 
 __all__ = [

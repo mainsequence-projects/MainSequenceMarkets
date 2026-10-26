@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
+from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import ForeignKeyConstraint, Index, MetaData, Table
+from sqlalchemy import Column, ForeignKeyConstraint, Index, MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import PlatformTimeIndexMetaTable, schema_index_name, schema_table_name
@@ -65,6 +66,44 @@ def configured_time_index_instance(
     return _configured_time_index_instance(
         core_storage, key, markets_namespace(namespace), app, base or MarketsBase
     )
+
+
+def markets_reference_table(
+    core_table: Table,
+    metadata: MetaData,
+    columns: Iterable[str],
+) -> Table:
+    """A Markets table as a foreign-key target inside a provider's ``metadata``.
+
+    Only the referenced key columns are copied, without the Markets table's own
+    foreign keys, so the provider's metadata sorts and autogenerates on its own
+    (ADR 0047: extension migrations reference core tables by physical name and
+    key column). The provider's migrations never create this table.
+    """
+
+    if core_table.metadata is metadata:
+        return core_table
+    table = metadata.tables.get(core_table.key)
+    if table is None:
+        table = Table(
+            core_table.name,
+            metadata,
+            schema=core_table.schema,
+            info=dict(core_table.info or {}),
+        )
+    for name in dict.fromkeys(columns):
+        if name not in table.c:
+            column = core_table.c[name]
+            table.append_column(
+                Column(
+                    name,
+                    column.type,
+                    primary_key=column.primary_key,
+                    nullable=column.nullable,
+                    unique=column.unique,
+                )
+            )
+    return table
 
 
 def time_index_instance_identifier(core_storage: type[Any], instance_key: str) -> str:
@@ -147,10 +186,9 @@ def _copy_table(
     for foreign_key in core_table.foreign_key_constraints:
         targets = []
         for element in foreign_key.elements:
-            target_table = element.column.table
-            if target_table.metadata is not metadata:
-                copied = metadata.tables.get(target_table.key)
-                target_table = copied if copied is not None else target_table.to_metadata(metadata)
+            target_table = markets_reference_table(
+                element.column.table, metadata, [element.column.name]
+            )
             targets.append(f"{target_table.fullname}.{element.column.name}")
         constraints.append(
             ForeignKeyConstraint(
@@ -177,5 +215,6 @@ def _copy_table(
 
 __all__ = [
     "configured_time_index_instance",
+    "markets_reference_table",
     "time_index_instance_identifier",
 ]

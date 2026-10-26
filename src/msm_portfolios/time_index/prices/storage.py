@@ -334,10 +334,9 @@ def _copy_interpolated_prices_table(
     if isinstance(existing, Table):
         return existing
 
-    asset_table = AssetTable.__table__
-    if asset_table.metadata is not metadata:
-        copied = metadata.tables.get(asset_table.key)
-        asset_table = copied if copied is not None else asset_table.to_metadata(metadata)
+    from msm.storage_instances import markets_reference_table
+
+    asset_table = markets_reference_table(AssetTable.__table__, metadata, ["unique_identifier"])
     columns = [column._copy() for column in InterpolatedPricesStorage.__table__.columns]
     table = Table(
         table_name,

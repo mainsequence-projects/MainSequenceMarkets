@@ -285,6 +285,13 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Fixed
 
+- A storage instance built on a provider's declarative base copied each
+  referenced Markets table whole, with that table's own foreign keys to tables
+  that were not copied, so the provider's `metadata.sorted_tables` and Alembic
+  autogenerate failed with `NoReferencedTableError`. The provider's metadata now
+  holds only the referenced key columns of each Markets table
+  (`msm.storage_instances.markets_reference_table`).
+
 - Building a storage instance on a provider's declarative base raised
   `TypeError: Boolean value of this clause is not defined` once the base already
   held a copied foreign-key target (any table with two foreign keys to one
