@@ -31,7 +31,8 @@ portfolio and strategy identities do not change. Dependent packages declare
   `CurrencySpot` and `Future` gain `upsert_many` and `filter`;
   `AccountHoldingsSnapshots.get_many` returns several snapshots in one call
   (`msm.services.get_account_holdings_snapshots_response`);
-  `PortfolioDatasets.unregister` removes a catalog row for a rollback.
+  `PortfolioDatasets.unregister` removes a catalog row for a rollback, and
+  `unregister_signal` clears one signal's instance binding.
 - Provider time series (ADR 0047): `msm.storage_instances.configured_time_index_instance`
   builds a provider-owned instance of any Markets time-index storage, with its
   columns, foreign keys and grain index, in the provider's namespace and Alembic

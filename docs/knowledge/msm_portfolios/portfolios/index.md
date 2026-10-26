@@ -471,6 +471,8 @@ signals of a producer whose signal uid changes each run, after verifying the
 table against the signal weights contract. `PortfolioDatasets.unregister(portfolio_uid=...)`
 removes the catalog row (and the signal binding to the catalogued signal
 instance) to roll a move back; reads return to the core tables.
+`PortfolioDatasets.unregister_signal(signal_uid=...)` clears any other signal's
+binding, undoing `register_signal`.
 Instance tables change where rows land, not identities: none of them enters
 `update_hash`, and MetaTables keys each update record by update hash and output
 table.

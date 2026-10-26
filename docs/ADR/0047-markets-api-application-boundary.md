@@ -431,7 +431,8 @@ route for:
 - `CurrencySpot` and `Future` gained `upsert_many` and `filter`, so registering
   pairs and contracts is one call and their details are readable remotely;
   `AccountHoldingsSnapshots.get_many` returns several snapshots in one call; and
-  `PortfolioDatasets.unregister` removes a catalog row to roll a move back.
+  `PortfolioDatasets.unregister` removes a catalog row to roll a move back;
+  `unregister_signal` undoes `register_signal` for one signal.
 
 Still open: adopting the daily index-values table in `msm_migrations`; a
 catalog-aware reverse lookup of the portfolios holding given assets; a

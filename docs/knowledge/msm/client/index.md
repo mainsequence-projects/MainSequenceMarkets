@@ -164,7 +164,8 @@ dataset catalog its table uid, the portfolio catalog its values, weights and
 signal tables (`PortfolioDatasets.register`; `register_signal` for a signal
 that is not a portfolio's current one). `PortfolioDatasets.unregister` removes
 a portfolio's catalog row to roll a move back; its reads return to the core
-tables and the instance keeps its rows.
+tables and the instance keeps its rows. `unregister_signal` undoes
+`register_signal` for one signal.
 
 ## Portfolio Time Series
 

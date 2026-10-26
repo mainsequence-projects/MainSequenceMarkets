@@ -68,6 +68,7 @@ WRITE_OPERATIONS = frozenset(
         "register",
         "register_signal",
         "unregister",
+        "unregister_signal",
         "reconcile",
         "activate_definition",
         "retire_definition",

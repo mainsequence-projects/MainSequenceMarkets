@@ -404,6 +404,7 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
         ),
         ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
         ("portfolio-datasets", "unregister", {"portfolio_uid": str(uuid.uuid4())}),
+        ("portfolio-datasets", "unregister_signal", {"signal_uid": "s"}),
         ("currency-spot", "upsert_many", {"payloads": []}),
         ("future", "upsert_many", {"payloads": []}),
         ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),

@@ -19,6 +19,7 @@ from msm_portfolios.services.portfolio_datasets import (
     register_portfolio_datasets,
     register_signal_dataset,
     unregister_portfolio_datasets,
+    unregister_signal_dataset,
     verify_contract_instance,
 )
 
@@ -278,6 +279,31 @@ def test_unregister_removes_the_catalog_row_and_its_signal_binding(monkeypatch) 
     assert unregister_portfolio_datasets(object(), portfolio_uid=growth["uid"]) is None
     with pytest.raises(LookupError, match="was not found"):
         unregister_portfolio_datasets(object(), portfolio_uid=uuid.uuid4())
+
+
+def test_unregister_signal_clears_only_a_bound_signal(monkeypatch) -> None:
+    store = _Store([])
+    store.install(monkeypatch)
+    signal_row_uid = uuid.uuid4()
+    bound: dict[str, Any] = {"meta_table_uid": "signal-uid"}
+    monkeypatch.setattr(
+        portfolio_datasets,
+        "search_model",
+        lambda _context, *, model, filters=None, **kwargs: {
+            "rows": [] if filters["signal_uid"] == "unknown"
+            else [{"uid": signal_row_uid, "signal_uid": filters["signal_uid"], **bound}]
+        },
+    )
+
+    removed = unregister_signal_dataset(object(), signal_uid="last-week-signal")
+
+    assert removed is not None and removed.signal_meta_table_uid == "signal-uid"
+    assert store.updates == [{"model": SignalMetadataTable, "uid": signal_row_uid, "meta_table_uid": None}]
+    bound["meta_table_uid"] = None
+    assert unregister_signal_dataset(object(), signal_uid="last-week-signal") is None
+    assert len(store.updates) == 1
+    with pytest.raises(LookupError, match="has no SignalMetadata row"):
+        unregister_signal_dataset(object(), signal_uid="unknown")
 
 
 def test_verify_contract_instance_allows_extra_columns_but_requires_grain() -> None:

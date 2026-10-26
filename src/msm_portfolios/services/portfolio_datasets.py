@@ -458,6 +458,41 @@ def register_signal_dataset(
     return typed
 
 
+def unregister_signal_dataset(
+    context: MarketsOperationContext,
+    *,
+    signal_uid: str,
+) -> SignalDatasetRegistration | None:
+    """Clear one signal's ``SignalMetadata.meta_table_uid`` so it reads the core table again.
+
+    The counterpart of :func:`register_signal_dataset`, for rolling back signals
+    that are not a catalogued portfolio's current one. Returns the removed
+    binding, or ``None`` when the signal was not bound.
+    """
+
+    rows = operation_result_rows(
+        search_model(
+            context,
+            model=SignalMetadataTable,
+            filters={"signal_uid": signal_uid},
+            limit=1,
+        )
+    )
+    if not rows:
+        raise LookupError(f"Signal {signal_uid!r} has no SignalMetadata row")
+    bound = rows[0].get("meta_table_uid")
+    if not bound:
+        return None
+    update_model(
+        context,
+        model=SignalMetadataTable,
+        uid=rows[0]["uid"],
+        values={"meta_table_uid": None},
+        returning=False,
+    )
+    return SignalDatasetRegistration(signal_uid=signal_uid, signal_meta_table_uid=str(bound))
+
+
 def unregister_portfolio_datasets(
     context: MarketsOperationContext,
     *,
@@ -634,5 +669,6 @@ __all__ = [
     "register_portfolio_datasets",
     "register_signal_dataset",
     "unregister_portfolio_datasets",
+    "unregister_signal_dataset",
     "verify_contract_instance",
 ]

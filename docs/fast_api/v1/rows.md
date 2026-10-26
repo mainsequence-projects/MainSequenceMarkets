@@ -48,7 +48,7 @@ Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_portfolio`, `remove_portfolio`, `replace_memberships`, `create_batch`,
 `create_from_pandas_calendar`, `reconcile_dataset_availability`, `upsert_many`,
 `add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
-`publish`, `register`, `register_signal`, `unregister`, `reconcile`, `activate_definition`,
+`publish`, `register`, `register_signal`, `unregister`, `unregister_signal`, `reconcile`, `activate_definition`,
 `retire_definition`) run through `registry_write`, so the registry write policy
 applies to applications.
 A table row class's `delete` runs the resource's service delete with its

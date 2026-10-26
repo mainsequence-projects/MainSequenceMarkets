@@ -79,6 +79,17 @@ class PortfolioDatasets(RemoteRowOperations, BaseModel):
         return unregister_portfolio_datasets(cls._context(), portfolio_uid=portfolio_uid)
 
     @classmethod
+    def unregister_signal(cls, *, signal_uid: str) -> SignalDatasetRegistration | None:
+        """Clear a signal's instance binding; its reads return to the core signal weights table.
+
+        Undoes ``register_signal``. ``None`` when the signal was not bound.
+        """
+
+        from msm_portfolios.services.portfolio_datasets import unregister_signal_dataset
+
+        return unregister_signal_dataset(cls._context(), signal_uid=signal_uid)
+
+    @classmethod
     def reconcile(
         cls,
         *,
