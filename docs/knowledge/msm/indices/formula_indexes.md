@@ -150,7 +150,10 @@ history = FormulaIndex.history(active.index.uid)
 ```
 
 Activating a successor closes the open predecessor at the successor's
-`valid_from`. Retired versions cannot be reactivated.
+`valid_from`. Retired versions cannot be reactivated. `activate()` and
+`retire()` call the class methods `FormulaIndex.activate_definition(uid)` and
+`FormulaIndex.retire_definition(uid, valid_to=...)`, so they also run under the
+remote row backend (write-policy resource `formula-index`).
 
 ## Preview Persisted Formulas
 

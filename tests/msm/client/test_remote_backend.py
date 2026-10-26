@@ -397,6 +397,13 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
         ("portfolio-datasets", "register", {"registration": {"portfolio_uid": str(uuid.uuid4())}}),
         ("portfolio-datasets", "reconcile", {"portfolio_uids": [str(uuid.uuid4())]}),
         ("asset", "upsert_many", {"payloads": [{"unique_identifier": "A"}]}),
+        (
+            "portfolio-datasets",
+            "register_signal",
+            {"registration": {"signal_uid": "s", "signal_meta_table_uid": "t"}},
+        ),
+        ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
+        ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),
     ],
 )
 def test_every_publication_and_catalog_write_is_policy_checked(
@@ -443,3 +450,206 @@ def test_portfolio_datasets_register_runs_remotely(monkeypatch, remote) -> None:
         "registration": {"portfolio_uid": str(portfolio_uid), "values_meta_table_uid": "values-uid"},
         "reconcile": False,
     }
+
+
+class _Recording:
+    """Remote backend that records each resource and operation it sends."""
+
+    def __init__(self, backend: Any) -> None:
+        self.backend = backend
+        self.calls: list[tuple[str, str]] = []
+
+    def call(self, resource: str, operation: str, arguments: Any) -> Any:
+        self.calls.append((resource, operation))
+        return self.backend.call(resource, operation, arguments)
+
+
+def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
+    from msm.api.calendars import CalendarSession
+
+    calendar_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def search_model(context, **kwargs):
+        seen["search"] = kwargs
+        return {
+            "rows": [
+                {
+                    "uid": str(uuid.uuid4()),
+                    "calendar_uid": str(calendar_uid),
+                    "local_date": "2026-01-05",
+                    "session_label": "regular",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model",
+        lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 2}]},
+    )
+
+    sessions = CalendarSession.filter(
+        calendar_uid=calendar_uid,
+        local_date__gte=dt.date(2026, 1, 1),
+        local_date__lte=dt.date(2026, 1, 31),
+        order_by="local_date",
+    )
+    total = CalendarSession.count(calendar_uid=calendar_uid, local_date__lt=dt.date(2026, 2, 1))
+
+    assert [session.local_date for session in sessions] == [dt.date(2026, 1, 5)]
+    assert seen["search"]["filters"] == {"calendar_uid": calendar_uid}
+    assert seen["search"]["range_filters"] == {
+        "local_date": {"gte": dt.date(2026, 1, 1), "lte": dt.date(2026, 1, 31)}
+    }
+    assert seen["count"]["range_filters"] == {"local_date": {"lt": dt.date(2026, 2, 1)}}
+    assert total == 2
+
+
+def test_persisted_calendar_schedule_reads_sessions_through_markets(monkeypatch, remote) -> None:
+    import pandas as pd
+
+    from msm_portfolios.services.calendars import PersistedCalendarSchedule
+
+    calendar_uid = uuid.uuid4()
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    monkeypatch.setattr(
+        "msm.repositories.crud.search_model",
+        lambda context, **kwargs: {
+            "rows": [
+                {
+                    "uid": str(uuid.uuid4()),
+                    "calendar_uid": str(calendar_uid),
+                    "local_date": "2026-01-05",
+                    "session_label": "regular",
+                    "opens_at": "2026-01-05T14:30:00Z",
+                    "closes_at": "2026-01-05T21:00:00Z",
+                }
+            ]
+        },
+    )
+
+    frame = PersistedCalendarSchedule(
+        calendar=SimpleNamespace(uid=calendar_uid, unique_identifier="XNYS")
+    ).schedule("2026-01-05", "2026-01-06")
+
+    assert recording.calls == [("calendar-session", "filter")]
+    assert list(frame.index) == [dt.date(2026, 1, 5)]
+    assert frame.loc[dt.date(2026, 1, 5), "market_close"] == pd.Timestamp("2026-01-05T21:00:00Z")
+
+
+def test_formula_activation_and_retirement_run_remotely(monkeypatch, remote) -> None:
+    from msm.analytics.indices import IndexFormulaDefinition
+    from msm.api import formula_indices as formula_api
+
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    definition_uid = uuid.uuid4()
+    draft = IndexFormulaDefinition(
+        uid=definition_uid,
+        index_uid=uuid.uuid4(),
+        version=1,
+        valid_from=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        formula='asset["BOND"].yield',
+    )
+    retired_at = dt.datetime(2027, 1, 1, tzinfo=dt.UTC)
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        formula_api,
+        "activate_formula_definition",
+        lambda context, *, definition_uid: draft.model_copy(update={"status": "active"}),
+    )
+
+    def retire(context, *, definition_uid, valid_to):
+        seen["retire"] = (definition_uid, valid_to)
+        return draft.model_copy(update={"status": "retired", "valid_to": retired_at})
+
+    monkeypatch.setattr(formula_api, "retire_formula_definition", retire)
+
+    active = formula_api.FormulaIndex.activate_definition(definition_uid)
+    retired = formula_api.FormulaIndex.retire_definition(definition_uid, valid_to=retired_at)
+
+    assert isinstance(active, IndexFormulaDefinition) and active.status == "active"
+    assert retired.status == "retired" and retired.valid_to == retired_at
+    assert str(seen["retire"][0]) == str(definition_uid)
+    assert recording.calls == [
+        ("formula-index", "activate_definition"),
+        ("formula-index", "retire_definition"),
+    ]
+
+
+def test_latest_asset_snapshots_read_through_markets(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshotReference, AssetSnapshots
+
+    asset_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def by_ticker(tickers, *, repository_context):
+        seen["tickers"] = list(tickers)
+        return ["FIGI-1"]
+
+    def details(identifiers, *, repository_context):
+        seen["identifiers"] = list(identifiers)
+        return [
+            {
+                "asset_uid": str(asset_uid),
+                "asset_identifier": "FIGI-1",
+                "asset_type": "equity",
+                "snapshot_time": "2026-01-02T00:00:00Z",
+                "time_index": "2026-01-02T00:00:00Z",
+                "name": "Acme",
+                "ticker": "ACME",
+                "exchange_code": None,
+                "asset_ticker_group_id": None,
+            }
+        ]
+
+    monkeypatch.setattr("msm.services.assets.asset_identifiers_by_ticker", by_ticker)
+    monkeypatch.setattr("msm.services.assets.asset_reference_details", details)
+
+    rows = AssetSnapshots.latest(tickers=["ACME"])
+
+    assert rows == [
+        AssetSnapshotReference(
+            asset_uid=asset_uid,
+            asset_identifier="FIGI-1",
+            asset_type="equity",
+            snapshot_time=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
+            name="Acme",
+            ticker="ACME",
+        )
+    ]
+    assert seen == {"tickers": ["ACME"], "identifiers": ["FIGI-1"]}
+    with pytest.raises(ValueError, match="exactly one"):
+        AssetSnapshots.latest()
+
+
+def test_portfolio_values_page_past_one_request() -> None:
+    sent: list[dict[str, Any]] = []
+
+    class Session:
+        def request(self, method, url, *, json=None, params=None, headers=None):
+            query = dict(params)
+            sent.append(query)
+            start = query.get("offset", 0)
+            available = max(0, 12_000 - start)
+            rows = [{"time_index": str(start + i)} for i in range(min(query["limit"], available))]
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"columns": ["time_index"], "rows": rows, "meta": {"page": start}},
+            )
+
+    client = MarketsClient("http://markets", session=Session())
+
+    frame = client.portfolio_values(["p"], limit=20_000)
+
+    assert [(query["limit"], query.get("offset", 0)) for query in sent] == [
+        (5000, 0),
+        (5000, 5000),
+        (5000, 10_000),
+    ]
+    assert len(frame["rows"]) == 12_000 and frame["columns"] == ["time_index"]
+    sent.clear()
+    client.portfolio_values(["p"], limit=10, offset=30)
+    assert sent == [{"portfolio_uid__in": "p", "limit": 10, "offset": 30}]

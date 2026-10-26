@@ -17,6 +17,7 @@ from msm_portfolios.services.portfolio_datasets import (
     list_portfolio_dataset_states,
     reconcile_portfolio_dataset_availability,
     register_portfolio_datasets,
+    register_signal_dataset,
     verify_contract_instance,
 )
 
@@ -185,6 +186,55 @@ def test_register_rejects_missing_or_incompatible_tables(monkeypatch) -> None:
             meta_table_lookup=lambda _uids: [],
         )
     assert store.upserts == []
+
+
+def test_register_signal_binds_any_signal_to_a_verified_instance(monkeypatch) -> None:
+    store = _Store([])
+    store.install(monkeypatch)
+    signal_table = _meta_table(
+        "signal-uid",
+        physical="my_provider__signalweightsts__main",
+        columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
+        index_names=["time_index", "signal_uid", "asset_identifier"],
+    )
+
+    registration = register_signal_dataset(
+        object(),
+        {"signal_uid": "last-week-signal", "signal_meta_table_uid": "signal-uid"},
+        meta_table_lookup=lambda uids: [signal_table] if list(uids) == ["signal-uid"] else [],
+    )
+
+    assert registration.signal_uid == "last-week-signal"
+    assert store.updates == [
+        {"model": SignalMetadataTable, "uid": store.updates[0]["uid"], "meta_table_uid": "signal-uid"}
+    ]
+    with pytest.raises(LookupError, match="not a visible TimeIndexMetaTable"):
+        register_signal_dataset(
+            object(),
+            {"signal_uid": "last-week-signal", "signal_meta_table_uid": "missing"},
+            meta_table_lookup=lambda _uids: [],
+        )
+    values_table = _meta_table("values-uid", physical="x")
+    with pytest.raises(ValueError, match="missing contract columns"):
+        register_signal_dataset(
+            object(),
+            {"signal_uid": "last-week-signal", "signal_meta_table_uid": "values-uid"},
+            meta_table_lookup=lambda _uids: [values_table],
+        )
+
+
+def test_register_signal_requires_a_signal_metadata_row(monkeypatch) -> None:
+    store = _Store([])
+    store.install(monkeypatch)
+    monkeypatch.setattr(portfolio_datasets, "search_model", lambda *_args, **_kwargs: {"rows": []})
+
+    with pytest.raises(LookupError, match="has no SignalMetadata row"):
+        register_signal_dataset(
+            object(),
+            {"signal_uid": "unknown", "signal_meta_table_uid": "signal-uid"},
+            verify_tables=False,
+        )
+    assert store.updates == []
 
 
 def test_verify_contract_instance_allows_extra_columns_but_requires_grain() -> None:

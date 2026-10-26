@@ -708,16 +708,80 @@ class OpenFigiDetailsUpdate(BaseModel):
 
 
 
+class AssetSnapshotReference(BaseModel):
+    """An asset with its latest snapshot; the snapshot fields are ``None`` without one."""
+
+    asset_uid: uuid.UUID
+    asset_identifier: str
+    asset_type: str | None = None
+    snapshot_time: dt.datetime | None = None
+    name: str | None = None
+    ticker: str | None = None
+    exchange_code: str | None = None
+    asset_ticker_group_id: str | None = None
+
+
+_SNAPSHOT_READ_BATCH = 500
+
+
 class AssetSnapshots(RemoteRowOperations, BaseModel):
-    """Publish asset snapshots (display name, ticker ...) into Markets (ADR 0047).
+    """Publish and read asset snapshots (display name, ticker ...) (ADR 0047).
 
     Snapshots live in the Markets ``AssetSnapshotsStorage`` table, which Markets
-    reads for asset details. An application publishes them with ``publish``;
-    under the remote backend that runs on the Markets API, so the application
-    needs no grant on the table.
+    reads for asset details. An application publishes them with ``publish`` and
+    reads the latest one per asset with ``latest``; under the remote backend both
+    run on the Markets API, so the application needs no grant on the table.
     """
 
     __resource__: ClassVar[str] = "asset-snapshots"
+
+    @classmethod
+    def latest(
+        cls,
+        *,
+        asset_identifiers: list[str] | None = None,
+        asset_uids: list[uuid.UUID] | None = None,
+        tickers: list[str] | None = None,
+    ) -> list[AssetSnapshotReference]:
+        """Return each requested asset with its latest snapshot.
+
+        Pass exactly one of ``asset_identifiers``, ``asset_uids`` or ``tickers``.
+        Assets that do not exist are left out; an asset without a snapshot has
+        ``snapshot_time`` ``None``. ``tickers`` selects the assets that have any
+        snapshot with one of those tickers: compare each result's latest
+        ``ticker`` to find the assets that still carry it.
+        """
+
+        from msm.bootstrap import resolve_runtime
+        from msm.services.assets import (
+            asset_identifiers_by_ticker,
+            asset_reference_details,
+            asset_reference_details_by_uids,
+        )
+
+        selectors = [value for value in (asset_identifiers, asset_uids, tickers) if value is not None]
+        if len(selectors) != 1:
+            raise ValueError("Pass exactly one of asset_identifiers, asset_uids or tickers.")
+        context = resolve_runtime(
+            models=["Asset", "AssetSnapshotsStorage"],
+            row_model_name=cls.__name__,
+        ).context
+        if tickers is not None:
+            asset_identifiers = sorted(
+                {
+                    identifier
+                    for batch in _batches(tickers)
+                    for identifier in asset_identifiers_by_ticker(batch, repository_context=context)
+                }
+            )
+        rows: list[dict[str, Any]] = []
+        if asset_uids is not None:
+            for batch in _batches(asset_uids):
+                rows.extend(asset_reference_details_by_uids(batch, repository_context=context))
+        else:
+            for batch in _batches(asset_identifiers or []):
+                rows.extend(asset_reference_details(batch, repository_context=context))
+        return [AssetSnapshotReference.model_validate(row) for row in rows]
 
     @classmethod
     def publish(cls, snapshots: list[dict[str, Any]]) -> int:
@@ -738,7 +802,13 @@ class AssetSnapshots(RemoteRowOperations, BaseModel):
         return len(snapshots)
 
 
+def _batches(values: list[Any]) -> list[list[Any]]:
+    unique = list(dict.fromkeys(values))
+    return [unique[i : i + _SNAPSHOT_READ_BATCH] for i in range(0, len(unique), _SNAPSHOT_READ_BATCH)]
+
+
 __all__ = [
+    "AssetSnapshotReference",
     "AssetSnapshots",
     "Asset",
     "AssetCategory",

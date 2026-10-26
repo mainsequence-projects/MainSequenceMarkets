@@ -40,14 +40,17 @@ Response:
 `arguments` are its named arguments; a Pydantic payload is sent as an object
 with only the fields that were set. The route runs the method on this
 deployment's runtime backend and returns its result as JSON. There is no
-generic query: `filter` accepts equality and `<field>_contains` filters on the
-row model's own fields only.
+generic query: `filter` and `count` accept equality, `<field>_contains`,
+`<field>__in` and `<field>__gte`/`__gt`/`__lte`/`__lt` filters on the row
+model's own fields only.
 
 Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_portfolio`, `remove_portfolio`, `replace_memberships`, `create_batch`,
 `create_from_pandas_calendar`, `reconcile_dataset_availability`, `upsert_many`,
-`add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`) run
-through `registry_write`, so the registry write policy applies to applications.
+`add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
+`publish`, `register`, `register_signal`, `reconcile`, `activate_definition`,
+`retire_definition`) run through `registry_write`, so the registry write policy
+applies to applications.
 A table row class's `delete` runs the resource's service delete with its
 preflight checks and exists only for `asset`, `asset-category`, `calendar`,
 `index`, `portfolio` and `portfolio-group`. Composites that implement `delete`

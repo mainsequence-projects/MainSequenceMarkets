@@ -66,7 +66,10 @@ WRITE_OPERATIONS = frozenset(
         "upsert_index_curve_selection",
         "publish",
         "register",
+        "register_signal",
         "reconcile",
+        "activate_definition",
+        "retire_definition",
     }
 )
 """Operations that create, update or delete registry rows; the API wraps them in
@@ -303,9 +306,12 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
 
     Values of parameters annotated with a simple type (uuid, datetime, int ...)
     are validated against that annotation; payloads stay mappings, which each
-    method validates itself. ``filter`` keyword values are validated against the
-    row model's field of the same name.
+    method validates itself. ``filter`` and ``count`` keyword values, including
+    ``__in`` items and ``__gte``/``__gt``/``__lte``/``__lt`` bounds, are validated
+    against the row model's field of the same name.
     """
+
+    from msm.api.base import range_lookup
 
     func = remote_operations(cls)[operation]
     hints = _type_hints(func)
@@ -313,10 +319,13 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
     fields = getattr(cls, "model_fields", {})
     for name, value in arguments.items():
         if operation in ("filter", "count") and name not in ("limit", "offset", "order_by"):
+            field_name, lookup = range_lookup(name)
             if name.endswith("__in") and isinstance(value, list):
                 base = name.removesuffix("__in")
                 if base in fields:
                     value = [_validate_simple(fields[base].annotation, item) for item in value]
+            elif lookup is not None and field_name in fields and value is not None:
+                value = _validate_simple(fields[field_name].annotation, value)
             elif not name.endswith("_contains") and name in fields and value is not None:
                 value = _validate_simple(fields[name].annotation, value)
             decoded[name] = value

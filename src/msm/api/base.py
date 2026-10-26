@@ -238,19 +238,21 @@ class MarketsMetaTableRow(BaseModel):
         """Filter rows through the active markets runtime.
 
         Keyword arguments ending in `_contains` compile to SQL `contains`
-        filters, arguments ending in `__in` to `IN` filters, and the others to
-        equality filters. `order_by` names columns, `-column` for descending.
+        filters, arguments ending in `__in` to `IN` filters, arguments ending
+        in `__gte`, `__gt`, `__lte` or `__lt` to range filters, and the others
+        to equality filters. `order_by` names columns, `-column` for descending.
         """
 
         from msm.repositories.crud import search_model
 
-        exact_filters, in_filters, contains_filters = cls._split_filters(filters)
+        exact_filters, in_filters, contains_filters, range_filters = cls._split_filters(filters)
         result = search_model(
             cls._active_context(),
             model=cls.__table__,
             filters=exact_filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
             limit=limit,
             offset=offset,
             order_by=_order_by(cls, order_by),
@@ -263,13 +265,14 @@ class MarketsMetaTableRow(BaseModel):
 
         from msm.repositories.crud import count_model
 
-        exact_filters, in_filters, contains_filters = cls._split_filters(filters)
+        exact_filters, in_filters, contains_filters, range_filters = cls._split_filters(filters)
         result = count_model(
             cls._active_context(),
             model=cls.__table__,
             filters=exact_filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
         )
         rows = operation_result_rows(result)
         if not rows:
@@ -309,10 +312,11 @@ class MarketsMetaTableRow(BaseModel):
     @classmethod
     def _split_filters(
         cls, filters: Mapping[str, Any]
-    ) -> tuple[dict[str, Any], dict[str, list[Any]], dict[str, str]]:
+    ) -> tuple[dict[str, Any], dict[str, list[Any]], dict[str, str], dict[str, dict[str, Any]]]:
         exact_filters: dict[str, Any] = {}
         in_filters: dict[str, list[Any]] = {}
         contains_filters: dict[str, str] = {}
+        range_filters: dict[str, dict[str, Any]] = {}
         for key, value in filters.items():
             if value in (None, ""):
                 continue
@@ -326,9 +330,14 @@ class MarketsMetaTableRow(BaseModel):
                 cls._require_column(field_name)
                 in_filters[field_name] = list(value)
                 continue
+            field_name, lookup = range_lookup(key)
+            if lookup is not None:
+                cls._require_column(field_name)
+                range_filters.setdefault(field_name, {})[lookup] = value
+                continue
             cls._require_column(key)
             exact_filters[key] = value
-        return exact_filters, in_filters, contains_filters
+        return exact_filters, in_filters, contains_filters, range_filters
 
     @classmethod
     def _active_context(cls):
@@ -404,6 +413,21 @@ def _row_values(
 
             warn_renamed(f"{row.__name__}.{previous}", f"{row.__name__}.{current}")
     return values
+
+
+RANGE_LOOKUP_SUFFIXES = ("__gte", "__gt", "__lte", "__lt")
+
+
+def range_lookup(key: str) -> tuple[str, str | None]:
+    """Split a filter key such as ``local_date__gte`` into ``("local_date", "gte")``.
+
+    Keys without a range suffix return ``(key, None)``.
+    """
+
+    for suffix in RANGE_LOOKUP_SUFFIXES:
+        if key.endswith(suffix):
+            return key.removesuffix(suffix), suffix.removeprefix("__")
+    return key, None
 
 
 def _order_by(row: type[Any], order_by: str | Sequence[str] | None) -> list[str]:

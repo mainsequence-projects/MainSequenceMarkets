@@ -208,6 +208,10 @@ def get_portfolios_values_frame_route(
         int,
         Query(ge=1, le=5000, description="Maximum rows to return across all portfolios."),
     ] = 500,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Rows of the ordered frame to skip; pages through long windows."),
+    ] = 0,
 ) -> TabularFrameResponse:
     try:
         return get_portfolios_values_frame(
@@ -216,6 +220,7 @@ def get_portfolios_values_frame_route(
             end_date=end_date,
             order=order,
             limit=limit,
+            offset=offset,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

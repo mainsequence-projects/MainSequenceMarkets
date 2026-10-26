@@ -1623,7 +1623,7 @@ def test_multi_portfolio_values_frame_route_groups_uids_into_one_frame(monkeypat
 
     response = TestClient(app).get(
         "/api/v1/portfolio/values/",
-        params=[("portfolio_uid__in", f"{first},{second}"), ("order", "asc"), ("limit", 10)],
+        params=[("portfolio_uid__in", f"{first},{second}"), ("order", "asc"), ("limit", 10), ("offset", 20)],
     )
 
     assert response.status_code == 200
@@ -1634,6 +1634,7 @@ def test_multi_portfolio_values_frame_route_groups_uids_into_one_frame(monkeypat
         "end_date": None,
         "order": "asc",
         "limit": 10,
+        "offset": 20,
     }
     operation = app.openapi()["paths"]["/api/v1/portfolio/values/"]["get"]
     assert operation["operationId"] == "getPortfoliosValuesFrame"

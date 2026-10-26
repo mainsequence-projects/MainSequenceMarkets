@@ -106,12 +106,15 @@ Asset.upsert_many([{"unique_identifier": "ACME", "asset_type": "equity"}, ...])
 AccountHoldingsSet.filter(account_uid=uid, order_by="-time_index", limit=50, offset=0)
 AccountHoldingsSet.count(account_uid=uid)
 Asset.filter(unique_identifier__in=["A", "B"])
+CalendarSession.filter(calendar_uid=uid, local_date__gte=start, local_date__lte=end)
 ```
 
 `upsert_many` validates each payload through the row module's `<Row>Upsert`
 model and writes them in one statement on `__upsert_keys__`. `filter` takes
-equality, `<field>_contains` and `<field>__in` filters, `order_by` (`-column`
-for descending), `limit` and `offset`; `count` takes the same filters.
+equality, `<field>_contains`, `<field>__in` and `<field>__gte`/`__gt`/`__lte`/
+`__lt` filters, `order_by` (`-column` for descending), `limit` and `offset`;
+`count` takes the same filters. Remote values are typed by the row model's
+field, so a date bound arrives as a date.
 
 ## Holdings And Asset Snapshots
 
@@ -130,9 +133,15 @@ AccountHoldingsSnapshots.publish(
 )
 latest = AccountHoldingsSnapshots.get(account_uid=account_uid)
 AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}])
+current = AssetSnapshots.latest(tickers=["ACME"])
 ```
 
 Their write-policy resources are `account-holdings` and `asset-snapshots`.
+`AssetSnapshots.latest` takes exactly one of `asset_identifiers`, `asset_uids`
+or `tickers` and returns each existing asset with its latest snapshot
+(`AssetSnapshotReference`: name, ticker, exchange code, snapshot time; `None`
+without a snapshot). `tickers` selects the assets that ever had one of those
+tickers; compare the latest `ticker` to keep the ones that still carry it.
 
 ## Provider Time Series
 
@@ -145,7 +154,8 @@ storage's columns, foreign keys and grain index, under the provider's
 with `output_table=`. Markets finds the instance through the catalog of the
 series: pricing market-data bindings carry its `storage_table_uid`, the Index
 dataset catalog its table uid, the portfolio catalog its values, weights and
-signal tables (`PortfolioDatasets.register`).
+signal tables (`PortfolioDatasets.register`; `register_signal` for a signal
+that is not a portfolio's current one).
 
 ## Portfolio Time Series
 
@@ -159,7 +169,12 @@ weights = client.portfolio_weights([portfolio_uid], as_pandas=True)
 ```
 
 Both return the `core.tabular_frame@v1` frame, or a pandas DataFrame with
-`as_pandas=True`.
+`as_pandas=True`. One values request returns at most 5,000 rows; a larger
+`limit` is read in pages with `offset` and returned as one frame.
+
+Persisted calendar schedules (`PersistedCalendarSchedule`, used by
+calendar-relative rebalancing) read `CalendarSession.filter`, so they run under
+either backend.
 
 ## How It Works
 

@@ -20,6 +20,7 @@ from msm_portfolios.services.portfolio_datasets import (
     PortfolioDatasetReconciliationResult,
     PortfolioDatasetRegistration,
     PortfolioDatasetState,
+    SignalDatasetRegistration,
 )
 
 
@@ -49,6 +50,21 @@ class PortfolioDatasets(RemoteRowOperations, BaseModel):
         from msm_portfolios.services.portfolio_datasets import register_portfolio_datasets
 
         return register_portfolio_datasets(cls._context(), registration, reconcile=reconcile)
+
+    @classmethod
+    def register_signal(
+        cls,
+        registration: SignalDatasetRegistration | Mapping[str, Any],
+    ) -> SignalDatasetRegistration:
+        """Record the signal weights instance of one signal (``signal_uid``, ``signal_meta_table_uid``).
+
+        ``register`` binds a portfolio's current signal; this binds any other,
+        such as the earlier signals of a producer whose signal uid changes each run.
+        """
+
+        from msm_portfolios.services.portfolio_datasets import register_signal_dataset
+
+        return register_signal_dataset(cls._context(), registration)
 
     @classmethod
     def reconcile(

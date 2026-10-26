@@ -408,6 +408,35 @@ Deviations and open items:
   a branch that carries the declaration must therefore come from an
   Organization admin.
 
+### 2026-10-26: step 2 follow-ups from the provider refactors
+
+Moving providers and consumers onto the remote backend (steps 3 and 4) found
+calls that still needed a Markets runtime in the caller, and reads they had no
+route for:
+
+- Two paths ran compiled SQL outside a dispatched class method and failed under
+  `remote`: `PersistedCalendarSchedule.schedule`, which calendar-relative
+  rebalancing uses, and the instance methods `FormulaIndex.activate()` and
+  `retire()`. Schedules now read `CalendarSession.filter` with range bounds;
+  activation and retirement go through `FormulaIndex.activate_definition` and
+  `retire_definition`, which are policy-checked writes.
+- Added reads: `filter`/`count` range lookups (`__gte`, `__gt`, `__lte`,
+  `__lt`); `AssetSnapshots.latest` by identifier, uid or ticker; `offset` on
+  `GET /portfolio/values/`, which `MarketsClient.portfolio_values` uses to page
+  past 5,000 rows.
+- Added `PortfolioDatasets.register_signal`, which binds a signal that is not a
+  portfolio's current one, so a producer whose signal uid changes each run keeps
+  every signal in its own instance.
+- `Index.upsert_many` applies `Index.upsert`'s calculation-method guard.
+
+Still open: adopting the daily index-values table in `msm_migrations`; a
+catalog-aware reverse lookup of the portfolios holding given assets; a
+valuation-context read (curves, building details, bindings, observations and
+fixings in one call); column metadata on `list_related_meta_tables`; set-based
+upserts on the pricing composites; count and projection reads on current
+pricing details; provider instances and a catalog for pricing details; frame
+reads of rebalance state and signal weights.
+
 ### 2026-10-26: step 2, remote row backend and `msm.client`
 
 Implemented in `msm.api.remote`, `msm.client` and `apps/v1/routers/rows.py`;

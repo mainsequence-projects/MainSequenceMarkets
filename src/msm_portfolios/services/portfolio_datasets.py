@@ -55,6 +55,13 @@ class PortfolioDatasetRegistration(PortfolioDatasetServiceModel):
     signal_meta_table_uid: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+class SignalDatasetRegistration(PortfolioDatasetServiceModel):
+    """The ``SignalWeightsTS`` instance that holds one signal's weights."""
+
+    signal_uid: str = Field(min_length=1, max_length=255)
+    signal_meta_table_uid: str = Field(min_length=1, max_length=255)
+
+
 class PortfolioDatasetState(PortfolioDatasetServiceModel):
     """One reconciled catalog row."""
 
@@ -410,12 +417,53 @@ def _write_state(
     return _state_from_row(portfolio=portfolio, row=row)
 
 
+def register_signal_dataset(
+    context: MarketsOperationContext,
+    registration: SignalDatasetRegistration | Mapping[str, Any],
+    *,
+    verify_tables: bool = True,
+    meta_table_lookup: MetaTableLookup | None = None,
+) -> SignalDatasetRegistration:
+    """Record the ``SignalWeightsTS`` instance of one signal on its ``SignalMetadata`` row.
+
+    ``register_portfolio_datasets`` binds only a portfolio's current signal. A
+    producer whose signal uid changes between runs, or that writes a signal no
+    portfolio uses, binds each signal with this call. The table must be a
+    visible instance of the signal weights contract.
+    """
+
+    typed = (
+        registration
+        if isinstance(registration, SignalDatasetRegistration)
+        else SignalDatasetRegistration.model_validate(registration)
+    )
+    if verify_tables:
+        lookup = meta_table_lookup or default_meta_table_lookup
+        visible = {
+            str(getattr(item, "uid", "")): item for item in lookup([typed.signal_meta_table_uid])
+        }
+        meta_table = visible.get(typed.signal_meta_table_uid)
+        if meta_table is None:
+            raise LookupError(
+                f"{SIGNAL_WEIGHTS_CONTRACT} instance {typed.signal_meta_table_uid!r} "
+                "is not a visible TimeIndexMetaTable"
+            )
+        verify_contract_instance(SIGNAL_WEIGHTS_CONTRACT, meta_table)
+    if not _bind_signal_metadata_table(
+        context,
+        signal_uid=typed.signal_uid,
+        meta_table_uid=typed.signal_meta_table_uid,
+    ):
+        raise LookupError(f"Signal {typed.signal_uid!r} has no SignalMetadata row")
+    return typed
+
+
 def _bind_signal_metadata_table(
     context: MarketsOperationContext,
     *,
     signal_uid: str,
     meta_table_uid: str,
-) -> None:
+) -> bool:
     rows = operation_result_rows(
         search_model(
             context,
@@ -425,7 +473,7 @@ def _bind_signal_metadata_table(
         )
     )
     if not rows:
-        return
+        return False
     update_model(
         context,
         model=SignalMetadataTable,
@@ -433,6 +481,7 @@ def _bind_signal_metadata_table(
         values={"meta_table_uid": meta_table_uid},
         returning=False,
     )
+    return True
 
 
 def _portfolio_row(
@@ -522,9 +571,11 @@ __all__ = [
     "PortfolioDatasetReconciliationResult",
     "PortfolioDatasetRegistration",
     "PortfolioDatasetState",
+    "SignalDatasetRegistration",
     "default_meta_table_lookup",
     "list_portfolio_dataset_states",
     "reconcile_portfolio_dataset_availability",
     "register_portfolio_datasets",
+    "register_signal_dataset",
     "verify_contract_instance",
 ]

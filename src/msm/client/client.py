@@ -12,6 +12,8 @@ from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoin
 
 API_PREFIX = "/api/v1"
 DEFAULT_TIMEOUT = 60.0
+VALUES_PAGE_SIZE = 5000
+"""Largest ``limit`` one ``GET /portfolio/values/`` request accepts."""
 
 
 class MarketsClient:
@@ -93,15 +95,43 @@ class MarketsClient:
         end_date: dt.datetime | None = None,
         order: str | None = None,
         limit: int | None = None,
+        offset: int = 0,
         as_pandas: bool = False,
     ) -> Any:
-        """Values of several portfolios, read from their catalogued tables by the Markets API."""
+        """Values of several portfolios, read from their catalogued tables by the Markets API.
+
+        A ``limit`` above ``VALUES_PAGE_SIZE`` is read in pages of that size and
+        returned as one frame.
+        """
 
         params: list[tuple[str, Any]] = [("portfolio_uid__in", str(uid)) for uid in portfolio_uids]
-        for name, value in (("start_date", start_date), ("end_date", end_date), ("order", order), ("limit", limit)):
+        for name, value in (("start_date", start_date), ("end_date", end_date), ("order", order)):
             if value is not None:
                 params.append((name, value.isoformat() if isinstance(value, dt.datetime) else value))
-        frame = self.request("GET", f"{API_PREFIX}/portfolio/values/", params=params)
+        if limit is None or limit <= VALUES_PAGE_SIZE:
+            page_params = list(params)
+            if limit is not None:
+                page_params.append(("limit", limit))
+            if offset:
+                page_params.append(("offset", offset))
+            frame = self.request("GET", f"{API_PREFIX}/portfolio/values/", params=page_params)
+            return tabular_frame_to_pandas(frame) if as_pandas else frame
+
+        frame: dict[str, Any] | None = None
+        rows: list[Any] = []
+        while len(rows) < limit:
+            size = min(VALUES_PAGE_SIZE, limit - len(rows))
+            page = self.request(
+                "GET",
+                f"{API_PREFIX}/portfolio/values/",
+                params=[*params, ("limit", size), ("offset", offset + len(rows))],
+            )
+            frame = frame or dict(page)
+            page_rows = list(page.get("rows") or [])
+            rows.extend(page_rows)
+            if len(page_rows) < size:
+                break
+        frame = {**(frame or {}), "rows": rows}
         return tabular_frame_to_pandas(frame) if as_pandas else frame
 
     def portfolio_weights(

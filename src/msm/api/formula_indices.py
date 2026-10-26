@@ -318,6 +318,27 @@ class FormulaIndex(RemoteRowOperations, BaseModel):
     def history(cls, index_uid: uuid.UUID | str) -> tuple[IndexFormulaDefinition, ...]:
         return tuple(formula_history(cls._active_context(), index_uid=index_uid))
 
+    @classmethod
+    def activate_definition(cls, definition_uid: uuid.UUID | str) -> IndexFormulaDefinition:
+        """Activate a draft definition and retire the open predecessor atomically."""
+
+        return activate_formula_definition(cls._active_context(), definition_uid=definition_uid)
+
+    @classmethod
+    def retire_definition(
+        cls,
+        definition_uid: uuid.UUID | str,
+        *,
+        valid_to: datetime.datetime | str | pd.Timestamp | None = None,
+    ) -> IndexFormulaDefinition:
+        """Retire a definition at an exclusive validity boundary."""
+
+        return retire_formula_definition(
+            cls._active_context(),
+            definition_uid=definition_uid,
+            valid_to=valid_to,
+        )
+
     def calculate(
         self,
         observations: Mapping[Any, pd.Series | pd.DataFrame],
@@ -401,10 +422,7 @@ class FormulaIndex(RemoteRowOperations, BaseModel):
 
         if self.definition.uid is None:
             raise ValueError("persisted formula definition uid is required")
-        definition = activate_formula_definition(
-            self._active_context(),
-            definition_uid=self.definition.uid,
-        )
+        definition = type(self).activate_definition(self.definition.uid)
         return self.model_copy(update={"definition": definition})
 
     def retire(
@@ -416,11 +434,7 @@ class FormulaIndex(RemoteRowOperations, BaseModel):
 
         if self.definition.uid is None:
             raise ValueError("persisted formula definition uid is required")
-        definition = retire_formula_definition(
-            self._active_context(),
-            definition_uid=self.definition.uid,
-            valid_to=valid_to,
-        )
+        definition = type(self).retire_definition(self.definition.uid, valid_to=valid_to)
         return self.model_copy(update={"definition": definition})
 
     @classmethod

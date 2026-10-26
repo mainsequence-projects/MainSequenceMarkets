@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -332,6 +333,7 @@ def build_search_model_operation(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
     limit: int = 500,
     offset: int = 0,
     order_by: Sequence[str] | None = None,
@@ -341,6 +343,7 @@ def build_search_model_operation(
         filters=filters,
         in_filters=in_filters,
         contains_filters=contains_filters,
+        range_filters=range_filters,
     )
     for column_name in order_by or ():
         descending = str(column_name).startswith("-")
@@ -366,6 +369,7 @@ def search_model(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
     limit: int = 500,
     offset: int = 0,
     order_by: Sequence[str] | None = None,
@@ -377,6 +381,7 @@ def search_model(
             filters=filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
             order_by=order_by,
             limit=limit,
             offset=offset,
@@ -392,12 +397,14 @@ def build_count_model_operation(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     filtered = _filtered_model_select(
         model,
         filters=filters,
         in_filters=in_filters,
         contains_filters=contains_filters,
+        range_filters=range_filters,
     ).subquery()
     statement = select(func.count().label("count")).select_from(filtered)
     return compile_markets_statement(
@@ -414,6 +421,7 @@ def count_model(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_count_model_operation(
@@ -422,6 +430,7 @@ def count_model(
             filters=filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
         ),
         context=context,
     )
@@ -520,6 +529,7 @@ def _filtered_model_select(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ):
     statement = select(model)
 
@@ -537,7 +547,19 @@ def _filtered_model_select(
                 func.lower(_model_attribute(model, field_name)).contains(str(value).lower())
             )
 
+    for field_name, bounds in (range_filters or {}).items():
+        attribute = _model_attribute(model, field_name)
+        for lookup, value in bounds.items():
+            if value is None:
+                continue
+            if lookup not in _RANGE_LOOKUPS:
+                raise ValueError(f"Unknown range lookup {lookup!r}; use one of {sorted(_RANGE_LOOKUPS)}.")
+            statement = statement.where(_RANGE_LOOKUPS[lookup](attribute, value))
+
     return statement
+
+
+_RANGE_LOOKUPS = {"gt": operator.gt, "gte": operator.ge, "lt": operator.lt, "lte": operator.le}
 
 
 def _model_insert_payload(

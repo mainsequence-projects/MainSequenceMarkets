@@ -173,12 +173,15 @@ def get_portfolios_values_frame(
     end_date: dt.datetime | None = None,
     order: str = "desc",
     limit: int = 500,
+    offset: int = 0,
 ) -> TabularFrameResponse:
     """Return one `core.tabular_frame@v1` of values for several portfolios.
 
     ADR 0047: the portfolios are grouped by the `PortfoliosTS` instance the
     catalog records for them; each instance is read once and the rows are
-    merged. Every requested uid must be a portfolio.
+    merged. Every requested uid must be a portfolio. The merged rows are
+    ordered by (`time_index`, `portfolio_identifier`) and `offset` skips that
+    many of them, so a caller pages through a window longer than `limit`.
     """
 
     portfolios = _required_portfolios(uids)
@@ -192,7 +195,7 @@ def get_portfolios_values_frame(
         key=lambda row: (_sort_time(row.get("time_index")), str(row.get("portfolio_identifier"))),
         reverse=order == "desc",
     )
-    rows = rows[:limit]
+    rows = rows[offset : offset + limit]
     columns = [
         "time_index",
         "portfolio_identifier",

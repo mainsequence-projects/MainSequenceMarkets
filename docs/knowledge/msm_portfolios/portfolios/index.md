@@ -464,7 +464,11 @@ enters `update_hash`.
 An application on the remote row backend registers and reconciles the catalog
 with `msm_portfolios.api.datasets.PortfolioDatasets.register(...)`,
 `.reconcile(...)` and `.get(...)`, which run the services below on the Markets
-API (write-policy resource `portfolio-datasets`).
+API (write-policy resource `portfolio-datasets`). `register` binds the
+portfolio's current signal; `PortfolioDatasets.register_signal({"signal_uid":
+..., "signal_meta_table_uid": ...})` binds any other signal, such as the earlier
+signals of a producer whose signal uid changes each run, after verifying the
+table against the signal weights contract.
 Instance tables change where rows land, not identities: none of them enters
 `update_hash`, and MetaTables keys each update record by update hash and output
 table.

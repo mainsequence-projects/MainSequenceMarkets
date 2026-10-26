@@ -19,6 +19,15 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Remote reads and lifecycle calls providers need (ADR 0047): `filter` and
+  `count` take `<field>__gte`, `__gt`, `__lte` and `__lt` range bounds
+  (`msm.repositories.crud` `range_filters`); `AssetSnapshots.latest` returns
+  each asset's latest snapshot by identifier, uid or ticker
+  (`msm.services.assets.asset_identifiers_by_ticker`);
+  `PortfolioDatasets.register_signal` binds any signal's weights instance;
+  `FormulaIndex.activate_definition` and `retire_definition` back
+  `activate()`/`retire()`; `GET /portfolio/values/` takes `offset` and
+  `MarketsClient.portfolio_values` pages past 5,000 rows.
 - Provider time series (ADR 0047): `msm.storage_instances.configured_time_index_instance`
   builds a provider-owned instance of any Markets time-index storage, with its
   columns, foreign keys and grain index, in the provider's namespace and Alembic
@@ -252,6 +261,12 @@ portfolio and strategy identities do not change. Dependent packages declare
   aliases. ms-markets 4.0 removes them.
 
 ### Fixed
+
+- Under the remote backend, `PersistedCalendarSchedule.schedule` (calendar-relative
+  rebalancing) and `FormulaIndex.activate()`/`retire()` ran compiled SQL in the
+  calling process and failed; they now run through dispatched row methods.
+- `Index.upsert_many` now applies `Index.upsert`'s `calculation_method` guard
+  to every existing index.
 
 - UID column labels and descriptions name the identity each column holds.
   The three `PortfolioTable.*_data_node_uid` columns are labelled as

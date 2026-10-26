@@ -71,6 +71,36 @@ def asset_reference_details_by_uids(
     return _order_rows_by_key(rows, values=requested_uids, key="asset_uid")
 
 
+def asset_identifiers_by_ticker(
+    tickers: str | Sequence[str],
+    *,
+    repository_context: MarketsOperationContext | None = None,
+    executor: AssetReferenceExecutor | None = None,
+) -> list[str]:
+    """Return the asset identifiers that have any snapshot with one of ``tickers``.
+
+    A ticker can move between assets; read each asset's latest snapshot with
+    :func:`asset_reference_details` to see which assets still carry it.
+    """
+
+    requested = _normalize_identifiers(tickers, field_name="tickers")
+    if not requested:
+        return []
+
+    statement = (
+        select(AssetSnapshotsStorage.asset_identifier.label("asset_identifier"))
+        .where(AssetSnapshotsStorage.ticker.in_(requested))
+        .distinct()
+        .order_by(AssetSnapshotsStorage.asset_identifier.asc())
+    )
+    rows = _execute_statement(
+        repository_context=repository_context,
+        statement=statement,
+        executor=executor,
+    )
+    return [str(row["asset_identifier"]) for row in rows if row.get("asset_identifier")]
+
+
 def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool):
     if not latest_snapshot:
         return (
@@ -324,6 +354,7 @@ def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list
 
 __all__ = [
     "AssetReferenceExecutor",
+    "asset_identifiers_by_ticker",
     "asset_reference_details",
     "asset_reference_details_by_uids",
 ]

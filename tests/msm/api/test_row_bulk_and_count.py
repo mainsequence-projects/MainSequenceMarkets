@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -112,3 +113,80 @@ def test_search_model_orders_by_validated_columns(offline_postgresql_runtime) ->
 
     assert "ORDER BY" in sql.upper()
     assert "DESC" in sql.upper()
+
+
+def test_range_filters_split_by_suffix_and_compile_to_bounds(monkeypatch, runtime) -> None:
+    from msm.api.calendars import CalendarSession
+    from msm.models import CalendarSessionTable
+    from msm.repositories.crud import _filtered_model_select
+
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "msm.repositories.crud.search_model",
+        lambda context, **kwargs: seen.update(kwargs) or {"rows": []},
+    )
+
+    CalendarSession.filter(
+        session_label="regular",
+        local_date__gte=dt.date(2026, 1, 1),
+        local_date__lt=dt.date(2026, 2, 1),
+    )
+
+    assert seen["filters"] == {"session_label": "regular"}
+    assert seen["range_filters"] == {
+        "local_date": {"gte": dt.date(2026, 1, 1), "lt": dt.date(2026, 2, 1)}
+    }
+    statement = _filtered_model_select(CalendarSessionTable, range_filters=seen["range_filters"])
+    compiled = statement.compile()
+    assert "local_date >= :local_date_1" in str(compiled)
+    assert "local_date < :local_date_2" in str(compiled)
+    assert compiled.params == {"local_date_1": dt.date(2026, 1, 1), "local_date_2": dt.date(2026, 2, 1)}
+    with pytest.raises(ValueError, match="Unknown range lookup"):
+        _filtered_model_select(CalendarSessionTable, range_filters={"local_date": {"after": 1}})
+    with pytest.raises(ValueError):
+        CalendarSession.filter(unknown_column__gte=1)
+
+
+def test_index_upsert_many_keeps_the_calculation_method_guard(monkeypatch, runtime) -> None:
+    from msm.api.indices import Index
+
+    existing_uid = uuid.uuid4()
+    written: list[Any] = []
+
+    def search_model(context, *, model, in_filters=None, **kwargs):
+        return {
+            "rows": [
+                {
+                    "uid": str(existing_uid),
+                    "unique_identifier": "RATE28",
+                    "index_type": "interest_rate",
+                    "display_name": "Rate 28",
+                    "calculation_method": "custom",
+                    "value_format": "percent",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model",
+        lambda context, *, model, filters=None, **kwargs: {"rows": [{"count": 1}]},
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.bulk_upsert_model",
+        lambda context, *, model, values, conflict_columns: written.extend(values)
+        or {"rows": [{"uid": str(uuid.uuid4()), **value} for value in values]},
+    )
+    payload = {
+        "unique_identifier": "RATE28",
+        "index_type": "interest_rate",
+        "display_name": "Rate 28",
+        "value_format": "percent",
+    }
+
+    with pytest.raises(ValueError, match="calculation_method cannot change"):
+        Index.upsert_many([{**payload, "calculation_method": "formula"}])
+    assert written == []
+
+    rows = Index.upsert_many([{**payload, "calculation_method": "custom"}])
+    assert [row.unique_identifier for row in rows] == ["RATE28"]

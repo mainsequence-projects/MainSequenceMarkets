@@ -268,7 +268,7 @@ attaches provider sidecar rows under `includes[<uid>]`, as described for
 ## Values Frame For Several Portfolios
 
 ```text
-GET /api/v1/portfolio/values/?portfolio_uid__in=<uid>&portfolio_uid__in=<uid>&start_date=&end_date=&order=desc&limit=500
+GET /api/v1/portfolio/values/?portfolio_uid__in=<uid>&portfolio_uid__in=<uid>&start_date=&end_date=&order=desc&limit=500&offset=0
 ```
 
 Returns one `core.tabular_frame@v1` with columns `time_index`,
@@ -278,7 +278,9 @@ the `PortfoliosTS` instance the catalog records for them; each instance is read
 once, so comparing portfolios computed by two different providers is one call
 whose two sources live in two namespaces. `order` sorts by
 `time_index` across all portfolios and `limit` (1 to 5000) bounds the merged
-result. Every uid must be a portfolio (`404` otherwise); `source.context`
+result; `offset` skips that many rows of the merged order, so a longer window
+is read in pages (`MarketsClient.portfolio_values` pages for a larger
+`limit`). Every uid must be a portfolio (`404` otherwise); `source.context`
 names the requested uids and the window.
 
 ## Weights Frame For Several Portfolios

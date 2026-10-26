@@ -6,9 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from msm.api.base import operation_result_rows
-from msm.api.calendars import Calendar
-from msm.repositories.calendars import search_calendar_sessions
+from msm.api.calendars import Calendar, CalendarSession
 from msm.services.calendars import ensure_date_range, iter_local_dates
 
 
@@ -34,7 +32,11 @@ def _calendar_session_query_windows(
 
 @dataclass(frozen=True)
 class PersistedCalendarSchedule:
-    """Pandas-like schedule adapter backed by persisted calendar session rows."""
+    """Pandas-like schedule adapter backed by persisted calendar session rows.
+
+    Sessions are read with ``CalendarSession.filter``, so the schedule works
+    under the remote row backend as well as on a Markets runtime.
+    """
 
     calendar: Calendar
     session_label: str = "regular"
@@ -49,17 +51,17 @@ class PersistedCalendarSchedule:
         end_date: dt.date | dt.datetime | str,
     ) -> pd.DataFrame:
         start, end = ensure_date_range(start_date, end_date)
-        context = Calendar._active_context()
         rows: list[dict[str, Any]] = []
         for window_start, window_end in _calendar_session_query_windows(start, end):
-            result = search_calendar_sessions(
-                context,
-                calendar_uid=str(self.calendar.uid),
-                start_date=window_start,
-                end_date=window_end,
+            sessions = CalendarSession.filter(
+                calendar_uid=self.calendar.uid,
                 session_label=self.session_label,
+                local_date__gte=window_start,
+                local_date__lte=window_end,
+                order_by="local_date",
+                limit=_SESSION_QUERY_WINDOW_DAYS,
             )
-            rows.extend(operation_result_rows(result))
+            rows.extend(session.model_dump() for session in sessions)
         if not rows:
             return pd.DataFrame(columns=["market_open", "market_close"])
 
