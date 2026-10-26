@@ -497,11 +497,13 @@ def unregister_portfolio_datasets(
     context: MarketsOperationContext,
     *,
     portfolio_uid: uuid.UUID | str,
+    unbind_signal: bool = True,
 ) -> PortfolioDatasetState | None:
     """Remove one portfolio's catalog row so its reads return to the core tables.
 
-    The instance tables and their rows stay. When the portfolio's signal is
-    bound to the catalogued signal instance, that binding is cleared as well.
+    The instance tables and their rows stay. With ``unbind_signal``, when the
+    portfolio's signal is bound to the catalogued signal instance, that binding
+    is cleared as well; pass ``False`` when the signal stays in the instance.
     Returns the removed row's state, or ``None`` when there was no catalog row.
     """
 
@@ -516,7 +518,7 @@ def unregister_portfolio_datasets(
     delete_model(context, model=PortfolioDatasetAvailabilityTable, uid=row["uid"])
     signal_uid = portfolio.get("signal_uid")
     signal_table = row.get("signal_meta_table_uid")
-    if signal_uid and signal_table:
+    if unbind_signal and signal_uid and signal_table:
         _unbind_signal_metadata_table(
             context,
             signal_uid=str(signal_uid),

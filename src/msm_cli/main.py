@@ -90,12 +90,22 @@ def rename_preflight_command(args: argparse.Namespace) -> int:
 def series_command(args: argparse.Namespace) -> int:
     """Run ``msm series move|rollback`` over the moves a provider callable returns (ADR 0047)."""
 
-    from msm.storage_copies import run_series_moves
-    from msm_cli.rename_preflight import load_objects
+    import importlib
+    import inspect
 
+    from msm.storage_copies import run_series_moves
+
+    rollback = args.series == "rollback"
+    module_name, _, attribute = args.moves.partition(":")
+    if not module_name or not attribute:
+        raise SystemExit("Pass the moves as module:callable.")
+    produce = getattr(importlib.import_module(module_name), attribute)
+    # A callable that takes ``rollback`` builds the moves for that direction.
+    accepts_rollback = "rollback" in inspect.signature(produce).parameters
+    produced = produce(rollback=rollback) if accepts_rollback else produce()
     report = run_series_moves(
-        load_objects(args.moves),
-        rollback=args.series == "rollback",
+        list(produced) if isinstance(produced, (list, tuple, set, frozenset)) else [produced],
+        rollback=rollback,
         dry_run=not args.execute,
     )
     if args.emit_json:
@@ -322,7 +332,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "moves",
             help=(
                 "module:callable returning TableSeriesMove, PortfolioSeriesMove or "
-                "SignalSeriesMove objects, after attaching the provider's runtime."
+                "SignalSeriesMove objects, after attaching the provider's runtime; "
+                "it receives rollback= when it accepts that argument."
             ),
         )
         sub.add_argument(

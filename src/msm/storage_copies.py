@@ -328,13 +328,21 @@ class TableSeriesMove:
     label: str = ""
     on_copied: Callable[[], Any] | None = None
     on_rolled_back: Callable[[], Any] | None = None
+    keys_per_read: int = DEFAULT_KEYS_PER_READ
+    deadline_seconds: float = DEFAULT_READ_DEADLINE_SECONDS
 
     def run(self, *, rollback: bool, dry_run: bool) -> SeriesMoveResult:
         result = SeriesMoveResult("table", self.label or self.instance.__table__.name)
         source, target = (self.instance, self.core) if rollback else (self.core, self.instance)
         result.copies.append(
             copy_time_index_rows(
-                source, target, key_column=self.key_column, keys=self.keys, dry_run=dry_run
+                source,
+                target,
+                key_column=self.key_column,
+                keys=self.keys,
+                dry_run=dry_run,
+                keys_per_read=self.keys_per_read,
+                deadline_seconds=self.deadline_seconds,
             )
         )
         return finish_move(
@@ -353,12 +361,15 @@ def finish_move(
     after_copy: Callable[[], Any] | None = None,
     catalog: Callable[[], Iterable[Any]] | None = None,
     catalog_first: bool = False,
+    preflight: Callable[[], Any] | None = None,
 ) -> SeriesMoveResult:
     """Set a move's status once its copies ran; on success run its callback and catalog calls.
 
-    A move runs ``after_copy`` then ``catalog`` (the catalog row is written
-    last); a rollback (``catalog_first``) removes the catalog row first, so
-    Markets reads the core tables again before the provider's updaters do.
+    ``preflight`` runs first and raises when a catalog call would fail, so a
+    refused move never reaches ``after_copy``. A move runs ``after_copy`` then
+    ``catalog`` (the catalog row is written last); a rollback (``catalog_first``)
+    removes the catalog row first, so Markets reads the core tables again before
+    the provider's updaters do.
     """
 
     if dry_run:
@@ -368,6 +379,8 @@ def finish_move(
         result.status = "incomplete"
         result.detail = "rows are still missing in the target after the copy"
         return result
+    if preflight is not None:
+        preflight()
     steps = [catalog, after_copy] if catalog_first else [after_copy, catalog]
     for step in steps:
         if step is None:

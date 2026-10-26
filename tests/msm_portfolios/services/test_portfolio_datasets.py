@@ -275,6 +275,11 @@ def test_unregister_removes_the_catalog_row_and_its_signal_binding(monkeypatch) 
     assert deleted == [(PortfolioDatasetAvailabilityTable, catalog_row["uid"])]
     assert store.updates == [{"model": SignalMetadataTable, "uid": signal_row_uid, "meta_table_uid": None}]
 
+    store.updates.clear()
+    store.catalog[growth["uid"]] = dict(catalog_row)
+    kept = unregister_portfolio_datasets(object(), portfolio_uid=growth["uid"], unbind_signal=False)
+    assert kept is not None and store.updates == []
+
     store.catalog.clear()
     assert unregister_portfolio_datasets(object(), portfolio_uid=growth["uid"]) is None
     with pytest.raises(LookupError, match="was not found"):

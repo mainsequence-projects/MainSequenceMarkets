@@ -569,17 +569,23 @@ When every key is complete it calls `on_copied`, where the provider points its
 updaters at the instances, binds the moved signals that are not the portfolio's
 current one with `register_signal`, and writes the catalog row last with
 `register`. If a key is still missing rows the move stops as `incomplete` and
-nothing in Markets changes; running it again copies only the gaps.
+nothing in Markets changes; running it again copies only the gaps. Before
+`on_copied` it checks that every signal it will bind has a `SignalMetadata`
+row, so a signal that never ran fails the move before the provider switches.
 
 A rollback copies the rows the instances gained since the move back into the
-core tables, removes the catalog row (`unregister`), clears the moved signals'
-bindings (`unregister_signal`) and calls `on_rolled_back`. The instances keep
-their rows. `SignalSeriesMove` does the same for signals moved on their own;
+core tables, removes the catalog row (`unregister(..., unbind_signal=False)`),
+clears the bindings of the signals that moved with the portfolio
+(`unregister_signal`) and calls `on_rolled_back`; a signal moved on its own keeps
+its binding until its own `SignalSeriesMove` rolls back. The instances keep
+their rows. Every move takes `keys_per_read` and `deadline_seconds` for its
+reads. `SignalSeriesMove` does the same for signals moved on their own;
 `run_series_moves` runs signals before portfolios on a move and portfolios
 first on a rollback. Calendar events are not copied: the engine rebuilds them.
 
 `msm series move module:callable [--execute]` and `msm series rollback ...`
-run the moves a provider callable returns; without `--execute` they only count.
+run the moves a provider callable returns (it receives `rollback=` when it
+accepts that argument); without `--execute` they only count.
 The operator needs `data_viewer` on the tables read, write access to the tables
 written (a rollback writes the core tables) and the write-policy resource
 `portfolio-datasets`; pause the provider's runs while a move or rollback runs.

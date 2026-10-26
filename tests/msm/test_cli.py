@@ -232,3 +232,14 @@ def test_series_move_runs_the_provider_moves(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["rollback"] is True and payload["results"][0]["status"] == "rolled_back"
     assert seen == [(False, True), (True, False)]
+
+    directions: list[bool] = []
+
+    def moves_for(rollback: bool = False):
+        directions.append(rollback)
+        return Move()
+
+    monkeypatch.setitem(sys.modules, "provider_moves", SimpleNamespace(moves=moves_for))
+    assert main(["series", "rollback", "provider_moves:moves", "--json"]) == 0
+    capsys.readouterr()
+    assert directions == [True]

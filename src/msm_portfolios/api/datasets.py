@@ -67,16 +67,24 @@ class PortfolioDatasets(RemoteRowOperations, BaseModel):
         return register_signal_dataset(cls._context(), registration)
 
     @classmethod
-    def unregister(cls, *, portfolio_uid: uuid.UUID | str) -> PortfolioDatasetState | None:
+    def unregister(
+        cls,
+        *,
+        portfolio_uid: uuid.UUID | str,
+        unbind_signal: bool = True,
+    ) -> PortfolioDatasetState | None:
         """Remove the portfolio's catalog row; its reads return to the core tables.
 
         For rolling back a move to provider instances. The instance tables keep
-        their rows; ``None`` when the portfolio had no catalog row.
+        their rows; ``None`` when the portfolio had no catalog row. With
+        ``unbind_signal=False`` the portfolio's signal keeps its instance binding.
         """
 
         from msm_portfolios.services.portfolio_datasets import unregister_portfolio_datasets
 
-        return unregister_portfolio_datasets(cls._context(), portfolio_uid=portfolio_uid)
+        return unregister_portfolio_datasets(
+            cls._context(), portfolio_uid=portfolio_uid, unbind_signal=unbind_signal
+        )
 
     @classmethod
     def unregister_signal(cls, *, signal_uid: str) -> SignalDatasetRegistration | None:

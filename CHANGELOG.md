@@ -27,6 +27,11 @@ portfolio and strategy identities do not change. Dependent packages declare
   `PortfolioSeriesMove` and `SignalSeriesMove` move a series and roll it back,
   including the catalog and signal-binding calls in a fixed order, and
   `run_series_moves` / `msm series move|rollback` run a provider's moves.
+  A move refuses, before switching the provider, a signal without a
+  `SignalMetadata` row; a portfolio rollback keeps the binding of a signal that
+  did not move with it (`PortfolioDatasets.unregister(..., unbind_signal=False)`);
+  moves take `keys_per_read` and `deadline_seconds`; `msm series` passes
+  `rollback=` to a callable that accepts it.
 - Remote reads and lifecycle calls providers need (ADR 0047): `filter` and
   `count` take `<field>__gte`, `__gt`, `__lte` and `__lt` range bounds
   (`msm.repositories.crud` `range_filters`); `AssetSnapshots.latest` returns

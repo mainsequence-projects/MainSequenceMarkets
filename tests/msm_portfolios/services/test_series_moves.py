@@ -44,10 +44,12 @@ class _Markets:
     def __init__(self, monkeypatch, *, current_signal: str | None = "current-signal") -> None:
         self.events: list[tuple[Any, ...]] = []
         self.missing: dict[str, int] = {}
+        self.unknown_signals: set[str] = set()
         from msm.api.portfolios import Portfolio
         from msm_portfolios.api.datasets import PortfolioDatasets
+        from msm_portfolios.api.market_metadata import SignalMetadata
 
-        def copy(source, target, *, key_column, keys, dry_run):
+        def copy(source, target, *, key_column, keys, dry_run, **_tuning):
             self.events.append(("copy", source.__table__.name, target.__table__.name, key_column, list(keys)))
             missing = self.missing.get(target.__table__.name, 0)
             return TimeIndexCopyReport(
@@ -69,6 +71,17 @@ class _Markets:
         )
         for name in ("register", "register_signal", "unregister", "unregister_signal"):
             monkeypatch.setattr(PortfolioDatasets, name, record(name))
+        monkeypatch.setattr(
+            SignalMetadata,
+            "filter",
+            classmethod(
+                lambda cls, *, signal_uid__in, limit: [
+                    SimpleNamespace(signal_uid=uid)
+                    for uid in signal_uid__in
+                    if uid not in self.unknown_signals
+                ]
+            ),
+        )
         monkeypatch.setattr(
             Portfolio,
             "get_by_uid",
@@ -147,7 +160,41 @@ def test_portfolio_rollback_copies_back_then_unregisters_then_switches(monkeypat
     assert copies[0] == ("my_signals", "core_signals")
     assert all(target.startswith("core_") for _source, target in copies)
     assert markets.kinds()[-4:] == ["unregister", "unregister_signal", "unregister_signal", "switched_back"]
-    assert markets.events[-4][2] == {"portfolio_uid": PORTFOLIO_UID}
+    # The catalog row goes without touching bindings; the moved signals are unbound explicitly.
+    assert markets.events[-4][2] == {"portfolio_uid": PORTFOLIO_UID, "unbind_signal": False}
+
+
+def test_a_signal_without_metadata_fails_before_the_provider_switches(monkeypatch) -> None:
+    markets = _Markets(monkeypatch)
+    markets.unknown_signals.add("never-ran")
+
+    report = run_series_moves(
+        [_move(signal_uids=["never-ran"], on_copied=lambda: markets.events.append(("switched",)))],
+        dry_run=False,
+    )
+
+    assert report.results[0].status == "failed"
+    assert "never-ran" in report.results[0].detail
+    assert set(markets.kinds()) == {"copy"}
+
+
+def test_moves_forward_their_read_tuning(monkeypatch) -> None:
+    seen: list[dict[str, Any]] = []
+    _Markets(monkeypatch)
+    original = series_moves.copy_time_index_rows
+
+    def copy(source, target, **kwargs):
+        seen.append(dict(kwargs))
+        return original(source, target, **kwargs)
+
+    monkeypatch.setattr(series_moves, "copy_time_index_rows", copy)
+    _move(keys_per_read=5, deadline_seconds=30.0).run(rollback=False, dry_run=True)
+    SignalSeriesMove(["s1"], _storage("my_signals"), core=_storage("core_signals"), keys_per_read=7).run(
+        rollback=False, dry_run=True
+    )
+
+    assert {(call["keys_per_read"], call["deadline_seconds"]) for call in seen[:-1]} == {(5, 30.0)}
+    assert seen[-1]["keys_per_read"] == 7
 
 
 def test_an_incomplete_copy_changes_nothing_in_markets(monkeypatch) -> None:

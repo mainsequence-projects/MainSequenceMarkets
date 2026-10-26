@@ -39,6 +39,8 @@ from dataclasses import dataclass, fields
 from typing import Any, ClassVar
 
 from msm.storage_copies import (
+    DEFAULT_KEYS_PER_READ,
+    DEFAULT_READ_DEADLINE_SECONDS,
     SeriesMoveResult,
     copy_time_index_rows,
     finish_move,
@@ -116,6 +118,8 @@ class SignalSeriesMove:
     on_copied: Callable[[], Any] | None = None
     on_rolled_back: Callable[[], Any] | None = None
     core: type[Any] | None = None
+    keys_per_read: int = DEFAULT_KEYS_PER_READ
+    deadline_seconds: float = DEFAULT_READ_DEADLINE_SECONDS
 
     def run(self, *, rollback: bool, dry_run: bool) -> SeriesMoveResult:
         signal_uids = _unique(self.signal_uids)
@@ -124,7 +128,13 @@ class SignalSeriesMove:
         source, target = (self.instance, core) if rollback else (core, self.instance)
         result.copies.append(
             copy_time_index_rows(
-                source, target, key_column="signal_uid", keys=signal_uids, dry_run=dry_run
+                source,
+                target,
+                key_column="signal_uid",
+                keys=signal_uids,
+                dry_run=dry_run,
+                keys_per_read=self.keys_per_read,
+                deadline_seconds=self.deadline_seconds,
             )
         )
 
@@ -142,6 +152,7 @@ class SignalSeriesMove:
             after_copy=self.on_rolled_back if rollback else self.on_copied,
             catalog=catalog,
             catalog_first=rollback,
+            preflight=(lambda: _require_signal_metadata(signal_uids)) if self.register else None,
         )
 
 
@@ -171,6 +182,8 @@ class PortfolioSeriesMove:
     on_copied: Callable[[], Any] | None = None
     on_rolled_back: Callable[[], Any] | None = None
     core: PortfolioSeriesTables | None = None
+    keys_per_read: int = DEFAULT_KEYS_PER_READ
+    deadline_seconds: float = DEFAULT_READ_DEADLINE_SECONDS
 
     def run(self, *, rollback: bool, dry_run: bool) -> SeriesMoveResult:
         core = self.core or PortfolioSeriesTables.core()
@@ -200,7 +213,15 @@ class PortfolioSeriesMove:
             copies = [(target, source, column, keys) for source, target, column, keys in copies]
         for source, target, column, keys in copies:
             result.copies.append(
-                copy_time_index_rows(source, target, key_column=column, keys=keys, dry_run=dry_run)
+                copy_time_index_rows(
+                    source,
+                    target,
+                    key_column=column,
+                    keys=keys,
+                    dry_run=dry_run,
+                    keys_per_read=self.keys_per_read,
+                    deadline_seconds=self.deadline_seconds,
+                )
             )
 
         def catalog() -> list[Any]:
@@ -209,6 +230,8 @@ class PortfolioSeriesMove:
             if rollback:
                 calls: list[Any] = []
                 if self.portfolio_uid is not None:
+                    # Only the signals that move back lose their binding; a signal
+                    # moved on its own stays bound to its instance.
                     calls.append(_unregister_portfolio(self.portfolio_uid))
                 return [*calls, *_unbind_signals(signal_uids)]
             calls = _bind_signals(
@@ -237,6 +260,7 @@ class PortfolioSeriesMove:
             after_copy=self.on_rolled_back if rollback else self.on_copied,
             catalog=catalog,
             catalog_first=rollback,
+            preflight=(lambda: _require_signal_metadata(signal_uids)) if self.register else None,
         )
 
     def _current_signal_uid(self) -> str | None:
@@ -299,7 +323,26 @@ def _register_portfolio(
 def _unregister_portfolio(portfolio_uid: uuid.UUID | str) -> Any:
     from msm_portfolios.api.datasets import PortfolioDatasets
 
-    return PortfolioDatasets.unregister(portfolio_uid=portfolio_uid)
+    return PortfolioDatasets.unregister(portfolio_uid=portfolio_uid, unbind_signal=False)
+
+
+def _require_signal_metadata(signal_uids: Sequence[str]) -> None:
+    """Refuse before any switch when a signal to bind or unbind has no ``SignalMetadata`` row."""
+
+    if not signal_uids:
+        return
+    from msm_portfolios.api.market_metadata import SignalMetadata
+
+    found = {
+        str(row.signal_uid)
+        for row in SignalMetadata.filter(signal_uid__in=list(signal_uids), limit=len(signal_uids))
+    }
+    missing = [uid for uid in signal_uids if uid not in found]
+    if missing:
+        raise LookupError(
+            f"Signals without a SignalMetadata row: {missing}. Run their updaters once, "
+            "or leave them out of the move."
+        )
 
 
 def _unique(values: Sequence[Any]) -> list[str]:

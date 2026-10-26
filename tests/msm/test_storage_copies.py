@@ -159,6 +159,22 @@ def test_table_move_and_rollback_switch_writers_only_when_complete(monkeypatch) 
     assert events == ["copied", "rolled_back"]
 
 
+def test_table_moves_forward_their_read_tuning(monkeypatch) -> None:
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        storage_copies,
+        "copy_time_index_rows",
+        lambda source, target, **kwargs: seen.append(kwargs)
+        or storage_copies.TimeIndexCopyReport("core", "instance", "k", (), True),
+    )
+
+    TableSeriesMove(_storage("core"), _storage("instance"), "k", ["a"], keys_per_read=3).run(
+        rollback=False, dry_run=True
+    )
+
+    assert seen[0]["keys_per_read"] == 3 and seen[0]["deadline_seconds"] == 300.0
+
+
 def test_run_series_moves_orders_moves_and_reports_failures() -> None:
     calls: list[tuple[str, bool]] = []
 
