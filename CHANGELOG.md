@@ -263,6 +263,12 @@ portfolio and strategy identities do not change. Dependent packages declare
   `data_viewer` on a sidecar that holds credentials without its ciphertext
   reaching Markets responses. A sidecar whose join column is encrypted is
   refused.
+- `from <pre-3.0 module path> import <name>` no longer recurses forever. The
+  import system probes `__path__` on every from-import, and the deprecated
+  alias modules treated that dunder as a submodule to import, which probed
+  `__path__` again. Aliases now answer dunder lookups with `AttributeError` and
+  try submodule imports only for package aliases. Every module alias is tested
+  with a from-import.
 - Portfolio, portfolio-weights, signal and signal-weights deletes respect the
   ADR 0047 catalog. They used to touch only the core tables, so a portfolio
   catalogued in another application's contract instance reported zero rows

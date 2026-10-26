@@ -60,11 +60,17 @@ def alias_module(
     alias.__all__ = list(getattr(module, "__all__", _public_names(module)))
 
     def __getattr__(attribute: str) -> Any:
+        if attribute.startswith("__") and attribute.endswith("__"):
+            # The import system probes dunders such as ``__path__`` on every
+            # ``from alias import name``; a plain module answers AttributeError.
+            # Treating them as submodules would import ``alias.__path__`` and probe
+            # ``__path__`` again, forever.
+            raise AttributeError(f"module {name!r} has no attribute {attribute!r}")
         current = RENAMED_CLASS_NAMES.get(attribute, attribute)
         try:
             value = getattr(module, current)
         except AttributeError:
-            value = _submodule(name, attribute)
+            value = _submodule(name, attribute) if hasattr(module, "__path__") else None
             if value is None:
                 raise AttributeError(f"module {name!r} has no attribute {attribute!r}") from None
         if current != attribute:

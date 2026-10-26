@@ -133,3 +133,27 @@ def test_star_import_from_a_pre_3_0_path_exports_the_current_names() -> None:
     from msm_pricing.time_index import DiscountCurvesUpdater
 
     assert namespace["DiscountCurvesUpdater"] is DiscountCurvesUpdater
+
+
+@pytest.mark.parametrize(("previous", "current"), MODULE_PAIRS)
+def test_from_import_of_a_name_through_a_pre_3_0_module_path(previous: str, current: str) -> None:
+    """``from <pre-3.0 module> import <name>`` works for modules and packages alike.
+
+    The import system probes ``__path__`` on the alias for every from-import; an
+    alias of a plain module must answer AttributeError instead of treating the
+    dunder as a submodule, which recursed forever before.
+    """
+
+    target = importlib.import_module(current)
+    names = [name for name in getattr(target, "__all__", ()) if hasattr(target, name)]
+    if not names:
+        pytest.skip(f"{current} exports no names")
+    namespace: dict[str, object] = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        exec(f"from {previous} import {names[0]}", namespace)
+        alias = importlib.import_module(previous)
+    assert namespace[names[0]] is getattr(target, names[0])
+    assert hasattr(alias, "__path__") is hasattr(target, "__path__")
+    with pytest.raises(AttributeError):
+        getattr(alias, "__no_such_dunder__")
