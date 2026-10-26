@@ -65,10 +65,18 @@ constant lists its workload User uid for that resource or for `"*"`. A refused
 write raises `msm.api.remote.MarketsAccessError`, a `PermissionError`. See
 [the FastAPI guide](../../../fast_api/v1/index.md) for the constant's format.
 
-Remote deletes run the resource's service delete, with its preflight checks,
-and exist only for `asset`, `asset-category`, `calendar`, `index`, `portfolio`
-and `portfolio-group`; other row classes raise
-`MarketsOperationUnsupported`.
+A table row class's remote `delete` runs the resource's service delete, with
+its preflight checks, and exists only for `asset`, `asset-category`,
+`calendar`, `index`, `portfolio` and `portfolio-group`; other table row classes
+raise `MarketsOperationUnsupported`. Composites that implement `delete`
+themselves, such as `Curve` and the pricing market-data bindings, delete
+remotely as they do under the runtime backend.
+
+The remote backend covers the `msm.api` rows, the `msm_portfolios.api`
+metadata rows (`SignalMetadata`, `PortfolioMetadata`,
+`RebalanceStrategyMetadata`) and the `msm_pricing.api` composites (curves,
+curve building details, index conventions, market-data sets and bindings,
+asset pricing details).
 
 ## Errors
 

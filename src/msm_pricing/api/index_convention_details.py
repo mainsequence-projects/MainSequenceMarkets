@@ -6,6 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from msm.api.remote import RemoteRowOperations
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import (
@@ -40,7 +41,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class IndexConventionDetails(BaseModel):
+class IndexConventionDetails(RemoteRowOperations, BaseModel):
     """Pricing convention details attached one-to-one to a canonical index."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)

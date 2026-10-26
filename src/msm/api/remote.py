@@ -60,6 +60,10 @@ WRITE_OPERATIONS = frozenset(
         "create_batch",
         "create_from_pandas_calendar",
         "reconcile_dataset_availability",
+        "upsert_many",
+        "add_many",
+        "create_index_curve_selection",
+        "upsert_index_curve_selection",
     }
 )
 """Operations that create, update or delete registry rows; the API wraps them in

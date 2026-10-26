@@ -45,11 +45,21 @@ row model's own fields only.
 
 Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_portfolio`, `remove_portfolio`, `replace_memberships`, `create_batch`,
-`create_from_pandas_calendar`, `reconcile_dataset_availability`) run through
-`registry_write`, so the registry write policy applies to applications. `delete`
-runs the resource's service delete with its preflight checks and exists only
-for `asset`, `asset-category`, `calendar`, `index`, `portfolio` and
-`portfolio-group`.
+`create_from_pandas_calendar`, `reconcile_dataset_availability`, `upsert_many`,
+`add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`) run
+through `registry_write`, so the registry write policy applies to applications.
+A table row class's `delete` runs the resource's service delete with its
+preflight checks and exists only for `asset`, `asset-category`, `calendar`,
+`index`, `portfolio` and `portfolio-group`. Composites that implement `delete`
+themselves (`curve`, `pricing-market-data-set`, the binding resources) run it
+like any other operation.
+
+The resources include the `msm_portfolios.api` metadata rows
+(`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and
+the `msm_pricing.api` composites (`curve`, `curve-building-details`,
+`index-convention-details`, `pricing-market-data-set`,
+`pricing-market-data-set-binding`, `pricing-market-data-set-curve-binding`,
+`asset-current-pricing-details`, `asset-pricing-details`).
 
 | Status | Meaning | `error_type` |
 |---|---|---|

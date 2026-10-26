@@ -287,3 +287,32 @@ def test_portfolio_frames_convert_to_pandas() -> None:
 
     assert list(frame.columns) == ["time_index", "portfolio_identifier", "close"]
     assert frame.iloc[0]["close"] == 1.5
+
+
+def test_pricing_composites_run_remotely_including_their_own_delete(monkeypatch, remote) -> None:
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSet
+
+    set_uid = uuid.uuid4()
+    row = {"uid": str(set_uid), "set_key": "default", "display_name": "Default"}
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        lambda context, *, model, filters, limit, **kwargs: {"rows": [row] if filters["set_key"] == "default" else []},
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.delete_model",
+        lambda context, *, model, uid: deleted.append(str(uid)) or {"deleted_count": 1},
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "_active_context",
+        classmethod(lambda cls: SimpleNamespace(timeout=None)),
+    )
+
+    found = PricingMarketDataSet.get_by_key("default")
+
+    assert isinstance(found, PricingMarketDataSet)
+    assert found.uid == set_uid
+    assert PricingMarketDataSet.get_by_key("missing") is None
+    assert PricingMarketDataSet.delete(set_uid) == {"deleted_count": 1}
+    assert deleted == [str(set_uid)]

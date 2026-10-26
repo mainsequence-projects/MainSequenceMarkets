@@ -6,6 +6,7 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
+from msm.api.remote import RemoteRowOperations
 from msm.api.base import (
     PayloadWithRenamedFields,
     _warn_deprecated_create_schemas,
@@ -53,7 +54,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class PricingMarketDataSet(BaseModel):
+class PricingMarketDataSet(RemoteRowOperations, BaseModel):
     """Named market-data source set used by pricing workflows."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -221,7 +222,7 @@ class PricingMarketDataSet(BaseModel):
         return None
 
 
-class PricingMarketDataSetBinding(BaseModel):
+class PricingMarketDataSetBinding(RemoteRowOperations, BaseModel):
     """Binding from a pricing market-data set and concept to a storage table UID."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -452,7 +453,7 @@ class PricingMarketDataSetBinding(BaseModel):
         return None
 
 
-class PricingMarketDataSetCurveBinding(BaseModel):
+class PricingMarketDataSetCurveBinding(RemoteRowOperations, BaseModel):
     """Binding from a pricing market-data set valuation role to a curve identity."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)

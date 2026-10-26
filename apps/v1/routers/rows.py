@@ -75,6 +75,13 @@ def _load_row_classes() -> dict[str, type]:
     import msm.api.issuers  # noqa: F401
     import msm.api.portfolios  # noqa: F401
     import msm.api.virtual_funds  # noqa: F401
+    import msm_portfolios.api.market_metadata  # noqa: F401
+    import msm_portfolios.api.portfolios  # noqa: F401
+    import msm_pricing.api.curve_building_details  # noqa: F401
+    import msm_pricing.api.curves  # noqa: F401
+    import msm_pricing.api.index_convention_details  # noqa: F401
+    import msm_pricing.api.market_data_bindings  # noqa: F401
+    import msm_pricing.api.pricing_details  # noqa: F401
     from msm.api.remote import registered_row_classes
 
     return registered_row_classes()
@@ -117,7 +124,7 @@ def describe_row_operations() -> list[RowResourceDescription]:
                 signature=str(inspect.signature(func)).replace("cls, ", "", 1),
             )
             for name, func in sorted(remote_operations(cls).items())
-            if name != "delete" or resource in deletes
+            if name != "delete" or resource in deletes or _owns_checked_delete(cls)
         ]
         described.append(
             RowResourceDescription(resource=resource, row_class=cls.__name__, operations=operations)
@@ -160,7 +167,7 @@ def run_row_operation(
     if cls is None:
         return _error(404, f"Unknown row resource {resource!r}.", "LookupError")
 
-    if operation == "delete":
+    if operation == "delete" and not _owns_checked_delete(cls):
         delete = _service_deletes().get(resource)
         if delete is None:
             return _error(
@@ -190,6 +197,20 @@ def run_row_operation(
     if operation in WRITE_OPERATIONS:
         execute = registry_write(resource, operation)(execute)
     return _run(lambda: execute(uid=arguments.get("uid")), encode_result)
+
+
+def _owns_checked_delete(cls: type) -> bool:
+    """Whether ``cls`` implements its own ``delete`` with its own checks.
+
+    The table row base class's ``delete`` removes one row with no preflight, so
+    a table row class deletes remotely only through its resource's service.
+    Composites such as ``Curve`` or ``PricingMarketDataSetBinding`` implement
+    ``delete`` themselves and run it remotely like any other operation.
+    """
+
+    from msm.api.base import MarketsMetaTableRow
+
+    return not issubclass(cls, MarketsMetaTableRow) and "delete" in vars(cls)
 
 
 def _run(call: Callable[[], Any], encode: Callable[[Any], Any]) -> RowOperationResponse | JSONResponse:
