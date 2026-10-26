@@ -6,7 +6,7 @@ import datetime
 import re
 import uuid
 from functools import lru_cache
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from sqlalchemy import (
     DateTime,
@@ -160,12 +160,41 @@ def index_values_output_table_name(*, cadence: str) -> str:
     )
 
 
-def configured_index_values_storage(*, cadence: str) -> type[PlatformTimeIndexMetaTable]:
-    """Build one canonical Index-value storage class for a stable cadence."""
+def configured_index_values_storage(
+    *,
+    cadence: str,
+    namespace: str | None = None,
+    storage_app: str | None = None,
+    base: type[Any] | None = None,
+) -> type[PlatformTimeIndexMetaTable]:
+    """Build one canonical Index-value storage class for a stable cadence.
+
+    By default this is Markets' own ``ms_markets__index_values__t_<cadence>`` in
+    the Markets namespace. A provider that publishes Index values owns its table
+    (ADR 0047, decision 4): it passes its ``namespace``, its ``storage_app`` and,
+    when its own Alembic provider migrates the table, its declarative ``base``.
+    The table is then ``<storage_app>__index_values__t_<cadence>`` in that
+    namespace, with the same columns, foreign keys, grain and authored identifier
+    ``IndexValuesTS.<cadence>``; the Index dataset catalog discovers it like the
+    Markets table.
+    """
 
     components = index_values_storage_identity_components(cadence=cadence)
     normalized_cadence = components[INDEX_VALUES_CADENCE_COMPONENT]
-    return _configured_index_values_storage(normalized_cadence)
+    if namespace is None and storage_app is None and base is None:
+        return _configured_index_values_storage(normalized_cadence)
+
+    from msm.settings import markets_namespace
+
+    app = str(storage_app or "").strip()
+    if not app or app == MARKETS_TABLE_APP:
+        raise ValueError(
+            "A provider Index-value table needs its own storage_app; "
+            f"{MARKETS_TABLE_APP!r} names the Markets table."
+        )
+    return _provider_index_values_storage(
+        normalized_cadence, markets_namespace(namespace), app, base or MarketsBase
+    )
 
 
 @lru_cache(maxsize=64)
@@ -187,6 +216,49 @@ def _configured_index_values_storage(
                 "Canonical Index value history at "
                 f"{normalized_cadence} cadence, keyed by "
                 "(time_index, index_identifier), for custom and formula observables."
+            ),
+            "__metatable_extra_hash_components__": components,
+            "__time_index_name__": IndexValuesStorage.__time_index_name__,
+            "__cadence__": normalized_cadence,
+            "__index_names__": list(IndexValuesStorage.__index_names__),
+        },
+    )
+
+
+@lru_cache(maxsize=64)
+def _provider_index_values_storage(
+    normalized_cadence: str,
+    namespace: str,
+    storage_app: str,
+    base: type[Any],
+) -> type[PlatformTimeIndexMetaTable]:
+    from msm.settings import markets_identifier
+
+    components = index_values_storage_identity_components(cadence=normalized_cadence)
+    table_name = markets_table_name(storage_app, "index_values", suffix=normalized_cadence)
+    authored_identifier = f"IndexValuesTS.{normalized_cadence}"
+    table = _copy_index_values_table(
+        table_name,
+        metadata=base.metadata,
+        info={
+            "namespace": namespace,
+            "identifier": markets_identifier(authored_identifier, namespace=namespace),
+            "markets_storage_app": storage_app,
+        },
+    )
+    class_suffix = re.sub(r"[^a-zA-Z0-9_]+", "_", f"{storage_app}_{normalized_cadence}")
+    return type(
+        f"IndexValuesStorage_{class_suffix}",
+        (MarketsTimeIndexMetaTableMixin, base),
+        {
+            "__module__": __name__,
+            "__table__": table,
+            "__metatable_identifier__": authored_identifier,
+            "__metatable_namespace__": namespace,
+            "__markets_storage_app__": storage_app,
+            "__metatable_description__": (
+                f"Index value history at {normalized_cadence} cadence published by "
+                f"{storage_app}, keyed by (time_index, index_identifier)."
             ),
             "__metatable_extra_hash_components__": components,
             "__time_index_name__": IndexValuesStorage.__time_index_name__,
@@ -227,28 +299,36 @@ def require_cadenced_index_values_storage(
     return normalized_cadence
 
 
-def _copy_index_values_table(table_name: str) -> Table:
-    existing = MarketsBase.metadata.tables.get(table_name)
+def _copy_index_values_table(
+    table_name: str,
+    *,
+    metadata: Any = None,
+    info: dict[str, Any] | None = None,
+) -> Table:
+    metadata = MarketsBase.metadata if metadata is None else metadata
+    existing = metadata.tables.get(table_name)
     if isinstance(existing, Table):
         return existing
 
+    index_table = _target_in(metadata, IndexTable.__table__)
+    definition_table = _target_in(metadata, IndexFormulaDefinitionTable.__table__)
     columns = [column._copy() for column in IndexValuesStorage.__table__.columns]
     table = Table(
         table_name,
-        MarketsBase.metadata,
+        metadata,
         *columns,
         ForeignKeyConstraint(
             [INDEX_IDENTIFIER_DIMENSION],
-            [f"{IndexTable.__table__.fullname}.unique_identifier"],
+            [f"{index_table.fullname}.unique_identifier"],
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
             ["definition_uid"],
-            [f"{IndexFormulaDefinitionTable.__table__.fullname}.uid"],
+            [f"{definition_table.fullname}.uid"],
             ondelete="RESTRICT",
         ),
         schema=IndexValuesStorage.__table__.schema,
-        info=dict(IndexValuesStorage.__table__.info or {}),
+        info=dict(info if info is not None else (IndexValuesStorage.__table__.info or {})),
     )
     SqlIndex(
         schema_index_name(table_name, IndexValuesStorage.__index_names__, unique=True),
@@ -273,6 +353,15 @@ def _copy_index_values_table(table_name: str) -> Table:
         table.c.observation_status,
     )
     return table
+
+
+def _target_in(metadata: Any, core_table: Table) -> Table:
+    """A Markets foreign-key target as it exists in ``metadata``, copied there once."""
+
+    if core_table.metadata is metadata:
+        return core_table
+    copied = metadata.tables.get(core_table.key)
+    return copied if copied is not None else core_table.to_metadata(metadata)
 
 
 __all__ = [

@@ -19,6 +19,11 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Provider-owned Index values (ADR 0047, decision 4):
+  `configured_index_values_storage(cadence=..., namespace=, storage_app=, base=)`
+  builds a provider's `<storage_app>__index_values__t_<cadence>` table in its own
+  namespace; without them it is Markets' own table, unchanged. The Index dataset
+  catalog discovers and reads both.
 - Moving existing history into provider instances (ADR 0047):
   `msm.storage_copies.copy_time_index_rows` copies the rows of some keys that a
   target table lacks from another table of the same contract, through the

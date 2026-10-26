@@ -32,6 +32,7 @@ from msm.repositories.base import (
     execute_markets_operation,
 )
 from msm.repositories.crud import count_model, get_model_by_uid, search_model
+from msm.settings import markets_identifier
 
 from .contracts import (
     IndexActor,
@@ -657,11 +658,12 @@ def _canonical_descriptor(
         cadence = str(getattr(profile, "cadence", "") or "").strip().lower()
     if not cadence or cadence != cadence_from_identifier:
         return None
-    try:
-        model = configured_index_values_storage(cadence=cadence)
-    except ValueError:
+    model = _index_values_model(meta_table, cadence)
+    if model is None:
         return None
-    if identifier != str(model.__metatable_identifier__):
+    if identifier != markets_identifier(
+        model.__metatable_identifier__, namespace=model.__metatable_namespace__
+    ):
         return None
     components = getattr(model, "__metatable_extra_hash_components__", {})
     if (
@@ -670,8 +672,6 @@ def _canonical_descriptor(
     ):
         return None
     physical_table_name = str(getattr(meta_table, "physical_table_name", ""))
-    if physical_table_name != model.__table__.name:
-        return None
     columns = tuple(_column_names(meta_table))
     if not {"time_index", "index_identifier", "value"}.issubset(columns):
         return None
@@ -723,17 +723,46 @@ def _canonical_descriptor(
     )
 
 
+def _index_values_model(meta_table: Any, cadence: str) -> type[Any] | None:
+    """The storage model of a discovered ``IndexValuesTS.<cadence>`` table.
+
+    Markets' own ``ms_markets__index_values__t_<cadence>``, or a provider's
+    ``<storage_app>__index_values__t_<cadence>`` in the provider's namespace
+    (ADR 0047, decision 4), built by the same factory so its columns, foreign
+    keys and grain are the contract's. ``None`` for any other table.
+    """
+
+    physical_table_name = str(getattr(meta_table, "physical_table_name", ""))
+    try:
+        markets_model = configured_index_values_storage(cadence=cadence)
+    except ValueError:
+        return None
+    if physical_table_name == markets_model.__table__.name:
+        return markets_model
+    storage_app, separator, _ = physical_table_name.partition("__index_values__")
+    namespace = str(getattr(meta_table, "namespace", "") or "")
+    if not separator or not namespace:
+        return None
+    try:
+        model = configured_index_values_storage(
+            cadence=cadence, namespace=namespace, storage_app=storage_app
+        )
+    except ValueError:
+        return None
+    return model if model.__table__.name == physical_table_name else None
+
+
 def _dataset_model_and_handle(
     context: MarketsOperationContext,
     dataset: IndexDatasetDescriptor,
 ) -> tuple[type[Any], MarketsMetaTableHandle]:
-    model = configured_index_values_storage(cadence=dataset.cadence)
     matches = TimeIndexMetaTable.filter_by_body(uid__in=[dataset.meta_table_uid], limit=1, offset=0)
     if not matches:
         raise LookupError(f"Canonical Index dataset {dataset.meta_table_uid!r} is not visible")
     meta_table = matches[0]
     verified = _canonical_descriptor(meta_table, actor=None)
-    if verified is None or verified.meta_table_uid != dataset.meta_table_uid:
+    model = _index_values_model(meta_table, dataset.cadence)
+    if verified is None or verified.meta_table_uid != dataset.meta_table_uid or model is None:
         raise ValueError(
             "Selected MetaTable no longer satisfies the canonical Index dataset contract"
         )

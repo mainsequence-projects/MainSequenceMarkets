@@ -443,10 +443,13 @@ route for:
   then switches back. It runs as an operator with read access to the source
   and write access to the target, not through the Markets API.
 
-Still open: the Index dataset catalog recognises only the Markets-named
-`IndexValuesTS.<cadence>` tables, so a provider's own instance of that contract
-(decision 4: a provider that builds its table from a Markets contract owns it in
-its namespace) is not discovered yet; a catalog-aware reverse lookup of the portfolios holding given assets; a
+- `configured_index_values_storage` built every `IndexValuesTS.<cadence>` table
+  in the Markets namespace, so a provider publishing Index values created a
+  Markets table from its own migrations (the inheritance decision 4 withdraws).
+  It now takes `namespace`, `storage_app` and `base`, and the Index dataset
+  catalog discovers and reads a provider's table as well as Markets' own.
+
+Still open: a catalog-aware reverse lookup of the portfolios holding given assets; a
 valuation-context read (curves, building details, bindings, observations and
 fixings in one call); column metadata on `list_related_meta_tables`; set-based
 upserts on the pricing composites; count and projection reads on current
