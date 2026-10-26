@@ -393,6 +393,13 @@ Deviations and open items:
 - Ownership and Team scoping policies are not enforced yet; the helper gives
   every service one identity to authorize against, and the platform's own
   grants still apply to requester-bound reads.
+- Application-level permission ("this application may register accounts") is
+  enforced by `apps.v1.policy`: an application (workload identity) triggers a
+  registry write only when the `MARKETS_REGISTRY_WRITERS` constant lists its
+  User uid for that resource or for `"*"`; otherwise the route returns `403`.
+  People, requester-bound calls, Organization admins and calls outside a
+  request are not restricted by it. A missing constant allows no application;
+  an unreadable or malformed one fails closed with `503`.
 - `acts_for_requester: true` on the `markets-api` resource is required for a
   requester to be present. It is declared in
   `.mainsequence/workflows/ms-markets-api.yaml`, and it takes effect only when

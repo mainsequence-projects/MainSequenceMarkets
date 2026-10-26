@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
@@ -216,6 +217,16 @@ def create_app() -> FastAPI:
         StaticFiles(directory=PROJECT_ROOT / "docs" / "img" / "main-sequence-markets"),
         name="main-sequence-markets-static",
     )
+    from apps.v1.policy import RegistryWriteForbidden, RegistryWritePolicyError
+
+    @app.exception_handler(RegistryWriteForbidden)
+    async def _registry_write_forbidden(_request: Request, exc: RegistryWriteForbidden):
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(RegistryWritePolicyError)
+    async def _registry_write_policy_error(_request: Request, exc: RegistryWritePolicyError):
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
     app.include_router(command_center_router)
     # Discovery routes must precede parameterized resource-detail routes.
     app.include_router(resource_discovery_router, prefix="/api/v1")

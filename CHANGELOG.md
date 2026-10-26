@@ -19,6 +19,15 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Added
 
+- Registry write policy (ADR 0047, decision 3). `apps.v1.policy` runs before
+  every `registry_write` service: an application (workload identity) may create,
+  update or delete registry rows only when the Main Sequence Constant
+  `MARKETS_REGISTRY_WRITERS` lists its User uid for that resource or for `"*"`;
+  other applications get `403`. People, requester-bound calls, Organization
+  admins and calls outside a request are unaffected. A missing constant allows
+  no application, and an unreadable or malformed one returns `503`. The Markets
+  workload needs `reader` on the constant. Deployments where applications write
+  registry rows today must create the constant before upgrading.
 - The portfolio engine can write every output to a provider's own instances
   (ADR 0047). `PortfolioRebalanceStateTS`, `PortfolioCalendarEventsTS` and
   `PortfolioEventLedgerTS` are storage contracts with the factories
