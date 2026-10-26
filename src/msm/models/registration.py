@@ -100,6 +100,8 @@ def _dependency_ordered_markets_meta_table_models(
     caller_order = _model_order(requested_models)
     discovery_order: dict[type[MarketsBase], int] = {}
 
+    referenced_only = _remote_backend_references_markets_targets()
+
     def collect(model: type[MarketsBase]) -> None:
         if model in discovery_order:
             return
@@ -108,6 +110,8 @@ def _dependency_ordered_markets_meta_table_models(
             model,
             candidate_models=candidate_models,
         ):
+            if referenced_only and _crosses_into_markets(model, dependency):
+                continue
             collect(dependency)
 
     for model in requested_models:
@@ -156,6 +160,35 @@ def _dependency_ordered_markets_meta_table_models(
         )
 
     return ordered
+
+
+def _remote_backend_references_markets_targets() -> bool:
+    """Whether this process reaches Markets tables through the API (ADR 0047).
+
+    Such a process holds no grant on ``mainsequence.markets``. Its own tables
+    reference Markets registries by physical name and ``uid`` only, so a Markets
+    table that is merely a foreign-key target of another namespace's table is not
+    attached. A Markets model the caller requests explicitly still is.
+    """
+
+    from msm.api.remote import active_remote_backend
+
+    return active_remote_backend() is not None
+
+
+def _crosses_into_markets(model: type[MarketsBase], dependency: type[MarketsBase]) -> bool:
+    from msm.settings import markets_namespace
+
+    markets = markets_namespace()
+    return _table_namespace(dependency) in (None, markets) and _table_namespace(model) not in (
+        None,
+        markets,
+    )
+
+
+def _table_namespace(model: type[MarketsBase]) -> str | None:
+    table = getattr(model, "__table__", None)
+    return (getattr(table, "info", None) or {}).get("namespace")
 
 
 def _model_order(models: Sequence[type[MarketsBase]]) -> dict[type[MarketsBase], int]:

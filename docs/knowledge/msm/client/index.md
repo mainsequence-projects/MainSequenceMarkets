@@ -30,7 +30,10 @@ tables with MetaTables and Markets registries through the API.
 
 Under `remote`, `start_engine()` on a Markets row class attaches nothing.
 Remove `msm.start_engine(models=[...])` calls for Markets tables from such an
-application; it holds no grant on `mainsequence.markets`.
+application; it holds no grant on `mainsequence.markets`. When it attaches its
+own tables, a Markets table that is only a foreign-key target of one of them is
+referenced by physical name and not attached; a provider's own row classes
+should list only its own tables in `__required_tables__`.
 
 ## Finding The Markets API
 

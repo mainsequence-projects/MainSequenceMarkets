@@ -26,6 +26,11 @@ portfolio and strategy identities do not change. Dependent packages declare
   gains `order_by`. `AccountHoldingsSnapshots.publish/get` and
   `AssetSnapshots.publish` publish holdings and asset snapshots into Markets, so
   an application on the remote backend needs no grant on those tables.
+- Under the remote backend, `msm.start_engine(models=[...])` no longer attaches
+  a Markets table that is only a foreign-key target of another namespace's
+  table; the provider's tables reference it by physical name, and the
+  provider needs no grant on `mainsequence.markets`. Runtime-backend processes
+  attach foreign-key targets as before.
 - `msm.client` and the remote row backend (ADR 0047, decision 2). With
   `use_remote_backend(MarketsClient.from_environment().backend)` or
   `MSM_API_BACKEND=remote`, every public class method of a Markets row class
