@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-26
+
 Breaking release 3.0.0. It renames the DataNode vocabulary to the MetaTables
 time-index terms: packages, updater and configuration classes, and UID fields
 that now name the identity they hold. See
