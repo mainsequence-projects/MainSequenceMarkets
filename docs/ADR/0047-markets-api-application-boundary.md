@@ -154,10 +154,11 @@ Organization admin can enable it: the declaration takes effect only when the
 person who pushes it is an Organization admin, and otherwise the resource fails
 before it deploys. Services enforce
 domain policy: ownership and Team scoping for
-portfolios, accounts, indexes and formula definitions, and application-level
-permissions such as "this application may register accounts". Writes keep
-running as the Markets workload, whose Writer grant is the single place writes
-are allowed; the API's policy decides who may trigger them.
+portfolios, accounts, indexes and formula definitions. Writes keep running as
+the Markets workload, whose Writer grant is the single place writes are
+allowed. Which applications may trigger them is the platform's grant: an
+application reaches the Markets API only when its workflow grants it the
+`MainSequenceMarkets` branch.
 
 ### 4. Provider-owned namespaces and sidecars
 
@@ -393,13 +394,9 @@ Deviations and open items:
 - Ownership and Team scoping policies are not enforced yet; the helper gives
   every service one identity to authorize against, and the platform's own
   grants still apply to requester-bound reads.
-- Application-level permission ("this application may register accounts") is
-  enforced by `apps.v1.policy`: an application (workload identity) triggers a
-  registry write only when the `MARKETS_REGISTRY_WRITERS` constant lists its
-  User uid for that resource or for `"*"`; otherwise the route returns `403`.
-  People, requester-bound calls, Organization admins and calls outside a
-  request are not restricted by it. A missing constant allows no application;
-  an unreadable or malformed one fails closed with `503`.
+- Application-level permission is the platform's grant, not a Markets
+  setting: an application whose workflow grants it the `MainSequenceMarkets`
+  branch reaches the API and may trigger registry writes.
 - `acts_for_requester: true` on the `markets-api` resource is required for a
   requester to be present. It is declared in
   `.mainsequence/workflows/ms-markets-api.yaml`, and it takes effect only when
@@ -419,7 +416,7 @@ route for:
   rebalancing uses, and the instance methods `FormulaIndex.activate()` and
   `retire()`. Schedules now read `CalendarSession.filter` with range bounds;
   activation and retirement go through `FormulaIndex.activate_definition` and
-  `retire_definition`, which are policy-checked writes.
+  `retire_definition`, which are registry writes.
 - Added reads: `filter`/`count` range lookups (`__gte`, `__gt`, `__lte`,
   `__lt`); `AssetSnapshots.latest` by identifier, uid or ticker; `offset` on
   `GET /portfolio/values/`, which `MarketsClient.portfolio_values` uses to page
@@ -484,8 +481,8 @@ application still installs `ms-markets`. Deviations and refinements:
   branch, as the Markets API does for MetaTables.
 - Remote `delete` runs the resource's service delete with its preflight
   checks, and exists only where one exists.
-- Registry writes through these routes are subject to the registry write
-  policy of decision 3.
+- Registry writes through these routes run through `registry_write`, like the
+  service routes.
 
 ### 2026-10-25: step 1, missing routes
 

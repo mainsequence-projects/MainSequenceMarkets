@@ -75,7 +75,7 @@ WRITE_OPERATIONS = frozenset(
     }
 )
 """Operations that create, update or delete registry rows; the API wraps them in
-``registry_write`` so the registry write policy applies."""
+``registry_write``, which records who made them."""
 
 
 class RemoteBackend(Protocol):

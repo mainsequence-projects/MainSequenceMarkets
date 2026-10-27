@@ -4,7 +4,7 @@
 
 Design note, drafted 2026-10-25 for [ADR 0047](../../ADR/0047-markets-api-application-boundary.md)
 decision 2 and migration path step 2. Updated 2026-10-26: the remote row
-backend, `msm.client` and the registry write policy are implemented, with the
+backend and `msm.client` are implemented, with the
 deviations recorded in the ADR's "step 2" implementation note (per-method
 dispatch instead of a `RowBackend` protocol, mixed backends per row class,
 release name `api`). The distribution split (order of work, step 5) is not. Step 1

@@ -223,42 +223,11 @@ write and, after a successful write, records resource, action, row uid and the
 acting identity's uid and kind on the `apps.v1.identity` logger. No registry
 table has an author or owner column yet; when one does, the same hook supplies
 its value. Writes keep running as the Markets workload, whose `data_writer`
-role on `mainsequence.markets` is the single place writes are allowed; the API's
-policy decides who may trigger them.
-
-That policy is `apps.v1.policy.authorize_registry_write`, which `registry_write`
-runs before every registry write:
-
-| Acting identity | Registry writes |
-|---|---|
-| none (Markets' own Jobs, scripts, direct service calls) | allowed |
-| a requester-bound call (a person acting through an application) | allowed |
-| an Organization admin | allowed |
-| a person calling directly | allowed |
-| an application (workload identity) listed for the resource | allowed |
-| any other application | `403` |
-
-The allow-list is the Main Sequence Constant `MARKETS_REGISTRY_WRITERS` in the
-Markets deployment's Environment: a JSON object that maps a registry resource,
-as `registry_write` names it (`account`, `asset`, `asset-category`, `calendar`,
-`index`, `portfolio`, `portfolio-group`, `portfolio-signal`, `pricing-curve`,
-`pricing-market-data` and the resources added with the provider write routes), or
-`"*"`, to the User uids of the applications allowed to write it:
-
-```json
-{"asset": ["<provider workload user uid>"], "*": ["<trusted workload user uid>"]}
-```
-
-A missing constant allows no application. A value that is not such an object,
-or a constant the Markets workload cannot read, refuses every application write
-with `503`. Whether a caller is a person or an application is read from its
-User once and cached for ten minutes; the SDK caches the constant for ten
-minutes as well, so an edit takes effect within that time. The Markets workload
-needs `reader` on the constant:
-
-```bash
-mainsequence constants access grant <MARKETS_REGISTRY_WRITERS constant uid> reader --user <markets workload user uid>
-```
+role on `mainsequence.markets` is the single place writes are allowed. Who may
+trigger them is the platform's grant: an application's workload reaches the
+Markets API only when its workflow grants it the `MainSequenceMarkets` branch
+(see the [client guide](../../knowledge/msm/client/index.md)), and every caller
+the API admits, person or application, may trigger registry writes.
 
 A requester is only present when the `markets-api` resource declares
 `acts_for_requester: true` in `.mainsequence/workflows/ms-markets-api.yaml`.

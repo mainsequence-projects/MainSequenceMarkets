@@ -17,7 +17,6 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.v1 import policy
 from apps.v1.main import app
 from msm.api.accounts import Account
 from msm.api.assets import Asset, AssetCategory, CurrencySpot
@@ -218,28 +217,6 @@ def test_validation_errors_come_back_as_value_errors(remote) -> None:
         Asset.upsert(asset_type="equity")
 
 
-def test_the_write_policy_applies_to_remote_writes(monkeypatch, remote) -> None:
-    monkeypatch.setattr(policy, "resolve_identity_type", lambda uid: "workload")
-    monkeypatch.setattr(
-        "msm.repositories.crud.upsert_model",
-        lambda *args, **kwargs: pytest.fail("a refused write must not reach the runtime"),
-    )
-
-    with pytest.raises(MarketsAccessError, match="MARKETS_REGISTRY_WRITERS"):
-        Asset.upsert(unique_identifier="ACME")
-    assert isinstance(MarketsAccessError("x"), PermissionError)
-
-
-def test_reads_are_not_subject_to_the_write_policy(monkeypatch, remote) -> None:
-    monkeypatch.setattr(policy, "resolve_identity_type", lambda uid: "workload")
-    monkeypatch.setattr(
-        "msm.repositories.crud.get_model_by_uid",
-        lambda context, *, model, uid: {"rows": []},
-    )
-
-    assert Asset.get_by_uid(uuid.uuid4()) is None
-
-
 def test_start_engine_attaches_nothing_under_the_remote_backend(monkeypatch, remote) -> None:
     monkeypatch.setattr(
         "msm.bootstrap.start_engine",
@@ -410,15 +387,20 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
         ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),
     ],
 )
-def test_every_publication_and_catalog_write_is_policy_checked(
+def test_every_publication_and_catalog_write_is_a_registry_write(
     monkeypatch, remote, resource, operation, arguments
 ) -> None:
     from msm.api.remote import WRITE_OPERATIONS
 
-    monkeypatch.setattr(policy, "resolve_identity_type", lambda uid: "workload")
+    def resolve() -> None:
+        raise PermissionError("registry_write resolved the acting identity")
+
+    # registry_write resolves the acting identity before the operation runs; the
+    # refusal comes back as the client's PermissionError.
+    monkeypatch.setattr("apps.v1.identity.acting_identity", resolve)
 
     assert operation in WRITE_OPERATIONS
-    with pytest.raises(MarketsAccessError, match="MARKETS_REGISTRY_WRITERS"):
+    with pytest.raises(MarketsAccessError, match="registry_write resolved the acting identity"):
         remote.client.run_row_operation(resource, operation, arguments)
 
 

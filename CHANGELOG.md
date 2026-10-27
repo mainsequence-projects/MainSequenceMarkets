@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Removed
+
+- The registry write allow-list of 3.0.0: `apps.v1.policy` and the Main Sequence
+  Constant `MARKETS_REGISTRY_WRITERS`. Which applications may trigger registry
+  writes is the platform's grant: an application reaches the Markets API only
+  when its workflow grants it the `MainSequenceMarkets` branch, and every
+  caller the API admits may write. `registry_write` still records the acting
+  identity of every write. A deployment that created the constant can delete it.
+
 ## [3.0.0] - 2026-10-26
 
 Breaking release 3.0.0. It renames the DataNode vocabulary to the MetaTables
