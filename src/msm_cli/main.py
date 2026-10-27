@@ -3,8 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tomllib
-from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any
 
@@ -149,13 +147,15 @@ def copy_msm_skills_command(
     code_repository_dir = path.expanduser().resolve(strict=False)
     destination_root = code_repository_dir / ".agents" / "skills" / MSM_SKILL_NAMESPACE
     source_label = _source_root_label(source_root)
+    from msm.distribution import package_version
+
     try:
         result = copy_scaffold_skills(
             code_repository_dir=code_repository_dir,
             library_name="ms-markets",
             namespace=MSM_SKILL_NAMESPACE,
             skills_path=source_root,
-            pinned_version=_ms_markets_version(),
+            pinned_version=package_version(),
             command=MSM_SKILL_COPY_COMMAND,
             dry_run=dry_run,
             code_repository_guard=_copy_msm_skills_block_reason,
@@ -357,20 +357,6 @@ def _same_or_inside_path(path: Path, possible_parent: Path) -> bool:
     resolved_path = path.expanduser().resolve(strict=False)
     resolved_parent = possible_parent.expanduser().resolve(strict=False)
     return resolved_path == resolved_parent or resolved_path.is_relative_to(resolved_parent)
-
-
-def _ms_markets_version() -> str:
-    try:
-        return distribution("ms-markets").version
-    except PackageNotFoundError:
-        pyproject = _ms_markets_source_checkout_root() / "pyproject.toml"
-        if not pyproject.is_file():
-            raise RuntimeError("ms-markets package metadata is unavailable.")
-        project_config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        version = project_config.get("project", {}).get("version")
-        if not isinstance(version, str) or not version.strip():
-            raise RuntimeError("ms-markets package version is unavailable.")
-        return version
 
 
 def _print_table(title: str, headers: list[str], rows: list[list[Any]]) -> None:

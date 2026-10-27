@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from importlib.metadata import version as _package_version
-
 from msm.bootstrap import start_engine
+from msm.distribution import package_version
 from msm.constants import (
     ASSET_TYPE_BOND,
     ASSET_TYPE_CRYPTO,
@@ -30,7 +29,7 @@ from msm.constants import (
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
 )
 
-__version__ = _package_version("ms-markets")
+__version__ = package_version()
 
 
 __all__ = [

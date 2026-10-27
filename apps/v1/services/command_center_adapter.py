@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from importlib.metadata import version
 from typing import Any
+
+from msm.distribution import package_version
 
 from apps.v1.schemas.command_center_adapter import (
     ApiHealthResponse,
@@ -233,7 +234,7 @@ def get_api_health() -> ApiHealthResponse:
     return ApiHealthResponse(
         status="ok",
         service="apps/v1",
-        version=version("ms-markets"),
+        version=package_version(),
     )
 
 

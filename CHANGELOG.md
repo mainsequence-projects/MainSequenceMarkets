@@ -287,6 +287,19 @@ portfolio and strategy identities do not change. Dependent packages declare
 
 ### Fixed
 
+- Every hosted rollout since 2026-10-21 stopped at the `migrate-markets` Job
+  with `No package metadata was found for ms-markets`. Main Sequence images no
+  longer install the repository itself (platform ADR-080); Jobs and the Markets
+  API import it from `/workspace`. `msm`, the API and the CLI now read the version
+  through `msm.distribution.package_version()`, which falls back to the
+  checkout's `pyproject.toml` when the distribution is not installed.
+
+- `requirements.txt`, the only dependency input of a Main Sequence image, still
+  pinned `mainsequence-metatable==0.1.51` after the floor moved to 0.1.57, so the
+  image lacked `metatables.envelope_contract`. It is regenerated with
+  `mainsequence code-repository sync`, and a test now fails when its pins differ
+  from `uv.lock`.
+
 - A storage instance built on a provider's declarative base copied each
   referenced Markets table whole, with that table's own foreign keys to tables
   that were not copied, so the provider's `metadata.sorted_tables` and Alembic

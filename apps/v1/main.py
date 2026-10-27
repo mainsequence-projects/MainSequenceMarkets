@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from importlib.metadata import version
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -14,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
 from mainsequence.client.exceptions import ServerError
 from metatables.endpoint import ApiResolutionError, api_endpoint_scope
+from msm.distribution import package_version
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -35,7 +35,7 @@ from apps.v1.openapi_documentation import apply_metatable_documentation
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 
 API_TITLE = "MainSequence Markets Public API"
-API_VERSION = version("ms-markets")
+API_VERSION = package_version()
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 API_SOURCE_REPOSITORY = "https://github.com/mainsequence-projects/MainSequenceMarkets"
 OPENAPI_LOGO_URL = "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png"
