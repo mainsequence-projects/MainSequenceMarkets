@@ -35,7 +35,7 @@ This phase is successful only when:
 - Reconstruction can return helper diagnostics such as maturity dates, pillar
   dates, and quote errors without forcing connectors to rebuild helpers
   locally.
-- The ms-markets implementation contains no Valmer, USD/MXN, TIIE, SOFR,
+- The ms-markets implementation contains no provider, USD/MXN, TIIE, SOFR,
   Mexico, CETES, M Bono, source-file, or source-row-pattern symbols in generic
   modules, generic tests, public examples, or public API names.
 
@@ -119,7 +119,7 @@ scenario reconstruction flow.
 ## Donor Analysis
 
 Donor source file:
-`/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/src/valmer_connectors/instruments/rates_curves.py`
+the provider connector's rates-curve module
 
 | Donor Behavior | Generic Meaning | Target Owner |
 | --- | --- | --- |
@@ -168,7 +168,7 @@ context nodes -> runtime context used by helper nodes
 It supports existing deposit, OIS, interest-rate future, and bond helper
 reconstruction, plus additive context/provenance nodes required by helper
 families such as cross-currency helpers. The upstream adapter must not accept
-connector-owned schema names such as `valmer_xccy_helpers@v1`.
+connector-owned schema names such as `provider_xccy_helpers@v1`.
 
 `fx_spot` is the first required context node. It is stored in `key_nodes`
 because it is construction provenance, but it must not be returned as a
@@ -535,7 +535,7 @@ Required focused tests:
   families.
 - `MtMCrossCurrencyBasisSwapRateHelper` nodes are rejected until the library
   defines resettable-leg semantics.
-- `valmer_xccy_helpers@v1` is rejected by ms-markets adapters.
+- `provider_xccy_helpers@v1` is rejected by ms-markets adapters.
 - Reconstruction result exposes helper quote errors after bootstrap.
 - Scenario reconstruction forwards resolver context and does not mutate source
   key nodes.

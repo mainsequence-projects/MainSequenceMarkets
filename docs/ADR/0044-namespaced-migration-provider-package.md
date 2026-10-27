@@ -25,7 +25,7 @@ top-level `migrations` package into `site-packages`.
 `migrations` is the default package name of the MetaTables scaffold, so other
 distributions and applications use it too:
 
-- `valmer-connectors` ships a top-level `migrations` package with the same file
+- Provider distributions ship a top-level `migrations` package with the same file
   paths (`migrations/__init__.py`, `migrations/env.py`,
   `migrations/versions/...`). Installing both non-editable overwrites one
   Alembic provider with the other.

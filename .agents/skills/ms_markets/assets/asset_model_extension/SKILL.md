@@ -1,6 +1,6 @@
 ---
 name: mainsequence-asset-model-extension
-description: Use this skill when extending or reviewing the ms-markets Asset model, including AssetType registration and one-to-one asset property/detail tables. This skill owns the rule that AssetTable stays small and extension data belongs in relational detail tables keyed by AssetTable.uid. It does not own AssetIndexedDataNode design, price history, portfolios, or general TimeIndexTableUpdater implementation.
+description: Use this skill when extending or reviewing the ms-markets Asset model, including AssetType registration and one-to-one asset property/detail tables. This skill owns the rule that AssetTable stays small and extension data belongs in relational detail tables keyed by AssetTable.uid. It does not own AssetIndexedUpdater design, price history, portfolios, or general TimeIndexTableUpdater implementation.
 ---
 
 # Main Sequence Markets Asset Model Extension
@@ -253,7 +253,7 @@ For OpenFIGI and similar providers:
 ## Boundaries
 
 - For timestamped or panel data keyed by assets, use the
-  `AssetIndexedDataNode` skill and docs instead.
+  `AssetIndexedUpdater` skill and docs instead.
 - For price histories, do not add price columns to asset or detail tables.
 - For portfolio or holding semantics, use portfolio-specific models.
 - For provider lookup services, keep API-key and normalization logic in

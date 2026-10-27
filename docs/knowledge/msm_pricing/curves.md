@@ -4,7 +4,7 @@ This page covers the pricing concepts that reconstruct discounting and
 projection curves: index conventions (`IndexConventionDetailsTable`) for
 QuantLib index/fixing mechanics, curve rows (`CurveTable`), curve build details
 (`CurveBuildingDetailsTable`), market-data-set curve bindings, and timestamped
-curve observations (`DiscountCurvesNode`).
+curve observations (`DiscountCurvesUpdater`).
 
 ## Index Conventions
 
@@ -307,7 +307,7 @@ zero output is represented by
 
 The persistence adapter is narrower. Persisted helper curves use
 `CurveBuildingDetails.builder_type="rate_helper_curve"` and publish generic
-helper-shaped dictionaries in `DiscountCurvesNode.key_nodes`. The adapter reads
+helper-shaped dictionaries in `DiscountCurvesUpdater.key_nodes`. The adapter reads
 the build details, requires `builder_payload.helper_schema="rate_helpers@v1"`,
 converts key nodes into runtime helper specs, builds QuantLib rate helpers, and
 delegates to `reconstruct_curve_handle(...)`.
@@ -628,7 +628,7 @@ scenario = CurveScenario(
 - `metadata_json`: caller-owned scenario metadata.
 
 The bump helpers operate on copied `key_nodes` dictionaries. They never mutate
-the submitted observation, the persisted `DiscountCurvesNode` row, or the
+the submitted observation, the persisted `DiscountCurvesUpdater` row, or the
 prepared valuation context. Supported key-node rate sources are:
 
 - `yield` or `yield_value` with an explicit decimal or percent unit;
@@ -694,13 +694,13 @@ See [Curve Scenarios](scenarios/curves.md),
 
 ## Curve Observations
 
-`DiscountCurvesNode` publishes timestamped curve observations. Its storage key
+`DiscountCurvesUpdater` publishes timestamped curve observations. Its storage key
 is `CurveTable.unique_identifier`, exposed on the TimeIndexTableUpdater row as
 `curve_identifier`.
 
 ```text
 +-----------------------------+        observations keyed by      +-----------------------------+
-| CurveTable                  |<--------------------------------| DiscountCurvesNode          |
+| CurveTable                  |<--------------------------------| DiscountCurvesUpdater       |
 |-----------------------------|        curve_identifier          |-----------------------------|
 | uid                  PK     |                                  | time_index                  |
 | unique_identifier    unique |                                  | curve_identifier            |
@@ -714,7 +714,7 @@ is `CurveTable.unique_identifier`, exposed on the TimeIndexTableUpdater row as
 The curve TimeIndexTableUpdater contract is:
 
 ```text
-DiscountCurvesNode
+DiscountCurvesUpdater
   index:   (time_index, curve_identifier)
   cadence: 1d
   columns: curve, key_nodes, metadata_json
@@ -732,7 +732,7 @@ without a separate decision.
 observation. It is row-level construction provenance, not another convention
 source. Publishers pass producer-owned JSON that satisfies the base contract
 below; the TimeIndexTableUpdater compresses that JSON into the storage column, and read/API
-helpers return it decompressed. `msm_pricing.data_nodes.CurveKeyNode` is the
+helpers return it decompressed. `msm_pricing.time_index.CurveKeyNode` is the
 recommended helper when the standard fields fit the source:
 
 ```json
@@ -786,14 +786,14 @@ Rules:
 
 When a producer needs stricter source-specific validation, extend the TimeIndexTableUpdater
 validator instead of tightening the shared storage contract. The base
-`DiscountCurvesNode` calls `normalize_key_nodes(...)` for each row after
+`DiscountCurvesUpdater` calls `normalize_key_nodes(...)` for each row after
 storage-level JSON normalization. Subclass it for source-owned rules:
 
 ```python
-from msm_pricing.data_nodes import CurveKeyNode, DiscountCurvesNode
+from msm_pricing.time_index import CurveKeyNode, DiscountCurvesUpdater
 
 
-class SourceDiscountCurvesNode(DiscountCurvesNode):
+class SourceDiscountCurvesNode(DiscountCurvesUpdater):
     def normalize_key_nodes(self, value, *, row, curve_identifier):
         nodes = super().normalize_key_nodes(
             value,
@@ -816,7 +816,7 @@ For runtime composition, attach a callable with
 object/list provenance. Do not put validator callables in `CurveConfig`; they
 are execution behavior, not hashed dataset identity.
 
-A `DiscountCurvesNode` publisher passes the values as ordinary DataFrame
+A `DiscountCurvesUpdater` publisher passes the values as ordinary DataFrame
 columns. Keep `key_nodes` beside `curve`; do not nest it inside the compressed
 pricing payload and do not precompress it in the publisher:
 
@@ -861,7 +861,7 @@ return pd.DataFrame(
 quality flags, workflow labels, or raw-source checksums. It should not be used
 to override the pricing interpretation of `curve` or `key_nodes`.
 
-Source publishers should subclass `DiscountCurvesNode` or inject runtime curve
+Source publishers should subclass `DiscountCurvesUpdater` or inject runtime curve
 builder callables. The builder is execution wiring; it is not persisted dataset
 identity.
 

@@ -9,7 +9,7 @@ from msm_portfolios.asset_scope import (
     asset_spot_reference_unique_identifier,
     asset_unique_identifier,
 )
-from msm_portfolios.data_nodes import (
+from msm_portfolios.time_index import (
     ASSET_IDENTIFIER,
     SignalWeights,
 )

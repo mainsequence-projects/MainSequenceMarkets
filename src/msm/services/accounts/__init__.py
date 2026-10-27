@@ -93,6 +93,7 @@ _EXPORTS = {
     "get_account_frontend_detail_summary": ".core",
     "get_account_holdings_by_fund_response": ".virtual_funds_public_api",
     "get_account_holdings_snapshot_response": ".core",
+    "get_account_holdings_snapshots_response": ".core",
     "get_virtual_fund_by_unique_identifier": ".virtual_funds",
     "get_virtual_fund_detail_response": ".virtual_funds_public_api",
     "get_virtual_fund_frontend_detail_summary": ".virtual_funds_public_api",

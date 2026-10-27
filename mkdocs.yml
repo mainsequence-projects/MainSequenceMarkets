@@ -25,6 +25,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Core Concepts: concepts.md
+  - Upgrading To 3.0: upgrading-to-3.md
   - Tutorial:
       - Overview: tutorial/index.md
       - Assets And Categories: tutorial/01-assets.md
@@ -42,7 +43,7 @@ nav:
           - Overview: knowledge/msm/assets/index.md
           - Bond Assets: knowledge/msm/assets/bonds.md
           - Currency And Spot Assets: knowledge/msm/assets/currency.md
-          - Asset-Indexed DataNodes: knowledge/msm/assets/asset_indexed_data_nodes.md
+          - Asset-Indexed Updaters: knowledge/msm/assets/asset_indexed_updaters.md
       - Calendars: knowledge/msm/calendars/index.md
       - Client: knowledge/msm/client/index.md
       - Derivatives:
@@ -94,6 +95,7 @@ nav:
       - Pricing Market Data: fast_api/v1/pricing_market_data.md
       - Fixed Income Pricer: fast_api/v1/fixed_income_pricer.md
       - Command Center Bulk Actions: fast_api/v1/command_center_bulk_actions.md
+      - Remote Row Operations: fast_api/v1/rows.md
   - Architecture:
       - ADR: ADR/README.md
       - Pricing Package Refactor: ADR/0005-pricing-package-refactor.md
@@ -124,6 +126,8 @@ nav:
       - Namespaced Migration Provider Package: ADR/0044-namespaced-migration-provider-package.md
       - Squashed Initial Schema And Namespaced Packages: ADR/0045-squashed-initial-schema-and-namespaced-packages.md
       - Preserve The Populated Legacy 0017 Schema: ADR/0046-legacy-0017-schema-bridge.md
+      - Markets API As The Application Boundary: ADR/0047-markets-api-application-boundary.md
+      - Rename DataNode To The MetaTables Time-Index Vocabulary: ADR/0048-time-index-vocabulary-rename.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
@@ -138,6 +142,7 @@ nav:
           - Generic Curve Reconstruction: planning/implementation_tasks/generic_curve_reconstruction_upstream_plan.md
           - Generic Valuation Scenario Workflow: planning/implementation_tasks/generic_valuation_scenario_workflow_plan.md
           - Index Formula And Custom Calculation Redesign: planning/implementation_tasks/index_formula_and_custom_calculation_plan.md
+          - Markets Contracts Package And Client: planning/implementation_tasks/markets_contracts_package_and_client_plan.md
           - Python 3.13 And MainSequence 5 Upgrade: planning/implementation_tasks/python_3_13_mainsequence_5_upgrade_plan.md
           - Reusable Valuation Portfolio Scenario And Analytics: planning/implementation_tasks/reusable_valuation_portfolio_scenario_analytics_plan.md
   - Changelog: changelog.md

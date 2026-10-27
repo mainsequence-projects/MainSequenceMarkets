@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -193,6 +193,30 @@ class Index(MarketsMetaTableRow):
                 calculation_method=validated.calculation_method,
             )
         return super().upsert(validated)
+
+    @classmethod
+    def upsert_many(
+        cls,
+        payloads: Sequence[IndexUpsert | Mapping[str, Any]],
+    ) -> list[Index]:
+        """Upsert many indexes in one statement with :meth:`upsert`'s guard.
+
+        An existing index keeps its ``calculation_method`` once it has formulas
+        or canonical observations; one refused payload rejects the whole call.
+        """
+
+        validated = [_validate_payload(IndexUpsert, payload, {}) for payload in payloads]
+        existing = cls.get_many_by_unique_identifier(
+            [payload.unique_identifier for payload in validated]
+        )
+        for payload in validated:
+            current = existing.get(payload.unique_identifier)
+            if current is not None:
+                cls._validate_calculation_method_change(
+                    current,
+                    calculation_method=payload.calculation_method,
+                )
+        return super().upsert_many(validated)
 
     @classmethod
     def update(

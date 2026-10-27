@@ -140,3 +140,16 @@ rejected for that process. See
 [MetaTable Registration](knowledge/msm/platform/meta_table_registration.md),
 [Migrations](knowledge/msm/migrations/index.md), and
 [Tutorial](tutorial/index.md).
+
+## Local Django backend
+
+For the Mac/workstation development stack, set
+`MAINSEQUENCE_ENDPOINT=http://local-backend:8000` in the ignored local `.env`.
+Map `local-backend` to the machine running the Django Compose stack with that
+stack's `maintenance/switch_local_backend.py`, after stopping the old stack and
+starting the selected one. Restart clients after switching.
+
+Use this base URL for the platform API and connection-contract examples.
+Application APIs, local MetaTables and test fixtures retain their own addresses.
+The endpoint change does not alter package APIs, deployment configuration or
+permissions. Credentials stay out of Git.

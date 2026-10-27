@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
-from msm.data_nodes.indices.storage import configured_index_values_storage
+from msm.time_index.indices.storage import configured_index_values_storage
 from msm.models import IndexTable
 from msm.services.indices import (
     IndexActor,
@@ -127,7 +127,7 @@ def test_extension_provider_rejects_column_name_without_foreign_key() -> None:
         )
 
 
-def test_extension_provider_requires_no_core_datanode_inheritance() -> None:
+def test_extension_provider_requires_no_core_updater_inheritance() -> None:
     class ExtensionOwnedIndexStorage(MarketsMetaTableMixin, MarketsBase):
         __metatable_identifier__ = "TestExtensionOwnedIndexStorage"
         __metatable_description__ = "Extension-owned Index observations for registry testing."

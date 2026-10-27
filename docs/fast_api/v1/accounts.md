@@ -5,15 +5,56 @@ account target-position assignment. Target-allocation candidate searches resolve
 valid asset and portfolio targets, and holdings read endpoints support both
 direct account snapshots and virtual-fund-grouped views.
 
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries `holdings_storage_table_uid` or `source_storage_table_uid` also
+    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
+
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
   - returns `command-center.resource_collection@v1`
   - exposes `GET /api/v1/account/discovery/`
   - `items` contains the library `msm.api.accounts.Account` contract:
     `uid`, `unique_identifier`, `account_name`, `is_paper`,
-    `account_is_active`, `holdings_data_node_uid`, and `metadata_json`
+    `account_is_active`, `holdings_storage_table_uid`, and `metadata_json`
+- `POST /api/v1/account/`
+  - creates one `Account` identity row from the `msm.api.accounts.AccountCreate`
+    payload (`unique_identifier`, `account_name`, `is_paper`,
+    `account_is_active`, `account_group_uid`, `holdings_storage_table_uid`,
+    `metadata_json`) and returns it with `201`
+  - `409` when the row cannot be stored, for example a duplicate
+    `unique_identifier`
+  - ADR 0047: providers register accounts here instead of writing the Account
+    table; the write runs as the Markets workload and records the acting
+    identity
+- `GET /api/v1/account/by-uids/?uid__in=<uid>&uid__in=<uid>`
+  - batch lookup by uid; `uid__in` is repeated or comma-separated, at most 500
+  - returns the matching `Account` rows in request order inside a
+    `ResourceCollection`; unknown uids are omitted, so `totalItems` is the
+    number found
+  - a bounded lookup for consumers that hydrate core columns from their own
+    rows, not a browsable collection: no `limit`, `offset`, search or
+    discovery route
+  - `include=<sidecar MetaTable uid>` (repeated or comma-separated, at most
+    10) attaches provider sidecar rows under `includes[<uid>]` on every item
+    (`null` when the sidecar has no row). A sidecar is a provider table with a
+    single-column foreign key to this resource's `uid`, proven from the
+    MetaTables catalog; each sidecar is read once for all returned uids. The
+    Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
+    `404` for a uid that is not a visible MetaTable, `400` for a table that is
+    not a sidecar of this resource). Plain columns come back as stored; Markets
+    never decrypts a provider column, never selects a column the catalog marks
+    as application-encrypted and drops any encryption-envelope value, so
+    `include` never returns ciphertext. `includes` is `{}` when nothing is included
 - `GET /api/v1/account/{uid}/`
   - returns one canonical `Account` row by uid
+- `PATCH /api/v1/account/{uid}/`
+  - updates the mutable fields of one `Account` row from the
+    `msm.api.accounts.AccountUpdate` payload (`account_name`, `is_paper`,
+    `account_is_active`, `account_group_uid`, `holdings_storage_table_uid`,
+    `metadata_json`); omitted fields are unchanged
+  - `404` when the uid is unknown
 - `GET /api/v1/account/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for account detail
     pages

@@ -9,7 +9,7 @@ INDEX_IDENTIFIER_DIMENSION = "index_identifier"
 
 
 def markets_namespace(namespace: str | None = None) -> str:
-    """Return the active markets namespace for MetaTables and DataNodes."""
+    """Return the active markets namespace for MetaTables and updaters."""
 
     if namespace not in (None, ""):
         return str(namespace)
@@ -50,8 +50,11 @@ def markets_identifier(identifier: str, namespace: str | None = None) -> str:
 
 
 def markets_data_node_identifier(identifier: str, namespace: str | None = None) -> str:
-    """Return a TimeIndexTableUpdater identifier scoped to the markets application namespace."""
+    """Deprecated alias of :func:`markets_identifier`; removed in ms-markets 4.0 (ADR 0048)."""
 
+    from msm._deprecated_imports import warn_renamed
+
+    warn_renamed("msm.settings.markets_data_node_identifier", "msm.settings.markets_identifier")
     return markets_identifier(identifier, namespace=namespace)
 
 

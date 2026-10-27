@@ -405,10 +405,13 @@ def _plan_account_virtual_fund_allocations_from_resolved_inputs(
 def apply_account_virtual_fund_allocation_plan(
     plan: AccountVirtualFundAllocationPlan,
     *,
-    data_node: Any | None = None,
+    updater: Any | None = None,
     run: bool = False,
+    data_node: Any | None = None,
 ) -> pd.DataFrame:
-    from msm.api.virtual_funds import VirtualFund
+    from msm.api.virtual_funds import VirtualFund, _renamed_updater_argument
+
+    updater = _renamed_updater_argument(updater, data_node)
 
     if plan.status == PLAN_STATUS_INFEASIBLE:
         raise ValueError("Cannot apply an infeasible virtual-fund allocation plan.")
@@ -465,7 +468,7 @@ def apply_account_virtual_fund_allocation_plan(
                 allocation_time=plan.valuation_time,
                 allocations=allocations,
                 virtual_fund_holdings_set_uid=holdings_set_uid,
-                data_node=None,
+                updater=None,
                 run=False,
                 validate_bounds=False,
             )
@@ -474,10 +477,10 @@ def apply_account_virtual_fund_allocation_plan(
     if not frames:
         raise ValueError("Plan produced no positive virtual-fund allocation rows to apply.")
     frame = pd.concat(frames).sort_index()
-    if data_node is not None:
-        data_node.set_frame(frame)
+    if updater is not None:
+        updater.set_frame(frame)
         if run:
-            data_node.run(update_tree=False)
+            updater.run(update_tree=False)
     return frame
 
 
@@ -612,7 +615,7 @@ def resolve_account_virtual_fund_allocation_inputs(
 
     from msm.api.base import operation_result_rows
     from msm.bootstrap import resolve_runtime
-    from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+    from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
     from msm.models.accounts import (
         AccountHoldingsSetTable,
         AccountTargetAllocationTable,

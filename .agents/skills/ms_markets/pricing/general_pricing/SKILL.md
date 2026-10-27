@@ -15,8 +15,8 @@ Use the fixed-income curve-building skill when the task is specifically about:
 
 - `IndexConventionDetails`
 - `Curve`
-- `DiscountCurvesNode`
-- `FixingRatesNode`
+- `DiscountCurvesUpdater`
+- `FixingRatesUpdater`
 - QuantLib index/curve resolver behavior
 - bond or swap examples that depend on curve and fixing setup
 

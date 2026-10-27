@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+from typing import ClassVar
+
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON, Uuid
@@ -29,6 +31,10 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         "by holdings and execution workflows. Allocation-model tracking belongs "
         "to AccountTargetAllocationTable."
     )
+    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
+    __renamed_columns__: ClassVar[dict[str, str]] = {
+        "holdings_storage_table_uid": "holdings_data_node_uid",
+    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -56,7 +62,7 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
         default=new_markets_uid,
         info={
             "label": "UID",
-            "description": "Canonical account identity used by account-owned MetaTables and DataNodes.",
+            "description": "Canonical account identity used by account-owned MetaTables and updaters.",
         },
     )
     unique_identifier: Mapped[str] = mapped_column(
@@ -113,12 +119,27 @@ class AccountTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Optional AccountGroupTable.uid used to group accounts.",
         },
     )
+    holdings_storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        info={
+            "label": "Holdings Storage Table UID",
+            "description": (
+                "Optional TimeIndexMetaTable uid of the time-index table that holds this "
+                "account's holdings history."
+            ),
+        },
+    )
     holdings_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Holdings TimeIndexTableUpdater UID",
-            "description": "Optional platform DataNodeStorage UID for this account's holdings history.",
+            "label": "Holdings Storage Table UID (pre-3.0 column)",
+            "description": (
+                "Pre-3.0 copy of holdings_storage_table_uid. ms-markets 3.x writes both "
+                "columns and reads this one until every writer runs 3.x; "
+                "ms-markets 4.0 stops writing it and 4.1 drops it."
+            ),
         },
     )
     metadata_json: Mapped[dict | None] = mapped_column(
@@ -246,6 +267,10 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
         "rows reference it through holdings_set_uid, and virtual-fund allocation "
         "sets use it as their source holdings bound."
     )
+    # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
+    __renamed_columns__: ClassVar[dict[str, str]] = {
+        "source_storage_table_uid": "source_data_node_uid",
+    }
     __table_args__ = markets_table_args(
         __metatable_identifier__,
         Index(
@@ -293,12 +318,27 @@ class AccountHoldingsSetTable(MarketsMetaTableMixin, MarketsBase):
             "description": "UTC timestamp identifying this account holdings snapshot.",
         },
     )
+    source_storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+        info={
+            "label": "Source Storage Table UID",
+            "description": (
+                "Optional TimeIndexMetaTable uid of the time-index table this holdings set "
+                "was produced from."
+            ),
+        },
+    )
     source_data_node_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         nullable=True,
         info={
-            "label": "Source TimeIndexTableUpdater UID",
-            "description": "Optional DataNodeStorage uid that produced this holdings set.",
+            "label": "Source Storage Table UID (pre-3.0 column)",
+            "description": (
+                "Pre-3.0 copy of source_storage_table_uid. ms-markets 3.x writes both "
+                "columns and reads this one until every writer runs 3.x; "
+                "ms-markets 4.0 stops writing it and 4.1 drops it."
+            ),
         },
     )
 

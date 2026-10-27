@@ -60,6 +60,17 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
             ),
         },
     )
+    meta_table_uid: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "MetaTable UID",
+            "description": (
+                "TimeIndexMetaTable uid of the SignalWeightsTS instance that holds this "
+                "signal's weight rows (ADR 0047). Null means the Markets-owned core table."
+            ),
+        },
+    )
 
 
 __all__ = ["SignalMetadataTable"]

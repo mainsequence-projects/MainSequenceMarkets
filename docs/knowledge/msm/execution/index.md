@@ -13,7 +13,7 @@ Execution answers these questions:
 
 ## Primary Modules
 
-- `msm.data_nodes.execution`: DataNodes for orders, order events, and trades.
+- `msm.time_index.execution`: updaters for orders, order events, and trades.
 - `msm.models.execution`: SQLAlchemy models for `OrderManagerTable`.
 - `msm.api.execution`: typed row API for `OrderManager`.
 - `msm.repositories.execution` and `msm.services.execution`: MetaTable operation
@@ -21,7 +21,7 @@ Execution answers these questions:
 
 ## Key Contracts
 
-Execution DataNodes use explicit time indexes for each event family:
+Execution updaters use explicit time indexes for each event family:
 
 - `order_time` for orders.
 - `event_time` for order status events.
@@ -61,12 +61,12 @@ manager = OrderManager.create_batch(
 )
 ```
 
-Publish observed orders, order events, and trades through their DataNodes:
+Publish observed orders, order events, and trades through their updaters:
 `Orders`, `OrderEvents`, and `Trades`.
 
 ## Extension Notes
 
-Add new execution storage shapes in `msm.data_nodes.execution`. Add new
+Add new execution storage shapes in `msm.time_index.execution`. Add new
 registry or manager metadata in `msm.models.execution`, then expose it through
 repository and service functions.
 

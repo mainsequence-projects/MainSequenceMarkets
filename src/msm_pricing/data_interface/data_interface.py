@@ -14,12 +14,12 @@ from msm_pricing.config import (
     PricingMarketDataConfiguration,
     get_pricing_market_data_configuration,
 )
-from msm_pricing.data_nodes.curve_codec import (
+from msm_pricing.time_index.curve_codec import (
     decompress_string_to_curve as _decompress_string_to_curve,
 )
-from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-from msm_pricing.data_nodes.curves.key_nodes import (
+from msm_pricing.time_index.curves import CURVE_IDENTIFIER
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.key_nodes import (
     decompress_key_nodes_from_string as _decompress_key_nodes_from_string,
     normalize_curve_key_nodes as _normalize_curve_key_nodes,
 )
@@ -118,15 +118,13 @@ class MSDataInterface:
         return PricingMarketDataConfiguration.model_validate(
             {
                 "market_data_set": getattr(configuration, "market_data_set"),
-                "data_node_uids": getattr(
-                    configuration,
-                    "data_node_uids",
-                    {},
-                ),
+                # Configuration objects built for 2.x carry the pre-3.0 attribute name.
+                "storage_table_uids": getattr(configuration, "storage_table_uids", None)
+                or getattr(configuration, "data_node_uids", {}),
             }
         )
 
-    def _data_node_uid_for_concept(
+    def _storage_table_uid_for_concept(
         self,
         concept_key: str,
         *,
@@ -134,35 +132,35 @@ class MSDataInterface:
     ) -> uuid.UUID:
         configuration = self._get_market_data_configuration()
         if market_data_set is None:
-            direct_uid = configuration.direct_data_node_uid_for(concept_key)
+            direct_uid = configuration.direct_storage_table_uid_for(concept_key)
             if direct_uid is not None:
                 return direct_uid
             market_data_set = configuration.market_data_set
 
-        return self._persisted_data_node_uid_for_concept(
+        return self._persisted_storage_table_uid_for_concept(
             market_data_set=market_data_set,
             concept_key=concept_key,
         )
 
     @staticmethod
-    def _persisted_data_node_uid_for_concept(
+    def _persisted_storage_table_uid_for_concept(
         *,
         market_data_set: Any,
         concept_key: str,
     ) -> uuid.UUID:
         from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
-        return PricingMarketDataSetBinding.resolve_data_node_uid(
+        return PricingMarketDataSetBinding.resolve_storage_table_uid(
             market_data_set=market_data_set,
             concept_key=concept_key,
         )
 
-    def _data_node_for_concept(self, concept_key: str, *, market_data_set=None):
+    def _table_ref_for_concept(self, concept_key: str, *, market_data_set=None):
         from metatables import TimeIndexTableRef
 
         return TimeIndexTableRef.from_uid(
             str(
-                self._data_node_uid_for_concept(
+                self._storage_table_uid_for_concept(
                     concept_key,
                     market_data_set=market_data_set,
                 )
@@ -190,13 +188,13 @@ class MSDataInterface:
         *,
         market_data_set=None,
     ):
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
         )
 
         observation = self._read_discount_curve_observation(
-            data_node=data_node,
+            table_ref=table_ref,
             curve_name=curve_name,
             target_date=target_date,
         )
@@ -217,12 +215,12 @@ class MSDataInterface:
             return {}
 
         target_dt = _ensure_datetime(target_date)
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
         )
         rows = self._read_latest_discount_curve_observation_rows(
-            data_node=data_node,
+            table_ref=table_ref,
             curve_names=requested_curve_names,
             target_dt=target_dt,
         )
@@ -239,7 +237,7 @@ class MSDataInterface:
     @staticmethod
     def _read_latest_discount_curve_observation_rows(
         *,
-        data_node,
+        table_ref,
         curve_names: list[str],
         target_dt: datetime.datetime,
     ) -> list[dict[str, Any]]:
@@ -250,7 +248,7 @@ class MSDataInterface:
             execute_markets_operation,
         )
 
-        output_table = getattr(data_node, "output_table", None)
+        output_table = getattr(table_ref, "output_table", None)
         if output_table is None:
             raise RuntimeError(
                 "Discount curve latest-as-of query requires TimeIndexTableRef.output_table. "
@@ -302,35 +300,35 @@ class MSDataInterface:
         return observation["nodes"], target_date
 
     def get_latest_discount_curve_observation(self, curve_name, *, market_data_set=None):
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_DISCOUNT_CURVES,
             market_data_set=market_data_set,
         )
-        update_statistics = data_node.get_update_statistics()
+        update_statistics = table_ref.get_update_statistics()
         target_date = update_statistics.get_last_update_for_identity(curve_name)
         if target_date is None:
             raise LookupError(f"No latest discount curve observation found for {curve_name!r}.")
 
         observation = self._read_discount_curve_observation(
-            data_node=data_node,
+            table_ref=table_ref,
             curve_name=curve_name,
             target_date=target_date,
         )
         return observation, target_date
 
     @staticmethod
-    def _read_discount_curve_nodes(*, data_node, curve_name, target_date):
+    def _read_discount_curve_nodes(*, table_ref, curve_name, target_date):
         return MSDataInterface._read_discount_curve_observation(
-            data_node=data_node,
+            table_ref=table_ref,
             curve_name=curve_name,
             target_date=target_date,
         )["nodes"]
 
     @staticmethod
-    def _read_discount_curve_observation(*, data_node, curve_name, target_date):
+    def _read_discount_curve_observation(*, table_ref, curve_name, target_date):
         limit = target_date + datetime.timedelta(days=1)
 
-        curve = data_node.get_df_between_dates(
+        curve = table_ref.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
                 identity_dimension=CURVE_IDENTIFIER,
                 identity=curve_name,
@@ -392,12 +390,12 @@ class MSDataInterface:
         :param end_date:
         :return:
         """
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
             market_data_set=market_data_set,
         )
 
-        fixings_df = data_node.get_df_between_dates(
+        fixings_df = table_ref.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
                 identity_dimension=INDEX_IDENTIFIER_DIMENSION,
                 identity=reference_rate_uid,
@@ -427,11 +425,11 @@ class MSDataInterface:
     ) -> dict[datetime.date, float]:
         """Return stored fixing observations without fallback or missing-data errors."""
 
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
             market_data_set=market_data_set,
         )
-        fixings_df = data_node.get_df_between_dates(
+        fixings_df = table_ref.get_df_between_dates(
             dimension_range_map=dimension_range_for_identity(
                 identity_dimension=INDEX_IDENTIFIER_DIMENSION,
                 identity=reference_rate_uid,
@@ -464,11 +462,11 @@ class MSDataInterface:
         if not requested_identifiers:
             return {}
 
-        data_node = self._data_node_for_concept(
+        table_ref = self._table_ref_for_concept(
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
             market_data_set=market_data_set,
         )
-        fixings_df = data_node.get_df_between_dates(
+        fixings_df = table_ref.get_df_between_dates(
             dimension_range_map=[
                 dimension_range_for_identity(
                     identity_dimension=INDEX_IDENTIFIER_DIMENSION,

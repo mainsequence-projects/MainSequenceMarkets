@@ -5,7 +5,7 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import pytz
 
-from msm_portfolios.data_nodes import SignalWeights
+from msm_portfolios.time_index import SignalWeights
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )

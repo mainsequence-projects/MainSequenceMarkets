@@ -203,14 +203,14 @@ def mock_pricing_row_apis():
                             uid=uuid.UUID("00000000-0000-4000-8000-000000000006"),
                             market_data_set_uid=MOCK_MARKET_DATA_SET_UID,
                             concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                            data_node_uid=MOCK_DISCOUNT_CURVES_NODE_UID,
+                            storage_table_uid=MOCK_DISCOUNT_CURVES_NODE_UID,
                             storage_table_identifier="mock.discount_curves",
                         ),
                         PricingMarketDataSetBinding(
                             uid=uuid.UUID("00000000-0000-4000-8000-000000000007"),
                             market_data_set_uid=MOCK_MARKET_DATA_SET_UID,
                             concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                            data_node_uid=MOCK_FIXINGS_NODE_UID,
+                            storage_table_uid=MOCK_FIXINGS_NODE_UID,
                             storage_table_identifier="mock.index_fixings",
                         ),
                     ]

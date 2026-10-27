@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -20,6 +21,68 @@ from .base import (
 _MISSING = object()
 
 
+def mirror_renamed_columns(
+    model: type[MarketsBase],
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return ``values`` with each renamed UID column also written under its pre-3.0 name.
+
+    ms-markets 3.x keeps each pre-3.0 ``*_data_node_uid`` column next to the column
+    that renamed it (``__renamed_columns__``, ADR 0048) and writes both, so readers
+    and writers that still use the pre-3.0 column stay consistent. A value given
+    under either name fills both columns.
+    """
+
+    payload = dict(values)
+    for current, previous in getattr(model, "__renamed_columns__", {}).items():
+        if current in payload and previous in payload:
+            if not _same_value(payload[current], payload[previous]):
+                raise ValueError(
+                    f"{model.__name__} received different values for {current} and its "
+                    f"pre-3.0 name {previous}."
+                )
+        elif current in payload:
+            payload[previous] = payload[current]
+        elif previous in payload:
+            payload[current] = payload[previous]
+    return payload
+
+
+READ_PRE_3_0_COLUMNS = True
+"""Read each renamed UID column under its pre-3.0 name (ADR 0048).
+
+2.x writers update only the pre-3.0 column, so ms-markets 3.0 treats it as the
+source of truth. ms-markets 3.1 reads the current column once every writer runs 3.x.
+"""
+
+
+def renamed_column_value(model: type[MarketsBase], row: Mapping[str, Any], current: str) -> Any:
+    """Return the value of renamed UID column ``current`` from a row that may hold both names."""
+
+    previous = model.__renamed_columns__[current]
+    first, second = (previous, current) if READ_PRE_3_0_COLUMNS else (current, previous)
+    if first in row:
+        return row[first]
+    return row.get(second)
+
+
+def renamed_keyword(current_value: Any, previous_value: Any, *, current: str, previous: str) -> Any:
+    """Return the value passed as ``current=``, or as pre-3.0 ``previous=`` with a warning."""
+
+    if previous_value is None:
+        return current_value
+    from msm._deprecated_imports import warn_renamed
+
+    warn_renamed(f"{previous}=", f"{current}=")
+    if current_value is not None and not _same_value(current_value, previous_value):
+        raise TypeError(f"Pass {current}= or its pre-3.0 name {previous}=, not both.")
+    return previous_value
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    return left == right or (left is not None and right is not None and str(left) == str(right))
+
+
 def build_create_model_operation(
     context: MarketsOperationContext,
     *,
@@ -30,7 +93,9 @@ def build_create_model_operation(
     """Build an insert operation for a markets MetaTable SQLAlchemy model."""
 
     statement = insert(model).values(
-        _model_value_mapping(model, _model_insert_payload(model, values))
+        _model_value_mapping(
+            model, _model_insert_payload(model, mirror_renamed_columns(model, values))
+        )
     )
     if returning:
         statement = statement.returning(model)
@@ -53,7 +118,7 @@ def build_upsert_model_operation(
     if not conflict_columns:
         raise ValueError("Upsert operations require at least one conflict column.")
 
-    payload = dict(values)
+    payload = mirror_renamed_columns(model, values)
     insert_payload = _model_insert_payload(model, payload)
     update_payload = _model_update_payload(model, payload)
     statement = postgresql_insert(model).values(_model_value_mapping(model, insert_payload))
@@ -103,6 +168,7 @@ def build_bulk_upsert_model_operation(
     if not values:
         raise ValueError("Bulk upsert operations require at least one values row.")
 
+    values = [mirror_renamed_columns(model, row) for row in values]
     insert_payloads = [_model_insert_payload(model, row) for row in values]
     statement = postgresql_insert(model).values(
         [_model_value_mapping(model, payload) for payload in insert_payloads]
@@ -267,15 +333,25 @@ def build_search_model_operation(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
     limit: int = 500,
     offset: int = 0,
+    order_by: Sequence[str] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     statement = _filtered_model_select(
         model,
         filters=filters,
         in_filters=in_filters,
         contains_filters=contains_filters,
+        range_filters=range_filters,
     )
+    for column_name in order_by or ():
+        descending = str(column_name).startswith("-")
+        name = str(column_name).removeprefix("-")
+        if name not in model.__table__.c:
+            raise ValueError(f"{model.__name__} cannot order by unknown column {name!r}.")
+        column = model.__table__.c[name]
+        statement = statement.order_by(column.desc() if descending else column.asc())
     statement = statement.limit(limit)
     if offset:
         statement = statement.offset(offset)
@@ -293,8 +369,10 @@ def search_model(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
     limit: int = 500,
     offset: int = 0,
+    order_by: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_search_model_operation(
@@ -303,6 +381,8 @@ def search_model(
             filters=filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
+            order_by=order_by,
             limit=limit,
             offset=offset,
         ),
@@ -317,12 +397,14 @@ def build_count_model_operation(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> MetaTableCompiledSQLOperation:
     filtered = _filtered_model_select(
         model,
         filters=filters,
         in_filters=in_filters,
         contains_filters=contains_filters,
+        range_filters=range_filters,
     ).subquery()
     statement = select(func.count().label("count")).select_from(filtered)
     return compile_markets_statement(
@@ -339,6 +421,7 @@ def count_model(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_count_model_operation(
@@ -347,6 +430,7 @@ def count_model(
             filters=filters,
             in_filters=in_filters,
             contains_filters=contains_filters,
+            range_filters=range_filters,
         ),
         context=context,
     )
@@ -366,7 +450,7 @@ def build_update_model_operation(
         .values(
             _model_value_mapping(
                 model,
-                values,
+                mirror_renamed_columns(model, values),
                 include_none=False,
             )
         )
@@ -445,6 +529,7 @@ def _filtered_model_select(
     filters: Mapping[str, Any] | None = None,
     in_filters: Mapping[str, Sequence[Any]] | None = None,
     contains_filters: Mapping[str, str] | None = None,
+    range_filters: Mapping[str, Mapping[str, Any]] | None = None,
 ):
     statement = select(model)
 
@@ -462,7 +547,19 @@ def _filtered_model_select(
                 func.lower(_model_attribute(model, field_name)).contains(str(value).lower())
             )
 
+    for field_name, bounds in (range_filters or {}).items():
+        attribute = _model_attribute(model, field_name)
+        for lookup, value in bounds.items():
+            if value is None:
+                continue
+            if lookup not in _RANGE_LOOKUPS:
+                raise ValueError(f"Unknown range lookup {lookup!r}; use one of {sorted(_RANGE_LOOKUPS)}.")
+            statement = statement.where(_RANGE_LOOKUPS[lookup](attribute, value))
+
     return statement
+
+
+_RANGE_LOOKUPS = {"gt": operator.gt, "gte": operator.ge, "lt": operator.lt, "lte": operator.le}
 
 
 def _model_insert_payload(

@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from msm.api.remote import RemoteRowOperations
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.repositories.crud import (
     count_model,
@@ -20,7 +21,7 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
-from msm_pricing.data_nodes.curves.storage import CURVE_IDENTIFIER_DIMENSION
+from msm_pricing.time_index.curves.storage import CURVE_IDENTIFIER_DIMENSION
 from msm_pricing.models.curves import CurveTable
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
 
@@ -43,8 +44,8 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class Curve(BaseModel):
-    """Pricing-owned curve identity row used by curve DataNodes and runtime resolution."""
+class Curve(RemoteRowOperations, BaseModel):
+    """Pricing-owned curve identity row used by curve updaters and runtime resolution."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -469,8 +470,8 @@ class Curve(BaseModel):
 
         interface = MSDataInterface(
             market_data_configuration={
-                "data_node_uids": {
-                    PRICING_CONCEPT_DISCOUNT_CURVES: binding.data_node_uid,
+                "storage_table_uids": {
+                    PRICING_CONCEPT_DISCOUNT_CURVES: binding.storage_table_uid,
                 }
             }
         )
@@ -502,7 +503,7 @@ class Curve(BaseModel):
             "binding": {
                 "uid": binding.uid,
                 "concept_key": binding.concept_key,
-                "data_node_uid": binding.data_node_uid,
+                "storage_table_uid": binding.storage_table_uid,
                 "storage_table_identifier": binding.storage_table_identifier,
             },
             "valuation_date": valuation_date,
@@ -722,7 +723,7 @@ class CurveDeleteConflictError(ValueError):
 
 
 def _active_curve_delete_context():
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
     from msm_pricing.models.curve_building_details import CurveBuildingDetailsTable
     from msm_pricing.models.market_data_bindings import (
         PricingMarketDataSetBindingTable,
@@ -831,7 +832,7 @@ def _curve_delete_relationships(
             "key": "discount_curve_storage_sources",
             "label": "Discount curve storage sources",
             "model": "PricingMarketDataSetBindingTable",
-            "column": "data_node_uid",
+            "column": "storage_table_uid",
             "relationship_type": "indirect",
             "on_delete": "NO ACTION",
             "count": storage_scope_count,
@@ -879,7 +880,7 @@ def _count_model_rows(context: Any, *, model: type[Any], filters: dict[str, Any]
 def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
     from metatables import TimeIndexMetaTable
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 
     scopes: dict[str, dict[str, Any]] = {}
     canonical_storage = DiscountCurvesStorage.get_time_index_meta_table()
@@ -887,7 +888,7 @@ def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
         _add_discount_curve_storage_scope(
             scopes,
             time_index_meta_table=canonical_storage,
-            data_node_uid=str(canonical_storage.uid),
+            storage_table_uid=str(canonical_storage.uid),
             storage_table_identifier=_storage_identifier(canonical_storage),
             source="canonical",
         )
@@ -897,18 +898,18 @@ def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
     )
     for binding in bindings:
-        data_node_uid = str(binding.data_node_uid)
-        if data_node_uid in scopes:
-            scopes[data_node_uid]["market_data_binding_count"] += 1
+        storage_table_uid = str(binding.storage_table_uid)
+        if storage_table_uid in scopes:
+            scopes[storage_table_uid]["market_data_binding_count"] += 1
             continue
         try:
             storage = TimeIndexMetaTable.get_by_uid(
-                data_node_uid,
+                storage_table_uid,
                 timeout=context.timeout,
             )
         except Exception as exc:
-            scopes[data_node_uid] = {
-                "data_node_uid": data_node_uid,
+            scopes[storage_table_uid] = {
+                "storage_table_uid": storage_table_uid,
                 "storage_table_identifier": binding.storage_table_identifier,
                 "time_index_meta_table": None,
                 "market_data_binding_count": 1,
@@ -919,7 +920,7 @@ def _discount_curve_storage_scopes(*, context: Any) -> list[dict[str, Any]]:
         _add_discount_curve_storage_scope(
             scopes,
             time_index_meta_table=storage,
-            data_node_uid=data_node_uid,
+            storage_table_uid=storage_table_uid,
             storage_table_identifier=binding.storage_table_identifier
             or _storage_identifier(storage),
             source="market_data_set_binding",
@@ -931,12 +932,12 @@ def _add_discount_curve_storage_scope(
     scopes: dict[str, dict[str, Any]],
     *,
     time_index_meta_table: Any,
-    data_node_uid: str,
+    storage_table_uid: str,
     storage_table_identifier: str | None,
     source: str,
 ) -> None:
-    scopes[data_node_uid] = {
-        "data_node_uid": data_node_uid,
+    scopes[storage_table_uid] = {
+        "storage_table_uid": storage_table_uid,
         "storage_table_identifier": storage_table_identifier,
         "time_index_meta_table": time_index_meta_table,
         "market_data_binding_count": 0 if source == "canonical" else 1,
@@ -1085,7 +1086,7 @@ def _delete_discount_curve_values(
             reason = scope.get("unsupported_reason") or "storage scope is unsupported"
             raise CurveDeleteConflictError(
                 "Cannot delete discount-curve observations from storage "
-                f"{scope.get('data_node_uid')}: {reason}"
+                f"{scope.get('storage_table_uid')}: {reason}"
             )
         table = scope["time_index_meta_table"]
         result = table.delete_after_date(
@@ -1095,7 +1096,7 @@ def _delete_discount_curve_values(
         )
         cleanups.append(
             {
-                "data_node_uid": scope["data_node_uid"],
+                "storage_table_uid": scope["storage_table_uid"],
                 "storage_table_identifier": scope.get("storage_table_identifier"),
                 "deleted_count": _deleted_count(result),
                 "table_empty": result.get("table_empty") if isinstance(result, Mapping) else None,
@@ -1186,13 +1187,13 @@ def _missing_discount_curve_observation_message(
 ) -> str:
     market_data_set_label = market_data_set_row.set_key or str(market_data_set_row.uid)
     storage_label = binding.storage_table_identifier or "DiscountCurvesStorage"
-    data_node_uid = str(binding.data_node_uid)
+    storage_table_uid = str(binding.storage_table_uid)
 
     if valuation_date is None:
         return (
             f"No discount-curve data has been published for curve {curve_identifier!r} "
             f"in pricing market-data set {market_data_set_label!r}. The curve registry "
-            f"row and discount_curves binding exist, but bound TimeIndexTableUpdater {data_node_uid} "
+            f"row and discount_curves binding exist, but bound storage table {storage_table_uid} "
             f"has no latest {storage_label} observation for this curve_identifier."
         )
 
@@ -1200,7 +1201,7 @@ def _missing_discount_curve_observation_message(
         f"No discount-curve data was found for curve {curve_identifier!r} at "
         f"valuation_date {valuation_date.isoformat()} in pricing market-data set "
         f"{market_data_set_label!r}. The curve registry row and discount_curves "
-        f"binding exist, but bound TimeIndexTableUpdater {data_node_uid} has no {storage_label} "
+        f"binding exist, but bound storage table {storage_table_uid} has no {storage_label} "
         "observation for this curve_identifier at that valuation date."
     )
 

@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from msm.api.remote import RemoteRowOperations
 from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
 from msm.models import AssetTable
 from msm.repositories.crud import (
@@ -20,7 +21,7 @@ from msm.repositories.crud import (
 )
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
-from msm_pricing.data_nodes.pricing_details.storage import AssetPricingDetailsStorage
+from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 from msm_pricing.models.pricing_details import AssetCurrentPricingDetailsTable
 
 DEFAULT_INSTRUMENT_SERIALIZATION_FORMAT = "msm_pricing.instrument.v1"
@@ -45,7 +46,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class AssetCurrentPricingDetails(BaseModel):
+class AssetCurrentPricingDetails(RemoteRowOperations, BaseModel):
     """Current priceable instrument terms attached to a canonical asset."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -272,7 +273,7 @@ class AssetCurrentPricingDetailsUpdate(BaseModel):
         return AssetCurrentPricingDetails._require_timezone(value)
 
 
-class AssetPricingDetails(BaseModel):
+class AssetPricingDetails(RemoteRowOperations, BaseModel):
     """Timestamped priceable instrument terms observed for a canonical asset."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)

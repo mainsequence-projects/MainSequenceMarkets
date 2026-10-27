@@ -80,7 +80,7 @@ the runtime should follow the persisted graph:
                | load observations for valuation date
                v
 +-----------------------------+
-| DiscountCurvesNode          |
+| DiscountCurvesUpdater       |
 |-----------------------------|
 | curve_identifier            |
 | curve                       |
@@ -98,9 +98,9 @@ the runtime should follow the persisted graph:
 +-----------------------------+
 ```
 
-The `DiscountCurvesNode` and `FixingRatesNode` locations used in this chain come
+The `DiscountCurvesUpdater` and `FixingRatesUpdater` locations used in this chain come
 from pricing market-data bindings; see [Market Data Sets](market_data_sets.md)
-for how the selected set resolves to a `data_node_uid`.
+for how the selected set resolves to a `storage_table_uid`.
 
 Runtime pricing reads the compressed `curve` payload. `key_nodes` is retained on
 the same curve observation row as compressed-at-rest construction provenance.
@@ -172,7 +172,7 @@ QuantLib methods such as `log_linear_zero` and
 Helper-based reconstruction is a separate resolver branch. When
 `CurveBuildingDetails.builder_type="rate_helper_curve"`, runtime resolution
 does not coerce helper inputs into zero nodes first. It reads
-`DiscountCurvesNode.key_nodes`, validates generic helper key-node dictionaries,
+`DiscountCurvesUpdater.key_nodes`, validates generic helper key-node dictionaries,
 builds QuantLib rate helpers through `msm_pricing.pricing_engine.curves`, and
 bootstraps the curve with `reconstruct_curve_handle(...)`. OIS helper key nodes
 require a caller-supplied QuantLib overnight index or resolver callable; the
@@ -188,7 +188,7 @@ The primitive reconstruction API never accepts `CurveBuildingDetails` directly.
 The dependency flow is:
 
 ```text
-CurveBuildingDetails + DiscountCurvesNode.key_nodes
+CurveBuildingDetails + DiscountCurvesUpdater.key_nodes
   -> persistence adapter
   -> helper key-node models
   -> QuantLib helper specs
@@ -219,7 +219,7 @@ PricingMarketDataSetCurveBinding
   quote_side      = requested side or default
   -> curve_uid
   -> CurveTable.unique_identifier
-  -> DiscountCurvesNode.curve_identifier
+  -> DiscountCurvesUpdater.curve_identifier
   -> CurveBuildingDetails
   -> ql.YieldTermStructureHandle
 ```
@@ -244,7 +244,7 @@ spreaded_curve = apply_z_spread_to_curve(benchmark_curve, spread)
 ```
 
 The overlay helper uses the same continuous/no-frequency convention as
-`Bond.z_spread(...)`. It does not mutate persisted `DiscountCurvesNode` rows,
+`Bond.z_spread(...)`. It does not mutate persisted `DiscountCurvesUpdater` rows,
 `key_nodes`, or `CurveBuildingDetails`; it wraps a resolved QuantLib curve
 handle for the current valuation calculation only.
 
@@ -268,7 +268,7 @@ The scenario helper does not run a second pricing loop and does not mutate:
 - submitted instruments;
 - prepared context caches;
 - persisted market-data-set bindings;
-- persisted `DiscountCurvesNode` observations;
+- persisted `DiscountCurvesUpdater` observations;
 - submitted source key-node dictionaries.
 
 Strict mode is the default. A non-empty shock fails before pricing when the
@@ -377,8 +377,8 @@ Issuer/Currency/AssetType
   -> Curve row
   -> CurveBuildingDetails row
   -> upsert_index_curve_selection(...) row
-  -> DiscountCurvesNode observations
-  -> FixingRatesNode observations
+  -> DiscountCurvesUpdater observations
+  -> FixingRatesUpdater observations
   -> FloatingRateBond(floating_rate_index_uid=<IndexTable.uid>)
   -> bond.attach_to_asset(asset)
   -> Instrument.load_from_asset(asset)

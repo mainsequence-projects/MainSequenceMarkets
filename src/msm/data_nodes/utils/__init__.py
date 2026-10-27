@@ -1,26 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm.time_index.utils``.
 
-from msm.data_nodes.utils.namespaces import (
-    default_markets_hash_namespace_kwargs,
-    wrap_default_markets_hash_namespace,
-)
-from msm.data_nodes.utils.stamped import (
-    StampedDataNode,
-    StampedDataNodeConfiguration,
-    StampedFrameMixin,
-    normalize_stamped_frame,
-    reset_frame_index,
-)
-from msm.data_nodes.utils.time import normalize_datetime64_ns_utc, normalize_timestamp_ns_utc
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "StampedDataNode",
-    "StampedDataNodeConfiguration",
-    "StampedFrameMixin",
-    "default_markets_hash_namespace_kwargs",
-    "normalize_datetime64_ns_utc",
-    "normalize_stamped_frame",
-    "normalize_timestamp_ns_utc",
-    "reset_frame_index",
-    "wrap_default_markets_hash_namespace",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm.time_index.utils")

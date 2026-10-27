@@ -1,29 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm.time_index.assets``.
 
-from msm.data_nodes.assets.asset_indexed import (
-    ASSET_IDENTIFIER_DIMENSION,
-    AssetIndexedDataNode,
-    AssetIndexedDataNodeConfiguration,
-    MarketAssetScopeItem,
-)
-from msm.data_nodes.assets.snapshots import (
-    AssetDataNodeConfiguration,
-    AssetSnapshot,
-    AssetSnapshotConfiguration,
-    AssetSnapshotInput,
-    AssetTimestampedDataNode,
-    AssetTimestampedFrameMixin,
-)
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "ASSET_IDENTIFIER_DIMENSION",
-    "AssetDataNodeConfiguration",
-    "AssetIndexedDataNode",
-    "AssetIndexedDataNodeConfiguration",
-    "AssetSnapshot",
-    "AssetSnapshotConfiguration",
-    "AssetSnapshotInput",
-    "AssetTimestampedDataNode",
-    "AssetTimestampedFrameMixin",
-    "MarketAssetScopeItem",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm.time_index.assets")

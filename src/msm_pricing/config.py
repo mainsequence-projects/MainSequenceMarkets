@@ -3,17 +3,19 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from threading import RLock
-from typing import Any, TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
+from msm.api.base import PayloadWithRenamedFields
 from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
 
 
-class PricingMarketDataConfiguration(BaseModel):
+class PricingMarketDataConfiguration(PayloadWithRenamedFields):
     """Runtime default market-data set and direct storage UID overrides."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uids": "data_node_uids"}
 
     market_data_set: str | uuid.UUID = Field(
         default=PRICING_MARKET_DATA_SET_DEFAULT,
@@ -22,7 +24,7 @@ class PricingMarketDataConfiguration(BaseModel):
             "not pass market_data_set explicitly."
         ),
     )
-    data_node_uids: dict[str, uuid.UUID] = Field(
+    storage_table_uids: dict[str, uuid.UUID] = Field(
         default_factory=dict,
         description=(
             "Direct per-concept storage table UID overrides. Keys are pricing concept "
@@ -40,25 +42,47 @@ class PricingMarketDataConfiguration(BaseModel):
             raise ValueError("market_data_set cannot be empty.")
         return normalized
 
-    @field_validator("data_node_uids")
+    @field_validator("storage_table_uids")
     @classmethod
-    def _validate_data_node_uids(cls, value: dict[str, uuid.UUID]) -> dict[str, uuid.UUID]:
+    def _validate_storage_table_uids(cls, value: dict[str, uuid.UUID]) -> dict[str, uuid.UUID]:
         normalized: dict[str, uuid.UUID] = {}
-        for concept_key, data_node_uid in value.items():
+        for concept_key, storage_table_uid in value.items():
             normalized_concept = str(concept_key).strip()
             if not normalized_concept:
-                raise ValueError("data_node_uids cannot contain empty concept keys.")
+                raise ValueError("storage_table_uids cannot contain empty concept keys.")
             normalized[normalized_concept] = (
-                data_node_uid
-                if isinstance(data_node_uid, uuid.UUID)
-                else uuid.UUID(str(data_node_uid))
+                storage_table_uid
+                if isinstance(storage_table_uid, uuid.UUID)
+                else uuid.UUID(str(storage_table_uid))
             )
         return normalized
 
-    def direct_data_node_uid_for(self, concept_key: str) -> uuid.UUID | None:
+    def direct_storage_table_uid_for(self, concept_key: str) -> uuid.UUID | None:
         """Return a directly configured storage table UID for one concept."""
 
-        return self.data_node_uids.get(concept_key)
+        return self.storage_table_uids.get(concept_key)
+
+    @property
+    def data_node_uids(self) -> dict[str, uuid.UUID]:
+        """Deprecated pre-3.0 name of ``storage_table_uids``; removed in ms-markets 4.0."""
+
+        from msm._deprecated_imports import warn_renamed
+
+        warn_renamed(
+            f"{type(self).__name__}.data_node_uids", f"{type(self).__name__}.storage_table_uids"
+        )
+        return self.storage_table_uids
+
+    def direct_data_node_uid_for(self, concept_key: str) -> uuid.UUID | None:
+        """Deprecated pre-3.0 name of :meth:`direct_storage_table_uid_for`; removed in 4.0."""
+
+        from msm._deprecated_imports import warn_renamed
+
+        warn_renamed(
+            f"{type(self).__name__}.direct_data_node_uid_for",
+            f"{type(self).__name__}.direct_storage_table_uid_for",
+        )
+        return self.direct_storage_table_uid_for(concept_key)
 
 
 PricingMarketDataConfigurationInput: TypeAlias = PricingMarketDataConfiguration | Mapping[str, Any]

@@ -5,12 +5,81 @@ import warnings
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from msm.base import MarketsBase
 
 RowT = TypeVar("RowT", bound="MarketsMetaTableRow")
 Payload = BaseModel | Mapping[str, Any] | None
+
+
+def reconcile_renamed_columns(table: type[MarketsBase] | None, data: Any) -> Any:
+    """Give row data both names of each renamed UID column (ADR 0048).
+
+    Rows read from a table hold the current and the pre-3.0 column; the value is
+    taken from the column ``READ_PRE_3_0_COLUMNS`` selects. Rows built from one
+    name get the same value under the other.
+    """
+
+    renamed = getattr(table, "__renamed_columns__", None)
+    if not renamed or not isinstance(data, Mapping):
+        return data
+    from msm.repositories.crud import renamed_column_value
+
+    reconciled = dict(data)
+    for current, previous in renamed.items():
+        if current in reconciled or previous in reconciled:
+            value = renamed_column_value(table, reconciled, current)
+            reconciled[current] = reconciled[previous] = value
+    return reconciled
+
+
+def pre_3_0_field(current: str) -> Any:
+    """Declare the deprecated pre-3.0 name of renamed UID field ``current``."""
+
+    return Field(
+        default=None,
+        deprecated=f"Use {current}; the pre-3.0 name is removed in ms-markets 4.0 (ADR 0048).",
+    )
+
+
+def accept_renamed_fields(model: type[BaseModel], data: Any) -> Any:
+    """Move pre-3.0 input names to their current names, with a warning (ADR 0048)."""
+
+    renamed = getattr(model, "__renamed_fields__", None)
+    if not renamed or not isinstance(data, Mapping):
+        return data
+    from msm._deprecated_imports import warn_renamed
+    from msm.repositories.crud import _same_value
+
+    accepted = dict(data)
+    for current, previous in renamed.items():
+        if previous not in accepted:
+            continue
+        warn_renamed(f"{model.__name__}.{previous}", f"{model.__name__}.{current}")
+        value = accepted.pop(previous)
+        if current in accepted and not _same_value(accepted[current], value):
+            raise ValueError(
+                f"{model.__name__} received different values for {current} and its "
+                f"pre-3.0 name {previous}."
+            )
+        accepted.setdefault(current, value)
+    return accepted
+
+
+class PayloadWithRenamedFields(BaseModel):
+    """Payload that accepts the pre-3.0 name of each renamed UID field (ADR 0048).
+
+    ``__renamed_fields__`` maps each current field to its pre-3.0 name; ms-markets
+    4.0 stops accepting the pre-3.0 names.
+    """
+
+    __renamed_fields__: ClassVar[Mapping[str, str]] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_pre_3_0_field_names(cls, data: Any) -> Any:
+        return accept_renamed_fields(cls, data)
 
 
 class MarketsMetaTableRow(BaseModel):
@@ -23,6 +92,20 @@ class MarketsMetaTableRow(BaseModel):
     __upsert_keys__: ClassVar[Sequence[str]] = ()
 
     uid: uuid.UUID
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Let the subclass's public class methods run on the remote backend (ADR 0047)."""
+
+        super().__pydantic_init_subclass__(**kwargs)
+        from msm.api.remote import install_remote_dispatch
+
+        install_remote_dispatch(cls)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reconcile_renamed_columns(cls, data: Any) -> Any:
+        return reconcile_renamed_columns(getattr(cls, "__table__", None), data)
 
     @classmethod
     def start_engine(cls, **kwargs: Any):
@@ -50,7 +133,7 @@ class MarketsMetaTableRow(BaseModel):
         result = create_model(
             cls._active_context(),
             model=cls.__table__,
-            values=_payload_values(payload, kwargs),
+            values=_row_values(cls, payload, kwargs),
         )
         return cls._from_operation_result(result)
 
@@ -65,7 +148,7 @@ class MarketsMetaTableRow(BaseModel):
         result = upsert_model(
             cls._active_context(),
             model=cls.__table__,
-            values=_payload_values(payload, kwargs),
+            values=_row_values(cls, payload, kwargs),
             conflict_columns=cls.__upsert_keys__,
         )
         return cls._from_operation_result(result)
@@ -85,7 +168,7 @@ class MarketsMetaTableRow(BaseModel):
             cls._active_context(),
             model=cls.__table__,
             uid=uid,
-            values=_payload_values(payload, kwargs),
+            values=_row_values(cls, payload, kwargs),
         )
         return cls._from_operation_result(result)
 
@@ -144,17 +227,96 @@ class MarketsMetaTableRow(BaseModel):
         return {str(getattr(row, "unique_identifier")): row for row in rows}
 
     @classmethod
-    def filter(cls: type[RowT], *, limit: int = 500, **filters: Any) -> list[RowT]:
+    def filter(
+        cls: type[RowT],
+        *,
+        limit: int = 500,
+        offset: int = 0,
+        order_by: str | Sequence[str] | None = None,
+        **filters: Any,
+    ) -> list[RowT]:
         """Filter rows through the active markets runtime.
 
         Keyword arguments ending in `_contains` compile to SQL `contains`
-        filters. Other keyword arguments compile to equality filters.
+        filters, arguments ending in `__in` to `IN` filters, arguments ending
+        in `__gte`, `__gt`, `__lte` or `__lt` to range filters, and the others
+        to equality filters. `order_by` names columns, `-column` for descending.
         """
 
         from msm.repositories.crud import search_model
 
+        exact_filters, in_filters, contains_filters, range_filters = cls._split_filters(filters)
+        result = search_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=exact_filters,
+            in_filters=in_filters,
+            contains_filters=contains_filters,
+            range_filters=range_filters,
+            limit=limit,
+            offset=offset,
+            order_by=_order_by(cls, order_by),
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def count(cls, **filters: Any) -> int:
+        """Count rows matching the same filters as :meth:`filter`."""
+
+        from msm.repositories.crud import count_model
+
+        exact_filters, in_filters, contains_filters, range_filters = cls._split_filters(filters)
+        result = count_model(
+            cls._active_context(),
+            model=cls.__table__,
+            filters=exact_filters,
+            in_filters=in_filters,
+            contains_filters=contains_filters,
+            range_filters=range_filters,
+        )
+        rows = operation_result_rows(result)
+        if not rows:
+            return 0
+        row = rows[0]
+        for key in ("count", "count_1"):
+            if key in row:
+                return int(row[key] or 0)
+        return int(next(iter(row.values()), 0) or 0)
+
+    @classmethod
+    def upsert_many(
+        cls: type[RowT],
+        payloads: Sequence[BaseModel | Mapping[str, Any]],
+    ) -> list[RowT]:
+        """Upsert many rows on ``__upsert_keys__`` in one statement.
+
+        Each payload is validated through the row module's ``<Row>Upsert`` model
+        when it defines one, as :meth:`upsert` does.
+        """
+
+        from msm.repositories.crud import bulk_upsert_model
+
+        if not cls.__upsert_keys__:
+            raise NotImplementedError(f"{cls.__name__} does not define upsert keys.")
+        if not payloads:
+            return []
+        values = [_upsert_values(cls, payload) for payload in payloads]
+        result = bulk_upsert_model(
+            cls._active_context(),
+            model=cls.__table__,
+            values=values,
+            conflict_columns=cls.__upsert_keys__,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
+
+    @classmethod
+    def _split_filters(
+        cls, filters: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, list[Any]], dict[str, str], dict[str, dict[str, Any]]]:
         exact_filters: dict[str, Any] = {}
+        in_filters: dict[str, list[Any]] = {}
         contains_filters: dict[str, str] = {}
+        range_filters: dict[str, dict[str, Any]] = {}
         for key, value in filters.items():
             if value in (None, ""):
                 continue
@@ -163,17 +325,19 @@ class MarketsMetaTableRow(BaseModel):
                 cls._require_column(field_name)
                 contains_filters[field_name] = str(value)
                 continue
+            if key.endswith("__in"):
+                field_name = key.removesuffix("__in")
+                cls._require_column(field_name)
+                in_filters[field_name] = list(value)
+                continue
+            field_name, lookup = range_lookup(key)
+            if lookup is not None:
+                cls._require_column(field_name)
+                range_filters.setdefault(field_name, {})[lookup] = value
+                continue
             cls._require_column(key)
             exact_filters[key] = value
-
-        result = search_model(
-            cls._active_context(),
-            model=cls.__table__,
-            filters=exact_filters,
-            contains_filters=contains_filters,
-            limit=limit,
-        )
-        return [cls.model_validate(row) for row in operation_result_rows(result)]
+        return exact_filters, in_filters, contains_filters, range_filters
 
     @classmethod
     def _active_context(cls):
@@ -238,6 +402,56 @@ def operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[
     return []
 
 
+def _row_values(
+    row: type[BaseModel], payload: Payload, kwargs: Mapping[str, Any]
+) -> dict[str, Any]:
+    values = _payload_values(payload, kwargs)
+    table = getattr(row, "__table__", None)
+    for current, previous in getattr(table, "__renamed_columns__", {}).items():
+        if previous in values and current not in values:
+            from msm._deprecated_imports import warn_renamed
+
+            warn_renamed(f"{row.__name__}.{previous}", f"{row.__name__}.{current}")
+    return values
+
+
+RANGE_LOOKUP_SUFFIXES = ("__gte", "__gt", "__lte", "__lt")
+
+
+def range_lookup(key: str) -> tuple[str, str | None]:
+    """Split a filter key such as ``local_date__gte`` into ``("local_date", "gte")``.
+
+    Keys without a range suffix return ``(key, None)``.
+    """
+
+    for suffix in RANGE_LOOKUP_SUFFIXES:
+        if key.endswith(suffix):
+            return key.removesuffix(suffix), suffix.removeprefix("__")
+    return key, None
+
+
+def _order_by(row: type[Any], order_by: str | Sequence[str] | None) -> list[str]:
+    if order_by in (None, ""):
+        return []
+    names = [order_by] if isinstance(order_by, str) else list(order_by)
+    for name in names:
+        row._require_column(str(name).removeprefix("-"))
+    return [str(name) for name in names]
+
+
+def _upsert_values(row: type[Any], payload: BaseModel | Mapping[str, Any]) -> dict[str, Any]:
+    import sys
+
+    module = sys.modules.get(row.__module__)
+    payload_model = getattr(module, f"{row.__name__}Upsert", None) if module is not None else None
+    if isinstance(payload_model, type) and issubclass(payload_model, BaseModel):
+        if not isinstance(payload, payload_model):
+            data = payload.model_dump(exclude_unset=True) if isinstance(payload, BaseModel) else payload
+            payload = payload_model.model_validate(data)
+        return _row_values(row, payload, {})
+    return _row_values(row, payload, {})
+
+
 def _payload_values(payload: Payload, kwargs: Mapping[str, Any]) -> dict[str, Any]:
     if payload is None:
         return dict(kwargs)
@@ -284,6 +498,14 @@ def _warn_deprecated_create_schemas(row_model_name: str) -> None:
         stacklevel=3,
     )
 
+
+def _install_base_dispatch() -> None:
+    from msm.api.remote import install_remote_dispatch
+
+    install_remote_dispatch(MarketsMetaTableRow, register=False)
+
+
+_install_base_dispatch()
 
 MarketsRow = MarketsMetaTableRow
 

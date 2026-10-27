@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from msm.data_nodes.assets.asset_indexed import asset_scope_identifier
+from msm.time_index.assets.asset_indexed import asset_scope_identifier
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION

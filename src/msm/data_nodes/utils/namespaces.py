@@ -1,40 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm.time_index.utils.namespaces``.
 
-from functools import wraps
-from typing import Any
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-from msm.settings import markets_namespace
+from msm._deprecated_imports import alias_module
 
-
-def default_markets_hash_namespace_kwargs(cls: type, kwargs: dict[str, Any]) -> None:
-    """Apply the markets hash namespace before the SDK TimeIndexTableUpdater wrapper runs."""
-
-    namespace_aliases = tuple(getattr(cls, "_HASH_NAMESPACE_ALIASES", ()) or ())
-    for namespace_alias in namespace_aliases:
-        if namespace_alias not in kwargs:
-            continue
-        namespace = kwargs[namespace_alias]
-        if namespace not in (None, ""):
-            return
-        kwargs.pop(namespace_alias)
-
-    hash_namespace = kwargs.get("hash_namespace")
-    if hash_namespace in (None, ""):
-        kwargs["hash_namespace"] = markets_namespace()
-
-
-def wrap_default_markets_hash_namespace(cls: type, original_init):
-    """Wrap TimeIndexTableUpdater subclasses so markets namespace defaults reach SDK hashing."""
-
-    @wraps(original_init)
-    def wrapped_init(self, *args, **kwargs):
-        default_markets_hash_namespace_kwargs(cls, kwargs)
-        return original_init(self, *args, **kwargs)
-
-    return wrapped_init
-
-
-__all__ = [
-    "default_markets_hash_namespace_kwargs",
-    "wrap_default_markets_hash_namespace",
-]
+__getattr__, __dir__ = alias_module(__name__, "msm.time_index.utils.namespaces")

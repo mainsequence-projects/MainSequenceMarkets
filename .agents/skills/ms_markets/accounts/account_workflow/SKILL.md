@@ -23,7 +23,7 @@ Use these adjacent skills when the task crosses their boundary:
 - Asset identity and asset detail rows:
   `.agents/skills/ms_markets/assets/asset_model_extension/SKILL.md`
 - Asset-indexed TimeIndexTableUpdater conventions:
-  `.agents/skills/ms_markets/assets/asset_indexed_data_nodes/SKILL.md`
+  `.agents/skills/ms_markets/assets/asset_indexed_updaters/SKILL.md`
 - Portfolio construction examples and portfolio calculation workflows:
   `.agents/skills/ms_markets/portfolios/portfolio_workflow/SKILL.md`
 - Bootstrap/catalog registration:
@@ -36,8 +36,8 @@ Before changing account code, inspect:
 1. `src/msm/models/accounts/core.py`
 2. `src/msm/models/accounts/groups.py`
 3. `src/msm/api/accounts.py`
-4. `src/msm/data_nodes/accounts/__init__.py`
-5. `src/msm/data_nodes/accounts/storage.py`
+4. `src/msm/time_index/accounts/__init__.py`
+5. `src/msm/time_index/accounts/storage.py`
 6. `src/msm/services/holdings.py`
 7. `src/msm/services/target_positions.py`
 8. `examples/msm/accounts/account_portfolio_full_workflow.py`
@@ -162,7 +162,7 @@ contributed interpolation output storage needed by the reusable equal-weight
 portfolio example, chains that portfolio workflow, reuses the resulting
 `Portfolio` row, and assigns that portfolio UID as one of the account target
 positions. This preparation is not portfolio core registration:
-`PortfoliosDataNode` must still consume an explicit
+`PortfoliosUpdater` must still consume an explicit
 `PortfolioBuildConfiguration.valuation_source_instance` and configured
 `valuation_column`. The same full workflow can be extended with a dry-run
 account virtual-fund allocation plan using
@@ -222,9 +222,9 @@ from msm.api.accounts import (
     PositionSet,
 )
 from msm.api.assets import Asset, AssetType
-from msm.data_nodes.accounts import AccountHoldings
-from msm.data_nodes.accounts import TargetPositions
-from msm.data_nodes.assets import AssetSnapshot
+from msm.time_index.accounts import AccountHoldings
+from msm.time_index.accounts import TargetPositions
+from msm.time_index.assets import AssetSnapshot
 from msm.services import build_account_holdings_frame
 from msm.services import build_target_positions_frame
 from msm.api.portfolios import Portfolio
@@ -419,8 +419,8 @@ and uses `extra_details["ticker"]` when available.
 For account changes, run at least:
 
 ```bash
-uv run --extra dev ruff check src/msm/api/accounts.py src/msm/models/accounts src/msm/data_nodes/accounts src/msm/services/holdings.py src/msm/services/target_positions.py examples/msm/accounts
-uv run --extra dev pytest tests/msm/api/test_rows.py tests/msm/data_nodes/test_contracts.py tests/msm/data_nodes/test_target_positions_contracts.py tests/msm/models/test_metatable_models.py
+uv run --extra dev ruff check src/msm/api/accounts.py src/msm/models/accounts src/msm/time_index/accounts src/msm/services/holdings.py src/msm/services/target_positions.py examples/msm/accounts
+uv run --extra dev pytest tests/msm/api/test_rows.py tests/msm/time_index/test_contracts.py tests/msm/time_index/test_target_positions_contracts.py tests/msm/models/test_metatable_models.py
 uv run --extra dev mkdocs build --strict --site-dir /private/tmp/msmarkets-docs-site
 git diff --check
 ```

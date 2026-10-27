@@ -22,7 +22,7 @@ PricingMarketDataSet
 PricingMarketDataSetBinding
   market_data_set_uid -> PricingMarketDataSet.uid
   concept_key         = discount_curves | interest_rate_index_fixings | equity_vol_curves
-  data_node_uid       = backend time-index-table output table UID
+  storage_table_uid       = backend time-index-table output table UID
   storage_table_identifier = optional diagnostic copy
 
 PricingMarketDataSetCurveBinding
@@ -49,10 +49,10 @@ storage source, the other selects the curve identity inside that source:
         +-----------------------------+   +-----------------------------------+
         | PricingMarketDataSetBinding |   | PricingMarketDataSetCurveBinding  |
         | concept_key                 |   | role_key, selector_type,          |
-        |   -> data_node_uid          |   | selector_key, quote_side          |
+        |   -> storage_table_uid      |   | selector_key, quote_side          |
         | "WHERE do I read from?"     |   |   -> curve_uid                    |
         +--------------+--------------+   | "WHICH curve identity?"           |
-                       │ data_node_uid    +-----------------+-----------------+
+                       │ storage_table_uid +-----------------+-----------------+
                        ▼                                    │ curve_uid (N:1)
               +-----------------+                           ▼
               | storage table   |<------ curve_identifier --+----- CurveTable
@@ -65,12 +65,12 @@ Both layers are required: the source binding picks the storage table, then the
 curve binding picks which `curve_identifier` inside it to read. Neither is
 inferred from the other.
 
-## The `data_node_uid` boundary
+## The `storage_table_uid` boundary
 
 The important boundary is:
 
 ```text
-data_node_uid
+storage_table_uid
   authoritative pointer used by pricing runtime
 
 storage_table_identifier
@@ -95,7 +95,7 @@ from msm_pricing.settings import (
 ```
 
 `interest_rate_index_fixings` is intentionally rate-specific. The current
-`FixingRatesNode` stores a decimal `rate` column for SOFR, TIIE, IBOR,
+`FixingRatesUpdater` stores a decimal `rate` column for SOFR, TIIE, IBOR,
 overnight, and similar interest-rate indexes. Future equity index levels,
 inflation observations, or volatility inputs should use their own concept keys.
 
@@ -106,10 +106,10 @@ Fresh pricing bootstrap seeds the default bindings:
 ```text
 PricingMarketDataSet(set_key="default")
   -> PricingMarketDataSetBinding(concept_key="discount_curves")
-       data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
+       storage_table_uid = DiscountCurvesStorage.get_meta_table_uid()
 
   -> PricingMarketDataSetBinding(concept_key="interest_rate_index_fixings")
-       data_node_uid = IndexFixingsStorage.get_meta_table_uid()
+       storage_table_uid = IndexFixingsStorage.get_meta_table_uid()
 ```
 
 Those UIDs are read from the attached backend `TimeIndexMetaTable` objects. They
@@ -122,7 +122,7 @@ Deployments can add or replace market-data sets for `eod`, `live`,
 ```python
 from msm_pricing.bootstrap import attach_pricing_schemas
 from msm_pricing.api import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
     PRICING_MARKET_DATA_SET_EOD,
@@ -137,7 +137,7 @@ market_data_set = PricingMarketDataSet.upsert(
 PricingMarketDataSetBinding.upsert(
     market_data_set_uid=market_data_set.uid,
     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-    data_node_uid=DiscountCurvesStorage.get_meta_table_uid(),
+    storage_table_uid=DiscountCurvesStorage.get_meta_table_uid(),
     storage_table_identifier=DiscountCurvesStorage.get_identifier(),
 )
 ```

@@ -126,14 +126,34 @@ IndexValuesTS.1d -> ms_markets__index_values__t_1d
 
 Frequency is part of dataset identity, not Index identity.
 
+These are Markets' own tables. A provider that publishes Index values owns its
+table in its own namespace (ADR 0047, decision 4) and builds it with the same
+factory:
+
+```python
+ProviderDailyValues = configured_index_values_storage(
+    cadence="1d",
+    namespace="my_provider",
+    storage_app="my_provider",
+    base=ProviderBase,  # when the provider's own Alembic provider migrates it
+)
+```
+
+The table is `my_provider__index_values__t_1d`, identified as
+`my_provider.IndexValuesTS.1d`, with the contract's columns, foreign keys and
+grain. The Index dataset catalog discovers it like the Markets tables and reads
+it as the Markets workload, which needs `data_viewer` on it. A provider moving
+values it already wrote in a Markets table copies them with
+`msm.storage_copies.TableSeriesMove(..., key_column="index_identifier")`.
+
 ## Custom Publication
 
-Custom producers use `IndexValuesDataNode` or
+Custom producers use `IndexValuesUpdater` or
 `normalize_index_values_frame(...)`. Nullable provenance is supplied when
 omitted. Custom publication rejects a non-null `definition_uid`.
 
 ```python
-from msm.data_nodes.indices import (
+from msm.time_index.indices import (
     configured_index_values_storage,
     normalize_index_values_frame,
 )
@@ -148,7 +168,7 @@ or performance series.
 
 ## Formula Publication
 
-`FormulaIndexDataNode` loads immutable formula versions and reads only their
+`FormulaIndexUpdater` loads immutable formula versions and reads only their
 pinned source storage classes. Construction requires the configured storage
 UID set to equal the persisted formula-input MetaTable UID set and validates
 the source grain and observable types.

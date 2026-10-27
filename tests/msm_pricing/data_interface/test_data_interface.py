@@ -19,9 +19,9 @@ from msm_pricing.data_interface.data_interface import (
     MSDataInterface,
     dimension_range_for_identity,
 )
-from msm_pricing.data_nodes.curves import CURVE_IDENTIFIER
-from msm_pricing.data_nodes.curves.key_nodes import compress_key_nodes_to_string
-from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves import CURVE_IDENTIFIER
+from msm_pricing.time_index.curves.key_nodes import compress_key_nodes_to_string
+from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
 from msm_pricing.config import reset_pricing_market_data_configuration
 from msm_pricing.settings import (
     PRICING_CONCEPT_DISCOUNT_CURVES,
@@ -59,12 +59,12 @@ def test_dimension_range_for_identity_builds_generic_dimension_range_map() -> No
 def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000101")
+    fixings_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000101")
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
-            assert table_uid == str(fixings_data_node_uid)
+            assert table_uid == str(fixings_storage_table_uid)
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
@@ -81,12 +81,12 @@ def test_get_historical_fixings_reads_index_stamped_data(monkeypatch) -> None:
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
+            "storage_table_uids": {
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_storage_table_uid,
             },
         }
     )
@@ -116,9 +116,9 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
 ) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000102")
+    storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000102")
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
@@ -139,13 +139,13 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
     import metatables as meta_tables
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
     monkeypatch.setattr(
         PricingMarketDataSetBinding,
-        "resolve_data_node_uid",
+        "resolve_storage_table_uid",
         staticmethod(
             lambda *, market_data_set, concept_key: (
-                data_node_uid
+                storage_table_uid
                 if concept_key == PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS
                 else None
             )
@@ -161,23 +161,23 @@ def test_get_historical_fixings_uses_persisted_pricing_market_data_binding(
     )
 
     assert fixings == {dt.date(2026, 5, 26): 0.0525}
-    assert calls[0] == ("table_uid", str(data_node_uid))
+    assert calls[0] == ("table_uid", str(storage_table_uid))
 
 
 def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000201")
+    curves_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000201")
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
-            assert table_uid == str(curves_data_node_uid)
+            assert table_uid == str(curves_storage_table_uid)
             return cls()
 
         def get_df_between_dates(self, *, dimension_range_map):
             calls.append(dimension_range_map)
-            from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+            from msm_pricing.time_index.curve_codec import compress_curve_to_string
 
             return pd.DataFrame(
                 [
@@ -204,12 +204,12 @@ def test_get_historical_discount_curve_reads_curve_stamped_data(monkeypatch) -> 
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+            "storage_table_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid,
             },
         }
     )
@@ -272,9 +272,9 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
 ) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000202")
+    storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000202")
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
@@ -282,7 +282,7 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
 
         def get_df_between_dates(self, *, dimension_range_map):
             calls.append(("range", dimension_range_map))
-            from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+            from msm_pricing.time_index.curve_codec import compress_curve_to_string
 
             return pd.DataFrame(
                 [
@@ -297,13 +297,13 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
     import metatables as meta_tables
     from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
     monkeypatch.setattr(
         PricingMarketDataSetBinding,
-        "resolve_data_node_uid",
+        "resolve_storage_table_uid",
         staticmethod(
             lambda *, market_data_set, concept_key: (
-                data_node_uid if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES else None
+                storage_table_uid if concept_key == PRICING_CONCEPT_DISCOUNT_CURVES else None
             )
         ),
     )
@@ -316,17 +316,17 @@ def test_get_historical_discount_curve_uses_persisted_pricing_market_data_bindin
     )
 
     assert nodes == [{"days_to_maturity": 28, "zero": 0.11}]
-    assert calls[0] == ("table_uid", str(data_node_uid))
+    assert calls[0] == ("table_uid", str(storage_table_uid))
 
 
 def test_get_historical_discount_curve_observations_reads_many_curves_once(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000205")
+    curves_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000205")
     target_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
 
-    class FakeAPIDataNode:
-        output_table = SimpleNamespace(uid=str(curves_data_node_uid))
+    class FakeTableRef:
+        output_table = SimpleNamespace(uid=str(curves_storage_table_uid))
 
         @classmethod
         def from_uid(cls, table_uid):
@@ -336,7 +336,7 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
         def get_df_between_dates(self, *, dimension_range_map):
             raise AssertionError("latest-as-of curve reads must not scan historical ranges")
 
-    from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+    from msm_pricing.time_index.curve_codec import compress_curve_to_string
 
     def bind_meta_table(cls, output_table):
         calls.append(("bind", output_table.uid))
@@ -371,13 +371,13 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
     monkeypatch.setattr(DiscountCurvesStorage, "_bind_meta_table", classmethod(bind_meta_table))
     monkeypatch.setattr("msm.repositories.base.compile_markets_statement", compile_statement)
     monkeypatch.setattr("msm.repositories.base.execute_markets_operation", execute_operation)
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid}
+            "storage_table_uids": {PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid}
         }
     )
 
@@ -389,8 +389,8 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
     assert observations["USD-SOFR"][0]["nodes"] == [{"days_to_maturity": 365, "zero": 0.05}]
     assert observations["USD-SOFR"][1] == target_date
     assert observations["MXN-TIIE"][0]["nodes"] == [{"days_to_maturity": 365, "zero": 0.095}]
-    assert calls[0] == ("table_uid", str(curves_data_node_uid))
-    assert calls[1] == ("bind", str(curves_data_node_uid))
+    assert calls[0] == ("table_uid", str(curves_storage_table_uid))
+    assert calls[1] == ("bind", str(curves_storage_table_uid))
     compiled_sql = calls[2][1]
     assert "row_number()" in compiled_sql
     assert "partition by" in compiled_sql
@@ -404,11 +404,11 @@ def test_get_historical_discount_curve_observations_reads_many_curves_once(monke
 def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000206")
+    fixings_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000206")
     start_date = dt.datetime(2026, 5, 1, tzinfo=dt.UTC)
     end_date = dt.datetime(2026, 5, 27, tzinfo=dt.UTC)
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
@@ -433,10 +433,10 @@ def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypa
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid}
+            "storage_table_uids": {PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_storage_table_uid}
         }
     )
 
@@ -451,7 +451,7 @@ def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypa
         "MXN-TIIE": {dt.date(2026, 5, 26): 0.1125},
     }
     assert calls == [
-        ("table_uid", str(fixings_data_node_uid)),
+        ("table_uid", str(fixings_storage_table_uid)),
         (
             "range",
             [
@@ -477,7 +477,7 @@ def test_get_historical_fixings_for_identifiers_reads_many_indexes_once(monkeypa
 def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypatch) -> None:
     MSDataInterface.clear_caches()
     calls = []
-    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000203")
+    curves_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000203")
     latest_date = dt.datetime(2026, 5, 28, tzinfo=dt.UTC)
 
     class FakeUpdateStatistics:
@@ -485,7 +485,7 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
             calls.append(("latest", identity))
             return latest_date
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
@@ -497,7 +497,7 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
 
         def get_df_between_dates(self, *, dimension_range_map):
             calls.append(("range", dimension_range_map))
-            from msm_pricing.data_nodes.curve_codec import compress_curve_to_string
+            from msm_pricing.time_index.curve_codec import compress_curve_to_string
 
             return pd.DataFrame(
                 [
@@ -515,12 +515,12 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+            "storage_table_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid,
             },
         }
     )
@@ -539,7 +539,7 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
     assert observation["key_nodes"] == [{"maturity_date": "2026-06-24", "quote": 0.11}]
     assert observation["metadata_json"] == {"source_snapshot": "mock-latest"}
     assert calls == [
-        ("table_uid", str(curves_data_node_uid)),
+        ("table_uid", str(curves_storage_table_uid)),
         ("stats",),
         ("latest", "mxn_tiie_discount"),
         (
@@ -554,7 +554,7 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
                 }
             ],
         ),
-        ("table_uid", str(curves_data_node_uid)),
+        ("table_uid", str(curves_storage_table_uid)),
         ("stats",),
         ("latest", "mxn_tiie_discount"),
         (
@@ -574,17 +574,17 @@ def test_get_latest_discount_curve_uses_last_update_for_curve_identity(monkeypat
 
 def test_get_latest_discount_curve_requires_latest_curve_observation(monkeypatch) -> None:
     MSDataInterface.clear_caches()
-    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000204")
+    curves_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000204")
 
     class FakeUpdateStatistics:
         def get_last_update_for_identity(self, identity):
             assert identity == "missing_curve"
             return None
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
-            assert table_uid == str(curves_data_node_uid)
+            assert table_uid == str(curves_storage_table_uid)
             return cls()
 
         def get_update_statistics(self):
@@ -592,12 +592,12 @@ def test_get_latest_discount_curve_requires_latest_curve_observation(monkeypatch
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
 
     interface = MSDataInterface(
         market_data_configuration={
-            "data_node_uids": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
+            "storage_table_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid,
             },
         }
     )
@@ -608,24 +608,24 @@ def test_get_latest_discount_curve_requires_latest_curve_observation(monkeypatch
 
 def test_ms_data_interface_exposes_pricing_named_configuration_path() -> None:
     interface = MSDataInterface()
-    curves_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000301")
-    fixings_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000302")
+    curves_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000301")
+    fixings_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000302")
 
     interface.set_market_data_configuration(
         {
             "market_data_set": "eod",
-            "data_node_uids": {
-                PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
-                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
+            "storage_table_uids": {
+                PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid,
+                PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_storage_table_uid,
             },
         }
     )
 
     configuration = interface._get_market_data_configuration()
     assert configuration.market_data_set == "eod"
-    assert configuration.data_node_uids == {
-        PRICING_CONCEPT_DISCOUNT_CURVES: curves_data_node_uid,
-        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_data_node_uid,
+    assert configuration.storage_table_uids == {
+        PRICING_CONCEPT_DISCOUNT_CURVES: curves_storage_table_uid,
+        PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: fixings_storage_table_uid,
     }
 
 
@@ -637,7 +637,7 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
     persisted_uid = uuid.UUID("00000000-0000-0000-0000-000000000401")
     direct_uid = uuid.UUID("00000000-0000-0000-0000-000000000402")
 
-    class FakeAPIDataNode:
+    class FakeTableRef:
         @classmethod
         def from_uid(cls, table_uid):
             calls.append(("table_uid", table_uid))
@@ -657,9 +657,9 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
 
     import metatables as meta_tables
 
-    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeAPIDataNode)
+    monkeypatch.setattr(meta_tables, "TimeIndexTableRef", FakeTableRef)
     monkeypatch.setattr(
-        "msm_pricing.api.market_data_bindings.PricingMarketDataSetBinding.resolve_data_node_uid",
+        "msm_pricing.api.market_data_bindings.PricingMarketDataSetBinding.resolve_storage_table_uid",
         lambda *, market_data_set, concept_key: (
             persisted_uid
             if (
@@ -673,7 +673,7 @@ def test_get_historical_fixings_uses_persisted_binding_before_static_default(
     interface = MSDataInterface(
         market_data_configuration={
             "market_data_set": "default",
-            "data_node_uids": {
+            "storage_table_uids": {
                 PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: direct_uid,
             },
         }

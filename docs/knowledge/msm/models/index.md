@@ -68,7 +68,7 @@ construction models. Keep the owning package list updated when adding
 persistent market objects so schema registration stays deterministic.
 
 Models should represent durable schema. Runtime-only behavior belongs in
-DataNodes, services, pricing classes, or `msm.api` row helpers depending on the
+updaters, services, pricing classes, or `msm.api` row helpers depending on the
 use case.
 
 The core `markets_sqlalchemy_models()` list intentionally does not include
@@ -101,18 +101,18 @@ class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class BinanceSpotAccountDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __markets_base_identifier__ = "BinanceSpotAccountDetails"
+class ProviderAccountDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+    __markets_base_identifier__ = "ProviderAccountDetails"
     __metatable_description__ = (
-        "Project-local Binance spot account details keyed by AssetTable.uid."
+        "Project-local provider account details keyed by AssetTable.uid."
     )
 ```
 
 That changes only the SQLAlchemy physical table name, for example
-`my_project_markets__binancespotaccountdetails`. The local mixin's
+`my_project_markets__provideraccountdetails`. The local mixin's
 `__metatable_namespace__` combines with `__markets_base_identifier__` to produce
 the globally unique logical catalog and row runtime identity:
-`com.my_project.BinanceSpotAccountDetails`.
+`com.my_project.ProviderAccountDetails`.
 
 `MSM_AUTO_REGISTER_NAMESPACE` overrides the mixin namespace when set before
 model import. That keeps tests and examples isolated without changing the
@@ -121,7 +121,7 @@ qualified `__metatable_identifier__`; new extension models should prefer
 `__markets_base_identifier__` so the default namespace rule is visible.
 
 `__metatable_description__` is required on every concrete markets MetaTable,
-including `PlatformTimeIndexMetaTable` storage classes used by DataNodes. The
+including `PlatformTimeIndexMetaTable` storage classes used by updaters. The
 description is table-level discovery text: it should identify the row grain,
 business intention, and expected use of the table. Column labels and column
 descriptions stay on SQLAlchemy column `info` metadata. Built-in markets and

@@ -2,7 +2,7 @@
 
 The curve-scenario package owns runtime scenario mechanics only. Persisted
 curve rows, curve observations, and key-node provenance remain owned by
-``msm_pricing.data_nodes.curves`` and the pricing API rows. Connector-specific
+``msm_pricing.time_index.curves`` and the pricing API rows. Connector-specific
 curve rebuilds, such as vendor OIS construction, stay outside core
 ``msm_pricing`` and should adapt into these generic models at the boundary.
 """

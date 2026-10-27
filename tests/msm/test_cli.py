@@ -89,7 +89,7 @@ def test_index_workflow_skill_defines_formula_and_custom_contract() -> None:
 
     assert '`Index.calculation_method` is exactly' in content
     assert "MetaTable UID and observable are immutable formula semantics" in content
-    assert "Custom publication uses `IndexValuesDataNode`" in content
+    assert "Custom publication uses `IndexValuesUpdater`" in content
     assert "Self-financing and chained performance are stateful" in content
     assert "Do not add compatibility aliases" in content
 
@@ -200,3 +200,46 @@ def test_migrations_command_is_rejected(capsys) -> None:
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "invalid choice" in captured.err
+
+
+def test_series_move_runs_the_provider_moves(monkeypatch, capsys) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from msm.storage_copies import KeyCopy, SeriesMoveResult, TimeIndexCopyReport
+
+    seen: list[tuple[bool, bool]] = []
+
+    class Move:
+        move_order = 0
+        kind = "table"
+        label = "curves"
+
+        def run(self, *, rollback, dry_run):
+            seen.append((rollback, dry_run))
+            status = "planned" if dry_run else ("rolled_back" if rollback else "moved")
+            copy = TimeIndexCopyReport(
+                "core", "mine", "curve_identifier", (KeyCopy("C1", 3, 1, 2),), dry_run
+            )
+            return SeriesMoveResult("table", "curves", [copy], status=status)
+
+    monkeypatch.setitem(sys.modules, "provider_moves", SimpleNamespace(moves=lambda: [Move()]))
+
+    assert main(["series", "move", "provider_moves:moves"]) == 0
+    out = capsys.readouterr().out
+    assert "dry run: nothing written" in out and "core -> mine" in out
+    assert main(["series", "rollback", "provider_moves:moves", "--execute", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["rollback"] is True and payload["results"][0]["status"] == "rolled_back"
+    assert seen == [(False, True), (True, False)]
+
+    directions: list[bool] = []
+
+    def moves_for(rollback: bool = False):
+        directions.append(rollback)
+        return Move()
+
+    monkeypatch.setitem(sys.modules, "provider_moves", SimpleNamespace(moves=moves_for))
+    assert main(["series", "rollback", "provider_moves:moves", "--json"]) == 0
+    capsys.readouterr()
+    assert directions == [True]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from importlib.metadata import version
+from msm.distribution import package_version
 
 from apps.v1.schemas.settings import ApiSettingsResponse
 
@@ -15,7 +15,7 @@ def get_api_settings() -> ApiSettingsResponse:
     payload = _get_public_api_settings(
         app_name=API_SETTINGS_APP_NAME,
         app_scope=API_SETTINGS_APP_SCOPE,
-        app_version=version("ms-markets"),
+        app_version=package_version(),
         openapi_url=API_SETTINGS_OPENAPI_URL,
         swagger_url=API_SETTINGS_SWAGGER_URL,
         redoc_url=API_SETTINGS_REDOC_URL,

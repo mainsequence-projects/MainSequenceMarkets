@@ -4,15 +4,16 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from importlib.metadata import version
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
 from mainsequence.client.exceptions import ServerError
 from metatables.endpoint import ApiResolutionError, api_endpoint_scope
+from msm.distribution import package_version
 
 from apps.v1.routers.accounts import router as accounts_router
 from apps.v1.routers.asset_categories import router as asset_categories_router
@@ -27,13 +28,14 @@ from apps.v1.routers.pricing_curves import router as pricing_curves_router
 from apps.v1.routers.pricing_assets import router as pricing_assets_router
 from apps.v1.routers.pricing_market_data import router as pricing_market_data_router
 from apps.v1.routers.resource_discovery import router as resource_discovery_router
+from apps.v1.routers.rows import router as rows_router
 from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
 from apps.v1.openapi_documentation import apply_metatable_documentation
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 
 API_TITLE = "MainSequence Markets Public API"
-API_VERSION = version("ms-markets")
+API_VERSION = package_version()
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 API_SOURCE_REPOSITORY = "https://github.com/mainsequence-projects/MainSequenceMarkets"
 OPENAPI_LOGO_URL = "/static/main-sequence-markets/main_sequence_markets_icon_emblem_transparent.png"
@@ -129,6 +131,14 @@ API_TAGS = [
         "description": "Command Center Adapter from API discovery and health endpoints.",
     },
     {
+        "name": "rows",
+        "x-displayName": "Remote Row Operations",
+        "description": (
+            "Row class methods for `msm.client`'s remote backend (ADR 0047): an application "
+            "runs `msm.api` row operations here instead of holding MetaTables grants."
+        ),
+    },
+    {
         "name": "resource-discovery",
         "x-displayName": "Resource Discovery",
         "description": (
@@ -158,7 +168,7 @@ API_TAG_GROUPS = [
     },
     {
         "name": "Platform integration",
-        "tags": ["resource-discovery", "command-center", "settings"],
+        "tags": ["resource-discovery", "command-center", "settings", "rows"],
     },
 ]
 
@@ -216,6 +226,16 @@ def create_app() -> FastAPI:
         StaticFiles(directory=PROJECT_ROOT / "docs" / "img" / "main-sequence-markets"),
         name="main-sequence-markets-static",
     )
+    from apps.v1.policy import RegistryWriteForbidden, RegistryWritePolicyError
+
+    @app.exception_handler(RegistryWriteForbidden)
+    async def _registry_write_forbidden(_request: Request, exc: RegistryWriteForbidden):
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(RegistryWritePolicyError)
+    async def _registry_write_policy_error(_request: Request, exc: RegistryWritePolicyError):
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
     app.include_router(command_center_router)
     # Discovery routes must precede parameterized resource-detail routes.
     app.include_router(resource_discovery_router, prefix="/api/v1")
@@ -233,6 +253,7 @@ def create_app() -> FastAPI:
     app.include_router(pricing_curves_router, prefix="/api/v1")
     app.include_router(pricing_market_data_router, prefix="/api/v1")
     app.include_router(settings_router, prefix="/api/v1")
+    app.include_router(rows_router, prefix="/api/v1")
 
     def custom_openapi():
         if app.openapi_schema is not None:

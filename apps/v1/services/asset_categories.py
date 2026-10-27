@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.asset_categories import (
     AssetCategory,
     AssetCategoryDetailResponse,
@@ -38,12 +39,14 @@ def get_asset_category_detail(*, uid: str) -> AssetCategoryDetailResponse | None
     return AssetCategoryDetailResponse.model_validate(detail)
 
 
+@registry_write("asset-category", "create")
 def create_asset_category(*, payload: Mapping[str, Any]) -> AssetCategory:
     runtime = _get_runtime()
     record = _create_asset_category_record(runtime.context, **dict(payload))
     return AssetCategory.model_validate(record)
 
 
+@registry_write("asset-category", "update")
 def update_asset_category(*, uid: str, payload: Mapping[str, Any]) -> AssetCategory | None:
     runtime = _get_runtime()
     record = _update_asset_category_record(runtime.context, uid=uid, **dict(payload))
@@ -52,11 +55,13 @@ def update_asset_category(*, uid: str, payload: Mapping[str, Any]) -> AssetCateg
     return AssetCategory.model_validate(record)
 
 
+@registry_write("asset-category", "delete")
 def delete_asset_category(*, uid: str) -> bool:
     runtime = _get_runtime()
     return bool(_delete_asset_category_record(runtime.context, uid=uid))
 
 
+@registry_write("asset-category", "bulk-delete")
 def bulk_delete_asset_categories(
     *, payload: Mapping[str, Any]
 ) -> BulkDeleteAssetCategoriesResponse:

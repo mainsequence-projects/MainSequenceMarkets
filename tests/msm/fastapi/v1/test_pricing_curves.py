@@ -410,7 +410,7 @@ def test_get_pricing_curve_delete_impact_returns_404_when_missing(monkeypatch) -
 
 def test_delete_pricing_curve_deletes_with_explicit_cleanup_flags(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
     def fake_delete_curve(**kwargs):
@@ -427,7 +427,7 @@ def test_delete_pricing_curve_deletes_with_explicit_cleanup_flags(monkeypatch) -
             "delete_curve_selections": True,
             "storage_cleanups": [
                 {
-                    "data_node_uid": str(data_node_uid),
+                    "storage_table_uid": str(storage_table_uid),
                     "storage_table_identifier": "DiscountCurvesStorage",
                     "deleted_count": 4,
                     "table_empty": False,
@@ -462,7 +462,8 @@ def test_delete_pricing_curve_deletes_with_explicit_cleanup_flags(monkeypatch) -
         "delete_curve_selections": True,
         "storage_cleanups": [
             {
-                "data_node_uid": str(data_node_uid),
+                "storage_table_uid": str(storage_table_uid),
+                "data_node_uid": str(storage_table_uid),
                 "storage_table_identifier": "DiscountCurvesStorage",
                 "deleted_count": 4,
                 "table_empty": False,
@@ -509,7 +510,7 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     effective_date = dt.datetime(2026, 6, 2, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
 
@@ -530,7 +531,8 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
             "binding": {
                 "uid": str(binding_uid),
                 "concept_key": "discount_curves",
-                "data_node_uid": str(data_node_uid),
+                "storage_table_uid": str(storage_table_uid),
+                "data_node_uid": str(storage_table_uid),
                 "storage_table_identifier": "DiscountCurvesStorage",
             },
             "valuation_date": None,
@@ -568,7 +570,8 @@ def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:
         "binding": {
             "uid": str(binding_uid),
             "concept_key": "discount_curves",
-            "data_node_uid": str(data_node_uid),
+            "storage_table_uid": str(storage_table_uid),
+            "data_node_uid": str(storage_table_uid),
             "storage_table_identifier": "DiscountCurvesStorage",
         },
         "valuation_date": None,
@@ -589,7 +592,7 @@ def test_get_pricing_discount_curve_passes_historical_date(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     valuation_date = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
 
@@ -607,7 +610,7 @@ def test_get_pricing_discount_curve_passes_historical_date(monkeypatch) -> None:
             "binding": {
                 "uid": str(binding_uid),
                 "concept_key": "discount_curves",
-                "data_node_uid": str(data_node_uid),
+                "storage_table_uid": str(storage_table_uid),
                 "storage_table_identifier": None,
             },
             "valuation_date": valuation_date.isoformat(),
@@ -661,7 +664,7 @@ def test_get_pricing_discount_curve_returns_404_for_missing_curve(monkeypatch) -
 def test_get_pricing_discount_curve_returns_404_for_missing_observation(monkeypatch) -> None:
     def fake_discount_curve(**kwargs):
         raise LookupError(
-            "No discount-curve data has been published for curve 'VALMER_TIIE_28' "
+            "No discount-curve data has been published for curve 'PROVIDER_TIIE_28' "
             "in pricing market-data set 'default'. The curve registry row and "
             "discount_curves binding exist, but bound TimeIndexTableUpdater data-node-uid has "
             "no latest ms_markets__discountcurvests observation for this curve_identifier."
@@ -681,7 +684,7 @@ def test_get_pricing_discount_curve_returns_404_for_missing_observation(monkeypa
     assert response.status_code == 404
     detail = response.json()["detail"]
     assert "No discount-curve data has been published" in detail
-    assert "VALMER_TIIE_28" in detail
+    assert "PROVIDER_TIIE_28" in detail
     assert "bound TimeIndexTableUpdater data-node-uid" in detail
 
 
@@ -827,7 +830,7 @@ def test_pricing_curve_delete_impact_service_uses_pricing_api(monkeypatch) -> No
 
 def test_pricing_curve_delete_service_uses_pricing_api(monkeypatch) -> None:
     curve_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
@@ -849,7 +852,7 @@ def test_pricing_curve_delete_service_uses_pricing_api(monkeypatch) -> None:
             "delete_curve_selections": True,
             "storage_cleanups": [
                 {
-                    "data_node_uid": str(data_node_uid),
+                    "storage_table_uid": str(storage_table_uid),
                     "storage_table_identifier": "DiscountCurvesStorage",
                     "deleted_count": 4,
                     "table_empty": False,

@@ -19,17 +19,17 @@ Implemented scope:
 
 Not implemented here:
 
-- Valmer connector refactor and fixture parity checks;
+- provider connector refactor and fixture parity checks;
 - coupon schedule diagnostics;
 - bond pricing payload factory.
 
 ## Scope
 
-Item 1 from the Valmer donor analysis is the top-priority upstream phase:
+Item 1 from the provider donor analysis is the top-priority upstream phase:
 generic bond-helper curve reconstruction.
 
 Items 5 and 6 are intentionally not part of this implementation phase. They
-need a Valmer-side design discussion before ms-markets accepts a stable public
+need a provider-side design discussion before ms-markets accepts a stable public
 contract:
 
 - item 5: coupon schedule diagnostics;
@@ -49,16 +49,16 @@ The phase is successful only when:
 - observation export reuses the generic curve observation exporter;
 - scenario pricing has an explicit, tested policy for price-quoted bond
   helpers versus yield shocks;
-- Valmer code can become a source adapter that reads source rows, maps them to
+- Provider code can become a source adapter that reads source rows, maps them to
   generic specs or key nodes, and calls ms-markets;
-- ms-markets core contains no Valmer, CETES, M Bono, Mexico, MXN, TIIE, or
+- ms-markets core contains no provider, CETES, M Bono, Mexico, MXN, TIIE, or
   source-file-specific symbols in public APIs, generic tests, or generic
   examples.
 
 ## Donor Analysis
 
 Source file:
-`/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/src/valmer_connectors/instruments/mexican_government_bond_curve.py`
+the provider connector's government-bond curve module
 
 | Donor Location | Generic Meaning | Target Owner |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ The donor proves a real generic gap: ms-markets now owns OIS, overnight
 deposit, and interest-rate future helper reconstruction, but it does not yet
 own generic bond helper reconstruction. The donor should not be copied
 directly because row filtering, source column parsing, instrument labels, and
-vendor validations belong in Valmer.
+vendor validations belong in the provider connector.
 
 ## Architecture Decision For This Plan
 
@@ -267,14 +267,14 @@ enough evidence unless the test proves the bump policy is financially coherent.
 - Prove scenario handles are rebuilt from copied key nodes and do not mutate
   persisted curve data.
 
-### 5. Valmer Adapter Refactor
+### 5. Provider Adapter Refactor
 
-- Refactor Valmer to keep row selection, column parsing, source identifiers,
+- Refactor the provider connector to keep row selection, column parsing, source identifiers,
   source quote scaling, and vendor validations.
 - Map selected source rows to generic bond helper key nodes.
 - Call ms-markets reconstruction and observation export.
-- Keep Valmer curve names and Valmer fixture parity tests outside ms-markets.
-- Delete local Valmer bootstrap helpers only after parity is demonstrated.
+- Keep provider curve names and provider fixture parity tests outside ms-markets.
+- Delete local provider bootstrap helpers only after parity is demonstrated.
 
 ### 6. Canonical Documentation
 
@@ -296,12 +296,12 @@ enough evidence unless the test proves the bump policy is financially coherent.
   implemented;
 - nonzero scenario delta when yield-to-price conversion is implemented;
 - no mutation of persisted key nodes during scenario reconstruction;
-- Valmer parity test outside ms-markets before deleting connector-local helper
+- Provider parity test outside ms-markets before deleting connector-local helper
   code.
 
-## What Stays In Valmer
+## What Stays In The Provider Connector
 
-Valmer should retain:
+The provider connector should retain:
 
 - source file loading;
 - source row filtering;
@@ -315,10 +315,10 @@ Valmer should retain:
 
 ## Item 5: Coupon Schedule Diagnostics
 
-Status: defer for Valmer discussion.
+Status: defer for provider discussion.
 
 Donor file:
-`/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/src/valmer_connectors/instruments/vector_to_asset.py`
+the provider connector's vector-to-asset module
 
 Relevant donor functions:
 
@@ -345,15 +345,15 @@ Potential future models/functions:
 This should not be implemented in the bond-helper phase. The donor code is
 still print-heavy and source-row-oriented. A reusable version must return
 structured diagnostics, take provider-neutral inputs, and avoid embedding
-Valmer sheet reconciliation semantics in ms-markets.
+provider sheet reconciliation semantics in ms-markets.
 
 ## Item 6: Bond Instrument Terms Factory
 
-Status: implemented in ms-markets core. Valmer adapter switch-over remains
+Status: implemented in ms-markets core. Provider adapter switch-over remains
 downstream work.
 
 Donor file:
-`/Users/jose/mainsequence-dev/main-sequence-workbench/projects/valmer-connectors-64338319-bd19-48db-bf14-945d8debb9be/src/valmer_connectors/instruments/bond_terms.py`
+the provider connector's bond-terms module
 
 Verified donor symbols:
 
@@ -365,17 +365,17 @@ Verified donor symbols:
 The donor module is a much cleaner upstream candidate than the old
 `vector_to_asset.py` payload factory. Verified properties:
 
-- no Valmer row parsing;
+- no provider row parsing;
 - no `SUBYACENTE_TO_INDEX_MAP`;
 - no issuer/security-type classification;
 - no reference-index bootstrap;
 - no sheet schedule fixing or coupon reconciliation;
-- no `valmer_connectors.settings` dependency;
-- Valmer's `CoreBondPricingPayload` is now only a compatibility alias to the
+- no provider settings dependency;
+- The provider's `CoreBondPricingPayload` is now only a compatibility alias to the
   generic terms object;
-- Valmer's `build_instrument_from_core_bond_pricing_payload(...)` delegates to
+- The provider's `build_instrument_from_core_bond_pricing_payload(...)` delegates to
   `build_instrument_from_bond_terms(...)`;
-- Valmer tests cover zero, fixed, and floating instrument construction,
+- Provider tests cover zero, fixed, and floating instrument construction,
   UID-field propagation, legacy alias compatibility, wrapper delegation,
   dependency cleanliness, and QuantLib settings restoration.
 
@@ -426,9 +426,9 @@ Implementation status:
    instruments with UID fields and no legacy `*_index_name` keys.
 4. [x] Add tests proving QuantLib evaluation-date settings are restored after
    construction.
-5. [x] Add tests proving the module has no Valmer/provider imports or source-map
+5. [x] Add tests proving the module has no provider imports or source-map
    dependencies.
-6. [ ] Update Valmer to import the ms-markets implementation and keep only row
+6. [ ] Update the provider connector to import the ms-markets implementation and keep only row
    parsing, source classification, source index lookup, and compatibility
    aliases.
 7. [x] Update canonical docs, tutorial, example, and changelog after
@@ -436,7 +436,7 @@ Implementation status:
 
 Do not upstream:
 
-- `valmer_row_to_core_bond_pricing_payload(...)`;
+- `provider_row_to_core_bond_pricing_payload(...)`;
 - `SUBYACENTE_TO_INDEX_MAP`;
 - source-specific reference-index lookup/bootstrap;
 - issuer/security-type classification;

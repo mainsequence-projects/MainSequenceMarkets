@@ -38,6 +38,14 @@ needed. Revisions `0001`–`0016` remain unsupported; investigate those separate
 The bridge is forward-only. See
 [ADR 0046](../../../ADR/0046-legacy-0017-schema-bridge.md).
 
+Release 3.0.0 adds revision `0022`. Each pre-3.0 `*_data_node_uid` column gets
+a successor named after the identity it holds, `*_table_update_uid` or
+`*storage_table_uid`, and the existing values are copied. ms-markets 3.x writes
+both columns and reads the pre-3.0 ones, because 2.x writers update only those.
+A later release switches reads once every writer runs 3.x, 4.0 stops writing the
+pre-3.0 columns, and 4.1 drops them; each step needs its own release. See
+[ADR 0048](../../../ADR/0048-time-index-vocabulary-rename.md).
+
 Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra
 unique constraint that omitted the TimescaleDB partition key. The full-grain
 unique index and existing rows remain intact; the accounting engine validates

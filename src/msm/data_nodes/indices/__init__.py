@@ -1,29 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm.time_index.indices``.
 
-from msm.data_nodes.indices.timestamped import (
-    IndexDataNodeConfiguration,
-    IndexTimestampedDataNode,
-    IndexTimestampedFrameMixin,
-)
-from msm.data_nodes.indices.storage import (
-    IndexValuesStorage,
-    configured_index_values_storage,
-    index_values_storage_identity_components,
-    index_values_output_table_name,
-)
-from msm.data_nodes.indices.values import IndexValuesDataNode, normalize_index_values_frame
-from msm.data_nodes.indices.formula import FormulaIndexDataNode, FormulaIndexDataNodeConfiguration
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "IndexDataNodeConfiguration",
-    "IndexTimestampedDataNode",
-    "IndexTimestampedFrameMixin",
-    "FormulaIndexDataNode",
-    "FormulaIndexDataNodeConfiguration",
-    "IndexValuesDataNode",
-    "IndexValuesStorage",
-    "configured_index_values_storage",
-    "index_values_storage_identity_components",
-    "index_values_output_table_name",
-    "normalize_index_values_frame",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm.time_index.indices")

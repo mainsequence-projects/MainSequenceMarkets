@@ -36,6 +36,7 @@ from .index_formulas import (
 )
 from .portfolios import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from .portfolios import SignalMetadataTable
+from .portfolio_dataset_availability import PortfolioDatasetAvailabilityTable
 
 
 def markets_sqlalchemy_models() -> list[type]:
@@ -64,6 +65,7 @@ def markets_sqlalchemy_models() -> list[type]:
         CalendarEventTable,
         SignalMetadataTable,
         PortfolioTable,
+        PortfolioDatasetAvailabilityTable,
         PortfolioGroupTable,
         PortfolioGroupMembershipTable,
         AccountAllocationModelTable,
@@ -78,11 +80,11 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountTargetAllocationTable,
         PositionSetTable,
         OrderManagerTable,
-        *_markets_data_node_storage_models(),
+        *_markets_time_index_storage_models(),
     ]
 
 
-def _markets_data_node_storage_models() -> list[type]:
+def _markets_time_index_storage_models() -> list[type]:
     """Return ADR 0017 TimeIndexTableUpdater output storage MetaTables in FK order.
 
     Imported lazily so importing ``msm.models`` never eagerly pulls in the
@@ -90,15 +92,15 @@ def _markets_data_node_storage_models() -> list[type]:
     ``msm.models`` domain tables for their FK targets).
     """
 
-    from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-    from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
-    from msm.data_nodes.assets.storage import AssetSnapshotsStorage
-    from msm.data_nodes.execution.storage import (
+    from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+    from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+    from msm.time_index.assets.storage import AssetSnapshotsStorage
+    from msm.time_index.execution.storage import (
         OrderEventsStorage,
         OrdersStorage,
         TradesStorage,
     )
-    from msm.data_nodes.indices.storage import IndexValuesStorage
+    from msm.time_index.indices.storage import IndexValuesStorage
 
     return [
         AssetSnapshotsStorage,
@@ -138,6 +140,7 @@ __all__ = [
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
     "PositionSetTable",
+    "PortfolioDatasetAvailabilityTable",
     "PortfolioGroupMembershipTable",
     "PortfolioGroupTable",
     "PortfolioTable",

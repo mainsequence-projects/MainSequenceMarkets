@@ -35,7 +35,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     FixedWeights,
     FixedWeightsConfig,
 )
-from msm_portfolios.data_nodes import compute_portfolio_configuration_hash  # noqa: E402
+from msm_portfolios.time_index import compute_portfolio_configuration_hash  # noqa: E402
 from msm_portfolios.rebalance_strategy import CalendarEventSignal  # noqa: E402
 
 FAIR_VALUE_SOURCE_UID_ENV = "MSM_EXAMPLE_FAIR_VALUE_TIME_INDEX_META_TABLE_UID"

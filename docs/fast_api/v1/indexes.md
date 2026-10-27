@@ -12,12 +12,18 @@ typed-library operation through `FormulaIndex`.
 | `GET` | `/api/v1/index-type/{index_type}/` | `getIndexType` | One type |
 | `GET` | `/api/v1/index/` | `listIndexes` | Counted Index page |
 | `POST` | `/api/v1/index/` | `createIndex` | New Index identity |
+| `GET` | `/api/v1/index/by-uids/` | `getIndexesByUids` | Batch lookup by uid |
 | `GET` | `/api/v1/index/{uid}/` | `getIndex` | One Index |
 | `PATCH` | `/api/v1/index/{uid}/` | `updateIndex` | Updated identity metadata |
 | `DELETE` | `/api/v1/index/{uid}/` | `deleteIndex` | Direct row deletion |
 | `GET` | `/api/v1/index/{uid}/summary/` | `getIndexSummary` | Detail summary |
 | `GET` | `/api/v1/index/{uid}/formulas/` | `listIndexFormulas` | Formula history |
+| `POST` | `/api/v1/index/{uid}/formulas/` | `saveIndexFormula` | Stored formula version |
+| `POST` | `/api/v1/index/{uid}/formulas/preview/` | `previewIndexFormula` | Unsaved formula as a tabular frame |
 | `GET` | `/api/v1/index/{uid}/formulas/{definition_uid}/` | `getIndexFormula` | Formula and exact inputs |
+| `POST` | `/api/v1/index/{uid}/formulas/{definition_uid}/activate/` | `activateIndexFormula` | Activated version |
+| `POST` | `/api/v1/index/{uid}/formulas/{definition_uid}/retire/` | `retireIndexFormula` | Retired version |
+| `POST` | `/api/v1/index/{uid}/formulas/{definition_uid}/preview/` | `previewStoredIndexFormula` | Stored formula as a tabular frame |
 | `GET` | `/api/v1/index/{uid}/datasets/` | `listIndexDatasets` | Per-Index dataset states |
 | `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/` | `getIndexDatasetSummary` | Selected dataset summary |
 | `GET` | `/api/v1/index/{uid}/datasets/{meta_table_uid}/values/` | `getIndexDatasetValuesFrame` | Bounded tabular frame |
@@ -26,7 +32,15 @@ typed-library operation through `FormulaIndex`.
 | `GET` | `/api/v1/asset/{uid}/related-meta-tables/` | `listAssetRelatedMetaTables` | Asset source-table discovery |
 
 All operations are present in the Adapter from API contract. Create, update,
-and delete are mutations.
+delete, and the formula save, activate and retire routes are mutations; the
+previews are queries that persist nothing.
+
+`GET /api/v1/index/by-uids/?uid__in=<uid>&uid__in=<uid>` is a bounded batch
+lookup (ADR 0047): `uid__in` is repeated or comma-separated, at most 500, the
+matching rows return in request order inside a `ResourceCollection`, unknown
+uids are omitted, and there is no paging, search or discovery route.
+`include=<sidecar MetaTable uid>` attaches provider sidecar rows under
+`includes[<uid>]`, as described for [accounts](accounts.md).
 
 ## Identity Payload
 
@@ -79,6 +93,40 @@ and input count. Detail adds alignment parameters, metadata, and exact inputs:
 
 The response has no source key, resolver object, configurable identity/value
 columns, selectors, transforms, coefficients, or units.
+
+## Formula Lifecycle
+
+Formula creation, lifecycle and preview go through `msm.api.FormulaIndex`
+(ADR 0037, ADR 0038); the routes are thin wrappers that take the Index
+identity from the stored row and record the acting identity (ADR 0047).
+
+- `POST /api/v1/index/{uid}/formulas/` with `{"definition": ..., "inputs": [...]}`
+  persists one version through `FormulaIndex.upsert`. `definition` is an
+  `IndexFormulaDefinition` (`valid_from`, `formula`, `alignment_policy`,
+  `alignment_parameters_json`, `missing_data_policy`, optional `status`,
+  `version`, `valid_to`, `metadata_json`); `inputs` are the exact source
+  bindings shown above. A definition identical to a stored version returns that
+  version; otherwise the next monotonic version is stored as `draft` unless
+  `status` asks for `active` or `retired`. `400` for a formula that fails the
+  contract or an Index with `calculation_method="custom"`, `404` for an unknown
+  Index or source, `409` when the row cannot be stored. Returns the
+  `IndexFormulaDetail` with `201`.
+- `POST /api/v1/index/{uid}/formulas/{definition_uid}/activate/` activates a
+  draft and retires the open predecessor atomically.
+- `POST /api/v1/index/{uid}/formulas/{definition_uid}/retire/` retires a version
+  at `valid_to` (body, optional; now by default).
+- `POST /api/v1/index/{uid}/formulas/preview/` with
+  `{"definition": ..., "inputs": [...], "start": ..., "end": ...}` validates an
+  unsaved formula, reads the pinned source MetaTables over the window through
+  `TimeIndexTableRef` and returns the calculated observations as
+  `core.tabular_frame@v1` (`time_index`, `index_identifier`, `value`,
+  `definition_uid`, `observation_status`, `source_as_of`, `metadata_json`;
+  timestamps as epoch milliseconds). Nothing is persisted.
+- `POST /api/v1/index/{uid}/formulas/{definition_uid}/preview/` with
+  `{"start": ..., "end": ...}` does the same for a stored version.
+
+`start` and `end` must be timezone-aware and `end` later than `start`. A
+definition uid that belongs to another Index is `404`.
 
 ## Related MetaTables
 

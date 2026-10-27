@@ -8,8 +8,7 @@ Accepted.
 
 The project FastAPI app already owned strict Command Center collection,
 discovery, and bulk-action contracts, but those implementations lived under
-the repository-only `apps/v1` tree. Alpaca, Binance, and future provider
-CodeRepositories need the same infrastructure while retaining provider-owned
+the repository-only `apps/v1` tree. Provider CodeRepositories need the same infrastructure while retaining provider-owned
 registration, account, holdings, and credential behavior.
 
 Copying the app modules into every provider would make fixes and contract

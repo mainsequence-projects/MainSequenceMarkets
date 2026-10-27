@@ -38,8 +38,8 @@ def reset_pricing_runtime(monkeypatch) -> None:
 def install_fake_pricing_bootstrap(monkeypatch):
     attach_calls = []
 
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
 
     monkeypatch.setattr(
         CurveTable,
@@ -214,7 +214,7 @@ def test_attach_pricing_schemas_installs_market_data_configuration_override(
         seed_default_market_data_bindings=False,
         market_data_configuration={
             "market_data_set": "eod",
-            "data_node_uids": {
+            "storage_table_uids": {
                 PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000101",
                 PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: (
                     "00000000-0000-0000-0000-000000000102"
@@ -226,7 +226,7 @@ def test_attach_pricing_schemas_installs_market_data_configuration_override(
     configuration = get_pricing_market_data_configuration()
     assert configuration == PricingMarketDataConfiguration(
         market_data_set="eod",
-        data_node_uids={
+        storage_table_uids={
             PRICING_CONCEPT_DISCOUNT_CURVES: "00000000-0000-0000-0000-000000000101",
             PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS: ("00000000-0000-0000-0000-000000000102"),
         },
@@ -290,7 +290,7 @@ def test_attach_pricing_schemas_seeds_default_market_data_bindings(
         {
             "market_data_set_uid": market_data_set_uid,
             "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_uid": "discount-curves-storage-uid",
+            "storage_table_uid": "discount-curves-storage-uid",
             "storage_table_identifier": "registered.discount_curves",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
@@ -298,7 +298,7 @@ def test_attach_pricing_schemas_seeds_default_market_data_bindings(
         {
             "market_data_set_uid": market_data_set_uid,
             "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-            "data_node_uid": "index-fixings-storage-uid",
+            "storage_table_uid": "index-fixings-storage-uid",
             "storage_table_identifier": "registered.index_fixings",
             "source": "msm_pricing.bootstrap",
             "metadata_json": {"seeded_default": True},
@@ -312,7 +312,7 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
     install_fake_pricing_bootstrap(monkeypatch)
     calls = []
     market_data_set_uid = uuid.UUID("00000000-0000-0000-0000-000000000401")
-    existing_data_node_uid = uuid.UUID("00000000-0000-0000-0000-000000000402")
+    existing_storage_table_uid = uuid.UUID("00000000-0000-0000-0000-000000000402")
 
     def fake_search_model(context, *, model, filters, limit):
         calls.append(("search", context, model, filters, limit))
@@ -321,7 +321,7 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
                 {
                     "uid": "existing-binding-uid",
                     **filters,
-                    "data_node_uid": existing_data_node_uid,
+                    "storage_table_uid": existing_storage_table_uid,
                 }
             ]
         }
@@ -347,7 +347,7 @@ def test_default_market_data_binding_seeding_does_not_overwrite_existing_rows(
 
     assert len(rows) == 3
     assert rows[0]["set_key"] == PRICING_MARKET_DATA_SET_DEFAULT
-    assert all(row["data_node_uid"] == existing_data_node_uid for row in rows[1:])
+    assert all(row["storage_table_uid"] == existing_storage_table_uid for row in rows[1:])
 
 
 def test_default_market_data_binding_seeding_replaces_when_requested(

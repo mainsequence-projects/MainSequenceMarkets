@@ -16,11 +16,14 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "unique_identifier": "example-sleeve",
         "calendar_uid": str(uuid.uuid4()),
         "published_index_uid": str(uuid.uuid4()),
+        "portfolio_weights_table_update_uid": None,
+        "signal_weights_table_update_uid": None,
+        "signal_uid": None,
+        "portfolio_table_update_uid": None,
+        "backtest_table_price_column_name": "close",
         "portfolio_weights_data_node_uid": None,
         "signal_weights_data_node_uid": None,
-        "signal_uid": None,
         "portfolio_data_node_uid": None,
-        "backtest_table_price_column_name": "close",
     }
 
 
@@ -226,6 +229,7 @@ def test_get_portfolio_summary_returns_standard_summary(monkeypatch) -> None:
 def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     portfolio = _portfolio_row()
     portfolio["calendar_uid"] = str(uuid.uuid4())
+    # A 2.x writer updates only the pre-3.0 columns, which 3.0 reads (ADR 0048).
     portfolio["portfolio_weights_data_node_uid"] = str(uuid.uuid4())
     portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
     portfolio["signal_uid"] = "example-signal"
@@ -259,15 +263,18 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     }
     assert "backtest_table_price_column_name" not in summary_keys
     assert {
-        "portfolio_weights_data_node_uid",
-        "signal_weights_data_node_uid",
+        "portfolio_weights_table_update_uid",
+        "signal_weights_table_update_uid",
         "signal_uid",
-        "portfolio_data_node_uid",
+        "portfolio_table_update_uid",
     } <= summary_keys
     assert summary["extensions"]["pointers"] == {
+        "portfolio_weights_table_update_uid": portfolio["portfolio_weights_data_node_uid"],
+        "signal_weights_table_update_uid": portfolio["signal_weights_data_node_uid"],
+        "signal_uid": portfolio["signal_uid"],
+        "portfolio_table_update_uid": portfolio["portfolio_data_node_uid"],
         "portfolio_weights_data_node_uid": portfolio["portfolio_weights_data_node_uid"],
         "signal_weights_data_node_uid": portfolio["signal_weights_data_node_uid"],
-        "signal_uid": portfolio["signal_uid"],
         "portfolio_data_node_uid": portfolio["portfolio_data_node_uid"],
     }
     assert summary["highlight_fields"][0] == {
@@ -285,14 +292,14 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     assert inline_fields_by_key["published_index_uid"]["link_url"] == (
         f"/api/v1/index/{portfolio['published_index_uid']}/"
     )
-    assert inline_fields_by_key["portfolio_weights_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["portfolio_weights_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/weights/"
         "?order=desc&limit=1&include_asset_detail=true"
     )
-    assert inline_fields_by_key["signal_weights_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["signal_weights_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/signals_weights/?order=desc&limit=100"
     )
-    assert inline_fields_by_key["portfolio_data_node_uid"]["link_url"] == (
+    assert inline_fields_by_key["portfolio_table_update_uid"]["link_url"] == (
         f"/api/v1/portfolio/{portfolio['uid']}/portfolio_values/?order=desc&limit=100"
     )
     assert summary["badges"] == [
@@ -496,7 +503,7 @@ def test_get_portfolio_signal_weights_frame_returns_tabular_response(monkeypatch
 
 def test_get_portfolio_signal_weights_frame_returns_400_when_unconfigured(monkeypatch) -> None:
     def fake_signal_weights_frame(**kwargs):
-        raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
+        raise ValueError("Portfolio has no signal_weights_table_update_uid configured.")
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.get_portfolio_signal_weights_frame",
@@ -507,7 +514,7 @@ def test_get_portfolio_signal_weights_frame_returns_400_when_unconfigured(monkey
     response = client.get(f"/api/v1/portfolio/{uuid.uuid4()}/signals_weights/")
 
     assert response.status_code == 400
-    assert "signal_weights_data_node_uid" in response.json()["detail"]
+    assert "signal_weights_table_update_uid" in response.json()["detail"]
 
 
 def test_get_portfolio_values_frame_returns_tabular_response(monkeypatch) -> None:
@@ -609,6 +616,7 @@ def test_delete_portfolio_returns_success(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 3,
         "deleted_values_count": 2,
+        "retained_datasets": [],
     }
 
 
@@ -797,6 +805,7 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
         "deleted_count": 1,
         "deleted_weights_count": 3,
         "deleted_values_count": 2,
+        "retained_datasets": [],
         "failed": [],
     }
 
@@ -844,6 +853,7 @@ def test_bulk_cascade_delete_portfolios_returns_success(monkeypatch) -> None:
         "deleted_virtual_funds_count": 1,
         "deleted_virtual_fund_holdings_sets_count": 1,
         "deleted_virtual_fund_holdings_count": 5,
+        "retained_datasets": [],
         "failed": [],
     }
     assert captured == {"uids": [str(deleted_uid)]}
@@ -1109,6 +1119,7 @@ def test_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 5,
         "deleted_values_count": 6,
+        "retained_datasets": [],
     }
     assert captured["context"] is runtime.context
     assert captured["uid"] == str(portfolio_uid)
@@ -1154,6 +1165,7 @@ def test_cascade_delete_portfolio_service_maps_source_response(monkeypatch) -> N
         "deleted_virtual_funds_count": 2,
         "deleted_virtual_fund_holdings_sets_count": 3,
         "deleted_virtual_fund_holdings_count": 8,
+        "retained_datasets": [],
     }
     assert captured["context"] is runtime.context
     assert captured["uid"] == str(portfolio_uid)
@@ -1252,6 +1264,10 @@ def test_public_delete_portfolio_blocks_target_position_references(monkeypatch) 
 
 
 def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._portfolio_dataset_tables",
+        lambda context, portfolio_identifier: None,
+    )
     portfolio = _portfolio_row()
     captured: dict[str, object] = {}
 
@@ -1295,6 +1311,7 @@ def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 4,
         "deleted_values_count": 5,
+        "retained_datasets": [],
     }
     assert captured["compile"]["portfolio_uid"] == uuid.UUID(str(portfolio["uid"]))
     assert captured["delete_weights"] == {
@@ -1319,15 +1336,14 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
     def fake_compile(statement, **kwargs):
         captured["statement"] = statement
         captured.update(kwargs)
-        return "compiled-values-select"
+        return statement
 
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {
+    def fake_execute(operation, context):
+        # ADR 0047: the read first resolves the portfolio's dataset instance from the
+        # Markets catalog; no row means the core PortfoliosStorage table.
+        if "portfoliodatasetavailability" in str(operation):
+            return {"rows": []}
+        return {
             "rows": [
                 {
                     "time_index": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
@@ -1338,7 +1354,15 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
                     "close_time": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
                 }
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.compile_markets_statement",
+        fake_compile,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.execute_markets_operation",
+        fake_execute,
     )
 
     from msm_portfolios.services.public_api import get_portfolio_values_frame_response
@@ -1377,15 +1401,16 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
     def fake_compile(statement, **kwargs):
         captured["statement"] = statement
         captured.update(kwargs)
-        return "compiled-signal-select"
+        return statement
 
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {
+    def fake_execute(operation, context):
+        # No catalog row and no SignalMetadata.meta_table_uid: the core table is read.
+        sql = str(operation)
+        if "portfoliodatasetavailability" in sql:
+            return {"rows": []}
+        if "signalweightsts" not in sql:
+            return {"rows": [{"meta_table_uid": None}]}
+        return {
             "rows": [
                 {
                     "time_index": dt.datetime(2026, 6, 10, 10, 30, tzinfo=dt.UTC),
@@ -1394,7 +1419,15 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
                     "signal_weight": 0.6,
                 }
             ]
-        },
+        }
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.compile_markets_statement",
+        fake_compile,
+    )
+    monkeypatch.setattr(
+        "msm_portfolios.services.portfolio_reads.execute_markets_operation",
+        fake_execute,
     )
 
     from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response
@@ -1431,7 +1464,7 @@ def test_public_signal_weights_frame_requires_portfolio_signal_uid(monkeypatch) 
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 
-def test_public_signal_weights_frame_requires_signal_data_node(monkeypatch) -> None:
+def test_public_signal_weights_frame_requires_signal_updater(monkeypatch) -> None:
     portfolio = _portfolio_row()
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
@@ -1440,7 +1473,7 @@ def test_public_signal_weights_frame_requires_signal_data_node(monkeypatch) -> N
 
     from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response
 
-    with pytest.raises(ValueError, match="signal_weights_data_node_uid"):
+    with pytest.raises(ValueError, match="signal_weights_table_update_uid"):
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 
@@ -1507,6 +1540,10 @@ def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatc
 
 
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "msm_portfolios.services.public_api._portfolio_dataset_tables",
+        lambda context, portfolio_identifier: None,
+    )
     portfolio = _portfolio_row()
     weights_date = dt.datetime(2026, 6, 7, 10, 30, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
@@ -1525,7 +1562,7 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
         lambda context, uid: portfolio,
     )
     monkeypatch.setattr(
-        "msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage.get_time_index_meta_table",
+        "msm_portfolios.time_index.portfolios.storage.PortfolioWeightsStorage.get_time_index_meta_table",
         classmethod(lambda cls: FakeTimeIndexMetaTable()),
     )
 
@@ -1549,3 +1586,294 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
         "dimension_filters": {"portfolio_identifier": ["example-sleeve"]},
         "timeout": 30,
     }
+
+
+# --- ADR 0047: multi-portfolio frames and the dataset catalog ---------------------------------
+
+
+def _catalog_state(portfolio_uid: uuid.UUID) -> dict[str, object]:
+    return {
+        "portfolio_uid": str(portfolio_uid),
+        "portfolio_identifier": "equity-tracker",
+        "values_meta_table_uid": "provider-values",
+        "weights_meta_table_uid": "provider-weights",
+        "signal_meta_table_uid": None,
+        "population_state": "populated",
+        "row_count": 12,
+        "earliest_time_index": "2026-01-01T00:00:00Z",
+        "latest_time_index": "2026-01-12T00:00:00Z",
+        "reconciled_at": "2026-01-12T01:00:00Z",
+        "error": None,
+    }
+
+
+def test_multi_portfolio_values_frame_route_groups_uids_into_one_frame(monkeypatch) -> None:
+    from msm.api.http import build_tabular_frame
+
+    captured: dict[str, object] = {}
+    first, second = uuid.uuid4(), uuid.uuid4()
+
+    def fake_frame(**kwargs):
+        captured.update(kwargs)
+        return build_tabular_frame(
+            rows=[{"time_index": "2026-01-02T00:00:00+00:00", "portfolio_identifier": "a", "close": 1.0}]
+        )
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolios_values_frame", fake_frame)
+
+    response = TestClient(app).get(
+        "/api/v1/portfolio/values/",
+        params=[("portfolio_uid__in", f"{first},{second}"), ("order", "asc"), ("limit", 10), ("offset", 20)],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["portfolio_identifier"] == "a"
+    assert captured == {
+        "uids": [f"{first},{second}"],
+        "start_date": None,
+        "end_date": None,
+        "order": "asc",
+        "limit": 10,
+        "offset": 20,
+    }
+    operation = app.openapi()["paths"]["/api/v1/portfolio/values/"]["get"]
+    assert operation["operationId"] == "getPortfoliosValuesFrame"
+    assert operation["x-ui-contract"] == "core.tabular_frame@v1"
+
+    def unknown(**_kwargs):
+        raise LookupError("Portfolios were not found: ['x']")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolios_values_frame", unknown)
+    assert TestClient(app).get("/api/v1/portfolio/values/", params={"portfolio_uid__in": str(first)}).status_code == 404
+
+
+def test_multi_portfolio_weights_frame_route_passes_snapshot_selection(monkeypatch) -> None:
+    from msm.api.http import build_tabular_frame
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.get_portfolios_weights_frame",
+        lambda **kwargs: captured.update(kwargs) or build_tabular_frame(rows=[]),
+    )
+    portfolio_uid = uuid.uuid4()
+
+    response = TestClient(app).get(
+        "/api/v1/portfolio/weights/",
+        params={
+            "portfolio_uid__in": str(portfolio_uid),
+            "weights_date": "2026-01-05T00:00:00Z",
+            "as_of": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "uids": [str(portfolio_uid)],
+        "weights_date": dt.datetime(2026, 1, 5, tzinfo=dt.UTC),
+        "as_of": False,
+    }
+
+
+def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(monkeypatch) -> None:
+    from apps.v1.services import portfolios as portfolio_service
+
+    first, second = _portfolio_row(), {**_portfolio_row(), "unique_identifier": "income-fund"}
+    monkeypatch.setattr(portfolio_service, "_get_runtime", lambda: SimpleNamespace(context="ctx"))
+    monkeypatch.setattr(
+        portfolio_service,
+        "get_portfolios_by_uids",
+        lambda *, uids: [portfolio_service._validate_portfolio_row(row) for row in (first, second) if row["uid"] in uids],
+    )
+    values_calls: list[tuple] = []
+    weights_calls: list[tuple] = []
+    now = dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
+
+    def fake_values(identifiers, **kwargs):
+        values_calls.append((identifiers, kwargs))
+        return [
+            {"portfolio_uid": uuid.UUID(first["uid"]), "portfolio_identifier": "example-sleeve",
+             "time_index": now - dt.timedelta(days=1), "close": 1.0, "return": 0.0},
+            {"portfolio_uid": uuid.UUID(second["uid"]), "portfolio_identifier": "income-fund",
+             "time_index": now, "close": 2.0, "return": 0.1},
+        ]
+
+    def fake_weights(identifiers, **kwargs):
+        weights_calls.append((identifiers, kwargs))
+        return [{"portfolio_uid": first["uid"], "portfolio_identifier": "example-sleeve",
+                 "time_index": now, "asset_identifier": "a", "weight": 1.0}]
+
+    monkeypatch.setattr(portfolio_service, "_portfolio_values", fake_values)
+    monkeypatch.setattr(portfolio_service, "_latest_portfolio_weights", fake_weights)
+
+    values = portfolio_service.get_portfolios_values_frame(
+        uids=[first["uid"], second["uid"]], order="desc", limit=1
+    )
+    weights = portfolio_service.get_portfolios_weights_frame(uids=[first["uid"]], weights_date=now)
+
+    # One read for both portfolios, through the catalog-aware service with the API runtime context.
+    assert values_calls == [(["example-sleeve", "income-fund"], {"start": None, "end": None, "repository_context": "ctx"})]
+    assert [row["portfolio_identifier"] for row in values.rows] == ["income-fund"]
+    assert values.rows[0]["portfolio_uid"] == second["uid"]
+    assert values.rows[0]["time_index"] == now.isoformat()
+    assert values.source.context["portfolio_uids"] == [first["uid"], second["uid"]]
+    assert weights_calls == [(["example-sleeve"], {"weights_date": now, "as_of": True, "repository_context": "ctx"})]
+    assert weights.rows[0]["asset_identifier"] == "a"
+    with pytest.raises(LookupError, match="not found"):
+        portfolio_service.get_portfolios_values_frame(uids=[str(uuid.uuid4())])
+
+
+def test_register_portfolio_datasets_route_returns_catalog_state(monkeypatch) -> None:
+    from apps.v1.schemas.portfolios import PortfolioDatasetRegistrationRequest, PortfolioDatasetState
+
+    portfolio_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_register(*, uid, payload):
+        captured.update(uid=uid, payload=payload)
+        return PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid))
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", fake_register)
+
+    response = TestClient(app).post(
+        f"/api/v1/portfolio/{portfolio_uid}/datasets/",
+        json={"values_meta_table_uid": "provider-values", "weights_meta_table_uid": "provider-weights"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["population_state"] == "populated"
+    assert response.json()["values_meta_table_uid"] == "provider-values"
+    assert captured["uid"] == str(portfolio_uid)
+    assert isinstance(captured["payload"], PortfolioDatasetRegistrationRequest)
+    assert captured["payload"].reconcile is True
+    assert captured["payload"].signal_meta_table_uid is None
+
+    def not_visible(**_kwargs):
+        raise LookupError("PortfoliosTS instance 'x' is not a visible TimeIndexMetaTable")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", not_visible)
+    assert TestClient(app).post(
+        f"/api/v1/portfolio/{portfolio_uid}/datasets/", json={"values_meta_table_uid": "x"}
+    ).status_code == 404
+
+    def incompatible(**_kwargs):
+        raise ValueError("missing contract columns ['close']")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", incompatible)
+    assert TestClient(app).post(
+        f"/api/v1/portfolio/{portfolio_uid}/datasets/", json={"values_meta_table_uid": "x"}
+    ).status_code == 400
+
+
+def test_get_portfolio_datasets_route_returns_row_or_null(monkeypatch) -> None:
+    from apps.v1.schemas.portfolios import PortfolioDatasetState
+
+    portfolio_uid = uuid.uuid4()
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.get_portfolio_dataset_state",
+        lambda *, uid: PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid)),
+    )
+    assert TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/").json()["row_count"] == 12
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolio_dataset_state", lambda *, uid: None)
+    response = TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/")
+    assert response.status_code == 200 and response.json() is None
+
+    def missing(*, uid):
+        raise LookupError(f"Portfolio {uid!r} was not found.")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolio_dataset_state", missing)
+    assert TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/").status_code == 404
+
+
+def test_reconcile_portfolio_datasets_route_returns_states_and_skipped(monkeypatch) -> None:
+    from apps.v1.schemas.portfolios import (
+        PortfolioDatasetReconcileRequest,
+        PortfolioDatasetReconciliationResult,
+        PortfolioDatasetState,
+    )
+
+    portfolio_uid, skipped_uid = uuid.uuid4(), uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_reconcile(*, payload):
+        captured["payload"] = payload
+        return PortfolioDatasetReconciliationResult(
+            portfolio_uids=(portfolio_uid, skipped_uid),
+            states=(PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid)),),
+            skipped_portfolio_uids=(skipped_uid,),
+        )
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.reconcile_portfolio_dataset_catalog", fake_reconcile)
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio/datasets/reconcile/",
+        json={"portfolio_uids": [str(portfolio_uid)], "portfolio_identifiers": ["legacy"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["skipped_portfolio_uids"] == [str(skipped_uid)]
+    assert response.json()["states"][0]["population_state"] == "populated"
+    assert isinstance(captured["payload"], PortfolioDatasetReconcileRequest)
+    assert captured["payload"].portfolio_identifiers == ["legacy"]
+
+    def no_selectors(**_kwargs):
+        raise ValueError("requires explicit portfolio UIDs or identifiers")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.reconcile_portfolio_dataset_catalog", no_selectors)
+    assert TestClient(app).post("/api/v1/portfolio/datasets/reconcile/", json={}).status_code == 400
+
+
+def test_portfolio_dataset_services_delegate_to_the_catalog_services(monkeypatch) -> None:
+    from apps.v1.schemas.portfolios import (
+        PortfolioDatasetReconcileRequest,
+        PortfolioDatasetRegistrationRequest,
+        PortfolioDatasetState,
+    )
+    from apps.v1.services import portfolios as portfolio_service
+    from msm_portfolios.services import portfolio_datasets
+
+    portfolio_uid = uuid.uuid4()
+    state = PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid))
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(portfolio_service, "_get_runtime", lambda: SimpleNamespace(context="ctx"))
+    monkeypatch.setattr(
+        portfolio_datasets,
+        "register_portfolio_datasets",
+        lambda context, registration, *, reconcile=True, **_kwargs: calls.update(register=(context, registration, reconcile)) or state,
+    )
+    monkeypatch.setattr(
+        portfolio_datasets,
+        "reconcile_portfolio_dataset_availability",
+        lambda context, *, portfolio_uids, portfolio_identifiers: calls.update(reconcile=(context, portfolio_uids, portfolio_identifiers)) or "result",
+    )
+    monkeypatch.setattr(
+        portfolio_datasets,
+        "list_portfolio_dataset_states",
+        lambda context, *, portfolio_uids: calls.update(list=(context, portfolio_uids)) or (state,),
+    )
+    monkeypatch.setattr(portfolio_service, "get_portfolio_detail", lambda *, uid: object() if uid == str(portfolio_uid) else None)
+    import msm_portfolios.services as services_package
+
+    for name in ("register_portfolio_datasets", "reconcile_portfolio_dataset_availability", "list_portfolio_dataset_states"):
+        monkeypatch.setattr(services_package, name, getattr(portfolio_datasets, name), raising=False)
+
+    registered = portfolio_service.register_portfolio_dataset_catalog(
+        uid=str(portfolio_uid),
+        payload=PortfolioDatasetRegistrationRequest(values_meta_table_uid="v", reconcile=False),
+    )
+    reconciled = portfolio_service.reconcile_portfolio_dataset_catalog(
+        payload=PortfolioDatasetReconcileRequest(portfolio_uids=[str(portfolio_uid)])
+    )
+    listed = portfolio_service.get_portfolio_dataset_state(uid=str(portfolio_uid))
+
+    assert registered is state and listed is state and reconciled == "result"
+    assert calls["register"] == (
+        "ctx",
+        {"portfolio_uid": portfolio_uid, "values_meta_table_uid": "v", "weights_meta_table_uid": None, "signal_meta_table_uid": None},
+        False,
+    )
+    assert calls["reconcile"] == ("ctx", [str(portfolio_uid)], [])
+    assert calls["list"] == ("ctx", [str(portfolio_uid)])
+    with pytest.raises(LookupError):
+        portfolio_service.get_portfolio_dataset_state(uid=str(uuid.uuid4()))
+    assert portfolio_service.register_portfolio_dataset_catalog.__registry_write__ == ("portfolio", "register:datasets")

@@ -1,15 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm_portfolios.time_index.signals``.
 
-from .weights import (
-    SignalWeights,
-    canonical_signal_configuration,
-    compute_signal_uid,
-    normalize_signal_weights_frame,
-)
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "SignalWeights",
-    "canonical_signal_configuration",
-    "compute_signal_uid",
-    "normalize_signal_weights_frame",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm_portfolios.time_index.signals")

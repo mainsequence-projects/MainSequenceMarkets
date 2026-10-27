@@ -32,8 +32,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 
 from metatables import MetaTableCompiledSQLOperation
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-from msm.data_nodes.assets.storage import AssetSnapshotsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.models import (
     AccountHoldingsSetTable,
     AccountAllocationModelTable,
@@ -54,6 +54,8 @@ from .crud import (
     build_delete_model_operation,
     build_get_model_by_uid_operation,
     build_search_model_operation,
+    mirror_renamed_columns,
+    renamed_keyword,
 )
 
 
@@ -65,19 +67,31 @@ def build_create_account_operation(
     is_paper: bool = True,
     account_is_active: bool = False,
     account_group_uid: uuid.UUID | str | None = None,
-    holdings_data_node_uid: uuid.UUID | str | None = None,
+    holdings_storage_table_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
+    holdings_data_node_uid: uuid.UUID | str | None = None,
 ) -> MetaTableCompiledSQLOperation:
+    holdings_storage_table_uid = renamed_keyword(
+        holdings_storage_table_uid,
+        holdings_data_node_uid,
+        current="holdings_storage_table_uid",
+        previous="holdings_data_node_uid",
+    )
     statement = (
         insert(AccountTable)
         .values(
-            unique_identifier=unique_identifier,
-            account_name=account_name,
-            is_paper=is_paper,
-            account_is_active=account_is_active,
-            account_group_uid=account_group_uid,
-            holdings_data_node_uid=holdings_data_node_uid,
-            metadata_json=metadata_json,
+            **mirror_renamed_columns(
+                AccountTable,
+                {
+                    "unique_identifier": unique_identifier,
+                    "account_name": account_name,
+                    "is_paper": is_paper,
+                    "account_is_active": account_is_active,
+                    "account_group_uid": account_group_uid,
+                    "holdings_storage_table_uid": holdings_storage_table_uid,
+                    "metadata_json": metadata_json,
+                },
+            )
         )
         .returning(AccountTable)
     )
@@ -191,21 +205,31 @@ def build_update_account_operation(
     is_paper: bool | None = None,
     account_is_active: bool | None = None,
     account_group_uid: uuid.UUID | str | None = None,
-    holdings_data_node_uid: uuid.UUID | str | None = None,
+    holdings_storage_table_uid: uuid.UUID | str | None = None,
     metadata_json: MappingOrDict | None = None,
+    holdings_data_node_uid: uuid.UUID | str | None = None,
 ) -> MetaTableCompiledSQLOperation:
-    values = {
-        key: value
-        for key, value in {
-            "account_name": account_name,
-            "is_paper": is_paper,
-            "account_is_active": account_is_active,
-            "account_group_uid": account_group_uid,
-            "holdings_data_node_uid": holdings_data_node_uid,
-            "metadata_json": metadata_json,
-        }.items()
-        if value is not None
-    }
+    holdings_storage_table_uid = renamed_keyword(
+        holdings_storage_table_uid,
+        holdings_data_node_uid,
+        current="holdings_storage_table_uid",
+        previous="holdings_data_node_uid",
+    )
+    values = mirror_renamed_columns(
+        AccountTable,
+        {
+            key: value
+            for key, value in {
+                "account_name": account_name,
+                "is_paper": is_paper,
+                "account_is_active": account_is_active,
+                "account_group_uid": account_group_uid,
+                "holdings_storage_table_uid": holdings_storage_table_uid,
+                "metadata_json": metadata_json,
+            }.items()
+            if value is not None
+        },
+    )
     statement = (
         update(AccountTable).where(AccountTable.uid == uid).values(**values).returning(AccountTable)
     )

@@ -97,7 +97,7 @@ def test_pricing_market_data_binding_payload_rejects_identifier_only_contract() 
         PricingMarketDataSetBindingUpsert(
             market_data_set_uid=market_data_set_uid,
             concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-            data_node_uid=uuid.uuid4(),
+            storage_table_uid=uuid.uuid4(),
             data_node_identifier="discount_curves",
         )
 
@@ -127,14 +127,14 @@ def test_index_curve_selection_payload_rejects_selector_plumbing() -> None:
 
 def test_pricing_market_data_binding_row_accepts_physical_metadata_alias() -> None:
     market_data_set_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
 
     row = PricingMarketDataSetBinding.model_validate(
         {
             "uid": uuid.uuid4(),
             "market_data_set_uid": market_data_set_uid,
             "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-            "data_node_uid": data_node_uid,
+            "storage_table_uid": storage_table_uid,
             "storage_table_identifier": "registered.discount_curves",
             "metadata": {"provider": "unit-test"},
         }
@@ -230,7 +230,7 @@ def test_pricing_market_data_binding_upsert_uses_set_uid_concept_key(
 ) -> None:
     binding_uid = uuid.uuid4()
     market_data_set_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     context = object()
     runtime = SimpleNamespace(context=context)
     calls = []
@@ -255,7 +255,7 @@ def test_pricing_market_data_binding_upsert_uses_set_uid_concept_key(
     row = PricingMarketDataSetBinding.upsert(
         market_data_set_uid=market_data_set_uid,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_uid=data_node_uid,
+        storage_table_uid=storage_table_uid,
         storage_table_identifier="registered.discount_curves",
         source="unit-test",
         metadata_json={"seeded": True},
@@ -265,7 +265,7 @@ def test_pricing_market_data_binding_upsert_uses_set_uid_concept_key(
         uid=binding_uid,
         market_data_set_uid=market_data_set_uid,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_uid=data_node_uid,
+        storage_table_uid=storage_table_uid,
         storage_table_identifier="registered.discount_curves",
         source="unit-test",
         metadata_json={"seeded": True},
@@ -288,7 +288,7 @@ def test_pricing_market_data_binding_upsert_uses_set_uid_concept_key(
             {
                 "market_data_set_uid": market_data_set_uid,
                 "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-                "data_node_uid": data_node_uid,
+                "storage_table_uid": storage_table_uid,
                 "storage_table_identifier": "registered.discount_curves",
                 "source": "unit-test",
                 "metadata_json": {"seeded": True},
@@ -638,7 +638,7 @@ def test_pricing_market_data_binding_delete_uses_active_context(monkeypatch) -> 
 def test_pricing_market_data_binding_list_uses_true_pagination(monkeypatch) -> None:
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -659,7 +659,7 @@ def test_pricing_market_data_binding_list_uses_true_pagination(monkeypatch) -> N
                     "uid": binding_uid,
                     "market_data_set_uid": market_data_set_uid,
                     "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-                    "data_node_uid": data_node_uid,
+                    "storage_table_uid": storage_table_uid,
                 }
             ]
         }
@@ -689,7 +689,7 @@ def test_pricing_market_data_binding_list_uses_true_pagination(monkeypatch) -> N
                 uid=binding_uid,
                 market_data_set_uid=market_data_set_uid,
                 concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                data_node_uid=data_node_uid,
+                storage_table_uid=storage_table_uid,
             )
         ],
     }
@@ -727,10 +727,10 @@ def test_pricing_market_data_binding_list_uses_true_pagination(monkeypatch) -> N
     ]
 
 
-def test_pricing_market_data_binding_resolves_data_node_uid(monkeypatch) -> None:
+def test_pricing_market_data_binding_resolves_storage_table_uid(monkeypatch) -> None:
     market_data_set_uid = uuid.uuid4()
     binding_uid = uuid.uuid4()
-    data_node_uid = uuid.uuid4()
+    storage_table_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -751,7 +751,7 @@ def test_pricing_market_data_binding_resolves_data_node_uid(monkeypatch) -> None
                     "uid": binding_uid,
                     "market_data_set_uid": market_data_set_uid,
                     "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-                    "data_node_uid": data_node_uid,
+                    "storage_table_uid": storage_table_uid,
                 }
             ]
         }
@@ -762,11 +762,11 @@ def test_pricing_market_data_binding_resolves_data_node_uid(monkeypatch) -> None
     )
 
     assert (
-        PricingMarketDataSetBinding.resolve_data_node_uid(
+        PricingMarketDataSetBinding.resolve_storage_table_uid(
             market_data_set=PRICING_MARKET_DATA_SET_DEFAULT,
             concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
         )
-        == data_node_uid
+        == storage_table_uid
     )
     assert calls == [
         (
@@ -785,8 +785,8 @@ def test_pricing_market_data_binding_filters_concepts_with_in_filter(monkeypatch
     market_data_set_uid = uuid.uuid4()
     discount_binding_uid = uuid.uuid4()
     fixings_binding_uid = uuid.uuid4()
-    discount_data_node_uid = uuid.uuid4()
-    fixings_data_node_uid = uuid.uuid4()
+    discount_storage_table_uid = uuid.uuid4()
+    fixings_storage_table_uid = uuid.uuid4()
     context = object()
     calls = []
 
@@ -803,13 +803,13 @@ def test_pricing_market_data_binding_filters_concepts_with_in_filter(monkeypatch
                     "uid": discount_binding_uid,
                     "market_data_set_uid": market_data_set_uid,
                     "concept_key": PRICING_CONCEPT_DISCOUNT_CURVES,
-                    "data_node_uid": discount_data_node_uid,
+                    "storage_table_uid": discount_storage_table_uid,
                 },
                 {
                     "uid": fixings_binding_uid,
                     "market_data_set_uid": market_data_set_uid,
                     "concept_key": PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                    "data_node_uid": fixings_data_node_uid,
+                    "storage_table_uid": fixings_storage_table_uid,
                 },
             ]
         }
@@ -858,7 +858,7 @@ def test_pricing_market_data_binding_filters_concepts_with_in_filter(monkeypatch
     ]
 
 
-def test_pricing_market_data_binding_missing_concept_fails_before_data_node_lookup(
+def test_pricing_market_data_binding_missing_concept_fails_before_storage_table_lookup(
     monkeypatch,
 ) -> None:
     market_data_set_uid = uuid.uuid4()
@@ -877,7 +877,7 @@ def test_pricing_market_data_binding_missing_concept_fails_before_data_node_look
     )
 
     with pytest.raises(LookupError, match=PRICING_CONCEPT_DISCOUNT_CURVES):
-        PricingMarketDataSetBinding.resolve_data_node_uid(
+        PricingMarketDataSetBinding.resolve_storage_table_uid(
             market_data_set=PRICING_MARKET_DATA_SET_DEFAULT,
             concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
         )

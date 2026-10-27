@@ -10,7 +10,7 @@ import pandas as pd
 
 from metatables import PlatformTimeIndexMetaTable
 
-from msm.data_nodes.indices import IndexValuesDataNode, configured_index_values_storage
+from msm.time_index.indices import IndexValuesUpdater, configured_index_values_storage
 from msm.api.indices import Index
 
 INDEX_IDENTIFIER = "USD_SWAP_10Y"
@@ -37,7 +37,7 @@ def list_numeric_timestamped_related_meta_tables(index_uid: str):
     )
 
 
-class Swap10YOneMinuteDataNode(IndexValuesDataNode):
+class Swap10YOneMinuteUpdater(IndexValuesUpdater):
     """Publish the one-minute `USD_SWAP_10Y` dataset."""
 
     @classmethod
@@ -45,7 +45,7 @@ class Swap10YOneMinuteDataNode(IndexValuesDataNode):
         return ONE_MINUTE_VALUES_STORAGE
 
 
-class Swap10YDailyDataNode(IndexValuesDataNode):
+class Swap10YDailyUpdater(IndexValuesUpdater):
     """Publish the daily `USD_SWAP_10Y` dataset."""
 
     @classmethod
@@ -83,8 +83,8 @@ def run() -> dict[str, object]:
         ]
     )
 
-    one_minute_values = Swap10YOneMinuteDataNode.validate_frame(intraday_source)
-    daily_values = Swap10YDailyDataNode.validate_frame(daily_source)
+    one_minute_values = Swap10YOneMinuteUpdater.validate_frame(intraday_source)
+    daily_values = Swap10YDailyUpdater.validate_frame(daily_source)
     calculation_identity = {
         # A software-only implementation change preserves the economic meaning.
         "implementation_change": (INDEX_IDENTIFIER, INDEX_IDENTIFIER),
@@ -103,12 +103,12 @@ def run() -> dict[str, object]:
         "migration_models": FREQUENCY_STORAGE_MODELS,
         "frequency_datasets": {
             "1m": {
-                "data_node": Swap10YOneMinuteDataNode,
+                "updater": Swap10YOneMinuteUpdater,
                 "output_table": ONE_MINUTE_VALUES_STORAGE,
                 "values": one_minute_values,
             },
             "1d": {
-                "data_node": Swap10YDailyDataNode,
+                "updater": Swap10YDailyUpdater,
                 "output_table": DAILY_VALUES_STORAGE,
                 "values": daily_values,
             },

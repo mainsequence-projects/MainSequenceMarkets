@@ -165,17 +165,17 @@ source_as_of
 metadata_json
 ```
 
-Custom publication uses `IndexValuesDataNode` and must not provide
+Custom publication uses `IndexValuesUpdater` and must not provide
 `definition_uid`.
 
 Formula publication uses:
 
 ```python
-FormulaIndexDataNodeConfiguration(
+FormulaIndexUpdaterConfiguration(
     formula_definition_uids=(...),
     source_output_tables=(...),
 )
-FormulaIndexDataNode(config, target_storage)
+FormulaIndexUpdater(config, target_storage)
 ```
 
 The registered source-storage MetaTable UID set must exactly equal the

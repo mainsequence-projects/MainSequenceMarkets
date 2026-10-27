@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
     Account,
+    AccountCreate,
+    AccountUpdate,
+    AccountWithIncludes,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -40,6 +45,45 @@ def get_account(*, uid: str) -> Account | None:
     if not rows:
         return None
     return Account.model_validate(rows[0])
+
+
+def get_accounts_by_uids(
+    *, uids: Sequence[str], include: Sequence[str] | None = None
+) -> list[AccountWithIncludes]:
+    """Return the accounts whose uid is listed, in request order; unknown uids are omitted.
+
+    ``include`` names provider sidecar MetaTables keyed by `Account.uid` whose rows
+    are attached under ``includes`` (ADR 0047 `include` hydration).
+    """
+
+    from apps.v1.services.includes import hydrate
+    from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
+    from msm.models import AccountTable
+
+    runtime = _get_runtime()
+    rows = rows_by_uids(runtime.context, model=AccountTable, uids=normalize_lookup_uids(uids))
+    return hydrate(
+        runtime.context,
+        model_cls=AccountWithIncludes,
+        core_model=AccountTable,
+        items=[Account.model_validate(row) for row in rows],
+        include=include,
+    )
+
+
+@registry_write("account", "create")
+def create_account(*, payload: AccountCreate) -> Account:
+    """Create one account row through the typed row API (ADR 0047: the Markets API is the boundary)."""
+
+    _get_runtime()
+    return Account.create(payload)
+
+
+@registry_write("account", "update")
+def update_account(*, uid: str, payload: AccountUpdate) -> Account | None:
+    if get_account(uid=uid) is None:
+        return None
+    return Account.update(uid, payload)
 
 
 def get_account_summary(*, uid: str) -> FrontEndDetailSummary | None:
@@ -94,6 +138,7 @@ def get_account_holdings_by_fund(
     return AccountHoldingsByFundResponse.model_validate(snapshot)
 
 
+@registry_write("account", "add:account-holdings")
 def add_account_holdings(
     *,
     account_uid: str,
@@ -135,6 +180,7 @@ def get_account_target_positions(
     return AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
 
 
+@registry_write("account", "add:account-target-positions")
 def add_account_target_positions(
     *,
     account_uid: str,

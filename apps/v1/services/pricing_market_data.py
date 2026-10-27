@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from apps.v1.identity import registry_write
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime
 from apps.v1.schemas.pricing_market_data import (
     PricingMarketDataSet,
@@ -65,6 +66,7 @@ def get_pricing_market_data_set_by_key(*, set_key: str):
     return PricingMarketDataSet.get_by_key(set_key)
 
 
+@registry_write("pricing-market-data", "create:pricing-market-data-set")
 def create_pricing_market_data_set(
     payload: PricingMarketDataSetCreate,
 ):
@@ -72,6 +74,7 @@ def create_pricing_market_data_set(
     return PricingMarketDataSet.create(payload)
 
 
+@registry_write("pricing-market-data", "upsert:pricing-market-data-set")
 def upsert_pricing_market_data_set(
     payload: PricingMarketDataSetUpsert,
 ):
@@ -79,6 +82,7 @@ def upsert_pricing_market_data_set(
     return PricingMarketDataSet.upsert(payload)
 
 
+@registry_write("pricing-market-data", "update:pricing-market-data-set")
 def update_pricing_market_data_set(
     *,
     uid: str,
@@ -88,6 +92,7 @@ def update_pricing_market_data_set(
     return PricingMarketDataSet.update(uid, payload)
 
 
+@registry_write("pricing-market-data", "delete:pricing-market-data-set")
 def delete_pricing_market_data_set(*, uid: str) -> dict[str, Any]:
     ensure_apps_v1_pricing_runtime()
     result = PricingMarketDataSet.delete(uid)
@@ -138,17 +143,18 @@ def resolve_pricing_market_data_binding(
     concept_key: str,
 ) -> dict[str, Any]:
     ensure_apps_v1_pricing_runtime()
-    data_node_uid = PricingMarketDataSetBinding.resolve_data_node_uid(
+    storage_table_uid = PricingMarketDataSetBinding.resolve_storage_table_uid(
         market_data_set=market_data_set,
         concept_key=concept_key,
     )
     return {
         "market_data_set": market_data_set,
         "concept_key": concept_key,
-        "data_node_uid": data_node_uid,
+        "storage_table_uid": storage_table_uid,
     }
 
 
+@registry_write("pricing-market-data", "create:pricing-market-data-binding")
 def create_pricing_market_data_binding(
     payload: PricingMarketDataSetBindingCreate,
 ):
@@ -156,6 +162,7 @@ def create_pricing_market_data_binding(
     return PricingMarketDataSetBinding.create(payload)
 
 
+@registry_write("pricing-market-data", "upsert:pricing-market-data-binding")
 def upsert_pricing_market_data_binding(
     payload: PricingMarketDataSetBindingUpsert,
 ):
@@ -163,6 +170,7 @@ def upsert_pricing_market_data_binding(
     return PricingMarketDataSetBinding.upsert(payload)
 
 
+@registry_write("pricing-market-data", "update:pricing-market-data-binding")
 def update_pricing_market_data_binding(
     *,
     uid: str,
@@ -172,6 +180,7 @@ def update_pricing_market_data_binding(
     return PricingMarketDataSetBinding.update(uid, payload)
 
 
+@registry_write("pricing-market-data", "delete:pricing-market-data-binding")
 def delete_pricing_market_data_binding(*, uid: str) -> dict[str, Any]:
     ensure_apps_v1_pricing_runtime()
     result = PricingMarketDataSetBinding.delete(uid)

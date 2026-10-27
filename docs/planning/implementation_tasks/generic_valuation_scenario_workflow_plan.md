@@ -3,14 +3,14 @@
 ## Status
 
 Implemented in `msm_pricing` for the first curve-scenario-backed valuation
-workflow phase. The remaining work is downstream donor refactoring in
-fundcompetition.
+workflow phase. The remaining work is donor refactoring in the consumer
+application.
 
 ## Success Condition
 
 `msm_pricing` exposes a generic valuation scenario workflow that can reproduce
 the reusable behavior currently prototyped in downstream
-`src/valuation_workflow`, without importing downstream code, Valmer connector
+`src/valuation_workflow`, without importing downstream code, provider connector
 code, or table-shaped dashboard/API output contracts.
 
 The implementation is successful only when:
@@ -27,11 +27,11 @@ The implementation is successful only when:
 - curve shocks are implemented by delegating to
   `msm_pricing.scenarios.curves`, not by reimplementing curve construction in
   the valuation workflow package;
-- downstream fundcompetition code can refactor
-  `/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mexicofundcompetition-9d81d63f-b8c9-404d-9f1a-5f2ad29dbf16/src/valuation_workflow`
+- consumer application code can refactor
+  the consumer application's `src/valuation_workflow`
   into a thin wrapper that calls the new `msm_pricing` workflow and formats the
   existing DataFrame/table payloads;
-- Valmer-specific overnight-index resolvers, source row parsing, curve
+- provider-specific overnight-index resolvers, source row parsing, curve
   identifiers, and latest-observation policies remain connector-owned adapter
   inputs, not canonical `msm_pricing` behavior.
 
@@ -40,7 +40,7 @@ The implementation is successful only when:
 The downstream donor module is a useful prototype:
 
 ```text
-/Users/jose/mainsequence-dev/main-sequence-workbench/projects/mexicofundcompetition-9d81d63f-b8c9-404d-9f1a-5f2ad29dbf16/src/valuation_workflow
+the consumer application's `src/valuation_workflow`
 ```
 
 Its real purpose is broader than curve scenario pricing. It orchestrates a full
@@ -60,13 +60,13 @@ objects:
 
 That is generic valuation machinery. It should live in `msm_pricing`, but not
 as copied donor code. The donor currently also contains table formatting,
-project metadata conventions, and Valmer resolver hooks. Those pieces should
+project metadata conventions, and provider resolver hooks. Those pieces should
 stay outside the canonical engine.
 
 ## Non-Goals
 
 - Do not move the donor package wholesale into `msm_pricing`.
-- Do not make `msm_pricing` import `valmer_connectors`.
+- Do not make `msm_pricing` import a provider connector package.
 - Do not make the canonical engine return pandas `DataFrame`s or Command
   Center `TabularFrameResponse` payloads.
 - Do not persist scenario results in this phase.
@@ -454,9 +454,9 @@ dates and amounts.
 | Curve node, par curve, effective-date tables. | `msm_pricing.scenarios.curves` public diagnostics plus existing curve observation helpers. | Wrapper builds tables from typed resolutions/context; not part of core valuation engine output. |
 | `records_to_frame(...)`. | No canonical owner. | Remains downstream formatting. |
 
-## Refactor Target For Fundcompetition Donor
+## Refactor Target For The Consumer Donor
 
-After the ms-markets implementation, fundcompetition should reduce
+After the ms-markets implementation, the consumer application should reduce
 `src/valuation_workflow` to formatting and compatibility wrappers.
 
 Expected downstream shape:
@@ -469,13 +469,13 @@ src/valuation_workflow/formatting.py
 
 The wrapper should:
 
-- accept the current fundcompetition request parameters;
+- accept the consumer application's current request parameters;
 - construct `ValuationScenario` and `CurveScenario` inputs;
-- pass Valmer-specific `overnight_index_resolver` or connector defaults from
-  Valmer-owned code;
+- pass provider-specific `overnight_index_resolver` or connector defaults from
+  provider-owned code;
 - call `msm_pricing.scenarios.valuation.run_valuation_scenario_workflow(...)`;
 - convert typed outputs into the current DataFrame/table shapes expected by
-  fundcompetition dashboards and APIs;
+  consumer dashboards and APIs;
 - keep old function names only as compatibility shims if downstream callers
   still import them.
 
@@ -547,7 +547,7 @@ The wrapper should not:
 
 ### Phase 7: Donor Refactor
 
-- In fundcompetition, replace local engine calls with
+- In the consumer application, replace local engine calls with
   `run_valuation_scenario_workflow(...)`.
 - Keep table formatting in the donor project.
 - Preserve the existing dashboard/API DataFrame column names through wrapper
@@ -592,7 +592,7 @@ skip reason and run the non-QuantLib valuation workflow tests separately.
   `LineCurveResolution` and `CurveScenarioDiagnostic` models in this phase.
   Do not add a new public `CurveResolutionReport` model up front. During the
   donor refactor, wrapper code should first try to build existing
-  fundcompetition requirement/effective-date tables from
+  consumer requirement/effective-date tables from
   `LineCurveResolution`, `CurveScenarioDiagnostic`, `CurveScenarioResult`, and
   `PricingValuationContext`. Add a richer public report model only if that
   wrapper work proves there are missing debugging fields that cannot be

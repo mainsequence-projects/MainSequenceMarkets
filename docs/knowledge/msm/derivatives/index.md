@@ -19,7 +19,7 @@ Derivatives docs own:
   `IndexTable`.
 
 They do not own timestamped market data or pricing engines. Historical prices
-belong in DataNodes, and valuation-specific runtime code belongs in optional
+belong in updaters, and valuation-specific runtime code belongs in optional
 pricing packages.
 
 ## Primary Modules
@@ -35,4 +35,4 @@ pricing packages.
 - [Futures](futures.md)
 - [Indexes](../indices/index.md)
 - [Assets](../assets/index.md)
-- [Asset-Indexed DataNodes](../assets/asset_indexed_data_nodes.md)
+- [Asset-Indexed Updaters](../assets/asset_indexed_updaters.md)

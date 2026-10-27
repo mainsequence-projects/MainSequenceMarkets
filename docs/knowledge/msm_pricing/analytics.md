@@ -2,7 +2,7 @@
 
 `msm_pricing.analytics` contains pure-data analytics helpers that sit outside
 the pricing runtime. These helpers operate on caller-supplied pandas or numpy
-data and do not resolve assets, portfolios, curves, vendors, DataNodes, or
+data and do not resolve assets, portfolios, curves, vendors, updaters, or
 pricing contexts.
 
 Generic spread primitives are owned by core Index analytics. Pricing retains a

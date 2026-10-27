@@ -10,7 +10,7 @@ Platform utilities answer these questions:
 
 - How do market-domain SQLAlchemy models register as Main Sequence MetaTables?
 - What shared base class and schema naming rules do market models use?
-- How do market-specific DataNodes normalize storage and configuration?
+- How do market-specific updaters normalize storage and configuration?
 - Which helpers should remain common across accounts, assets, execution, and
   portfolios?
 
@@ -21,23 +21,28 @@ Platform utilities answer these questions:
 - `migrations`: the MetaTables Alembic provider and package-owned model registry.
 - `msm.settings`: shared markets constants such as the canonical asset identity
   dimension.
-- `msm.data_nodes.accounts`: account holdings DataNodes.
-- `msm.data_nodes.assets`: asset-specific TimeIndexTableUpdater package, including
+- `msm.identity`: keeps the identities ms-markets derives stable when an updater
+  or configuration class moves; see [Identity Stability](#identity-stability).
+- `msm.time_index.accounts`: account holdings updaters.
+- `msm.time_index.assets`: asset-specific TimeIndexTableUpdater package, including
   `AssetSnapshot` and shared asset-indexed behavior in
-  `msm.data_nodes.assets.asset_indexed`.
-- `msm.data_nodes.execution`: execution DataNodes for orders, order events,
+  `msm.time_index.assets.asset_indexed`.
+- `msm.time_index.execution`: execution updaters for orders, order events,
   and trades.
-- `msm.data_nodes.indices`: index-specific TimeIndexTableUpdater package, including
+- `msm.time_index.indices`: index-specific TimeIndexTableUpdater package, including
   timestamped index facts and canonical `IndexTable` source-table foreign keys.
-- `msm.data_nodes.utils`: shared TimeIndexTableUpdater utilities that are not tied to one
+- `msm.time_index.utils`: shared TimeIndexTableUpdater utilities that are not tied to one
   model concept, including source-table contracts, timestamp normalization,
   stamped-frame behavior, and namespace defaulting.
-- `msm_portfolios.data_nodes`: portfolio construction DataNodes that build on
+- `msm_portfolios.time_index`: portfolio construction updaters that build on
   the shared markets TimeIndexTableUpdater machinery. Core account virtual-fund storage
-  lives under `msm.data_nodes.accounts`.
+  lives under `msm.time_index.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
-  host CodeRepository.
+  host CodeRepository, `msm rename-preflight` for moving a host project to
+  the 3.0 names ([Upgrading To 3.0](../../../upgrading-to-3.md)), and
+  `msm series move|rollback` for moving a provider's existing time-series rows
+  into its own instances and back (`msm.storage_copies`).
 
 ## Key Contracts
 
@@ -45,9 +50,9 @@ Platform primitives should stay low-level. They should not know about business
 logic for a specific concept such as pricing, portfolio construction, or asset
 translation.
 
-Asset-indexed TimeIndexTableUpdater subclasses should use `AssetIndexedDataNode` for asset
+Asset-indexed TimeIndexTableUpdater subclasses should use `AssetIndexedUpdater` for asset
 scope and namespace behavior. Timestamped asset facts should use
-`AssetTimestampedDataNode` plus `AssetDataNodeConfiguration`, with schema,
+`AssetTimestampedUpdater` plus `AssetUpdaterConfiguration`, with schema,
 indexes, dtypes, nullability, and source-table foreign keys declared only on the
 storage MetaTable. The broad legacy compatibility names were removed;
 asset-indexed TimeIndexTableUpdater code should use the explicit asset-indexed base classes
@@ -56,6 +61,29 @@ directly.
 See [MetaTable Registration](meta_table_registration.md) for runtime attachment
 and model registration concepts. See [Migrations](../migrations/index.md) for
 the admin-owned schema creation and evolution workflow.
+
+### Identity Stability
+
+Several persisted identities are derived from class import paths. MetaTables
+hashes each updater's and each configuration class's `{module, qualname}` into
+the producer's `update_hash`. ms-markets hashes class paths into `signal_uid`,
+the portfolio configuration hash and the rebalance strategy revision. The
+strategy revision also includes the `update_hash` of each declared dependency,
+and it is part of every ledger event revision that replay compares.
+
+`compute_signal_uid`, `compute_portfolio_configuration_hash` and
+`compute_strategy_revision` pass their payload through
+`msm.identity.stable_identity_payload` before hashing. It maps moved class paths
+back to their pre-rename paths (`PRE_RENAME_MODULES` and
+`PRE_RENAME_CLASS_NAMES`) and replaces each nested updater's hash with
+`pre_rename_update_hash(...)`, so a package rename leaves these identities
+unchanged. MetaTables' own `update_hash` is not covered: a moved updater gets a
+new `TimeIndexTableUpdate` record on its first run and continues from its output
+table's last observation.
+
+`tests/identity/test_pinned_identities.py` pins each of these identities, the
+physical table names and the updater class paths. Changing a pinned value is an
+identity rotation; make it only on purpose and record it in the changelog.
 
 The `msm` import path is side-effect free. Installing the package makes the
 ms-markets skill bundle available as package data, but skills are copied into a
@@ -73,7 +101,7 @@ also the packaged skill source.
 Add behavior here only when at least two concept packages need the same platform
 primitive. If TimeIndexTableUpdater behavior is specific to one concept, keep it in that
 concept package first. If it is shared TimeIndexTableUpdater machinery and not model-shaped,
-place it under `msm.data_nodes.utils`.
+place it under `msm.time_index.utils`.
 
 Repository-level maintenance workflows live in Open Agent skills under
 `.agents/skills/`. Use `.agents/skills/library_maintenance/SKILL.md` when making

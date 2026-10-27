@@ -65,9 +65,9 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         PricingMarketDataSetCurveBinding,
     )
     from msm_pricing.bootstrap import attach_pricing_schemas
-    from msm_pricing.data_nodes import CurveConfig, IndexFixingConfiguration
-    from msm_pricing.data_nodes.curves.storage import DiscountCurvesStorage
-    from msm_pricing.data_nodes.index_fixings.storage import IndexFixingsStorage
+    from msm_pricing.time_index import CurveConfig, IndexFixingConfiguration
+    from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+    from msm_pricing.time_index.index_fixings.storage import IndexFixingsStorage
     from msm_pricing.instruments import FloatingRateBond, Instrument
     from msm_pricing.pricing_engine import apply_z_spread_to_curve
     from msm_pricing.settings import (
@@ -114,16 +114,16 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         set_key=market_data_set.set_key,
         market_data_set_uid=market_data_set.uid,
     )
-    curve_data_node_uid = DiscountCurvesStorage.get_meta_table_uid()
-    fixing_data_node_uid = IndexFixingsStorage.get_meta_table_uid()
-    if curve_data_node_uid is None or fixing_data_node_uid is None:
+    curve_storage_table_uid = DiscountCurvesStorage.get_meta_table_uid()
+    fixing_storage_table_uid = IndexFixingsStorage.get_meta_table_uid()
+    if curve_storage_table_uid is None or fixing_storage_table_uid is None:
         raise RuntimeError("Pricing storage tables must be attached before binding market data.")
     curve_storage_table_identifier = DiscountCurvesStorage.get_identifier()
     fixing_storage_table_identifier = IndexFixingsStorage.get_identifier()
     curve_binding = PricingMarketDataSetBinding.upsert(
         market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-        data_node_uid=curve_data_node_uid,
+        storage_table_uid=curve_storage_table_uid,
         storage_table_identifier=curve_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
@@ -131,7 +131,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
     fixing_binding = PricingMarketDataSetBinding.upsert(
         market_data_set_uid=market_data_set.uid,
         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-        data_node_uid=fixing_data_node_uid,
+        storage_table_uid=fixing_storage_table_uid,
         storage_table_identifier=fixing_storage_table_identifier,
         source="examples/msm_pricing/bond_pricing_example",
         metadata_json={"workflow": "floating-rate-bond-pricing-example"},
@@ -141,12 +141,12 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         bindings=[
             {
                 "concept_key": curve_binding.concept_key,
-                "data_node_uid": curve_binding.data_node_uid,
+                "storage_table_uid": curve_binding.storage_table_uid,
                 "storage_table_identifier": curve_binding.storage_table_identifier,
             },
             {
                 "concept_key": fixing_binding.concept_key,
-                "data_node_uid": fixing_binding.data_node_uid,
+                "storage_table_uid": fixing_binding.storage_table_uid,
                 "storage_table_identifier": fixing_binding.storage_table_identifier,
             },
         ],
@@ -310,7 +310,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         zero_rate=0.0525,
     )
-    projection_curve_frame = _run_data_node_frame(
+    projection_curve_frame = _run_updater_frame(
         projection_curve_node,
         label="projection curve",
     )
@@ -319,14 +319,14 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         zero_rate=0.0475,
     )
-    discount_curve_frame = _run_data_node_frame(discount_curve_node, label="discount curve")
+    discount_curve_frame = _run_updater_frame(discount_curve_node, label="discount curve")
     _print_step(
         "Published mock projection and discount curve rows",
         projection_rows=len(projection_curve_frame),
         projection_key_nodes=_count_curve_key_nodes(projection_curve_frame),
         discount_rows=len(discount_curve_frame),
         discount_key_nodes=_count_curve_key_nodes(discount_curve_frame),
-        data_node_uid=curve_data_node_uid,
+        storage_table_uid=curve_storage_table_uid,
         storage_table_identifier=curve_storage_table_identifier,
     )
 
@@ -335,18 +335,18 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         valuation_date=valuation_date,
         fixing_rate=0.0525,
     )
-    fixing_frame = _run_data_node_frame(fixing_node, label="index fixings")
+    fixing_frame = _run_updater_frame(fixing_node, label="index fixings")
     _print_step(
         "Published mock index fixing rows",
         rows=len(fixing_frame),
-        data_node_uid=fixing_data_node_uid,
+        storage_table_uid=fixing_storage_table_uid,
         storage_table_identifier=fixing_storage_table_identifier,
     )
 
     _print_step(
         "Using explicit pricing market-data bindings",
-        curve_data_node_uid=curve_data_node_uid,
-        fixing_data_node_uid=fixing_data_node_uid,
+        curve_storage_table_uid=curve_storage_table_uid,
+        fixing_storage_table_uid=fixing_storage_table_uid,
         curve_storage_table_identifier=curve_storage_table_identifier,
         fixing_storage_table_identifier=fixing_storage_table_identifier,
     )
@@ -478,8 +478,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         "index_convention_details": convention_details,
         "projection_curve": projection_curve,
         "discount_curve": discount_curve,
-        "curve_data_node_uid": curve_data_node_uid,
-        "fixing_data_node_uid": fixing_data_node_uid,
+        "curve_storage_table_uid": curve_storage_table_uid,
+        "fixing_storage_table_uid": fixing_storage_table_uid,
         "curve_storage_table_identifier": curve_storage_table_identifier,
         "fixing_storage_table_identifier": fixing_storage_table_identifier,
         "projection_curve_rows": len(projection_curve_frame),
@@ -509,7 +509,7 @@ def _preview_cashflows(
     return {bucket: rows[:limit] for bucket, rows in cashflows.items() if rows}
 
 
-def _run_data_node_frame(node: Any, *, label: str) -> Any:
+def _run_updater_frame(node: Any, *, label: str) -> Any:
     result = node.run()
     if isinstance(result, tuple):
         error_on_last_update, frame = result

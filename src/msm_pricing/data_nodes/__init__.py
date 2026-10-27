@@ -1,39 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm_pricing.time_index``.
 
-from .curves import (
-    CURVE_IDENTIFIER,
-    CurveConfig,
-    CurveDataNodeConfiguration,
-    CurveKeyNode,
-    CurveKeyNodeSourceReference,
-    CurveKeyNodesValidator,
-    CurveTimestampedDataNode,
-    DiscountCurveBuilder,
-    DiscountCurvesNode,
-)
-from .index_fixings import (
-    FixingRatesNode,
-    IndexFixingConfiguration,
-    IndexFixingBuilder,
-)
-from .pricing_details import (
-    AssetPricingDetail,
-    AssetPricingDetailConfiguration,
-)
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "AssetPricingDetail",
-    "AssetPricingDetailConfiguration",
-    "CURVE_IDENTIFIER",
-    "CurveConfig",
-    "CurveDataNodeConfiguration",
-    "CurveKeyNode",
-    "CurveKeyNodeSourceReference",
-    "CurveKeyNodesValidator",
-    "CurveTimestampedDataNode",
-    "DiscountCurveBuilder",
-    "DiscountCurvesNode",
-    "FixingRatesNode",
-    "IndexFixingConfiguration",
-    "IndexFixingBuilder",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm_pricing.time_index")

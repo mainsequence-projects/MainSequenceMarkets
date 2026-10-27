@@ -6,7 +6,7 @@ import pandas as pd
 
 from mainsequence.client import Artifact
 from msm_portfolios.asset_scope import asset_field, asset_unique_identifier
-from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
+from msm_portfolios.time_index import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )

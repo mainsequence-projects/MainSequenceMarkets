@@ -13,8 +13,8 @@ from sqlalchemy.types import JSON
 from metatables import schema_table_name, sqlalchemy_naming_convention
 
 from msm.base import MarketsTimeIndexMetaTableMixin
-from msm.data_nodes.indices import IndexValuesDataNode, configured_index_values_storage
-from msm.data_nodes.utils.stamped import StampedDataNode
+from msm.time_index.indices import IndexValuesUpdater, configured_index_values_storage
+from msm.time_index.utils.stamped import StampedUpdater
 from msm.models.indices import IndexTable
 
 
@@ -69,8 +69,8 @@ class ExtensionIndexObservationsStorage(MarketsTimeIndexMetaTableMixin, Extensio
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
-class ExtensionIndexObservationsDataNode(StampedDataNode):
-    """Example-owned producer; deliberately not an IndexTimestampedDataNode subclass."""
+class ExtensionIndexObservationsUpdater(StampedUpdater):
+    """Example-owned producer; deliberately not an IndexTimestampedUpdater subclass."""
 
     frame_label: ClassVar[str] = "Extension Index Observations"
 
@@ -100,12 +100,12 @@ def run() -> dict[str, object]:
             }
         ]
     )
-    extension_values = ExtensionIndexObservationsDataNode.validate_frame(source)
+    extension_values = ExtensionIndexObservationsUpdater.validate_frame(source)
 
     canonical_source = extension_values.reset_index().rename(
         columns={"mid": "value", "quality_status": "observation_status"}
     )
-    canonical_values = IndexValuesDataNode.validate_frame(
+    canonical_values = IndexValuesUpdater.validate_frame(
         canonical_source[
             [
                 "time_index",

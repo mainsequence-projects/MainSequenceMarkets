@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from importlib.metadata import version
 from typing import Any
+
+from msm.distribution import package_version
 
 from apps.v1.schemas.command_center_adapter import (
     ApiHealthResponse,
@@ -54,6 +55,12 @@ READ_OPERATION_IDS = frozenset(
         "discoverPricingMarketDataBindings",
         "discoverPricingMarketDataSetBindings",
         "listAssets",
+        "getAssetsByUids",
+        "getAccountsByUids",
+        "describeRowOperations",
+        "getIndexesByUids",
+        "getPortfoliosByUids",
+        "getPortfolioDatasets",
         "getAssetMonitorFrame",
         "getAsset",
         "getAssetSummary",
@@ -145,12 +152,17 @@ QUERY_OPERATION_IDS = frozenset(
         "getIndexDatasetValuesFrame",
         "getPortfolioSignalWeightsFrame",
         "getPortfolioValuesFrame",
+        "getPortfoliosValuesFrame",
+        "getPortfoliosWeightsFrame",
+        "previewIndexFormula",
+        "previewStoredIndexFormula",
     }
 )
 RESOURCE_OPERATION_IDS = READ_OPERATION_IDS - QUERY_OPERATION_IDS
 
 MUTATION_OPERATION_IDS = frozenset(
     {
+        "runRowOperation",
         "deleteAsset",
         "createAssetCategory",
         "bulkDeleteAssetCategories",
@@ -158,9 +170,16 @@ MUTATION_OPERATION_IDS = frozenset(
         "deleteAssetCategory",
         "addAccountHoldings",
         "addAccountTargetPositions",
+        "createAccount",
+        "updateAccount",
         "deleteIndex",
         "createIndex",
         "updateIndex",
+        "saveIndexFormula",
+        "activateIndexFormula",
+        "retireIndexFormula",
+        "registerPortfolioDatasets",
+        "reconcilePortfolioDatasets",
         "bulkCascadeDeletePortfolios",
         "bulkDeletePortfolios",
         "addPortfolioToGroup",
@@ -215,7 +234,7 @@ def get_api_health() -> ApiHealthResponse:
     return ApiHealthResponse(
         status="ok",
         service="apps/v1",
-        version=version("ms-markets"),
+        version=package_version(),
     )
 
 

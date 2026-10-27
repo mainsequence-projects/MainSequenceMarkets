@@ -1,17 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm_portfolios.time_index.prices``.
 
-from .storage import (
-    ExternalPricesStorage,
-    InterpolatedPricesStorage,
-    configured_interpolated_prices_storage,
-    interpolated_prices_storage_identity_components,
-    interpolated_prices_output_table_name,
-)
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-__all__ = [
-    "ExternalPricesStorage",
-    "InterpolatedPricesStorage",
-    "configured_interpolated_prices_storage",
-    "interpolated_prices_storage_identity_components",
-    "interpolated_prices_output_table_name",
-]
+from msm._deprecated_imports import alias_module
+
+__getattr__, __dir__ = alias_module(__name__, "msm_portfolios.time_index.prices")

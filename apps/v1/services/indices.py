@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
+from collections.abc import Sequence
+from typing import Any
 
+import pandas as pd
+
+from apps.v1.identity import registry_write
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.delete_impact import DeleteImpactResponse
 from apps.v1.schemas.indices import (
@@ -9,13 +15,18 @@ from apps.v1.schemas.indices import (
     IndexCreate,
     IndexDatasetState,
     IndexDatasetSummary,
+    IndexFormulaDefinition,
     IndexFormulaDetail,
+    IndexFormulaInput,
     IndexFormulaSummary,
     IndexType,
     IndexUpdate,
+    IndexWithIncludes,
     RelatedMetaTable,
 )
+from msm.analytics.indices import validate_formula_contract
 from msm.api.base import operation_result_rows
+from msm.api.indices import FormulaIndex
 from msm.api.http import TabularFrameResponse, build_tabular_field, build_tabular_frame
 from msm.models import IndexTable, IndexTypeTable
 from msm.repositories.crud import get_model_by_uid, search_model
@@ -96,10 +107,12 @@ def get_index_type(*, index_type: str) -> IndexType | None:
     return IndexType.model_validate(rows[0]) if rows else None
 
 
+@registry_write("index", "create")
 def create_index(*, payload: IndexCreate) -> Index:
     return Index.create(payload)
 
 
+@registry_write("index", "update")
 def update_index(*, uid: str, payload: IndexUpdate) -> Index | None:
     if get_index(uid=uid) is None:
         return None
@@ -112,6 +125,7 @@ def get_index(*, uid: str) -> Index | None:
     return Index.model_validate(rows[0]) if rows else None
 
 
+@registry_write("index", "delete")
 def delete_index(*, uid: str) -> bool:
     from msm.services import delete_index_record
 
@@ -210,6 +224,221 @@ def get_index_summary(*, uid: str, actor: IndexActor | None) -> FrontEndDetailSu
             },
         }
     )
+
+
+def get_indexes_by_uids(
+    *, uids: Sequence[str], include: Sequence[str] | None = None
+) -> list[IndexWithIncludes]:
+    """Return the Index rows whose uid is listed, in request order; unknown uids are omitted.
+
+    ``include`` names provider sidecar MetaTables keyed by `Index.uid` whose rows
+    are attached under ``includes`` (ADR 0047 `include` hydration).
+    """
+
+    from apps.v1.services.includes import hydrate
+    from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
+
+    runtime = _get_runtime()
+    rows = rows_by_uids(runtime.context, model=IndexTable, uids=normalize_lookup_uids(uids))
+    return hydrate(
+        runtime.context,
+        model_cls=IndexWithIncludes,
+        core_model=IndexTable,
+        items=[Index.model_validate(row) for row in rows],
+        include=include,
+    )
+
+
+@registry_write("index", "save:formula")
+def save_index_formula(
+    *,
+    uid: str,
+    definition: IndexFormulaDefinition,
+    inputs: Sequence[IndexFormulaInput],
+) -> IndexFormulaDetail | None:
+    """Persist one formula version for a formula-calculated Index through ``FormulaIndex``.
+
+    Identity fields come from the stored Index row; the body carries only the
+    definition and its exact source bindings. An identical definition returns
+    the already stored version.
+    """
+
+    index = get_index(uid=uid)
+    if index is None:
+        return None
+    stored = FormulaIndex.upsert(
+        unique_identifier=index.unique_identifier,
+        index_type=index.index_type,
+        display_name=index.display_name,
+        definition=definition,
+        inputs=tuple(inputs),
+        value_format=index.value_format,
+        value_suffix=index.value_suffix,
+        description=index.description,
+        metadata_json=index.metadata_json,
+    )
+    return get_core_formula(
+        _get_runtime().context,
+        index_uid=index.uid,
+        definition_uid=stored.definition.uid,
+    )
+
+
+@registry_write("index", "activate:formula")
+def activate_index_formula(*, uid: str, definition_uid: str) -> IndexFormulaDetail | None:
+    formula = _stored_formula(uid=uid, definition_uid=definition_uid)
+    if formula is None:
+        return None
+    activated = formula.activate()
+    return get_core_formula(
+        _get_runtime().context, index_uid=uid, definition_uid=activated.definition.uid
+    )
+
+
+@registry_write("index", "retire:formula")
+def retire_index_formula(
+    *,
+    uid: str,
+    definition_uid: str,
+    valid_to: dt.datetime | None = None,
+) -> IndexFormulaDetail | None:
+    formula = _stored_formula(uid=uid, definition_uid=definition_uid)
+    if formula is None:
+        return None
+    retired = formula.retire(valid_to=valid_to)
+    return get_core_formula(
+        _get_runtime().context, index_uid=uid, definition_uid=retired.definition.uid
+    )
+
+
+def preview_index_formula(
+    *,
+    uid: str,
+    start: dt.datetime,
+    end: dt.datetime,
+    definition: IndexFormulaDefinition | None = None,
+    inputs: Sequence[IndexFormulaInput] | None = None,
+    definition_uid: str | None = None,
+) -> TabularFrameResponse | None:
+    """Calculate a formula over its pinned sources for a bounded window, persisting nothing.
+
+    With ``definition_uid`` the stored version is calculated; otherwise the
+    unsaved ``definition`` and ``inputs`` are validated against the contract and
+    calculated as they would be once saved.
+    """
+
+    index = get_index(uid=uid)
+    if index is None:
+        return None
+    if definition_uid is not None:
+        formula = _stored_formula(uid=uid, definition_uid=definition_uid)
+        if formula is None:
+            raise LookupError(f"Index formula {definition_uid!r} was not found")
+    else:
+        if definition is None or not inputs:
+            raise ValueError("a preview needs a definition and at least one input")
+        typed_inputs = tuple(inputs)
+        validate_formula_contract(definition, typed_inputs)
+        formula = FormulaIndex(index=index, definition=definition, inputs=typed_inputs)
+    result = formula.calculate_from_sources(start=start, end=end)
+    return _formula_values_frame(
+        index=index,
+        values=result.values,
+        operation_id="previewIndexFormula",
+        context={
+            "index_uid": str(index.uid),
+            "index_identifier": index.unique_identifier,
+            "definition_uid": None if formula.definition.uid is None else str(formula.definition.uid),
+            "persisted": definition_uid is not None,
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "value_format": index.value_format,
+            "value_suffix": index.value_suffix,
+        },
+    )
+
+
+def _stored_formula(*, uid: str, definition_uid: str) -> FormulaIndex | None:
+    if get_index(uid=uid) is None:
+        return None
+    formula = FormulaIndex.get_by_definition_uid(definition_uid)
+    if formula is None or str(formula.index.uid) != str(uuid.UUID(str(uid))):
+        return None
+    return formula
+
+
+def _formula_values_frame(
+    *,
+    index: Index,
+    values: Any,
+    operation_id: str,
+    context: dict[str, object],
+) -> TabularFrameResponse:
+    columns = [
+        "time_index",
+        "index_identifier",
+        "value",
+        "definition_uid",
+        "observation_status",
+        "source_as_of",
+        "metadata_json",
+    ]
+    field_types = {
+        "time_index": "datetime",
+        "index_identifier": "string",
+        "value": "number",
+        "definition_uid": "string",
+        "observation_status": "string",
+        "source_as_of": "datetime",
+        "metadata_json": "json",
+    }
+    rows = []
+    for record in values.to_dict("records"):
+        payload = {column: _json_value(record.get(column)) for column in columns}
+        for column in ("time_index", "source_as_of"):
+            moment = record.get(column)
+            payload[column] = (
+                None if moment is None or moment != moment else int(pd.Timestamp(moment).timestamp() * 1000)
+            )
+        rows.append(payload)
+    return build_tabular_frame(
+        columns=columns,
+        rows=rows,
+        fields=[
+            build_tabular_field(
+                key=column,
+                label=column.replace("_", " ").title(),
+                field_type=field_types[column],
+                nullable=column not in {"time_index", "index_identifier", "value"},
+            )
+            for column in columns
+        ],
+        meta={
+            "timeSeries": {
+                "shape": "long",
+                "timeField": "time_index",
+                "valueField": "value",
+                "seriesField": "index_identifier",
+                "sorted": True,
+            }
+        },
+        source={"kind": "api", "id": operation_id, "label": index.unique_identifier, "context": context},
+    )
+
+
+def _json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, float) and value != value:
+        return None
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            return value.item()
+        except (ValueError, TypeError):
+            return value
+    return value
 
 
 def list_index_formulas(*, uid: str) -> tuple[IndexFormulaSummary, ...] | None:

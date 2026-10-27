@@ -7,7 +7,7 @@ Core rule
 This module is PURE/BASE: it contains NO Constant names and NO back-compat fallbacks.
 
 You MUST register how to build each index via `register_index_spec(...)`
-(from your extended package, e.g. banxico.src) before calling `get_index(...)`.
+(from your own provider package) before calling `get_index(...)`.
 
 Usage
 -----
@@ -241,7 +241,7 @@ def build_zero_curve_with_effective_date(
             z *= 0.01  # percent -> decimal
 
         T = dc.yearFraction(base, d)
-        # Preserving your existing assumption: "Valmer zero is simple ACT/360"
+        # Preserving the existing assumption: the source zero rate is simple ACT/360
         df = 1.0 / (1.0 + z * T)
 
         dates.append(d)

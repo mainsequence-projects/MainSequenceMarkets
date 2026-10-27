@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import uuid
 from typing import Annotated, Any
 
 import metatables.updaters.configuration as update_configuration
+from msm.identity import stable_identity_payload
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -16,12 +19,16 @@ from pydantic import (
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
-from msm_portfolios.data_nodes import (
+from msm_portfolios.time_index import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     SignalWeights,
     canonical_signal_configuration,
 )
-from msm_portfolios.data_nodes.base import _class_import_path, _drop_excluded_keys
+from msm_portfolios.time_index.base import (
+    _class_import_path,
+    _drop_excluded_keys,
+    _isoformat_dates_and_times,
+)
 from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
@@ -51,7 +58,7 @@ def canonical_rebalance_strategy_configuration(
     payload = _rebalance_strategy_payload(rebalance_strategy)
     serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     canonical = _drop_excluded_keys(
-        dict(serialized_payload),
+        _isoformat_dates_and_times(dict(serialized_payload)),
         excluded_keys=REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
     )
     if isinstance(rebalance_strategy, RebalanceStrategyBase):
@@ -60,6 +67,18 @@ def canonical_rebalance_strategy_configuration(
             for name, dependency in sorted(rebalance_strategy.declared_dependencies().items())
         }
     return canonical
+
+
+def compute_strategy_revision(rebalance_strategy: Any) -> str:
+    """Return the rebalance strategy revision recorded on portfolio ledger events."""
+
+    payload = stable_identity_payload(
+        canonical_rebalance_strategy_configuration(rebalance_strategy),
+        sources=[rebalance_strategy],
+    )
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def _rebalance_strategy_payload(rebalance_strategy: Any) -> dict[str, Any]:
@@ -102,19 +121,19 @@ class MarketsTimeSeries(PortfolioConfigBaseModel):
     Reference to a MarketsTimeSeries by unique identifier.
 
     This is used to point price nodes to a specific upstream time series
-    (e.g., "alpaca_1d_bars", "binance_1d_bars") depending on your backend setup.
+    (e.g., "provider_1d_bars") depending on your backend setup.
 
     Attributes:
         unique_identifier: Identifier of the MarketsTimeSeries.
     """
 
     unique_identifier: str = Field(
-        default="alpaca_1d_bars",
+        default="provider_1d_bars",
         description=(
             "Unique identifier of the MarketsTimeSeries to use as a price source "
-            "(e.g., 'alpaca_1d_bars', 'binance_1d_bars')."
+            "(e.g., 'provider_1d_bars')."
         ),
-        examples=["alpaca_1d_bars", "binance_1d_bars"],
+        examples=["provider_1d_bars"],
     )
 
 
@@ -216,7 +235,7 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
     asset_list: list[Any] | None = Field(
         default=None,
         description=(
-            "Resolved asset scope for portfolio DataNodes. Items may be strings, mappings, "
+            "Resolved asset scope for portfolio updaters. Items may be strings, mappings, "
             "or objects with an asset_identifier field."
         ),
         json_schema_extra={"hash_excluded": True},
@@ -267,7 +286,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     Portfolios uses **direct injection** (instances), not string lookups:
     - `signal_weights_instance` is a SignalWeights TimeIndexTableUpdater
     - `rebalance_strategy_instance` is a RebalanceStrategyBase state machine whose
-      declared DataNode dependencies are serialized as part of its identity
+      declared updater dependencies are serialized as part of its identity
 
     Attributes:
         rebalance_strategy_instance:
@@ -344,7 +363,7 @@ class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
         ge=0.0,
         description=(
             "Commission fee rate applied as turnover drag. "
-            "PortfoliosDataNode computes fees as sum(abs(w_current - w_before)) * commission_fee."
+            "PortfoliosUpdater computes fees as sum(abs(w_current - w_before)) * commission_fee."
         ),
         examples=[0.00018, 0.001, 0.0],
     )
@@ -511,7 +530,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
 
     execution_configuration: PortfolioExecutionConfiguration = Field(
         ...,
-        description="Execution / fee configuration used by PortfoliosDataNode.",
+        description="Execution / fee configuration used by PortfoliosUpdater.",
         examples=[{"commission_fee": 0.00018}],
     )
 

@@ -53,6 +53,12 @@ def delete_asset(asset: "MarketsOperationContext", **kwargs: Any) -> dict[str, A
     return repository_delete_asset(asset, **kwargs)
 
 
+def asset_identifiers_by_ticker(*args: Any, **kwargs: Any) -> list[str]:
+    from msm.services.assets.reference_details import asset_identifiers_by_ticker as read_identifiers
+
+    return read_identifiers(*args, **kwargs)
+
+
 def asset_reference_details(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
     from msm.services.assets.reference_details import asset_reference_details as read_details
 
@@ -68,6 +74,7 @@ def asset_reference_details_by_uids(*args: Any, **kwargs: Any) -> list[dict[str,
 
 
 __all__ = [
+    "asset_identifiers_by_ticker",
     "asset_reference_details",
     "asset_reference_details_by_uids",
     "create_asset",

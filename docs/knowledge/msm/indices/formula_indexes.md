@@ -150,7 +150,10 @@ history = FormulaIndex.history(active.index.uid)
 ```
 
 Activating a successor closes the open predecessor at the successor's
-`valid_from`. Retired versions cannot be reactivated.
+`valid_from`. Retired versions cannot be reactivated. `activate()` and
+`retire()` call the class methods `FormulaIndex.activate_definition(uid)` and
+`FormulaIndex.retire_definition(uid, valid_to=...)`, so they also run under the
+remote row backend (write-policy resource `formula-index`).
 
 ## Preview Persisted Formulas
 
@@ -186,18 +189,18 @@ Production publication pins immutable formula versions and the exact
 registered storage classes for every source MetaTable:
 
 ```python
-from msm.data_nodes.indices import (
-    FormulaIndexDataNode,
-    FormulaIndexDataNodeConfiguration,
+from msm.time_index.indices import (
+    FormulaIndexUpdater,
+    FormulaIndexUpdaterConfiguration,
     configured_index_values_storage,
 )
 
-config = FormulaIndexDataNodeConfiguration(
+config = FormulaIndexUpdaterConfiguration(
     formula_definition_uids=(formula_index.definition.uid,),
     source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
-node = FormulaIndexDataNode(
+node = FormulaIndexUpdater(
     config,
     configured_index_values_storage(cadence="1d"),
 )
@@ -227,7 +230,7 @@ index = Index.upsert(
 )
 ```
 
-Use `IndexValuesDataNode` or `normalize_index_values_frame` for the canonical
+Use `IndexValuesUpdater` or `normalize_index_values_frame` for the canonical
 cadence storage. Custom rows must not supply `definition_uid`.
 
 Self-financing calculations belong to Portfolio. Publish the Portfolio NAV or

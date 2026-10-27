@@ -16,12 +16,12 @@ from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--no-run-data-nodes",
+        "--no-run-updaters",
         action="store_true",
         help="Skip TimeIndexTableUpdater publication; by default the full dependency tree is published.",
     )
     args = parser.parse_args()
-    build_equal_weight_portfolio(run_data_nodes=not args.no_run_data_nodes)
+    build_equal_weight_portfolio(run_updaters=not args.no_run_updaters)
 
 
 if __name__ == "__main__":

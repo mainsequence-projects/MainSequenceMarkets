@@ -36,15 +36,15 @@ hides per-line resolver loops does not satisfy that decision.
 
 - [Market Data Sets](market_data_sets.md): first-class `PricingMarketDataSet`
   rows, concept bindings, default-binding seeding, the
-  `data_node_uid` vs `storage_table_identifier` boundary, and selecting
+  `storage_table_uid` vs `storage_table_identifier` boundary, and selecting
   `eod`/`live`/`risk_manager` sets.
 - [Instruments](instruments.md): the asset-to-instrument projection
   (`AssetCurrentPricingDetailsTable`, attach/load helpers) and the account and
   portfolio valuation inputs (`ValuationLine`/`ValuationPosition`).
 - [Curves](curves.md): curve rows (`CurveTable`), build details
   (`CurveBuildingDetailsTable`), market-data-set curve bindings, and curve
-  observations (`DiscountCurvesNode`).
-- [Fixings](fixings.md): index fixing observations (`FixingRatesNode`).
+  observations (`DiscountCurvesUpdater`).
+- [Fixings](fixings.md): index fixing observations (`FixingRatesUpdater`).
 - [Scenarios](scenarios/index.md): transient curve scenario and generic
   valuation workflow orchestration under `msm_pricing.scenarios`.
 - [Analytics](analytics.md): pure-data spread analytics, cross-asset spread
@@ -83,7 +83,7 @@ msm_pricing/
   api/             row APIs and instrument attach/load bridge helpers
   instruments/     Pydantic priceable instrument contracts
   models/          SQLAlchemy MetaTable declarations owned by pricing
-  data_nodes/      pricing DataNodes and storage-facing publishing helpers
+  time_index/      pricing updaters and storage-facing publishing helpers
   pricing_engine/  QuantLib builders, resolvers, pricers, and analytics
   scenarios/       transient scenario workflows
     curves/        curve shocks, key-node bumps, runtime curve handles
@@ -103,7 +103,7 @@ The pricing graph has four persistent layers:
 
 1. core assets and indexes from `msm`;
 2. pricing MetaTables that extend assets and indexes;
-3. pricing DataNodes that publish curve and fixing observations;
+3. pricing updaters that publish curve and fixing observations;
 4. serialized instrument payloads that reference backend UUIDs.
 
 Per [ADR 0035](../../ADR/0035-pricing-curve-identity-and-market-data-curve-bindings.md),
@@ -152,10 +152,10 @@ relationship map:
                         │        ▼                              ▼
               +---------+----------------+      +-------------------------------------+
               | PricingMarketDataSet     |      | PricingMarketDataSetCurveBinding    |
-              | CurveBinding             |      | concept_key -> data_node_uid        |
+              | CurveBinding             |      | concept_key -> storage_table_uid    |
               | role_key, selector_type, |      |  (SOURCE: which storage table)      |
               | selector_key, quote_side |      +------------------+------------------+
-              |   -> curve_uid ──────────┘                         │ data_node_uid
+              |   -> curve_uid ──────────┘                         │ storage_table_uid
               | selector_key MAY hold an                           ▼
               | IndexTable.uid as a STRING                 selected storage table
               | (policy, not a table FK)                   (e.g. DiscountCurvesStorage)
@@ -165,7 +165,7 @@ relationship map:
 Read it as two questions answered by two different binding rows:
 
 - **Where do I read observations from?** `PricingMarketDataSetBinding`:
-  `(market_data_set, concept_key) -> data_node_uid -> storage table`.
+  `(market_data_set, concept_key) -> storage_table_uid -> storage table`.
 - **Which curve identity inside that storage do I use?**
   `PricingMarketDataSetCurveBinding`:
   `(market_data_set, role_key, selector_type, selector_key, quote_side) -> curve_uid`.

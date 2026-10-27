@@ -7,6 +7,375 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-26
+
+Breaking release 3.0.0. It renames the DataNode vocabulary to the MetaTables
+time-index terms: packages, updater and configuration classes, and UID fields
+that now name the identity they hold. See
+[ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)
+and [Upgrading To 3.0](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3/).
+Every pre-3.0 name keeps working through 3.x with a `DeprecationWarning`.
+Producers built from a moved class get a new `update_hash` once; signal,
+portfolio and strategy identities do not change. Dependent packages declare
+`ms-markets>=3,<4`.
+
+### Added
+
+- Provider-owned Index values (ADR 0047, decision 4):
+  `configured_index_values_storage(cadence=..., namespace=, storage_app=, base=)`
+  builds a provider's `<storage_app>__index_values__t_<cadence>` table in its own
+  namespace; without them it is Markets' own table, unchanged. The Index dataset
+  catalog discovers and reads both.
+- Moving existing history into provider instances (ADR 0047):
+  `msm.storage_copies.copy_time_index_rows` copies the rows of some keys that a
+  target table lacks from another table of the same contract, through the
+  `TimeIndexRowsCopy` updater, and verifies every key; a second pass fills only
+  the gaps. `TableSeriesMove`, `msm_portfolios.services.series_moves`
+  `PortfolioSeriesMove` and `SignalSeriesMove` move a series and roll it back,
+  including the catalog and signal-binding calls in a fixed order, and
+  `run_series_moves` / `msm series move|rollback` run a provider's moves.
+  A move refuses, before switching the provider, a signal without a
+  `SignalMetadata` row; a portfolio rollback keeps the binding of a signal that
+  did not move with it (`PortfolioDatasets.unregister(..., unbind_signal=False)`);
+  moves take `keys_per_read` and `deadline_seconds`; `msm series` passes
+  `rollback=` to a callable that accepts it.
+- Remote reads and lifecycle calls providers need (ADR 0047): `filter` and
+  `count` take `<field>__gte`, `__gt`, `__lte` and `__lt` range bounds
+  (`msm.repositories.crud` `range_filters`); `AssetSnapshots.latest` returns
+  each asset's latest snapshot by identifier, uid or ticker
+  (`msm.services.assets.asset_identifiers_by_ticker`);
+  `PortfolioDatasets.register_signal` binds any signal's weights instance;
+  `FormulaIndex.activate_definition` and `retire_definition` back
+  `activate()`/`retire()`; `GET /portfolio/values/` takes `offset` and
+  `MarketsClient.portfolio_values` pages past 5,000 rows.
+  `CurrencySpot` and `Future` gain `upsert_many` and `filter`;
+  `AccountHoldingsSnapshots.get_many` returns several snapshots in one call
+  (`msm.services.get_account_holdings_snapshots_response`);
+  `PortfolioDatasets.unregister` removes a catalog row for a rollback, and
+  `unregister_signal` clears one signal's instance binding.
+- Provider time series (ADR 0047): `msm.storage_instances.configured_time_index_instance`
+  builds a provider-owned instance of any Markets time-index storage, with its
+  columns, foreign keys and grain index, in the provider's namespace and Alembic
+  base. `configured_interpolated_prices_storage` takes `namespace`,
+  `storage_app` and `base`, and `InterpolatedPrices` takes `storage_namespace`,
+  `storage_app` and `storage_base`, without changing `update_hash`.
+  `msm_portfolios.api.datasets.PortfolioDatasets.register/reconcile/get` run the
+  portfolio dataset catalog services through the remote backend.
+- Set-based row operations on every table row class, under both backends:
+  `upsert_many(payloads)` (one bulk upsert on `__upsert_keys__`, each payload
+  validated through `<Row>Upsert`), `count(**filters)`, and `filter(...)` with
+  `order_by`, `offset` and `<field>__in`. `msm.repositories.crud.search_model`
+  gains `order_by`. `AccountHoldingsSnapshots.publish/get` and
+  `AssetSnapshots.publish` publish holdings and asset snapshots into Markets, so
+  an application on the remote backend needs no grant on those tables.
+- Under the remote backend, `msm.start_engine(models=[...])` no longer attaches
+  a Markets table that is only a foreign-key target of another namespace's
+  table; the provider's tables reference it by physical name, and the
+  provider needs no grant on `mainsequence.markets`. Runtime-backend processes
+  attach foreign-key targets as before.
+- `msm.client` and the remote row backend (ADR 0047, decision 2). With
+  `use_remote_backend(MarketsClient.from_environment().backend)` or
+  `MSM_API_BACKEND=remote`, every public class method of a Markets row class
+  (`Asset.upsert`, `Portfolio.get_by_uid`, `CurrencySpot.upsert`,
+  `Index.get_formula` ...) runs through the Markets API instead of MetaTables,
+  so an application needs no grant on `mainsequence.markets`. A provider's own
+  row classes keep the runtime backend. The client discovers the `api` release
+  of the `MainSequenceMarkets` repository in the caller's Environment and
+  authenticates with its release token; `MARKETS_API_URL` and
+  `MARKETS_API_TOKEN` select a local API. New routes `GET /rows/` and
+  `POST /rows/{resource}/{operation}/` serve it; writes go through the registry
+  write policy. `MarketsClient.portfolio_values` and `portfolio_weights` read
+  catalogued portfolio time series.
+- Registry write policy (ADR 0047, decision 3). `apps.v1.policy` runs before
+  every `registry_write` service: an application (workload identity) may create,
+  update or delete registry rows only when the Main Sequence Constant
+  `MARKETS_REGISTRY_WRITERS` lists its User uid for that resource or for `"*"`;
+  other applications get `403`. People, requester-bound calls, Organization
+  admins and calls outside a request are unaffected. A missing constant allows
+  no application, and an unreadable or malformed one returns `503`. The Markets
+  workload needs `reader` on the constant. Deployments where applications write
+  registry rows today must create the constant before upgrading.
+- The portfolio engine can write every output to a provider's own instances
+  (ADR 0047). `PortfolioRebalanceStateTS`, `PortfolioCalendarEventsTS` and
+  `PortfolioEventLedgerTS` are storage contracts with the factories
+  `configured_portfolio_rebalance_state_storage`,
+  `configured_portfolio_calendar_events_storage` and
+  `configured_portfolio_event_ledger_storage`. `PortfoliosUpdater` takes
+  `weights_output_table=` and `rebalance_output_table=` for the
+  `PortfolioWeights` and `PortfolioRebalance` updaters it builds, and
+  `PortfolioWeights` takes `rebalance_output_table=`. Output tables do not
+  enter `update_hash`, so no existing identity changes.
+- [ADR 0047](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0047-markets-api-application-boundary/)
+  proposes the
+  Markets API as the application boundary: provider-owned namespaces and
+  sidecars, a contracts package with a remote row backend, and contract-plus-
+  instances for portfolio and signal time series catalogued by Markets. Its
+  migration path step 1 is implemented in this release as described below,
+  except per-service ownership and Team scoping policy, which is still open;
+  the packaging split (step 2) and the provider and consumer moves (steps 3
+  and 4) are not.
+- `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS` are storage
+  contracts with instances (ADR 0047, decision 5).
+  `msm_portfolios.data_nodes.contract_instances` adds
+  `configured_portfolios_storage`, `configured_portfolio_weights_storage` and
+  `configured_signal_weights_storage`, which build an instance under a
+  caller-chosen MetaTables namespace, physical-name app segment and optional
+  SQLAlchemy base, with the contract's columns, dtypes, time index, index
+  names and foreign keys and a stable identifier `<Contract>.<instance_key>`.
+  The core tables remain the Markets-owned instance.
+- `PortfolioDatasetAvailabilityTable` (`PortfolioDatasetAvailability`) catalogs,
+  per portfolio, the values, weights and signal instance uids and the
+  reconciled population state of the values instance, mirroring
+  `IndexDatasetAvailability`. `SignalMetadataTable.meta_table_uid` records the
+  signal's instance. Alembic revision `0021` creates the table and the column;
+  no existing table, column or row changes.
+- `msm_portfolios.services.portfolio_datasets` adds
+  `register_portfolio_datasets`, `reconcile_portfolio_dataset_availability`,
+  `list_portfolio_dataset_states` and `verify_contract_instance`. Registration
+  verifies each declared table against the contract; reconciliation aggregates
+  each instance once for all of its portfolios and records unreadable
+  instances as `unavailable`.
+- `apps.v1.identity` adds `acting_identity()`, the one place the Markets API
+  decides whom a request acts for: `User.get_requester()` on a requester-bound
+  call, `User.get_logged_user()` otherwise, never both, and `None` outside a
+  request. `registry_write` wraps every API service that creates, updates or
+  deletes a registry row (accounts, asset categories, assets, calendars,
+  indexes, portfolio groups, portfolio signals, portfolios, pricing curves and
+  pricing market data) and records the acting identity with the resource,
+  action and row uid on the `apps.v1.identity` logger after a successful
+  write. The Index routes derive their actor from the acting identity, so a
+  requester-bound call acts for the requester.
+- Markets API routes the ADR 0047 boundary needs: `POST /api/v1/account/`
+  and `PATCH /api/v1/account/{uid}/` (account create and update over
+  `msm.api.accounts`); `POST /api/v1/index/{uid}/formulas/`,
+  `.../{definition_uid}/activate/`, `.../{definition_uid}/retire/`,
+  `.../formulas/preview/` and `.../{definition_uid}/preview/` (formula save,
+  activate, retire and preview over `FormulaIndex`, previews as
+  `core.tabular_frame@v1`); `GET .../by-uids/?uid__in=` batch lookups for
+  assets, accounts, portfolios and indexes (at most 500 uids, request order,
+  unknown uids omitted, no paging or discovery); `GET /api/v1/portfolio/values/`
+  and `GET /api/v1/portfolio/weights/` multi-portfolio frames grouped by
+  catalogued table; and `POST /api/v1/portfolio/{uid}/datasets/`,
+  `GET /api/v1/portfolio/{uid}/datasets/` and
+  `POST /api/v1/portfolio/datasets/reconcile/` for the portfolio dataset
+  catalog. All are registered in the Command Center adapter contract; the
+  mutating ones record the acting identity. The by-uid lookups accept
+  `include=<sidecar MetaTable uid>` and attach provider sidecar rows under
+  `includes`, resolving the sidecar's foreign key to the core `uid` from the
+  MetaTables catalog and reading each sidecar once (ADR 0047 `include`
+  hydration; the Markets workload needs `data_viewer` on the sidecar).
+- A design note for the contracts package split and `msm.client` (ADR 0047,
+  decision 2) under `docs/planning/implementation_tasks/`; the README now
+  describes `msm.client` as planned rather than shipped.
+- The `markets-api` resource in `.mainsequence/workflows/ms-markets-api.yaml`
+  declares `acts_for_requester: true`, so the platform signs the person an
+  application works for into the caller assertion and the API acts for that
+  requester (ADR 0047, decision 3). Caller-bound calls are unchanged. The
+  declaration takes effect only when an Organization admin pushes it; a push by
+  anyone else makes the `markets-api` resource fail before it deploys.
+- `tests/identity/test_pinned_identities.py` pins the identities that a rename
+  or a module move would rotate: the physical table name and MetaTable
+  identifier of every library-owned model, the `module:qualname` of every
+  shipped `TimeIndexTableUpdater` and `TimeIndexTableUpdateConfig` subclass
+  (MetaTables hashes both into each producer's `update_hash`), and the
+  `signal_uid` and portfolio configuration hash of fixed library and
+  application signal configurations. Changing a pinned value is a deliberate
+  identity rotation and belongs in this changelog.
+- [ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/)
+  records the rename of the DataNode vocabulary to the MetaTables time-index
+  terms: package and class names, UID columns named after the identity they
+  hold, a 3.x deprecation window, and expand-then-contract column migrations
+  across 3.0.0, 3.1.0, 4.0.0 and 4.1.0.
+- `msm.identity` keeps the identities ms-markets derives stable when an updater
+  or configuration class moves. `compute_signal_uid`,
+  `compute_portfolio_configuration_hash` and the new
+  `msm_portfolios.configuration.compute_strategy_revision` (which the portfolio
+  engine now uses for ledger events) map moved class paths and nested updater
+  hashes back to their pre-rename values before hashing. No class has moved
+  yet, so every identity is unchanged; the pinned identity tests now also cover
+  real updaters built offline, nested updater hashes, strategy revisions,
+  factory-built storage tables and a simulated class move.
+- Alembic revision `0022` adds `holdings_storage_table_uid`,
+  `source_storage_table_uid`, `portfolio_weights_table_update_uid`,
+  `signal_weights_table_update_uid`, `portfolio_table_update_uid` and an
+  indexed `storage_table_uid` next to the pre-3.0 `*_data_node_uid` columns and
+  copies their values. No row or pre-3.0 column changes. ms-markets 3.x writes
+  both columns on every CRUD and repository write path
+  (`msm.repositories.crud.mirror_renamed_columns`, driven by each model's
+  `__renamed_columns__`) and reads the pre-3.0 columns until every writer runs
+  3.x (ADR 0048).
+- `msm rename-preflight` helps host projects move to the 3.0 names. `scan`
+  lists pre-3.0 import paths, class names and UID field names with their
+  replacements, including `getattr(..., "<pre-3.0 field>", default)` calls that
+  4.0 would turn into silent defaults, and exits 1 while any remain.
+  `rotation module:callable` reports each updater's new and pre-3.0
+  `update_hash`. `account-uids` classifies the stored account and holdings-set
+  UIDs as storage tables or table updates. The new
+  [Upgrading To 3.0](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3/)
+  page describes the upgrade order.
+
+### Changed
+
+- **Renamed packages and classes (ADR 0048).** `msm.data_nodes`,
+  `msm_portfolios.data_nodes` and `msm_pricing.data_nodes` are now
+  `msm.time_index`, `msm_portfolios.time_index` and `msm_pricing.time_index`,
+  and `msm_portfolios.contrib.prices.data_nodes` is
+  `msm_portfolios.contrib.prices.updaters`. `*DataNode` updaters are
+  `*Updater`, `*DataNodeConfiguration` classes are `*UpdaterConfiguration`,
+  `TargetPositionsDataNodeConfiguration` is `TargetPositionsConfiguration`, and
+  `DiscountCurvesNode` and `FixingRatesNode` are `DiscountCurvesUpdater` and
+  `FixingRatesUpdater`. Storage classes, physical table names and MetaTable
+  identifiers are unchanged. The asset-indexed skill folder is now
+  `assets/asset_indexed_updaters`; re-run `msm copy-msm-skills` to replace the
+  old folder.
+- **Identity rotation.** MetaTables hashes each updater's and each
+  configuration class's import path into `update_hash`. Every producer whose
+  class or configuration class moved, or that nests such a producer, gets a
+  new `TimeIndexTableUpdate` on its first run under 3.0.0. The old record keeps
+  its run history, and the producer continues from its output table's last
+  observation. `signal_uid`, portfolio configuration hashes and rebalance
+  strategy revisions do not change; `msm.identity` maps the moved paths back.
+- **Renamed UID fields (ADR 0048).** Row APIs, payloads, repositories, services
+  and HTTP responses use `holdings_storage_table_uid` (`Account`),
+  `source_storage_table_uid` (`AccountHoldingsSet`),
+  `portfolio_weights_table_update_uid`, `signal_weights_table_update_uid` and
+  `portfolio_table_update_uid` (`Portfolio`), and `storage_table_uid`
+  (`PricingMarketDataSetBinding` and the curve and resolve responses).
+  `PricingMarketDataConfiguration.data_node_uids` is `storage_table_uids`,
+  `PricingMarketDataSetBinding.resolve_data_node_uid` is
+  `resolve_storage_table_uid`, `direct_data_node_uid_for` is
+  `direct_storage_table_uid_for`, and the virtual-fund allocation methods take
+  `updater=` instead of `data_node=`. Rows read the pre-3.0 column, which 2.x
+  writers still update. Portfolio detail fields use the new keys and the
+  labels "Portfolio Weights Table Update", "Signal Weights Table Update" and
+  "Portfolio Values Table Update"; the Command Center binding column is
+  `storage_table_uid`. Missing-curve messages call the bound UID a storage
+  table instead of a TimeIndexTableUpdater.
+- `portfolio_values`, `latest_portfolio_weights` and the new `signal_weights`
+  read in `msm_portfolios.services.portfolio_reads` resolve each portfolio's
+  table from the catalog and read it by uid through `TimeIndexTableRef`,
+  filtered by `portfolio_identifier` or `signal_uid`. Portfolios without a
+  catalog row read the core tables as before. A request for several portfolios
+  groups them by table uid, reads each table once and returns one ordered
+  list. `latest_portfolio_weights` gains `order`, and the reads accept a
+  `dataset_reader` for tests. The portfolio values, weights and signal-weight
+  API routes use these reads. The `apps/v1` runtimes attach
+  `PortfolioDatasetAvailability`.
+- ms-markets requires `mainsequence-metatable>=0.1.57,<0.2` (was `>=0.1.51`).
+  0.1.57 is the first MetaTables release that computes the `update_hash` of an
+  updater whose configuration holds a `datetime.date` or `datetime.time`.
+
+### Deprecated
+
+- The pre-3.0 import paths `msm.data_nodes`, `msm_portfolios.data_nodes`,
+  `msm_pricing.data_nodes` and `msm_portfolios.contrib.prices.data_nodes`, with
+  every submodule, are aliases of the renamed modules through 3.x. They
+  re-export the same objects and raise a `DeprecationWarning` at the importing
+  line. The pre-3.0 class names, such as `AssetIndexedDataNode`,
+  `PortfoliosDataNode` and `DiscountCurvesNode`, resolve from those paths and
+  from `msm_portfolios` with a warning. Stored configurations that name the old
+  paths still rebuild. ms-markets 4.0 removes the aliases.
+- The pre-3.0 UID field names (`holdings_data_node_uid`,
+  `source_data_node_uid`, `portfolio_weights_data_node_uid`,
+  `signal_weights_data_node_uid`, `portfolio_data_node_uid` and
+  `data_node_uid`) stay readable on rows and in every HTTP response, where
+  OpenAPI marks them deprecated, and requests, payloads, row writes and
+  repository builders accept them with a `DeprecationWarning`.
+  `data_node_uids`, `resolve_data_node_uid`, `direct_data_node_uid_for`,
+  `data_node=` and `msm.settings.markets_data_node_identifier` are deprecated
+  aliases. ms-markets 4.0 removes them.
+
+### Fixed
+
+- Every hosted rollout since 2026-10-21 stopped at the `migrate-markets` Job
+  with `No package metadata was found for ms-markets`. Main Sequence images no
+  longer install the repository itself (platform ADR-080); Jobs and the Markets
+  API import it from `/workspace`. `msm`, the API and the CLI now read the version
+  through `msm.distribution.package_version()`, which falls back to the
+  checkout's `pyproject.toml` when the distribution is not installed.
+
+- `requirements.txt`, the only dependency input of a Main Sequence image, still
+  pinned `mainsequence-metatable==0.1.51` after the floor moved to 0.1.57, so the
+  image lacked `metatables.envelope_contract`. It is regenerated with
+  `mainsequence code-repository sync`, and a test now fails when its pins differ
+  from `uv.lock`.
+
+- A storage instance built on a provider's declarative base copied each
+  referenced Markets table whole, with that table's own foreign keys to tables
+  that were not copied, so the provider's `metadata.sorted_tables` and Alembic
+  autogenerate failed with `NoReferencedTableError`. The provider's metadata now
+  holds only the referenced key columns of each Markets table
+  (`msm.storage_instances.markets_reference_table`).
+
+- Building a storage instance on a provider's declarative base raised
+  `TypeError: Boolean value of this clause is not defined` once the base already
+  held a copied foreign-key target (any table with two foreign keys to one
+  Markets table, such as trades or the event ledger, or a second instance on the
+  same base); the copied target is now reused. `msm.start_engine` accepts such
+  instances: they are not `MarketsBase` subclasses but carry the Markets mixins.
+- The portfolio guide's provider example passed `namespace=` to
+  `PortfoliosUpdater`, which is the hash namespace and rotates `update_hash`.
+
+- Under the remote backend, `PersistedCalendarSchedule.schedule` (calendar-relative
+  rebalancing) and `FormulaIndex.activate()`/`retire()` ran compiled SQL in the
+  calling process and failed; they now run through dispatched row methods.
+- `Index.upsert_many` now applies `Index.upsert`'s `calculation_method` guard
+  to every existing index.
+- A holdings snapshot read scanned at most 500 holdings rows in no order, so
+  for a larger account the latest (or earliest) snapshot could be missed. The
+  scan is ordered by time, and a dated read filters on that date.
+
+- UID column labels and descriptions name the identity each column holds.
+  The three `PortfolioTable.*_data_node_uid` columns are labelled as
+  `TimeIndexTableUpdate` uids, which is what the portfolio updaters write.
+  `PricingMarketDataSetBindingTable.data_node_uid` is labelled as the storage
+  table uid it is resolved through. `AccountTable.holdings_data_node_uid` and
+  `AccountHoldingsSetTable.source_data_node_uid` describe `TimeIndexMetaTable`
+  uids, as their original `DataNodeStorage` descriptions did, instead of being
+  labelled as updater uids. The Command Center market-data binding columns
+  read "Storage table UID", and the API settings namespace assumption names
+  time-index table updaters instead of DataNodes. Column names, API fields and
+  MetaTable contract hashes are unchanged; the catalog refreshes the labels on
+  the next migration finalization.
+- `docs/concepts.md` describes timestamped data in MetaTables terms: a
+  `PlatformTimeIndexMetaTable` storage class written by a
+  `TimeIndexTableUpdater` producer, instead of a single DataNode storage
+  contract.
+- `include` on the by-uid lookups no longer returns application-encrypted
+  sidecar columns. Markets skips every column the MetaTables catalog marks with
+  `encryption` (MetaTables ADR 0025) and drops any value that is an `mt1.`
+  encryption envelope, so a provider can grant the Markets workload
+  `data_viewer` on a sidecar that holds credentials without its ciphertext
+  reaching Markets responses. A sidecar whose join column is encrypted is
+  refused.
+- `from <pre-3.0 module path> import <name>` no longer recurses forever. The
+  import system probes `__path__` on every from-import, and the deprecated
+  alias modules treated that dunder as a submodule to import, which probed
+  `__path__` again. Aliases now answer dunder lookups with `AttributeError` and
+  try submodule imports only for package aliases. Every module alias is tested
+  with a from-import.
+- Portfolio, portfolio-weights, signal and signal-weights deletes respect the
+  ADR 0047 catalog. They used to touch only the core tables, so a portfolio
+  catalogued in another application's contract instance reported zero rows
+  deleted and kept its data. `DELETE /portfolio/{uid}/weights/` and
+  `DELETE /portfolio-signal/{uid}/weights/` now return 409 and delete nothing
+  when the weights live in a table another application owns
+  (`PortfolioDatasetOwnershipError`, `SignalDatasetOwnershipError`). Portfolio
+  and signal deletes, including bulk and cascade, still delete the Markets rows
+  and any core rows, and list each table they left in place in a new
+  `retained_datasets` field. The bulk-delete preflight warns about those tables.
+  A catalog row that names the core table counts as core.
+- `compute_portfolio_configuration_hash` and `compute_signal_uid` no longer
+  raise `TypeError` when a configuration holds a `datetime.date` or
+  `datetime.time`, such as the execution window of `TimeWeighted`,
+  `VolumeParticipation` and `TrailingAverageDailyVolumeParticipation`. The
+  canonical signal, portfolio and rebalance strategy payloads carry these values
+  as ISO strings. Configurations that hashed before keep their identities, and
+  rebalance strategy revisions do not change. With MetaTables 0.1.57, which
+  ms-markets now requires, `PortfolioWeights` and `PortfoliosUpdater` also
+  compute their `update_hash` for a portfolio that uses one of these
+  strategies, instead of raising the same `TypeError`.
+
 ## [2.2.12] - 2026-10-22
 
 - Require certifi 2026.10.19 or newer so downstream installs receive the corrected
@@ -1134,7 +1503,7 @@ See
   fixed-income spread analytics without copying project-local adapter code into
   the library.
 - Added an implementation task plan for upstreaming generic curve
-  reconstruction and observation export machinery from Valmer connector code
+  reconstruction and observation export machinery from provider connector code
   into `msm_pricing.pricing_engine.curves`.
 - Implemented `PricingValuationContext` with a public `PreparedInstrument`
   wrapper, frozen `PricingValuationContextSpec` input contract, fixed

@@ -15,6 +15,13 @@ resources:
         enabled: true
         tag_regex: null
       revision_retention_count: 3
+    # ADR 0047: the API authorizes against one identity per request, the
+    # requester on a requester-bound call and the caller otherwise. This lets
+    # the platform sign the person an application works for into the caller
+    # assertion; apps/v1/identity.py reads it. It takes effect only when an
+    # Organization admin pushes this file; a push by anyone else fails this
+    # resource before it deploys.
+    acts_for_requester: true
     # The API and the migration Job run as their own workload Users. To use
     # MetaTables they must see the Environment's MetaTables deployment and its
     # branch (`reader`); the platform grants this on every push. Their roles on

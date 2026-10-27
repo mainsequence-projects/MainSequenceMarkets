@@ -7,7 +7,7 @@ from msm.models import (
 )
 from msm.models.accounts import AccountTargetAllocationTable, PositionSetTable
 from msm.models import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
-from msm.data_nodes.accounts.storage import TargetPositionsStorage
+from msm.time_index.accounts.storage import TargetPositionsStorage
 from msm.models.indices import IndexTable, IndexTypeTable
 from msm.models.calendars import CalendarTable
 from msm_portfolios.models import (

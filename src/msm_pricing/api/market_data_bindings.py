@@ -6,7 +6,14 @@ from typing import Any, ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from msm.api.base import _warn_deprecated_create_schemas, operation_result_rows
+from msm.api.remote import RemoteRowOperations
+from msm.api.base import (
+    PayloadWithRenamedFields,
+    _warn_deprecated_create_schemas,
+    operation_result_rows,
+    pre_3_0_field,
+    reconcile_renamed_columns,
+)
 from msm.repositories.crud import (
     count_model,
     create_model,
@@ -47,7 +54,7 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
-class PricingMarketDataSet(BaseModel):
+class PricingMarketDataSet(RemoteRowOperations, BaseModel):
     """Named market-data source set used by pricing workflows."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -215,7 +222,7 @@ class PricingMarketDataSet(BaseModel):
         return None
 
 
-class PricingMarketDataSetBinding(BaseModel):
+class PricingMarketDataSetBinding(RemoteRowOperations, BaseModel):
     """Binding from a pricing market-data set and concept to a storage table UID."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -230,13 +237,19 @@ class PricingMarketDataSetBinding(BaseModel):
     uid: uuid.UUID
     market_data_set_uid: uuid.UUID
     concept_key: str
-    data_node_uid: uuid.UUID
+    storage_table_uid: uuid.UUID
     storage_table_identifier: str | None = None
     source: str | None = None
     metadata_json: dict[str, Any] | None = Field(
         default=None,
         validation_alias=AliasChoices("metadata_json", "metadata"),
     )
+    data_node_uid: uuid.UUID | None = pre_3_0_field("storage_table_uid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reconcile_renamed_columns(cls, data: Any) -> Any:
+        return reconcile_renamed_columns(cls.__table__, data)
 
     @classmethod
     def start_engine(cls, **kwargs: Any):
@@ -341,12 +354,14 @@ class PricingMarketDataSetBinding(BaseModel):
         return [cls.model_validate(row) for row in operation_result_rows(result)]
 
     @classmethod
-    def resolve_data_node_uid(
+    def resolve_storage_table_uid(
         cls,
         *,
         market_data_set: PricingMarketDataSetSelector = None,
         concept_key: str,
     ) -> uuid.UUID:
+        """Return the storage table uid bound to ``concept_key`` in the market-data set."""
+
         market_data_set_uid = PricingMarketDataSet.resolve_uid(market_data_set)
         binding = cls.get_by_set_and_concept(
             market_data_set_uid=market_data_set_uid,
@@ -357,7 +372,25 @@ class PricingMarketDataSetBinding(BaseModel):
                 "No pricing market-data binding found for "
                 f"market_data_set_uid={market_data_set_uid}, concept_key={concept_key!r}."
             )
-        return binding.data_node_uid
+        return binding.storage_table_uid
+
+    @classmethod
+    def resolve_data_node_uid(
+        cls,
+        *,
+        market_data_set: PricingMarketDataSetSelector = None,
+        concept_key: str,
+    ) -> uuid.UUID:
+        """Deprecated pre-3.0 name of :meth:`resolve_storage_table_uid`; removed in 4.0."""
+
+        from msm._deprecated_imports import warn_renamed
+
+        warn_renamed(
+            f"{cls.__name__}.resolve_data_node_uid", f"{cls.__name__}.resolve_storage_table_uid"
+        )
+        return cls.resolve_storage_table_uid(
+            market_data_set=market_data_set, concept_key=concept_key
+        )
 
     @classmethod
     def filter(cls, *, limit: int = 500, **filters: Any) -> list[PricingMarketDataSetBinding]:
@@ -420,7 +453,7 @@ class PricingMarketDataSetBinding(BaseModel):
         return None
 
 
-class PricingMarketDataSetCurveBinding(BaseModel):
+class PricingMarketDataSetCurveBinding(RemoteRowOperations, BaseModel):
     """Binding from a pricing market-data set valuation role to a curve identity."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -906,14 +939,15 @@ class PricingMarketDataSetUpdate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
-class PricingMarketDataSetBindingCreate(BaseModel):
+class PricingMarketDataSetBindingCreate(PayloadWithRenamedFields):
     """Payload for creating one pricing market-data set binding."""
 
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uid": "data_node_uid"}
 
     market_data_set_uid: uuid.UUID
     concept_key: str = Field(min_length=1, max_length=128)
-    data_node_uid: uuid.UUID
+    storage_table_uid: uuid.UUID
     storage_table_identifier: str | None = Field(default=None, max_length=255)
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None
@@ -923,12 +957,13 @@ class PricingMarketDataSetBindingUpsert(PricingMarketDataSetBindingCreate):
     """Payload for inserting or replacing a binding by market-data set and concept."""
 
 
-class PricingMarketDataSetBindingUpdate(BaseModel):
+class PricingMarketDataSetBindingUpdate(PayloadWithRenamedFields):
     """Payload for updating mutable market-data set binding fields."""
 
     model_config = ConfigDict(extra="forbid")
+    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uid": "data_node_uid"}
 
-    data_node_uid: uuid.UUID | None = None
+    storage_table_uid: uuid.UUID | None = None
     storage_table_identifier: str | None = Field(default=None, max_length=255)
     source: str | None = Field(default=None, max_length=255)
     metadata_json: dict[str, Any] | None = None

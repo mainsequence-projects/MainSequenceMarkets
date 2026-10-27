@@ -1,28 +1,8 @@
-from __future__ import annotations
+"""Deprecated alias of ``msm_pricing.time_index.pricing_details``.
 
-from msm.data_nodes.assets import (
-    AssetDataNodeConfiguration,
-    AssetTimestampedDataNode,
-)
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-from .storage import AssetPricingDetailsStorage
+from msm._deprecated_imports import alias_module
 
-
-class AssetPricingDetailConfiguration(AssetDataNodeConfiguration):
-    """Configuration for the canonical AssetPricingDetail TimeIndexTableUpdater."""
-
-
-class AssetPricingDetail(AssetTimestampedDataNode):
-    """Timestamped provider pricing metadata keyed by asset_identifier."""
-
-    configuration_class = AssetPricingDetailConfiguration
-
-    @classmethod
-    def _required_output_table(cls) -> type[AssetPricingDetailsStorage]:
-        return AssetPricingDetailsStorage
-
-
-__all__ = [
-    "AssetPricingDetail",
-    "AssetPricingDetailConfiguration",
-]
+__getattr__, __dir__ = alias_module(__name__, "msm_pricing.time_index.pricing_details")

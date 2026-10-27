@@ -11,7 +11,7 @@ from msm_portfolios.contrib.signals.regression_utils import (
     rolling_elastic_net,
     rolling_lasso_regression,
 )
-from msm_portfolios.data_nodes import ASSET_IDENTIFIER, SignalWeights
+from msm_portfolios.time_index import ASSET_IDENTIFIER, SignalWeights
 from msm_portfolios.configuration import PortfolioConfigBaseModel
 from msm_portfolios.utils import TIMEDELTA
 

@@ -676,13 +676,13 @@ def test_pricing_valuation_context_bulk_resolves_fixed_income_rows(monkeypatch) 
                         uid=uuid.uuid4(),
                         market_data_set_uid=market_data_set_uid,
                         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                        data_node_uid=uuid.uuid4(),
+                        storage_table_uid=uuid.uuid4(),
                     ),
                     PricingMarketDataSetBinding(
                         uid=uuid.uuid4(),
                         market_data_set_uid=market_data_set_uid,
                         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                        data_node_uid=uuid.uuid4(),
+                        storage_table_uid=uuid.uuid4(),
                     ),
                 ]
             )
@@ -957,13 +957,13 @@ def test_pricing_valuation_context_allows_explicit_same_curve_role_bindings(
                         uid=uuid.uuid4(),
                         market_data_set_uid=market_data_set_uid,
                         concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                        data_node_uid=uuid.uuid4(),
+                        storage_table_uid=uuid.uuid4(),
                     ),
                     PricingMarketDataSetBinding(
                         uid=uuid.uuid4(),
                         market_data_set_uid=market_data_set_uid,
                         concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                        data_node_uid=uuid.uuid4(),
+                        storage_table_uid=uuid.uuid4(),
                     ),
                 ]
             )
@@ -1140,13 +1140,13 @@ def test_pricing_valuation_context_fails_before_mutating_original_on_missing_row
                     uid=uuid.uuid4(),
                     market_data_set_uid=market_data_set_uid,
                     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                    data_node_uid=uuid.uuid4(),
+                    storage_table_uid=uuid.uuid4(),
                 ),
                 PricingMarketDataSetBinding(
                     uid=uuid.uuid4(),
                     market_data_set_uid=market_data_set_uid,
                     concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                    data_node_uid=uuid.uuid4(),
+                    storage_table_uid=uuid.uuid4(),
                 ),
             ]
         ),
@@ -1222,13 +1222,13 @@ def test_prepared_floating_bond_hot_loop_uses_context_without_backend_resolution
                     uid=uuid.uuid4(),
                     market_data_set_uid=market_data_set_uid,
                     concept_key=PRICING_CONCEPT_DISCOUNT_CURVES,
-                    data_node_uid=discount_curves_uid,
+                    storage_table_uid=discount_curves_uid,
                 ),
                 PricingMarketDataSetBinding(
                     uid=uuid.uuid4(),
                     market_data_set_uid=market_data_set_uid,
                     concept_key=PRICING_CONCEPT_INTEREST_RATE_INDEX_FIXINGS,
-                    data_node_uid=fixings_uid,
+                    storage_table_uid=fixings_uid,
                 ),
             ]
         ),

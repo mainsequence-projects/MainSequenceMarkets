@@ -2,7 +2,7 @@
 
 These helpers transform source key-node provenance into copied, bumped runtime
 curve observation nodes. They do not own persisted curve storage; that remains
-under ``msm_pricing.data_nodes.curves``. They also do not perform
+under ``msm_pricing.time_index.curves``. They also do not perform
 connector-specific curve reconstruction or source quote interpretation such as
 clean-price-to-rate conversion.
 """

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.portfolio_signals import (
     PortfolioSignalDeleteResponse,
     PortfolioSignalWeightsDeleteResponse,
@@ -44,6 +45,7 @@ def get_portfolio_signal(*, uid: str) -> SignalMetadata | None:
     return SignalMetadata.model_validate(response)
 
 
+@registry_write("portfolio-signal", "create")
 def create_portfolio_signal(*, payload: SignalMetadataCreate) -> SignalMetadata:
     runtime = _get_runtime()
     response = _create_signal_metadata_response(
@@ -53,6 +55,7 @@ def create_portfolio_signal(*, payload: SignalMetadataCreate) -> SignalMetadata:
     return SignalMetadata.model_validate(response)
 
 
+@registry_write("portfolio-signal", "update")
 def update_portfolio_signal(
     *,
     uid: str,
@@ -69,6 +72,7 @@ def update_portfolio_signal(
     return SignalMetadata.model_validate(response)
 
 
+@registry_write("portfolio-signal", "delete")
 def delete_portfolio_signal(*, uid: str) -> PortfolioSignalDeleteResponse | None:
     runtime = _get_runtime()
     try:
@@ -82,13 +86,19 @@ def delete_portfolio_signal(*, uid: str) -> PortfolioSignalDeleteResponse | None
     return PortfolioSignalDeleteResponse.model_validate(response)
 
 
+@registry_write("portfolio-signal", "delete:portfolio-signal-weights")
 def delete_portfolio_signal_weights(
     *,
     uid: str,
     weights_date: dt.datetime | None = None,
 ) -> PortfolioSignalWeightsDeleteResponse | None:
     runtime = _get_runtime()
-    response = _delete_signal_weights(runtime.context, uid=uid, weights_date=weights_date)
+    try:
+        response = _delete_signal_weights(runtime.context, uid=uid, weights_date=weights_date)
+    except Exception as exc:
+        if _is_signal_delete_conflict(exc):
+            raise PortfolioSignalDeleteConflictError(str(exc)) from exc
+        raise
     if response is None:
         return None
     return PortfolioSignalWeightsDeleteResponse.model_validate(response)

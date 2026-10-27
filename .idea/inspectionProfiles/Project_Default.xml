@@ -112,7 +112,6 @@
           <option value="pyparsing" />
           <option value="pytest" />
           <option value="pytest-timeout" />
-          <option value="python-binance" />
           <option value="python-dateutil" />
           <option value="python-dotenv" />
           <option value="python-logstash" />

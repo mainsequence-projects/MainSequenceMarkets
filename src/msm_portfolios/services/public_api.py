@@ -7,9 +7,9 @@ from typing import Any, Literal
 
 from sqlalchemy import String, cast, delete, func, literal, or_, select
 
-from msm.data_nodes.accounts.constants import TARGET_TYPE_PORTFOLIO
-from msm.data_nodes.accounts.storage import TargetPositionsStorage
-from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.constants import TARGET_TYPE_PORTFOLIO
+from msm.time_index.accounts.storage import TargetPositionsStorage
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
     CalendarTable,
     PortfolioTable,
@@ -21,13 +21,21 @@ from msm.repositories.crud import (
     count_model,
     create_model,
     get_model_by_uid,
+    renamed_column_value,
     search_model,
     update_model,
 )
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.services.assets.reference_details import asset_reference_details
-from msm_portfolios.data_nodes.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
-from msm_portfolios.data_nodes.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+from msm_portfolios.services.portfolio_reads import (
+    PortfolioDatasetTables,
+    latest_portfolio_weights,
+    portfolio_values,
+    resolve_portfolio_dataset_tables,
+    signal_weights,
+)
 from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
@@ -40,6 +48,25 @@ class PortfolioDeleteConflictError(ValueError):
 
 class SignalDeleteConflictError(ValueError):
     """Raised when a signal cannot be deleted because protected rows reference it."""
+
+
+class PortfolioDatasetOwnershipError(PortfolioDeleteConflictError):
+    """Raised when a delete would remove rows from a table another application owns.
+
+    ADR 0047: a provider owns the contract instances it registers in the Markets
+    catalog. Markets reads them; only the owning application writes or deletes
+    their rows.
+    """
+
+
+class SignalDatasetOwnershipError(SignalDeleteConflictError):
+    """Raised when a delete would remove signal rows from a table another application owns."""
+
+
+PROVIDER_TABLE_DELETE_GUIDANCE = (
+    "Markets does not delete rows in a table another application owns (ADR 0047); "
+    "delete them through the application that owns the table."
+)
 
 
 def list_portfolio_rows_response(
@@ -186,16 +213,16 @@ def get_portfolio_frontend_detail_summary(
                 else None,
             },
             {
-                "key": "portfolio_weights_data_node_uid",
-                "label": "Portfolio Weights Node",
-                "value": _string_or_none(portfolio.get("portfolio_weights_data_node_uid")),
+                "key": "portfolio_weights_table_update_uid",
+                "label": "Portfolio Weights Table Update",
+                "value": _string_or_none(portfolio.get("portfolio_weights_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["portfolio_weights"].get("url")),
             },
             {
-                "key": "signal_weights_data_node_uid",
-                "label": "Signal Weights Node",
-                "value": _string_or_none(portfolio.get("signal_weights_data_node_uid")),
+                "key": "signal_weights_table_update_uid",
+                "label": "Signal Weights Table Update",
+                "value": _string_or_none(portfolio.get("signal_weights_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["signal_weights"].get("url")),
             },
@@ -206,9 +233,9 @@ def get_portfolio_frontend_detail_summary(
                 "kind": "code",
             },
             {
-                "key": "portfolio_data_node_uid",
-                "label": "Portfolio Values Node",
-                "value": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+                "key": "portfolio_table_update_uid",
+                "label": "Portfolio Values Table Update",
+                "value": _string_or_none(portfolio.get("portfolio_table_update_uid")),
                 "kind": "code",
                 "link_url": _string_or_none(node_references["portfolio_values"].get("url")),
             },
@@ -238,16 +265,17 @@ def get_portfolio_frontend_detail_summary(
             "calendar": calendar_reference,
             "nodes": node_references,
             "pointers": {
-                "portfolio_weights_data_node_uid": _string_or_none(
-                    portfolio.get("portfolio_weights_data_node_uid")
+                "portfolio_weights_table_update_uid": _string_or_none(
+                    portfolio.get("portfolio_weights_table_update_uid")
                 ),
-                "signal_weights_data_node_uid": _string_or_none(
-                    portfolio.get("signal_weights_data_node_uid")
+                "signal_weights_table_update_uid": _string_or_none(
+                    portfolio.get("signal_weights_table_update_uid")
                 ),
                 "signal_uid": _string_or_none(portfolio.get("signal_uid")),
-                "portfolio_data_node_uid": _string_or_none(
-                    portfolio.get("portfolio_data_node_uid")
+                "portfolio_table_update_uid": _string_or_none(
+                    portfolio.get("portfolio_table_update_uid")
                 ),
+                **_pre_3_0_pointers(portfolio),
             },
         },
     }
@@ -278,7 +306,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
     portfolio_uid = _string_or_none(portfolio.get("uid"))
     return {
         "portfolio_weights": {
-            "uid": _string_or_none(portfolio.get("portfolio_weights_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("portfolio_weights_table_update_uid")),
             "label": "Portfolio weights",
             "url": (
                 f"/api/v1/portfolio/{portfolio_uid}/weights/"
@@ -288,7 +316,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
             ),
         },
         "signal_weights": {
-            "uid": _string_or_none(portfolio.get("signal_weights_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("signal_weights_table_update_uid")),
             "signal_uid": _string_or_none(portfolio.get("signal_uid")),
             "label": "Signal weights",
             "url": (
@@ -298,7 +326,7 @@ def _portfolio_node_references(*, portfolio: Mapping[str, Any]) -> dict[str, Any
             ),
         },
         "portfolio_values": {
-            "uid": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+            "uid": _string_or_none(portfolio.get("portfolio_table_update_uid")),
             "label": "Portfolio values",
             "url": (
                 f"/api/v1/portfolio/{portfolio_uid}/portfolio_values/?order=desc&limit=100"
@@ -328,22 +356,14 @@ def get_portfolio_weights_snapshot_response(
     portfolio = _build_portfolio_row(portfolio_row)
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
 
-    snapshot_time = weights_date or _portfolio_weights_snapshot_time(
-        context,
-        portfolio_identifier=portfolio_identifier,
+    # ADR 0047: the weights table is resolved from the Markets catalog per portfolio;
+    # an exact ``weights_date`` reads that snapshot, otherwise the latest (or earliest).
+    weight_rows = latest_portfolio_weights(
+        portfolio_identifier,
+        weights_date=weights_date,
+        as_of=False,
         order=order,
-    )
-    if snapshot_time is None:
-        return _empty_weights_snapshot(
-            portfolio=portfolio,
-            portfolio_identifier=portfolio_identifier,
-            warning=None,
-        )
-
-    weight_rows = _portfolio_weights_rows(
-        context,
-        portfolio_identifier=portfolio_identifier,
-        weights_date=snapshot_time,
+        repository_context=context,
     )
     if not weight_rows:
         return _empty_weights_snapshot(
@@ -351,6 +371,7 @@ def get_portfolio_weights_snapshot_response(
             portfolio_identifier=portfolio_identifier,
             warning=None,
         )
+    snapshot_time = weights_date or _datetime_or_none(weight_rows[0].get("time_index"))
 
     asset_references = (
         _asset_references_by_unique_identifier(context, rows=weight_rows)
@@ -394,7 +415,7 @@ def get_portfolio_values_frame_response(
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
     rows = _portfolio_values_rows(
         context,
-        portfolio_identifier=portfolio_identifier,
+        portfolio_identifiers=[portfolio_identifier],
         start_date=start_date,
         end_date=end_date,
         order=order,
@@ -433,7 +454,8 @@ def get_portfolio_values_frame_response(
         source_context={
             "portfolio_uid": _string_or_none(portfolio.get("uid")),
             "portfolio_identifier": portfolio_identifier,
-            "portfolio_data_node_uid": _string_or_none(portfolio.get("portfolio_data_node_uid")),
+            "portfolio_table_update_uid": portfolio.get("portfolio_table_update_uid"),
+            "portfolio_data_node_uid": portfolio.get("portfolio_table_update_uid"),
             "start_date": start_date,
             "end_date": end_date,
             "limit": limit,
@@ -458,14 +480,17 @@ def get_portfolio_signal_weights_frame_response(
         return None
 
     portfolio = _build_portfolio_row(portfolio_row)
-    data_node_uid = _string_or_none(portfolio.get("signal_weights_data_node_uid"))
-    if data_node_uid is None:
-        raise ValueError("Portfolio has no signal_weights_data_node_uid configured.")
+    signal_weights_table_update_uid = _string_or_none(
+        portfolio.get("signal_weights_table_update_uid")
+    )
+    if signal_weights_table_update_uid is None:
+        raise ValueError("Portfolio has no signal_weights_table_update_uid configured.")
 
     signal_uid = _resolve_portfolio_signal_uid(portfolio)
     rows = _portfolio_signal_weight_rows(
         context,
         signal_uid=signal_uid,
+        portfolio_identifier=_string_or_empty(portfolio.get("unique_identifier")),
         start_date=start_date,
         end_date=end_date,
         order=order,
@@ -498,7 +523,8 @@ def get_portfolio_signal_weights_frame_response(
         source_context={
             "portfolio_uid": _string_or_none(portfolio.get("uid")),
             "portfolio_identifier": _string_or_none(portfolio.get("unique_identifier")),
-            "signal_weights_data_node_uid": data_node_uid,
+            "signal_weights_table_update_uid": signal_weights_table_update_uid,
+            "signal_weights_data_node_uid": signal_weights_table_update_uid,
             "signal_uid": signal_uid,
             "start_date": start_date,
             "end_date": end_date,
@@ -613,6 +639,7 @@ def delete_signal_metadata_record(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = uuid.UUID(str(signal["uid"]))
     signal_uid = _string_or_empty(signal.get("signal_uid"))
+    retained_datasets = _retained_signal_datasets(existing, signal_uid=signal_uid)
     deleted_weights_count = _delete_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -642,11 +669,12 @@ def delete_signal_metadata_record(
         )
 
     return {
-        "detail": "Signal metadata deleted.",
+        "detail": _deleted_detail("Signal metadata deleted.", retained_datasets),
         "signal_metadata_uid": str(signal_metadata_uid),
         "signal_uid": signal_uid,
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -663,6 +691,15 @@ def delete_signal_weights(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = str(signal["uid"])
     signal_uid = _string_or_empty(signal.get("signal_uid"))
+    owned_table_uid = _provider_owned_table_uid(
+        existing.get("meta_table_uid"),
+        core_storage=SignalWeightsStorage,
+    )
+    if owned_table_uid is not None:
+        raise SignalDatasetOwnershipError(
+            f"Signal {signal_uid!r} stores its weights in table {owned_table_uid}, which "
+            f"another application owns. {PROVIDER_TABLE_DELETE_GUIDANCE}"
+        )
     deleted_count = _delete_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -693,6 +730,11 @@ def delete_portfolio_record(
     _raise_if_portfolio_delete_is_blocked(
         context,
         portfolio_uid=portfolio_uid,
+    )
+    retained_datasets = _retained_portfolio_datasets(
+        _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
+        portfolio_uid=portfolio_uid,
+        portfolio_identifier=portfolio_identifier,
     )
     deleted_weights_count = _delete_portfolio_weight_rows(
         context,
@@ -737,10 +779,11 @@ def delete_portfolio_record(
         )
 
     return {
-        "detail": "Portfolio deleted.",
+        "detail": _deleted_detail("Portfolio deleted.", retained_datasets),
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -756,6 +799,11 @@ def cascade_delete_portfolio_record(
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
+    retained_datasets = _retained_portfolio_datasets(
+        _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
+        portfolio_uid=portfolio_uid,
+        portfolio_identifier=portfolio_identifier,
+    )
     virtual_fund_uids = _virtual_fund_uids_for_portfolio(context, portfolio_uid=portfolio_uid)
     deleted_virtual_fund_holdings_count = _delete_virtual_fund_holding_rows(
         context,
@@ -792,7 +840,7 @@ def cascade_delete_portfolio_record(
 
     row = rows[0]
     return {
-        "detail": "Portfolio cascade deleted.",
+        "detail": _deleted_detail("Portfolio cascade deleted.", retained_datasets),
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
@@ -802,6 +850,7 @@ def cascade_delete_portfolio_record(
             row.get("deleted_virtual_fund_holdings_sets_count")
         ),
         "deleted_virtual_fund_holdings_count": deleted_virtual_fund_holdings_count,
+        "retained_datasets": retained_datasets,
     }
 
 
@@ -818,6 +867,17 @@ def delete_portfolio_weights(
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
+    tables = _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier)
+    owned_table_uid = _provider_owned_table_uid(
+        tables.weights_meta_table_uid if tables is not None else None,
+        core_storage=PortfolioWeightsStorage,
+    )
+    if owned_table_uid is not None:
+        raise PortfolioDatasetOwnershipError(
+            f"Portfolio {portfolio_identifier!r} stores its weights in table "
+            f"{owned_table_uid}, which another application owns. "
+            f"{PROVIDER_TABLE_DELETE_GUIDANCE}"
+        )
 
     deleted_count = _delete_portfolio_weight_rows(
         context,
@@ -841,6 +901,7 @@ def bulk_delete_portfolio_records(
     deleted_count = 0
     deleted_weights_count = 0
     deleted_values_count = 0
+    retained_datasets: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
 
     for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
@@ -853,6 +914,7 @@ def bulk_delete_portfolio_records(
             deleted_count += int(deleted.get("deleted_count", 1))
             deleted_weights_count += _int_or_zero(deleted.get("deleted_weights_count"))
             deleted_values_count += _int_or_zero(deleted.get("deleted_values_count"))
+            retained_datasets.extend(deleted.get("retained_datasets") or [])
         else:
             failed.append({"uid": uid, "reason": "Portfolio was not found."})
 
@@ -871,6 +933,7 @@ def bulk_delete_portfolio_records(
         "deleted_count": deleted_count,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
+        "retained_datasets": retained_datasets,
         "failed": failed,
     }
 
@@ -889,6 +952,7 @@ def bulk_cascade_delete_portfolio_records(
         "deleted_virtual_fund_holdings_sets_count": 0,
         "deleted_virtual_fund_holdings_count": 0,
     }
+    retained_datasets: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
 
     for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
@@ -900,6 +964,7 @@ def bulk_cascade_delete_portfolio_records(
         if deleted:
             for key in totals:
                 totals[key] += _int_or_zero(deleted.get(key))
+            retained_datasets.extend(deleted.get("retained_datasets") or [])
         else:
             failed.append({"uid": uid, "reason": "Portfolio was not found."})
 
@@ -920,8 +985,101 @@ def bulk_cascade_delete_portfolio_records(
     return {
         "detail": detail,
         **totals,
+        "retained_datasets": retained_datasets,
         "failed": failed,
     }
+
+
+def _portfolio_dataset_tables(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_identifier: str,
+) -> PortfolioDatasetTables | None:
+    """Return the catalogued instance tables of one portfolio, or ``None`` for the core tables."""
+
+    if not portfolio_identifier:
+        return None
+    return resolve_portfolio_dataset_tables(
+        portfolio_identifier,
+        repository_context=context,
+    ).get(portfolio_identifier)
+
+
+def _provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
+    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
+
+    ``None`` means the core table, which Markets owns and deletes from. Any other
+    uid is a contract instance registered by another application.
+    """
+
+    if meta_table_uid in (None, ""):
+        return None
+    core_meta_table = core_storage.get_time_index_meta_table()
+    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
+        meta_table_uid
+    ):
+        return None
+    return str(meta_table_uid)
+
+
+def _retained_portfolio_datasets(
+    tables: PortfolioDatasetTables | None,
+    *,
+    portfolio_uid: uuid.UUID,
+    portfolio_identifier: str,
+) -> list[dict[str, str]]:
+    """List the portfolio datasets a delete leaves in tables other applications own."""
+
+    if tables is None:
+        return []
+    retained: list[dict[str, str]] = []
+    for dataset, meta_table_uid, core_storage in (
+        ("values", tables.values_meta_table_uid, PortfoliosStorage),
+        ("weights", tables.weights_meta_table_uid, PortfolioWeightsStorage),
+    ):
+        owned_table_uid = _provider_owned_table_uid(meta_table_uid, core_storage=core_storage)
+        if owned_table_uid is not None:
+            retained.append(
+                {
+                    "portfolio_uid": str(portfolio_uid),
+                    "portfolio_identifier": portfolio_identifier,
+                    "dataset": dataset,
+                    "meta_table_uid": owned_table_uid,
+                }
+            )
+    return retained
+
+
+def _retained_signal_datasets(
+    signal_metadata_row: Mapping[str, Any],
+    *,
+    signal_uid: str,
+) -> list[dict[str, str]]:
+    """List the signal dataset a delete leaves in a table another application owns."""
+
+    owned_table_uid = _provider_owned_table_uid(
+        signal_metadata_row.get("meta_table_uid"),
+        core_storage=SignalWeightsStorage,
+    )
+    if owned_table_uid is None:
+        return []
+    return [
+        {
+            "signal_uid": signal_uid,
+            "dataset": "signal_weights",
+            "meta_table_uid": owned_table_uid,
+        }
+    ]
+
+
+def _deleted_detail(detail: str, retained_datasets: Sequence[Mapping[str, Any]]) -> str:
+    if not retained_datasets:
+        return detail
+    return (
+        f"{detail} Rows in {len(retained_datasets)} table"
+        f"{'s' if len(retained_datasets) != 1 else ''} another application owns were left in "
+        "place; see retained_datasets."
+    )
 
 
 def _raise_if_portfolio_delete_is_blocked(
@@ -1336,121 +1494,80 @@ def _get_portfolio_metadata_row(
     return rows[0] if rows else None
 
 
-def _portfolio_weights_snapshot_time(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_identifier: str,
-    order: Literal["asc", "desc"],
-) -> dt.datetime | None:
-    aggregate = (
-        func.min(PortfolioWeightsStorage.time_index)
-        if order == "asc"
-        else func.max(PortfolioWeightsStorage.time_index)
-    )
-    statement = select(aggregate.label("time_index")).where(
-        PortfolioWeightsStorage.portfolio_identifier == portfolio_identifier
-    )
-    result = execute_markets_operation(
-        compile_markets_statement(
-            statement,
-            context=context,
-            operation="select",
-        ),
-        context=context,
-    )
-    row = _first_operation_row(result)
-    if row is None:
-        return None
-    return _datetime_or_none(row.get("time_index"))
-
-
-def _portfolio_weights_rows(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_identifier: str,
-    weights_date: dt.datetime,
-) -> list[dict[str, Any]]:
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=PortfolioWeightsStorage,
-            filters={
-                "portfolio_identifier": portfolio_identifier,
-                "time_index": weights_date,
-            },
-            limit=MAX_PORTFOLIO_SCAN_LIMIT,
-        )
-    )
-
-
 def _portfolio_values_rows(
     context: MarketsRepositoryContext,
     *,
-    portfolio_identifier: str,
+    portfolio_identifiers: Sequence[str],
     start_date: dt.datetime | None,
     end_date: dt.datetime | None,
     order: Literal["asc", "desc"],
     limit: int,
 ) -> list[dict[str, Any]]:
-    statement = select(PortfoliosStorage).where(
-        PortfoliosStorage.portfolio_identifier == portfolio_identifier
+    """Read values for one or more portfolios through the catalog-aware read service.
+
+    ADR 0047: each portfolio's ``PortfoliosTS`` instance comes from the Markets
+    catalog and is read by uid; portfolios without a catalog row read the core
+    table. Rows are ordered by time index as requested and bounded by ``limit``.
+    """
+
+    rows = portfolio_values(
+        list(portfolio_identifiers),
+        start=start_date,
+        end=end_date,
+        repository_context=context,
     )
-    statement = _apply_time_range(
-        statement,
-        time_column=PortfoliosStorage.time_index,
-        start_date=start_date,
-        end_date=end_date,
+    rows.sort(
+        key=lambda row: (
+            _sort_time(row.get("time_index")),
+            _string_or_empty(row.get("portfolio_identifier")),
+        ),
+        reverse=order == "desc",
     )
-    statement = statement.order_by(
-        PortfoliosStorage.time_index.asc()
-        if order == "asc"
-        else PortfoliosStorage.time_index.desc()
-    )
-    statement = statement.limit(limit)
-    return _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
+    return rows[:limit]
 
 
 def _portfolio_signal_weight_rows(
     context: MarketsRepositoryContext,
     *,
     signal_uid: str,
+    portfolio_identifier: str | None = None,
     start_date: dt.datetime | None,
     end_date: dt.datetime | None,
     order: Literal["asc", "desc"],
     limit: int,
 ) -> list[dict[str, Any]]:
-    statement = select(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid == signal_uid)
-    statement = _apply_time_range(
-        statement,
-        time_column=SignalWeightsStorage.time_index,
-        start_date=start_date,
-        end_date=end_date,
+    """Read signal weights through the catalog-aware read service.
+
+    The ``SignalWeightsTS`` instance is the portfolio's catalogued signal table
+    when the portfolio is known, else the signal's own metadata reference, else
+    the core table.
+    """
+
+    meta_table_uid: str | None = None
+    if portfolio_identifier:
+        resolved = resolve_portfolio_dataset_tables(
+            portfolio_identifier,
+            repository_context=context,
+        ).get(portfolio_identifier)
+        meta_table_uid = resolved.signal_meta_table_uid if resolved is not None else None
+    return signal_weights(
+        signal_uid,
+        start=start_date,
+        end=end_date,
+        order=order,
+        limit=limit,
+        meta_table_uid=meta_table_uid,
+        repository_context=context,
     )
-    statement = statement.order_by(
-        SignalWeightsStorage.time_index.asc()
-        if order == "asc"
-        else SignalWeightsStorage.time_index.desc()
-    )
-    statement = statement.limit(limit)
-    return _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
+
+
+def _sort_time(value: Any) -> float:
+    moment = _datetime_or_none(value)
+    if moment is None:
+        return float("-inf")
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.UTC)
+    return moment.timestamp()
 
 
 def _apply_time_range(
@@ -1594,22 +1711,30 @@ def _build_weight_row(
 
 
 def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    pointers = {
+        current: _string_or_none(renamed_column_value(PortfolioTable, row, current))
+        for current in PortfolioTable.__renamed_columns__
+    }
     return {
         "uid": row.get("uid"),
         "unique_identifier": _string_or_empty(row.get("unique_identifier")),
         "calendar_uid": _string_or_none(row.get("calendar_uid")),
         "published_index_uid": _string_or_none(row.get("published_index_uid")),
-        "portfolio_weights_data_node_uid": _string_or_none(
-            row.get("portfolio_weights_data_node_uid")
-        ),
-        "signal_weights_data_node_uid": _string_or_none(row.get("signal_weights_data_node_uid")),
+        **pointers,
         "signal_uid": _string_or_none(row.get("signal_uid")),
-        "portfolio_data_node_uid": _string_or_none(row.get("portfolio_data_node_uid")),
         "backtest_table_price_column_name": _string_or_empty(
             row.get("backtest_table_price_column_name")
         )
         or "close",
+        **_pre_3_0_pointers(pointers),
     }
+
+
+def _pre_3_0_pointers(pointers: Mapping[str, Any]) -> dict[str, Any]:
+    """Repeat portfolio pointers under their pre-3.0 names, removed in 4.0 (ADR 0048)."""
+
+    renamed = PortfolioTable.__renamed_columns__
+    return {previous: pointers[current] for current, previous in renamed.items()}
 
 
 def _build_portfolio_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:

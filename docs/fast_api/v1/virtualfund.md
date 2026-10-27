@@ -12,7 +12,7 @@ to a target portfolio.
 - Virtual-fund identity uses `msm.api.virtual_funds.VirtualFund`.
 - Holdings sets use `msm.api.virtual_funds.VirtualFundHoldingsSet`.
 - Holdings rows use
-  `msm.data_nodes.accounts.virtual_funds.storage.VirtualFundHoldingsStorage`.
+  `msm.time_index.accounts.virtual_funds.storage.VirtualFundHoldingsStorage`.
 - Holdings row asset labels use `AssetSnapshotsStorage`; OpenFIGI is not used.
 
 The frontend filter `portfolio_uid` maps to:

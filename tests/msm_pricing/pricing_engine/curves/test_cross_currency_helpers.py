@@ -330,7 +330,7 @@ def test_connector_owned_helper_schema_is_rejected_upstream() -> None:
     with pytest.raises(ValueError, match="rate_helpers@v1"):
         build_curve_from_curve_observation(
             curve=curve,
-            building_details=_rate_helper_details(curve.uid, "valmer_xccy_helpers@v1"),
+            building_details=_rate_helper_details(curve.uid, "provider_xccy_helpers@v1"),
             observation={
                 "time_index": _valuation_date(),
                 "key_nodes": _cross_currency_key_nodes(),

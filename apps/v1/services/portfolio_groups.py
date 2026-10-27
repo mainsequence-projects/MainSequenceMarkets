@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from apps.v1.identity import registry_write
 from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroup,
@@ -45,6 +46,7 @@ def get_portfolio_group(*, uid: str) -> PortfolioGroup | None:
     return PortfolioGroup.model_validate(rows[0])
 
 
+@registry_write("portfolio-group", "create")
 def create_portfolio_group(*, payload: Mapping[str, Any]) -> PortfolioGroup:
     runtime = _get_runtime()
     result = _upsert_portfolio_group(runtime.context, **dict(payload))
@@ -54,6 +56,7 @@ def create_portfolio_group(*, payload: Mapping[str, Any]) -> PortfolioGroup:
     return PortfolioGroup.model_validate(rows[0])
 
 
+@registry_write("portfolio-group", "update")
 def update_portfolio_group(*, uid: str, payload: Mapping[str, Any]) -> PortfolioGroup | None:
     runtime = _get_runtime()
     result = _update_portfolio_group(runtime.context, uid=uid, **dict(payload))
@@ -63,12 +66,14 @@ def update_portfolio_group(*, uid: str, payload: Mapping[str, Any]) -> Portfolio
     return PortfolioGroup.model_validate(rows[0])
 
 
+@registry_write("portfolio-group", "delete")
 def delete_portfolio_group(*, uid: str) -> PortfolioGroupDeleteResponse:
     runtime = _get_runtime()
     result = _bulk_delete_portfolio_groups(runtime.context, uids=[uid])
     return PortfolioGroupDeleteResponse.model_validate(result)
 
 
+@registry_write("portfolio-group", "bulk-delete")
 def bulk_delete_portfolio_groups(*, payload: Mapping[str, Any]) -> PortfolioGroupDeleteResponse:
     runtime = _get_runtime()
     result = _bulk_delete_portfolio_groups(
@@ -107,6 +112,7 @@ def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkDeletePref
     )
 
 
+@registry_write("portfolio-group", "add:portfolio-to-group")
 def add_portfolio_to_group(
     *,
     portfolio_group_uid: str,
@@ -120,6 +126,7 @@ def add_portfolio_to_group(
     )
 
 
+@registry_write("portfolio-group", "remove:portfolio-from-group")
 def remove_portfolio_from_group(
     *,
     portfolio_group_uid: str,
@@ -133,6 +140,7 @@ def remove_portfolio_from_group(
     return PortfolioGroupDeleteResponse.model_validate(result)
 
 
+@registry_write("portfolio-group", "bulk-delete:portfolio-group-memberships")
 def bulk_delete_portfolio_group_memberships(
     *,
     payload: Mapping[str, Any],

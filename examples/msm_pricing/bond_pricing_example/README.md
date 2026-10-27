@@ -4,7 +4,7 @@ This example shows the complete pricing workflow for a bond asset:
 
 1. upsert the bond asset type, issuer, currency asset, and bond asset rows
 2. upsert the `interest_rate` index type, a canonical index, its pricing convention details, separate projection and discount curve identities, curve build details, and market-data-set curve bindings
-3. publish one month of mock index fixings plus distinct flat-forward projection and discount curves through pricing DataNodes
+3. publish one month of mock index fixings plus distinct flat-forward projection and discount curves through pricing updaters
 4. use explicit `default` pricing market-data bindings for `discount_curves`
    and `interest_rate_index_fixings`
 5. attach a serialized `FloatingRateBond` to the bond asset
@@ -35,7 +35,7 @@ flat-forward inputs are synthetic, so they intentionally omit a source
 reference. Producers may add source-specific extensions when that is needed to
 audit the source build; `CurveBuildingDetails` still owns the final constructed
 curve convention. Real source publishers that need stricter checks should
-override `DiscountCurvesNode.normalize_key_nodes(...)` or attach
+override `DiscountCurvesUpdater.normalize_key_nodes(...)` or attach
 `set_key_nodes_validator(...)` instead of changing the shared storage schema.
 
 The example writes both projection and discount curve selections as default

@@ -114,7 +114,7 @@ def build_asset_snapshot_frame_from_openfigi_result(
 ) -> pd.DataFrame:
     """Build one AssetSnapshot TimeIndexTableUpdater frame row from an OpenFIGI result."""
 
-    from msm.data_nodes.assets import AssetSnapshot
+    from msm.time_index.assets import AssetSnapshot
 
     normalized = item if "unique_identifier" in item else normalize_openfigi_result(item)
     unique_identifier = normalized.get("unique_identifier")

@@ -13,12 +13,18 @@ from apps.v1.schemas.indices import (
     IndexDatasetState,
     IndexDatasetSummary,
     IndexFormulaDetail,
+    IndexFormulaPreviewRequest,
+    IndexFormulaRetireRequest,
+    IndexFormulaSaveRequest,
     IndexFormulaSummary,
+    IndexFormulaWindowRequest,
     IndexType,
     IndexUpdate,
+    IndexWithIncludes,
     RelatedMetaTable,
 )
 from apps.v1.services.indices import (
+    activate_index_formula,
     create_index,
     delete_index,
     get_index,
@@ -28,13 +34,18 @@ from apps.v1.services.indices import (
     get_index_summary,
     get_index_type,
     get_index_values_frame,
+    get_indexes_by_uids,
     list_index_datasets,
     list_index_formulas,
     list_index_related_meta_tables,
     list_index_types,
     list_indices,
+    preview_index_formula,
+    retire_index_formula,
+    save_index_formula,
     update_index,
 )
+from apps.v1.services.includes import SidecarReadError
 from msm.api.http import (
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
@@ -43,6 +54,7 @@ from msm.api.http import (
     TabularFrameResponse,
     resource_collection_response,
 )
+from apps.v1.identity import acting_identity
 from msm.services.indices import IndexActor, actor_from_user
 
 router = APIRouter(prefix="/index", tags=["index"])
@@ -50,12 +62,18 @@ index_type_router = APIRouter(prefix="/index-type", tags=["index"])
 
 
 def _request_actor(request: Request) -> IndexActor | None:
-    """Return the caller that request identity verified, or `None` on an unauthenticated request."""
+    """Return the identity the request acts for, or `None` on an unauthenticated request.
 
-    user = getattr(request.state, "user", None)
-    if user is None:
+    ADR 0047: the requester on a requester-bound call, the verified caller
+    otherwise, never both. ``request`` is kept so the dependency stays bound to
+    the request scope.
+    """
+
+    _ = request
+    identity = acting_identity()
+    if identity is None:
         return None
-    return actor_from_user(user)
+    return actor_from_user(identity)
 
 
 @index_type_router.get(
@@ -137,6 +155,51 @@ def get_indexes(
         total_items=count,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/by-uids/",
+    response_model=ResourceCollection[IndexWithIncludes],
+    summary="Look up Indexes by uid",
+    description=(
+        "Return the Index identity rows whose uid is listed in `uid__in` (repeated or "
+        "comma-separated, at most 500), in request order. Unknown uids are omitted. A bounded "
+        "batch lookup, not a browsable collection."
+    ),
+    operation_id="getIndexesByUids",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
+        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
+        409: {"model": ErrorResponse, "description": "An included sidecar could not be read."},
+    },
+)
+def get_indexes_by_uid_list(
+    uid__in: Annotated[
+        list[str],
+        Query(alias="uid__in", description="Index uids, repeated or comma-separated."),
+    ],
+    include: Annotated[
+        list[str] | None,
+        Query(
+            description=(
+                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
+                "by this resource's uid; their rows are attached under `includes`. The Markets "
+                "workload needs `data_viewer` on each sidecar."
+            ),
+        ),
+    ] = None,
+) -> ResourceCollection[IndexWithIncludes]:
+    try:
+        items = get_indexes_by_uids(uids=uid__in, include=include)
+    except SidecarReadError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return resource_collection_response(
+        items=items, total_items=len(items), limit=max(len(items), 1), offset=0
     )
 
 
@@ -240,6 +303,157 @@ def get_index_formulas(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/{uid}/formulas/",
+    response_model=IndexFormulaDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Save Index formula",
+    description=(
+        "Persist one formula version for a formula-calculated Index through `FormulaIndex`. "
+        "Identity fields come from the stored Index; the body carries the definition and its "
+        "exact source bindings. A definition identical to a stored version returns that version."
+    ),
+    operation_id="saveIndexFormula",
+    responses={
+        400: {"model": ErrorResponse, "description": "The formula or its sources are invalid."},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse, "description": "The formula could not be stored."},
+    },
+)
+def save_index_formula_record(uid: str, payload: IndexFormulaSaveRequest) -> IndexFormulaDetail:
+    try:
+        result = save_index_formula(uid=uid, definition=payload.definition, inputs=payload.inputs)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
+    return result
+
+
+@router.post(
+    "/{uid}/formulas/preview/",
+    response_model=TabularFrameResponse,
+    summary="Preview an unsaved Index formula",
+    description=(
+        "Validate an unsaved formula against its exact source bindings, read the pinned "
+        "MetaTables over the window and return the calculated observations as "
+        "`core.tabular_frame@v1`. Nothing is persisted."
+    ),
+    operation_id="previewIndexFormula",
+    response_model_exclude_none=True,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    openapi_extra={
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
+        "x-ui-output-root": "response:$",
+    },
+)
+def preview_index_formula_draft(uid: str, payload: IndexFormulaPreviewRequest) -> TabularFrameResponse:
+    try:
+        result = preview_index_formula(
+            uid=uid,
+            start=payload.start,
+            end=payload.end,
+            definition=payload.definition,
+            inputs=payload.inputs,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
+    return result
+
+
+@router.post(
+    "/{uid}/formulas/{definition_uid}/activate/",
+    response_model=IndexFormulaDetail,
+    summary="Activate Index formula",
+    description="Activate one draft formula version and retire its open predecessor atomically.",
+    operation_id="activateIndexFormula",
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def activate_index_formula_record(uid: str, definition_uid: str) -> IndexFormulaDetail:
+    try:
+        result = activate_index_formula(uid=uid, definition_uid=definition_uid)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Index formula was not found.")
+    return result
+
+
+@router.post(
+    "/{uid}/formulas/{definition_uid}/retire/",
+    response_model=IndexFormulaDetail,
+    summary="Retire Index formula",
+    description="Retire one formula version at an exclusive validity boundary, now by default.",
+    operation_id="retireIndexFormula",
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def retire_index_formula_record(
+    uid: str,
+    definition_uid: str,
+    payload: IndexFormulaRetireRequest | None = None,
+) -> IndexFormulaDetail:
+    try:
+        result = retire_index_formula(
+            uid=uid,
+            definition_uid=definition_uid,
+            valid_to=payload.valid_to if payload is not None else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Index formula was not found.")
+    return result
+
+
+@router.post(
+    "/{uid}/formulas/{definition_uid}/preview/",
+    response_model=TabularFrameResponse,
+    summary="Preview a stored Index formula",
+    description=(
+        "Calculate one stored formula version over its pinned sources for the window and "
+        "return the observations as `core.tabular_frame@v1`. Nothing is persisted."
+    ),
+    operation_id="previewStoredIndexFormula",
+    response_model_exclude_none=True,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    openapi_extra={
+        "x-ui-contract": CORE_TABULAR_FRAME_CONTRACT,
+        "x-ui-output-root": "response:$",
+    },
+)
+def preview_stored_index_formula(
+    uid: str,
+    definition_uid: str,
+    payload: IndexFormulaWindowRequest,
+) -> TabularFrameResponse:
+    try:
+        result = preview_index_formula(
+            uid=uid,
+            start=payload.start,
+            end=payload.end,
+            definition_uid=definition_uid,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Index {uid!r} was not found.")
+    return result
 
 
 @router.get(

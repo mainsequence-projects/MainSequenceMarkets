@@ -4,7 +4,14 @@ The `apps/v1` portfolio routes expose portfolio identity rows, detail-page
 composition, latest portfolio weights, and delete operations.
 
 The routes do not create or update portfolios. Portfolio construction remains a
-library workflow outside this API surface.
+library workflow outside this API surface. ADR 0047 adds the multi-portfolio
+frames, the batch lookup and the dataset catalog routes described below.
+
+!!! note "Pre-3.0 field names"
+    Through ms-markets 3.x every response that carries a `*_table_update_uid` portfolio pointer also
+    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
+    deprecated, and requests accept either name. ms-markets 4.0 removes the
+    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
 
 ## Runtime Sources
 
@@ -12,12 +19,17 @@ library workflow outside this API surface.
 - Optional descriptive metadata uses
   `msm_portfolios.api.portfolios.PortfolioMetadata`.
 - Latest weights use
-  `msm_portfolios.data_nodes.portfolios.storage.PortfolioWeightsStorage`.
+  `msm_portfolios.time_index.portfolios.storage.PortfolioWeightsStorage`.
 - Weight row asset labels use `AssetSnapshotsStorage`; OpenFIGI is not used for
   portfolio weight labels.
 - Signal weights resolve from nullable `Portfolio.signal_uid`, which points to
   `SignalMetadataTable.signal_uid`. The API does not recompute signal identity
   from the TimeIndexTableUpdater build configuration or by scanning shared signal storage.
+- Values, weights and signal-weight reads resolve each portfolio's table from
+  the Markets catalog (`PortfolioDatasetAvailabilityTable`) and read it by uid
+  through `TimeIndexTableRef`; a portfolio without a catalog row reads the core
+  tables (ADR 0047, see the
+  [portfolios knowledge page](../../knowledge/msm_portfolios/portfolios/index.md)).
 
 Latest weights resolve through:
 
@@ -50,10 +62,10 @@ Returns `command-center.resource_collection@v1` and exposes
       "unique_identifier": "example-sleeve",
       "calendar_uid": "00000000-0000-0000-0000-000000000001",
       "published_index_uid": "index-uid",
-      "portfolio_weights_data_node_uid": null,
-      "signal_weights_data_node_uid": null,
+      "portfolio_weights_table_update_uid": null,
+      "signal_weights_table_update_uid": null,
       "signal_uid": null,
-      "portfolio_data_node_uid": null,
+      "portfolio_table_update_uid": null,
       "backtest_table_price_column_name": "close"
     }
   ],
@@ -83,10 +95,10 @@ links:
     "unique_identifier": "example-sleeve",
     "calendar_uid": "00000000-0000-0000-0000-000000000001",
     "published_index_uid": "index-uid",
-    "portfolio_weights_data_node_uid": null,
-    "signal_weights_data_node_uid": null,
+    "portfolio_weights_table_update_uid": null,
+    "signal_weights_table_update_uid": null,
     "signal_uid": null,
-    "portfolio_data_node_uid": null,
+    "portfolio_table_update_uid": null,
     "backtest_table_price_column_name": "close"
   },
   "metadata": {
@@ -162,7 +174,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/calendar/calendar-uid/"
     },
     {
-      "key": "portfolio_weights_data_node_uid",
+      "key": "portfolio_weights_table_update_uid",
       "label": "Portfolio Weights Node",
       "value": "weights-node-uid",
       "kind": "code",
@@ -170,7 +182,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/portfolio/portfolio-uid/weights/?order=desc&limit=1&include_asset_detail=true"
     },
     {
-      "key": "signal_weights_data_node_uid",
+      "key": "signal_weights_table_update_uid",
       "label": "Signal Weights Node",
       "value": "signal-node-uid",
       "kind": "code",
@@ -178,7 +190,7 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "link_url": "/api/v1/portfolio/portfolio-uid/signals_weights/?order=desc&limit=100"
     },
     {
-      "key": "portfolio_data_node_uid",
+      "key": "portfolio_table_update_uid",
       "label": "Portfolio Values Node",
       "value": "values-node-uid",
       "kind": "code",
@@ -226,10 +238,10 @@ page-specific resolved metadata for consumers that need more than a field URL.
       }
     },
     "pointers": {
-      "portfolio_weights_data_node_uid": "weights-node-uid",
-      "signal_weights_data_node_uid": "signal-node-uid",
+      "portfolio_weights_table_update_uid": "weights-node-uid",
+      "signal_weights_table_update_uid": "signal-node-uid",
       "signal_uid": "canonical-signal-uid",
-      "portfolio_data_node_uid": "values-node-uid"
+      "portfolio_table_update_uid": "values-node-uid"
     }
   }
 }
@@ -239,6 +251,90 @@ page-specific resolved metadata for consumers that need more than a field URL.
 When present, it is the canonical `SignalMetadataTable.signal_uid` used by
 `GET /api/v1/portfolio/{uid}/signals_weights/`. The signal-weights endpoint
 does not infer the signal by scanning shared signal-weight storage.
+
+## Batch Lookup By Uid
+
+```text
+GET /api/v1/portfolio/by-uids/?uid__in=<uid>&uid__in=<uid>
+```
+
+Returns the matching `Portfolio` rows in request order inside a
+`ResourceCollection`. `uid__in` is repeated or comma-separated, at most 500;
+unknown uids are omitted. A bounded lookup, not a browsable collection: no
+`limit`, `offset`, search or discovery route. `include=<sidecar MetaTable uid>`
+attaches provider sidecar rows under `includes[<uid>]`, as described for
+[accounts](accounts.md).
+
+## Values Frame For Several Portfolios
+
+```text
+GET /api/v1/portfolio/values/?portfolio_uid__in=<uid>&portfolio_uid__in=<uid>&start_date=&end_date=&order=desc&limit=500&offset=0
+```
+
+Returns one `core.tabular_frame@v1` with columns `time_index`,
+`portfolio_identifier`, `portfolio_uid`, `close`, `return`, `calculated_close`
+and `close_time` for every requested portfolio. The portfolios are grouped by
+the `PortfoliosTS` instance the catalog records for them; each instance is read
+once, so comparing portfolios computed by two different providers is one call
+whose two sources live in two namespaces. `order` sorts by
+`time_index` across all portfolios and `limit` (1 to 5000) bounds the merged
+result; `offset` skips that many rows of the merged order, so a longer window
+is read in pages (`MarketsClient.portfolio_values` pages for a larger
+`limit`). Every uid must be a portfolio (`404` otherwise); `source.context`
+names the requested uids and the window.
+
+## Weights Frame For Several Portfolios
+
+```text
+GET /api/v1/portfolio/weights/?portfolio_uid__in=<uid>&weights_date=&as_of=true
+```
+
+Returns one `core.tabular_frame@v1` with one weight snapshot per portfolio:
+the latest snapshot, the latest at or before `weights_date` with `as_of=true`,
+or the exact `weights_date` snapshot with `as_of=false`. Columns are
+`time_index`, `portfolio_identifier`, `portfolio_uid`, `asset_identifier`,
+`weight`, `weight_before`, `price_current`, `price_before`, `volume_current`
+and `volume_before`. Portfolios are grouped by their `PortfolioWeightsTS`
+instance as for values.
+
+## Dataset Catalog
+
+```text
+POST /api/v1/portfolio/{uid}/datasets/
+GET  /api/v1/portfolio/{uid}/datasets/
+POST /api/v1/portfolio/datasets/reconcile/
+```
+
+A provider that computes a portfolio in its own namespace registers, per
+portfolio, the `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS`
+instances that hold its rows, and reconciles after each run (ADR 0047).
+
+- `POST /api/v1/portfolio/{uid}/datasets/` takes `values_meta_table_uid`
+  (required), `weights_meta_table_uid`, `signal_meta_table_uid` and
+  `reconcile` (default `true`). Each table must be a `TimeIndexMetaTable`
+  visible to the Markets workload that exposes the contract columns and index
+  names; extra provider columns are allowed. The row is upserted, the signal's
+  `SignalMetadata.meta_table_uid` is bound when the portfolio has a
+  `signal_uid`, and the values instance is reconciled unless `reconcile` is
+  `false`, in which case the row is `unavailable` with error code
+  `not_reconciled`. Returns the `PortfolioDatasetState` with `201`; `404` for
+  an unknown portfolio or a table that is not visible, `400` for a table that
+  does not satisfy its contract.
+- `GET /api/v1/portfolio/{uid}/datasets/` returns the catalog row, or `null`
+  when the portfolio exists and reads the core tables; `404` for an unknown
+  portfolio.
+- `POST /api/v1/portfolio/datasets/reconcile/` takes `portfolio_uids` and
+  `portfolio_identifiers` (at least one selector, at most 500 in all) and
+  returns a `PortfolioDatasetReconciliationResult`: the reconciled states, one
+  aggregate per instance however many portfolios it holds, plus
+  `skipped_portfolio_uids` for portfolios without a catalog row. `404` names
+  selectors that are not portfolios.
+
+`PortfolioDatasetState` carries `portfolio_uid`, `portfolio_identifier`, the
+three table uids, `population_state` (`populated`, `compatible_empty` or
+`unavailable`), `row_count`, `earliest_time_index`, `latest_time_index`,
+`reconciled_at` and `error`. Registration and reconciliation record the acting
+identity.
 
 ## Latest Portfolio Weights
 
@@ -327,13 +423,43 @@ Returns:
   "detail": "Portfolio deleted.",
   "deleted_count": 1,
   "deleted_weights_count": 4,
-  "deleted_values_count": 4
+  "deleted_values_count": 4,
+  "retained_datasets": []
 }
 ```
 
 If protected rows, such as virtual funds or account target-position history,
 reference the portfolio, the route returns 409 and does not delete the
 portfolio.
+
+When the Markets catalog (`PortfolioDatasetAvailabilityTable`, ADR 0047) places
+the portfolio's values or weights in a contract instance another application
+owns, Markets does not delete that table's rows: only the owning application
+writes or deletes them. The route still deletes the portfolio row, its catalog
+row and any rows left in the core tables, and lists each table it left in
+place:
+
+```json
+{
+  "detail": "Portfolio deleted. Rows in 1 table another application owns were left in place; see retained_datasets.",
+  "deleted_count": 1,
+  "deleted_weights_count": 0,
+  "deleted_values_count": 0,
+  "retained_datasets": [
+    {
+      "portfolio_uid": "portfolio-uid",
+      "portfolio_identifier": "example-sleeve",
+      "dataset": "values",
+      "meta_table_uid": "provider-values-table-uid"
+    }
+  ]
+}
+```
+
+The deleted counts cover the core tables only. A catalog row that names the
+core table itself counts as core. `POST /api/v1/portfolio/bulk-delete/preflight/`
+reports each retained table as a warning before the delete, and the bulk and
+cascade deletes return the same `retained_datasets` list.
 
 Storage cleanup uses each storage table's
 `TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)` API, scoped
@@ -368,6 +494,10 @@ Returns:
 Weight deletion itself is scoped by `Portfolio.unique_identifier`; the API never
 calls `delete_after_date(None)` without that dimension scope. Protected
 portfolio references only matter for deleting the portfolio identity row.
+
+When the catalog places the portfolio's weights in a `PortfolioWeightsTS`
+instance another application owns, the route returns 409, deletes nothing and
+names the table. Delete those rows through the application that owns the table.
 
 ## Bulk Delete Portfolios
 

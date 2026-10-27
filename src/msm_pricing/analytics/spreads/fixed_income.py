@@ -3,7 +3,7 @@
 This module adds fixed-income interpretation such as DV01-neutral hedge ratios,
 carry, roll-down, and downside aggregation. It still operates on caller-supplied
 series and metrics only; it does not resolve curves, query portfolios, read
-pricing DataNodes, or mutate submitted instruments.
+pricing updaters, or mutate submitted instruments.
 """
 
 from __future__ import annotations

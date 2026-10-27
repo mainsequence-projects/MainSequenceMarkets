@@ -9,13 +9,13 @@ from uuid import UUID
 import pandas as pd
 from mainsequence.logconf import logger as _mainsequence_logger
 
-from msm.data_nodes.accounts.storage import AccountHoldingsStorage
+from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import search_model
 from msm.services.holdings import validate_holdings_frame
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
-from msm.data_nodes.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="virtual_funds")
 ALLOCATION_STRATEGY_EXPLICIT = "explicit"

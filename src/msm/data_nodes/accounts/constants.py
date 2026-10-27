@@ -1,15 +1,8 @@
-"""Account time-index-table output constants."""
+"""Deprecated alias of ``msm.time_index.accounts.constants``.
 
-from __future__ import annotations
+Removed in ms-markets 4.0 (ADR 0048).
+"""
 
-TARGET_TYPE_ASSET = "asset"
-TARGET_TYPE_PORTFOLIO = "portfolio"
-TARGET_POSITION_TARGET_TYPES = (TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO)
-TARGET_POSITION_TARGET_TYPE_SQL = ", ".join(repr(value) for value in TARGET_POSITION_TARGET_TYPES)
+from msm._deprecated_imports import alias_module
 
-__all__ = [
-    "TARGET_POSITION_TARGET_TYPES",
-    "TARGET_POSITION_TARGET_TYPE_SQL",
-    "TARGET_TYPE_ASSET",
-    "TARGET_TYPE_PORTFOLIO",
-]
+__getattr__, __dir__ = alias_module(__name__, "msm.time_index.accounts.constants")

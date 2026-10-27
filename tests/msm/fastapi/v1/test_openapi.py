@@ -716,7 +716,10 @@ def test_openapi_json_documents_portfolio_routes() -> None:
     assert portfolio_weights_delete_operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioWeightsDeleteResponse"}
-    assert "409" not in portfolio_weights_delete_operation["responses"]
+    # ADR 0047: weights in a table another application owns are refused with 409.
+    assert portfolio_weights_delete_operation["responses"]["409"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ErrorResponse"}
 
     portfolio_delete_operation = payload["paths"]["/api/v1/portfolio/{uid}/"]["delete"]
     assert portfolio_delete_operation["summary"] == "Delete portfolio"

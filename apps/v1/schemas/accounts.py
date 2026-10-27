@@ -16,14 +16,26 @@ from apps.v1.schemas.holdings import (
 )
 
 
-def _account_contract():
+def _account_contracts():
     prepare_apps_v1_import_namespace()
-    from msm.api.accounts import Account
+    from msm.api.accounts import Account, AccountCreate, AccountUpdate
 
-    return Account
+    return Account, AccountCreate, AccountUpdate
 
 
-Account = _account_contract()
+Account, AccountCreate, AccountUpdate = _account_contracts()
+
+
+class AccountWithIncludes(Account):
+    """`Account` plus the provider sidecar rows requested with `include` (ADR 0047)."""
+
+    includes: dict[str, dict[str, Any] | None] = Field(
+        default_factory=dict,
+        description=(
+            "Provider sidecar rows requested with `include`, keyed by sidecar MetaTable uid; "
+            "`null` when the sidecar has no row for this uid. Empty when nothing was included."
+        ),
+    )
 
 
 class AccountHoldingRow(BaseHoldingRow):
