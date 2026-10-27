@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-27
+
 ### Removed
 
 - The registry write allow-list of 3.0.0: `apps.v1.policy` and the Main Sequence
