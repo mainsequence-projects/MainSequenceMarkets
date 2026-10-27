@@ -7,6 +7,17 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Portfolio contract instances now carry the core storage's `__storage_layout__`.
+  Instances previously fell back to MetaTables' default layout. For
+  `PortfolioEventLedgerTS` that default names the secondary index after the
+  four identity dimensions, which is 70 characters, and MetaTables refuses
+  derived names over PostgreSQL's 63-character limit. Every event-ledger
+  instance therefore failed registration, which stopped a downstream
+  consumer's hosted migration Job before it migrated anything. Instances of
+  the other five contracts declare no layout and are unchanged.
+
 ## [3.0.1] - 2026-10-27
 
 ### Removed

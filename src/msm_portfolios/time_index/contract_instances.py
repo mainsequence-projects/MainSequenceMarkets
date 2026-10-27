@@ -3,7 +3,7 @@
 ``PortfoliosTS``, ``PortfolioWeightsTS``, ``SignalWeightsTS`` and the engine
 outputs ``PortfolioRebalanceStateTS``, ``PortfolioCalendarEventsTS`` and
 ``PortfolioEventLedgerTS`` are storage contracts: ms-markets owns their columns,
-dtypes, time index and index names. The core tables declared in
+dtypes, time index, index names and storage layout. The core tables declared in
 ``msm_portfolios.time_index.portfolios.storage`` and
 ``msm_portfolios.time_index.signals.storage`` are the Markets-owned instance. A
 provider builds its own instance with the factories here, under its own
@@ -18,6 +18,7 @@ that namespace is not the default Markets one.
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -405,6 +406,11 @@ def _configured_contract_instance_storage(
     cadence = getattr(definition.core_storage, "__cadence__", None)
     if cadence not in (None, ""):
         attributes["__cadence__"] = cadence
+    # A core that declares its layout (the event ledger, whose default secondary
+    # index name exceeds PostgreSQL's limit) gives every instance the same one.
+    storage_layout = getattr(definition.core_storage, "__storage_layout__", None)
+    if storage_layout:
+        attributes["__storage_layout__"] = copy.deepcopy(storage_layout)
     return type(
         f"{definition.core_storage.__name__}_{class_suffix}",
         (MarketsTimeIndexMetaTableMixin, base),
