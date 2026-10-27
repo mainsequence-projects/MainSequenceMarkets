@@ -8,7 +8,12 @@ from sqlalchemy.orm import DeclarativeBase
 
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 
-from metatables import PlatformTimeIndexMetaTable, sqlalchemy_naming_convention
+from metatables import (
+    PlatformTimeIndexMetaTable,
+    sqlalchemy_naming_convention,
+    time_indexed_registration_request_from_sqlalchemy_model,
+)
+from metatables.api.backend.contracts.storage_layouts import normalize_storage_layout
 from msm.base import MarketsBase
 from msm.time_index.utils.storage_schema import (
     storage_column_dtypes_map,
@@ -101,6 +106,47 @@ def test_instances_share_the_contract_schema_under_a_provider_namespace(factory,
     # The core table stays the Markets-owned instance and the migration registry is unchanged.
     assert core in portfolio_sqlalchemy_models()
     assert instance not in portfolio_sqlalchemy_models()
+
+
+@pytest.mark.parametrize("contract", sorted(PORTFOLIO_STORAGE_CONTRACTS))
+def test_instances_carry_the_core_storage_layout(contract) -> None:
+    core = PORTFOLIO_STORAGE_CONTRACTS[contract].core_storage
+    instance = configured_contract_instance_storage(
+        contract, instance_key="layout_check", namespace="ns-a", storage_app="app_a"
+    )
+
+    core_layout = getattr(core, "__storage_layout__", None)
+    if core_layout is None:
+        assert getattr(instance, "__storage_layout__", None) is None
+    else:
+        assert instance.__storage_layout__ == core_layout
+        # A copy, so an instance can never change the core's layout.
+        assert instance.__storage_layout__ is not core_layout
+
+
+def test_event_ledger_instance_registers_with_the_core_secondary_index() -> None:
+    # The default layout would name the lookup index after the four identity
+    # dimensions (70 characters), which MetaTables refuses to register.
+    instance = configured_portfolio_event_ledger_storage(
+        instance_key="layout_check", namespace="ns-a", storage_app="app_a"
+    )
+
+    request = time_indexed_registration_request_from_sqlalchemy_model(
+        instance, data_source_uid="00000000-0000-0000-0000-000000000000"
+    ).model_dump(mode="json")
+    contract = request["table_contract"]
+    profile = contract["authoring"]["time_indexed"]
+    layout = normalize_storage_layout(
+        profile["storage_layout"],
+        time_index_name=profile["time_index_name"],
+        index_names=profile["index_names"],
+        columns_by_name={column["name"]: column for column in contract["columns"]},
+    )
+
+    assert profile["storage_layout"] == PortfolioEventLedgerStorage.__storage_layout__
+    assert [index["name"] for index in layout["secondary_indexes"]] == [
+        "portfolio_event_ledger_identity"
+    ]
 
 
 def test_instances_keep_the_contract_foreign_keys_to_core_registries() -> None:
