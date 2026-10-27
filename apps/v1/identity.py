@@ -4,8 +4,7 @@ Every handler and service authorizes against one identity: the requester on a
 requester-bound call, the caller otherwise, never both. ``acting_identity()``
 is the only place that choice is made. Services that create, update or delete
 a registry row are wrapped with ``registry_write``, which resolves the acting
-identity, checks it against the registry write policy (``apps.v1.policy``)
-before the write and records it after a successful write. No Markets
+identity before the write and records it after a successful write. No Markets
 registry table has an author or owner column yet, so the record is the API's
 structured audit log (logger ``apps.v1.identity``); when such a column exists
 the same hook supplies the value.
@@ -118,20 +117,15 @@ def record_registry_write(
 def registry_write(resource: str, action: str) -> Callable[[_F], _F]:
     """Wrap a service that creates, updates or deletes registry rows.
 
-    The wrapper resolves the acting identity before the service runs, refuses
-    the write with ``RegistryWriteForbidden`` when the registry write policy
-    does not allow that identity, and, when the service returns without
-    raising, records the write with the row uid taken from the ``uid`` keyword
-    argument or from the result's ``uid``.
+    The wrapper resolves the acting identity before the service runs and, when
+    the service returns without raising, records the write with the row uid
+    taken from the ``uid`` keyword argument or from the result's ``uid``.
     """
 
     def decorate(func: _F) -> _F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            from apps.v1.policy import authorize_registry_write
-
             identity = acting_identity()
-            authorize_registry_write(resource, action, identity)
             result = func(*args, **kwargs)
             record_registry_write(
                 action,

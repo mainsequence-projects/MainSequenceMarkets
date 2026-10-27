@@ -467,7 +467,7 @@ enters `update_hash`.
 An application on the remote row backend registers and reconciles the catalog
 with `msm_portfolios.api.datasets.PortfolioDatasets.register(...)`,
 `.reconcile(...)` and `.get(...)`, which run the services below on the Markets
-API (write-policy resource `portfolio-datasets`). `register` binds the
+API. `register` binds the
 portfolio's current signal; `PortfolioDatasets.register_signal({"signal_uid":
 ..., "signal_meta_table_uid": ...})` binds any other signal, such as the earlier
 signals of a producer whose signal uid changes each run, after verifying the
@@ -587,8 +587,8 @@ first on a rollback. Calendar events are not copied: the engine rebuilds them.
 run the moves a provider callable returns (it receives `rollback=` when it
 accepts that argument); without `--execute` they only count.
 The operator needs `data_viewer` on the tables read, write access to the tables
-written (a rollback writes the core tables) and the write-policy resource
-`portfolio-datasets`; pause the provider's runs while a move or rollback runs.
+written (a rollback writes the core tables); pause the provider's runs while a
+move or rollback runs.
 
 ## Repair legacy midnight-indexed portfolio values
 

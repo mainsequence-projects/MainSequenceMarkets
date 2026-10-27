@@ -9,10 +9,9 @@ and returns its result. The operations are the row classes' own public class
 methods, so the remote and runtime backends cannot drift apart; there is no
 generic query endpoint.
 
-Writes go through ``registry_write``, so the registry write policy
-(``apps.v1.policy``) applies to applications. ``delete`` runs the resource's
-service delete, with its preflight checks, and is offered only where such a
-service exists.
+Writes go through ``registry_write``, which records who made them. ``delete``
+runs the resource's service delete, with its preflight checks, and is offered
+only where such a service exists.
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from apps.v1.identity import registry_write
-from apps.v1.policy import RegistryWriteForbidden, RegistryWritePolicyError
 
 router = APIRouter(prefix="/rows", tags=["rows"])
 
@@ -140,12 +138,12 @@ def describe_row_operations() -> list[RowResourceDescription]:
     description=(
         "Run one public class method of a Markets row class on this deployment and return "
         "its result. Used by `msm.client`'s remote backend; see `describeRowOperations` for the "
-        "available operations. Writes are subject to the registry write policy."
+        "available operations."
     ),
     operation_id="runRowOperation",
     responses={
         400: {"description": "The arguments were invalid (`ValueError` or `TypeError`)."},
-        403: {"description": "The registry write policy refused this application."},
+        403: {"description": "The operation refused the acting identity (`PermissionError`)."},
         404: {"description": "Unknown resource or operation, or the row was not found."},
         409: {"description": "The operation conflicted with existing rows."},
         501: {"description": "The operation is not offered remotely."},
@@ -217,8 +215,6 @@ def _owns_checked_delete(cls: type) -> bool:
 def _run(call: Callable[[], Any], encode: Callable[[Any], Any]) -> RowOperationResponse | JSONResponse:
     try:
         result = call()
-    except (RegistryWriteForbidden, RegistryWritePolicyError):
-        raise
     except PermissionError as exc:
         return _error(403, str(exc), type(exc).__name__)
     except LookupError as exc:

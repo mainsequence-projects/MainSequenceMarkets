@@ -61,14 +61,12 @@ access:
 | `MARKETS_API_RELEASE_UID` | Use this release instead of searching. |
 | `MARKETS_API_RELEASE_NAME`, `MARKETS_API_REPOSITORY_NAME` | Search for another release or repository name. |
 
-## Writes And The Registry Write Policy
+## Writes
 
 Every create, upsert, update and delete runs through the Markets API's
-`registry_write`, so the registry write policy applies: an application may
-write a resource only when the Environment's `MARKETS_REGISTRY_WRITERS`
-constant lists its workload User uid for that resource or for `"*"`. A refused
-write raises `msm.api.remote.MarketsAccessError`, a `PermissionError`. See
-[the FastAPI guide](../../../fast_api/v1/index.md) for the constant's format.
+`registry_write`, which records the acting identity on the API's audit log. Any
+workload the platform admits to the Markets API may write; a refused operation
+(`403`) raises `msm.api.remote.MarketsAccessError`, a `PermissionError`.
 
 A table row class's remote `delete` runs the resource's service delete, with
 its preflight checks, and exists only for `asset`, `asset-category`,
@@ -143,7 +141,6 @@ AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name"
 current = AssetSnapshots.latest(tickers=["ACME"])
 ```
 
-Their write-policy resources are `account-holdings` and `asset-snapshots`.
 `AssetSnapshots.latest` takes exactly one of `asset_identifiers`, `asset_uids`
 or `tickers` and returns each existing asset with its latest snapshot
 (`AssetSnapshotReference`: name, ticker, exchange code, snapshot time; `None`

@@ -129,20 +129,3 @@ def offline_postgresql_runtime(monkeypatch):
 
     monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", get_runtime_context)
     return runtime
-
-
-@pytest.fixture(autouse=True)
-def offline_registry_write_policy(monkeypatch):
-    """Evaluate the registry write policy without the platform (ADR 0047).
-
-    By default no application is on the allow-list and every caller is a
-    person, which is how the API behaved before the policy. Policy tests replace
-    these with ``monkeypatch``.
-    """
-
-    from apps.v1 import policy
-
-    monkeypatch.setattr(
-        policy, "load_registry_writer_policy", lambda: policy.RegistryWriterPolicy(writers={})
-    )
-    monkeypatch.setattr(policy, "resolve_identity_type", lambda uid: "human")

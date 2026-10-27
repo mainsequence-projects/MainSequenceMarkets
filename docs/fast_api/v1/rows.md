@@ -49,8 +49,7 @@ Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `create_from_pandas_calendar`, `reconcile_dataset_availability`, `upsert_many`,
 `add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
 `publish`, `register`, `register_signal`, `unregister`, `unregister_signal`, `reconcile`, `activate_definition`,
-`retire_definition`) run through `registry_write`, so the registry write policy
-applies to applications.
+`retire_definition`) run through `registry_write`, which records who made them.
 A table row class's `delete` runs the resource's service delete with its
 preflight checks and exists only for `asset`, `asset-category`, `calendar`,
 `index`, `portfolio` and `portfolio-group`. Composites that implement `delete`
@@ -67,8 +66,7 @@ the `msm_pricing.api` composites (`curve`, `curve-building-details`,
 | Status | Meaning | `error_type` |
 |---|---|---|
 | 400 | Invalid arguments | `ValueError`, `TypeError` |
-| 403 | The registry write policy refused this application | |
+| 403 | The operation refused the acting identity | `PermissionError` or a subclass |
 | 404 | Unknown resource or operation, or the row was not found | `LookupError` |
 | 409 | The operation conflicted with existing rows | the conflict class name |
 | 501 | The operation is not offered remotely | `NotImplementedError` |
-| 503 | The registry write policy could not be read | |
