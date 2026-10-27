@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-10-27
+
 ### Fixed
 
 - Portfolio contract instances now carry the core storage's `__storage_layout__`.
