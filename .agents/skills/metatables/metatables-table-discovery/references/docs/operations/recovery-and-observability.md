@@ -17,6 +17,11 @@ per-table finalization result, physical schema, provider identity, and registry
 state. Reuse only a compatible registry resolved by physical identity. Preserve
 Alembic's applied history; write new revisions for further changes.
 
+The API logs each `finalize-managed` batch's phases: `physical inspection`,
+`reconciling N tables (M with catalog writes)`, `commit and security refresh`, and
+the total. An already-current run reads the catalog a fixed number of times per
+batch, however many tables it holds, and writes nothing (`0 with catalog writes`).
+
 ## Failed security check
 
 The daily security check ([ADR 0023](../adr/api/0023-daily-security-check.md)) records

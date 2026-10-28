@@ -24,7 +24,10 @@ The API also exposes table-scoped reads at
 accept a trailing slash without redirecting. Anyone with `tables.get` on the output table
 can list its producers; this read needs no write action. Each result uses
 the same update projection as `/time-index-table-updates/`, including the nested
-output table, execution details, configuration, source-code reference and labels.
+output table, execution details, configuration, source-code reference and labels,
+plus `code_repository_branch_uid`: the branch the SDK declared when the producer was
+first registered, or `null`. It is declared provenance, not proof that the producer
+runs. The collection omits it because released clients parse that projection strictly.
 The page includes `count`, `results`, `next`, and `previous`, with deterministic
 ordering and bounds of 1–500 for `limit` and a nonnegative `offset`.
 

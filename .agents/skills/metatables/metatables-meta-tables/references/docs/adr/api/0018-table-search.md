@@ -71,16 +71,16 @@ A time-index table registered with these descriptions:
 
 ```text
 # Table
-Identifier: vendor_mx_sovereign_eod
-Physical table: public.vendor_mx_sovereign_eod
+Identifier: valmer_mx_sovereign_eod
+Physical table: public.valmer_mx_sovereign_eod
 Description: Daily end-of-day valuations of Mexican government debt
-(M Bonos, Udibonos and CETES) from the vendor's price vector.
+(M Bonos, Udibonos and CETES) from the Valmer vector.
 Labels: fixed-income, mexico, end-of-day
 Time index: valuation_date, cadence 1d
 
 # Namespace
-Name: vendor
-Description: Data delivered by the Mexican valuation vendor.
+Name: valmer
+Description: Data delivered by Valmer, the Mexican valuation vendor.
 
 # Columns
 valuation_date (date): Valuation date. Business day the values apply to.

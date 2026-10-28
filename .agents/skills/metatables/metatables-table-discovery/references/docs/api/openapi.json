@@ -46,6 +46,18 @@
             ],
             "title": "Description"
           },
+          "encryption": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryption"
+          },
           "label": {
             "anyOf": [
               {
