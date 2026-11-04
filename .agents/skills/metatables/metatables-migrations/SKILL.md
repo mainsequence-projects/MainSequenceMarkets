@@ -156,6 +156,13 @@ Use `--source-root` and `--code-repository-root` when the application does not
 use the default `src/` layout. Keep applied revisions immutable; add a new
 revision for every later schema change.
 
+A column that holds a secret (password, API key, token) is declared with
+`EncryptedString(secret=...)`; autogenerate renders it as `sa.Text()` and the
+migration never needs the Secret. Changing a column between `String` and
+`EncryptedString` needs no DDL: the next upgrade's finalization updates the
+catalog's mark, and the application re-encrypts or decrypts existing rows itself.
+See the [contracts skill](../metatables-meta-tables/SKILL.md#secrets-in-columns-application-encrypted-columns).
+
 ## Provider placement
 
 The application decides where its provider lives. The module name, however,

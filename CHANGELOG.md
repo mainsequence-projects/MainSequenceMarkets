@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-11-04
+
+### Fixed
+
+- The Markets API now attaches every table its remote row route offers. `OrderManager`,
+  `Issuer`, `BondAssetDetails`, `CurrencySpotAssetDetails` and `RebalanceStrategyMetadata`
+  were missing from `V1_RUNTIME_MODELS`, so every `POST /rows/{resource}/{operation}/` call on
+  `order-manager`, `issuer`, `bond`, `currency-spot` or `rebalance-strategy-metadata` failed
+  in `resolve_runtime` and answered 500. A connector's execution ledger looks its batch up
+  with `OrderManager.get_by_unique_identifier`, so no remote-backend application could submit
+  or read orders. A test now requires every offered resource to be served by the runtime.
+
 ## [3.0.2] - 2026-10-27
 
 ### Fixed

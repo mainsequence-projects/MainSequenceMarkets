@@ -1,5 +1,13 @@
 # ADR 0019: MetaTables Analyst agent
 
+> Amendment (2026-10-22): `list_table_producers` lists a time-index table's registered
+> producers with `code_repository_branch_uid`, the branch the SDK declared when each was
+> first registered, or null (issue #89). Only `GET /meta-tables/{uid}/updates` adds that
+> field; the shared update projection keeps its shape because released clients parse it
+> with `extra="forbid"`. MetaTables does not resolve the branch to a project: a consumer
+> does that with its own platform reads, so no one learns of a project they cannot see.
+> The Analyst, without Main Sequence MCP, reports the uid and infers no project.
+>
 > Amendment (2026-10-09): Both Environment and Agent discovery allow 30 seconds for
 > the platform lookup, including credential renewal. Environment lookup failures
 > stay outside the one-hour cache, just like Agent lookup failures, so the next
@@ -82,7 +90,7 @@ refuses anything else.
 | --- | --- |
 | Runtime | `ms-tau-sdk` 2.0.10, `openai-codex` / `gpt-5.6-luna`, thinking `medium`. |
 | Identity | The person each turn serves (ADR 0020); the agent's own identity holds no grants. |
-| Tools | The six tools below, served by the API over MCP when hosted (ADR 0021), and the SDK's skill-scoped `read`. No shell, file writes or Main Sequence MCP. |
+| Tools | The seven tools below, served by the API over MCP when hosted (ADR 0021), and the SDK's skill-scoped `read`. No shell, file writes or Main Sequence MCP. |
 | Instructions | `.tau/SYSTEM.md` covers MetaTables; vendored `pg-aiguide` skills cover PostgreSQL and TimescaleDB. |
 
 ### Tools
@@ -91,6 +99,7 @@ refuses anything else.
 | --- | --- |
 | `deep_search` | `MetaTable.search` once per phrase, then `describe_table` for the best candidates |
 | `describe_table` | `MetaTable.get_by_uid`, `get_schema_graph` and the time-index profile |
+| `list_table_producers` | `GET /meta-tables/{uid}/updates`: a time-index table's producers and their declared branches |
 | `list_namespaces` | `GET /namespaces/`: visible namespaces with descriptions and readable table counts |
 | `list_tables` | `MetaTable.iter_filter`, optionally by namespace |
 | `run_sql` | `MetaTable.run_query` with row and timeout limits |

@@ -127,6 +127,70 @@ The client reserves bindings, executes Alembic, closes its database connection,
 and finalizes physical contracts through the API. Finalization refreshes catalog
 metadata and governed-SQL permissions, including cleanup of dropped provider tables.
 
+## Protect a column with application encryption
+
+A password, API key or token stored in a table should be readable by the
+application that stores it and by nothing else. Declare the column with
+`EncryptedString` and name the Environment Secret that holds the application's
+key ([ADR 0025](../adr/client/0025-application-encrypted-columns.md)):
+
+```python
+from sqlalchemy import Integer, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from metatables import EncryptedString, PlatformManagedMetaTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData()
+
+
+class Credential(PlatformManagedMetaTable, Base):
+    __tablename__ = "ledger__credential"
+    __metatable_namespace__ = "ledger"
+    __metatable_identifier__ = "ledger.credential"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40))
+    api_key: Mapped[str | None] = mapped_column(
+        EncryptedString(secret="LEDGER_DATA_KEY"),
+        info={"label": "API key", "description": "Key the collector presents to the broker."},
+    )
+```
+
+The client encrypts a value before it leaves the application and decrypts it after
+it arrives, with the key read from the Secret in that same process. The API, the
+Admin, the Analyst, raw SQL and the database only ever see an opaque envelope, so
+sharing the table shares nothing protected, and an Organization admin reads the
+envelope like anyone else. Reading a value needs both the table grant and
+`value_reader` on the Secret.
+
+- The column is `TEXT` in the database; `revision --autogenerate` renders it as
+  `sa.Text()`. Migrations never need the Secret.
+- Create the Secret once with `metatables encryption new-keyring`, in Command Center
+  or with `mainsequence secrets create LEDGER_DATA_KEY`, and grant it to every
+  workload that writes or reads the column in its workflow file:
+
+  ```yaml
+  access:
+    secrets:
+      - name: LEDGER_DATA_KEY
+        policy: value_reader
+  ```
+
+- Compiled statements through the model's column, frame uploads and updater writes
+  encrypt; `read_rows`, time-index reads and updater inputs decrypt. A process that
+  cannot read the Secret still gets the row, with the column left sealed and named
+  in `undecrypted_columns` (or `frame.attrs["undecrypted_columns"]`). Raw
+  `run_query` results stay sealed; `decrypt_values(values, secret=..., table=...,
+  column=...)` opens one column by hand. A write without the Secret fails; nothing
+  is ever written in plaintext, and the API refuses plaintext uploads to the column.
+- Equality on the column is meaningless, so it cannot be a key, unique, a foreign
+  key, indexed, the time index or a grain column.
+- Rotate with `metatables encryption rotate LEDGER_DATA_KEY`, store the printed
+  keyring as the Secret's new value, run `metatables encryption re-encrypt --table
+  <uid>` for each table, then drop the old key from the ring.
+
 ## Evolve and recover
 
 Add a new revision for every later schema change. Never rewrite revisions that

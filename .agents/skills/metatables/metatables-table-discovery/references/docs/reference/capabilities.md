@@ -286,3 +286,6 @@ This inventory records the support status of public resource methods and CLI com
 | `runtime upgrade` | tested | visible | Deployment gate: verify, migrate and register the runtime database declared in configuration.yaml and its Environment Secret. |
 | `runtime check-security` | tested | visible | The daily security check Job (ADR 0023): compare everything MetaTables secures with the plan, repair what differs and record the outcome; the Admin starts it with --trigger admin. |
 | `admin repair` | tested | visible | Explicitly stage pinned source/dependencies; refuse replacement while in use. |
+| `encryption new-keyring` | tested | visible | Prints a fresh keyring to store as the application's key Secret (ADR 0025); never creates the Secret. |
+| `encryption rotate` | tested | visible | Prints the keyring with a new active key; old keys stay until re-encryption (ADR 0025). |
+| `encryption re-encrypt` | tested | visible | Rewrites rows under old keys with compiled UPDATEs through the API; resumable (ADR 0025). |

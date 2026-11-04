@@ -117,7 +117,11 @@ to. Each pod reuses an answer for 24 hours, so a person removed from a Team can
 keep reading through that Team's grants for up to a day. Writes act on an answer
 at most a minute old. Migration credentials, table deletion, finalization and
 permission changes always ask the platform at once, and a login's database role
-memberships change only on such a fresh answer. A failed check fails the request;
+memberships change only on such a fresh answer. A table registration that would be
+refused asks the platform at once before it refuses, so a workload just added to a
+Team is accepted on its next run. A fresh answer also rereads which Teams the
+grants name, so a Team granted through another API pod counts at once; otherwise a
+pod learns of it within a minute. A failed check fails the request;
 it never counts as "not a member". Local admission resolves facts for the running SDK user,
 whose platform User response must supply `is_organization_admin` and
 `active_team_uids`.
@@ -169,6 +173,13 @@ The Admin Security page reads `GET /security/database-permissions/` to show call
 SQL admission, pending synchronization, policy coverage for active tables, and the
 last security check.
 This admin-only read does not repair permissions or resolve credential Secrets.
+
+Grants decide who reads a row, never who reads a password inside it. A column an
+application declares as `EncryptedString` is encrypted in the application process
+with a key that is one Environment Secret per application; the API, the Admin, the
+Analyst, SQL and the database see envelopes only, and admins are no exception. See
+[protect a column](../client/define-and-migrate-tables.md#protect-a-column-with-application-encryption)
+and [ADR 0025](../adr/client/0025-application-encrypted-columns.md).
 It reports durable catalog state; it does not audit native grants changed outside
 MetaTables. SQLite uses a connection authorizer rather than database roles.
 

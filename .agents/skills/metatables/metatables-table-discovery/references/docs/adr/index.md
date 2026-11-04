@@ -18,6 +18,7 @@ decisions belong in the SDK repository and are linked as dependencies.
 | --- | --- | --- |
 | [0003: Automatic API endpoint resolution](client/0003-api-endpoint-resolution.md) | Accepted and implemented; live hosted verification pending | Resolve the packaged API name within the SDK-owned Environment, cache per platform/Environment, and reserve URL overrides for local development. |
 | [0011: Local CLI workflow with reusable Admin](client/0011-cli-local-development-with-managed-admin.md) | Accepted; implemented | Download missing Admin source once, reuse ready dependencies, launch the installed API with Vite, and expose explicit bootstrap, application-owned migrations and local client connection. |
+| [0025: Application-encrypted columns](client/0025-application-encrypted-columns.md) | Accepted; implemented on development; container matrix, Admin mark and hosted deployment pending | `EncryptedString(secret=...)` columns are encrypted in the application process with one Environment Secret per application; the API records the protection and never holds a key, so admins, the Analyst, the Admin and the database see ciphertext; reading needs the table grant and the Secret grant. |
 
 ## API
 

@@ -29,7 +29,7 @@ The hosted API serves the read tools at `/mcp`, and the hosted Analyst uses them
 
 | Part | Rule |
 | --- | --- |
-| Tools | `list_namespaces`, `list_tables`, `deep_search`, `describe_table`, `run_sql` and `preview_rows`, with their schemas, live once in `metatables.analysis` over the API's REST contracts. |
+| Tools | `list_namespaces`, `list_tables`, `deep_search`, `describe_table`, `list_table_producers`, `run_sql` and `preview_rows`, with their schemas, live once in `metatables.analysis` over the API's REST contracts. |
 | Endpoint | The hosted API installs a stateless MCP server with JSON responses at `/mcp` through `install_mcp`, after the request identity. The workflow's `metatables` resource sets `mcp_enabled: true`. |
 | Authorization | A tool's calls run through the API's own routes, in process, with the caller assertion of the `/mcp` request. The SDK verifies the same caller, or the person it works for, and each route authorizes exactly as over REST, including ADR 0020's read-only rule. |
 | Analyst | The agent declares `mcp_applications: [{resource: metatables}]` and gets `metatables__list_tools` and `metatables__call_tool`. Its extension registers the tools only in a local `ms-tau` session, where they call the local API as the developer. |

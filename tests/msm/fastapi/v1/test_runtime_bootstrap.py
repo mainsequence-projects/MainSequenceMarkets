@@ -204,3 +204,40 @@ def test_ensure_apps_v1_pricing_runtime_uses_default_namespace_without_env(monke
         }
     ]
     assert runtime_bootstrap._PRICING_BOOTSTRAP_COMPLETE is True
+
+
+def test_every_remote_row_resource_is_served_by_the_api_runtime() -> None:
+    """`POST /rows/{resource}/{operation}/` runs on the runtime this API attaches.
+
+    A row class the route offers whose tables are not attached raises a RuntimeError from
+    `resolve_runtime` on every call, which the route answers with 500 (the order-manager
+    batch lookup of a connector's execution ledger did exactly that).
+    """
+
+    from apps.v1.routers.rows import _load_row_classes
+    from msm.models.registration import resolve_markets_meta_table_models
+    from msm_portfolios.bootstrap import resolve_portfolio_models
+    from msm_pricing.meta_tables import resolve_pricing_meta_table_models
+
+    attached = set(
+        resolve_markets_meta_table_models(
+            resolve_portfolio_models(runtime_bootstrap.V1_RUNTIME_MODELS)
+        )
+    ) | set(resolve_pricing_meta_table_models(runtime_bootstrap.V1_PRICING_RUNTIME_MODELS))
+
+    missing: dict[str, list[str]] = {}
+    for resource, row_class in sorted(_load_row_classes().items()):
+        required = list(getattr(row_class, "__required_tables__", None) or [])
+        if row_class.__module__.startswith("msm_pricing."):
+            needed = resolve_pricing_meta_table_models(required)
+        else:
+            needed = resolve_markets_meta_table_models(resolve_portfolio_models(required))
+        absent = sorted(model.__name__ for model in needed if model not in attached)
+        if absent:
+            missing[resource] = absent
+
+    assert missing == {}
+
+
+def test_ensure_apps_v1_runtime_includes_execution_ledger_models() -> None:
+    assert "OrderManager" in runtime_bootstrap.V1_RUNTIME_MODELS

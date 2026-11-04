@@ -207,7 +207,9 @@ the database.
 - **`table_not_editable`**: the table already exists and the caller lacks
   `tables.update` on it. An owner of the table or its namespace grants `editor`.
 
-After the grant, re-run the Job. Do not run the Job as an Organization admin
+After the grant, or after adding the workload User to a Team that holds the role,
+re-run the Job. A refusal is rechecked against current Team membership before it
+stands, so the re-run needs no wait. Do not run the Job as an Organization admin
 or change physical names to get around a refusal.
 
 ## What the Job guarantees
