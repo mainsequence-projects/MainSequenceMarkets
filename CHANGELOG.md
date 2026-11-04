@@ -7,6 +7,13 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-11-04
+
+### Changed
+
+- Rebuild of 3.0.3: its hosted image build failed on the platform side during a database
+  outage, so this release carries no code change and exists to redeploy the fix below.
+
 ## [3.0.3] - 2026-11-04
 
 ### Fixed
