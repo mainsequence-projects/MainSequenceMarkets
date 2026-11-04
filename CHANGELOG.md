@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-11-04
+
 ### Fixed
 
 - The Markets API now attaches every table its remote row route offers. `OrderManager`,
