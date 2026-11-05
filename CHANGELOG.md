@@ -7,6 +7,13 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-11-04
+
+### Changed
+
+- Second rebuild of 3.0.3: the 3.0.4 pipeline's migration step failed on the platform side
+  (the Job pod never started), so Production still runs 3.0.2. No code change.
+
 ## [3.0.4] - 2026-11-04
 
 ### Changed
