@@ -81,6 +81,42 @@ A multi-worker or restart-safe provider deployment should persist the same
 `ObservableOperation` model in a shared provider-owned repository while
 preserving owner filtering on every read.
 
+## Account sync
+
+Every venue connector captures an account's holdings into ms-markets as one
+`AccountHoldingsSet`, and an application that holds accounts asks any
+connector for that in the same way. The shared types are
+`AccountSyncRequest`, `AccountSyncResult` and
+`AccountSyncOperation = ObservableOperation[AccountSyncRequest, AccountSyncResult]`
+with `action = "account_sync"`.
+
+| `AccountSyncResult` field | |
+| --- | --- |
+| `account_uid` | Required. The synced `Account.uid`; it must match the request's. |
+| `holdings_set_uid` | Required. The `AccountHoldingsSet` the sync published, or `null` when it published none. |
+| `time_index` | Required. The snapshot's time, normalized to UTC. |
+| `holdings_rows` | Required. How many holding rows the snapshot has. |
+| `extra` | Optional object. Anything one venue adds, such as `unresolved_symbols`. Callers never depend on it. |
+
+The convention:
+
+- `POST /v1/accounts/{account_uid}/actions/sync` (`ACCOUNT_SYNC_PATH`) takes no
+  body. `AccountSyncRequest.account_uid` records which account the operation
+  syncs.
+- The connector answers `200` with a terminal operation when it finishes the
+  sync inside the request.
+- It answers `202` with a `queued` operation when it queues the sync;
+  `GET /v1/operations/{operation_uid}` (`OPERATION_PATH`) then returns the
+  operation until it is terminal.
+- A sync that ran and failed is `failed` with its `error`. A `succeeded`
+  operation must carry its `AccountSyncResult`.
+- A refused request, such as an unknown account or an account that is not the
+  caller's, is an HTTP error in the shared error contract, not an operation.
+
+A connector that queues syncs in one process can keep them in an
+`InMemoryOperationStore[AccountSyncRequest, AccountSyncResult]`; the route
+returns the stored operation as an `AccountSyncOperation`.
+
 ## Example
 
 [`examples/msm/http_provider_contracts.py`](https://github.com/mainsequence-projects/MainSequenceMarkets/blob/main/examples/msm/http_provider_contracts.py)
