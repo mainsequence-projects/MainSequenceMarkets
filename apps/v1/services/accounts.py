@@ -16,6 +16,8 @@ from apps.v1.schemas.accounts import (
     AccountTargetAllocationCandidate,
     AccountTargetAllocationTargetSearchType,
     AccountTargetPositionsSnapshotResponse,
+    AccountVirtualFundAllocationRequest,
+    AccountVirtualFundAllocationResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 
@@ -200,6 +202,53 @@ def add_account_target_positions(
     return AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
 
 
+def allocate_account_virtual_funds(
+    *,
+    account_uid: str,
+    payload: AccountVirtualFundAllocationRequest,
+) -> AccountVirtualFundAllocationResponse | None:
+    """Plan the snapshot's virtual-fund allocation; write it only when ``payload.apply``."""
+
+    if payload.apply:
+        return apply_account_virtual_fund_allocation(account_uid=account_uid, payload=payload)
+    return _run_account_virtual_fund_allocation(account_uid=account_uid, payload=payload)
+
+
+@registry_write("account", "apply:account-virtual-fund-allocation")
+def apply_account_virtual_fund_allocation(
+    *,
+    account_uid: str,
+    payload: AccountVirtualFundAllocationRequest,
+) -> AccountVirtualFundAllocationResponse | None:
+    return _run_account_virtual_fund_allocation(account_uid=account_uid, payload=payload)
+
+
+def _run_account_virtual_fund_allocation(
+    *,
+    account_uid: str,
+    payload: AccountVirtualFundAllocationRequest,
+) -> AccountVirtualFundAllocationResponse | None:
+    from msm.services.accounts import account_allocation_policy
+
+    runtime = _get_virtual_fund_allocation_runtime()
+    result = _allocate_account_holdings_set(
+        runtime.context,
+        account_uid=account_uid,
+        holdings_set_uid=payload.holdings_set_uid,
+        valuation_asset_uid=payload.valuation_asset_uid,
+        position_set_uid=payload.position_set_uid,
+        allocation_policy=account_allocation_policy(
+            mode=payload.allocation_policy.mode,
+            stale_data_policy=payload.allocation_policy.stale_data_policy,
+        ),
+        portfolio_weights_reader=_portfolio_weights_reader(runtime.context),
+        apply=payload.apply,
+    )
+    if result is None:
+        return None
+    return AccountVirtualFundAllocationResponse.model_validate(result)
+
+
 def search_account_target_allocation_targets(
     *,
     search: str = "",
@@ -283,6 +332,30 @@ def _get_target_positions_runtime():
     )
 
 
+def _get_virtual_fund_allocation_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
+
+    return resolve_apps_v1_portfolio_runtime(
+        models=[
+            "Account",
+            "AccountHoldingsSet",
+            "AccountHoldingsStorage",
+            "AccountTargetAllocation",
+            "PositionSet",
+            "TargetPositionsStorage",
+            "Asset",
+            "Portfolio",
+            "PortfolioDatasetAvailability",
+            "SignalMetadata",
+            "PortfolioWeightsStorage",
+            "VirtualFund",
+            "VirtualFundHoldingsSet",
+            "VirtualFundHoldingsStorage",
+        ],
+        row_model_name="POST /api/v1/account/{account_uid}/virtual-fund-allocations/",
+    )
+
+
 def _get_target_allocation_candidates_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
 
@@ -354,3 +427,25 @@ def _search_account_target_allocation_candidates(context, **kwargs):
     from msm.services import search_account_target_allocation_candidates
 
     return search_account_target_allocation_candidates(context, **kwargs)
+
+
+def _allocate_account_holdings_set(context, **kwargs):
+    from msm.services.accounts import allocate_account_holdings_set
+
+    return allocate_account_holdings_set(context, **kwargs)
+
+
+def _portfolio_weights_reader(context):
+    """Each target portfolio's latest weights at or before a time, from its catalogued table."""
+
+    from msm_portfolios.services import latest_portfolio_weights
+
+    def read(portfolio_identifiers, valuation_time):
+        return latest_portfolio_weights(
+            list(portfolio_identifiers),
+            weights_date=valuation_time,
+            as_of=True,
+            repository_context=context,
+        )
+
+    return read

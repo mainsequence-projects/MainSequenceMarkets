@@ -107,7 +107,8 @@ direct account snapshots and virtual-fund-grouped views.
     virtual-fund allocated signed quantity per asset
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI and numeric
     asset IDs are not used
-  - this read endpoint does not rerun or apply the allocation planner
+  - this read endpoint does not rerun or apply the allocation planner; an
+    applied `POST .../virtual-fund-allocations/` writes what it shows
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
@@ -168,6 +169,38 @@ direct account snapshots and virtual-fund-grouped views.
   - portfolio details include `uid`, `unique_identifier`, and optional
     `published_index_uid`; portfolio targets are mandate exposure, not custody
     holdings
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  (`allocateAccountVirtualFunds`)
+  - runs the virtual-fund allocation planner
+    ([ADR 0029](../../ADR/0029-account-holdings-virtual-fund-allocation-policy.md))
+    for one holdings snapshot of the account, so a caller without grants on
+    `mainsequence.markets` can attribute its captures to its virtual funds
+  - request body: `holdings_set_uid` (the snapshot; its time is the valuation
+    time), `valuation_asset_uid` (the account's cash asset), optional
+    `position_set_uid`, `allocation_policy` (`mode`: `proportional_attribution`
+    or `strict_feasible`; `stale_data_policy`: `allow_latest` or `reject`) and
+    `apply` (`false` by default)
+  - the target is `position_set_uid` or, by default, the target in force at the
+    snapshot's time: the latest `PositionSet` at or before it of the account's
+    active target allocations. A cleared target leaves none in force
+  - the Markets API values the snapshot itself: the valuation asset is worth
+    one, and every other asset its target portfolios' latest weights
+    `price_current` at or before the snapshot's time, from the same weights
+    rows that split each portfolio target across its assets. Prices are taken
+    in the valuation asset's units. An asset with no such price is a `400`
+    naming it. Weights older than the snapshot produce a
+    `portfolio_weights_as_of` warning; `stale_data_policy=reject` refuses them
+  - the response is the plan: `status`, `account_nav`, `funds` (one per
+    virtual fund, with its uid and holdings set when applied), `allocations`
+    (every planner line, virtual-fund claims and the direct account residual),
+    `residuals`, `deficits`, `warnings` and `applied`
+  - with `apply=true` the funds, their `VirtualFundHoldingsSet` rows and their
+    `VirtualFundHoldingsStorage` rows for the snapshot are written in one
+    statement, replacing everything the account's funds held for that snapshot
+    (a fund no longer allocated loses its holdings set for it). Re-applying is
+    idempotent. `holdings/by-fund/` then shows the funds. An infeasible plan is
+    never applied (`400`); a dry run writes nothing
+  - `MarketsClient.allocate_account_virtual_funds(...)` calls this route
 
 ## Related Concepts
 

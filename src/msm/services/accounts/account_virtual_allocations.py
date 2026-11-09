@@ -423,6 +423,51 @@ def apply_account_virtual_fund_allocation_plan(
         raise ValueError("Plan contains no virtual-fund allocations to apply.")
 
     frames: list[pd.DataFrame] = []
+    for fund in virtual_fund_holdings_from_plan(plan):
+        virtual_fund = VirtualFund.upsert(
+            {
+                "unique_identifier": fund["unique_identifier"],
+                "account_uid": plan.account_uid,
+                "target_portfolio_uid": fund["target_portfolio_uid"],
+            }
+        )
+        holdings_set_uid = _deterministic_holdings_set_uid(
+            source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
+            virtual_fund_uid=str(virtual_fund.uid),
+            valuation_time=plan.valuation_time,
+        )
+        frames.append(
+            virtual_fund.allocate_from_account_holdings_set(
+                source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
+                allocation_time=plan.valuation_time,
+                allocations=fund["holdings"],
+                virtual_fund_holdings_set_uid=holdings_set_uid,
+                updater=None,
+                run=False,
+                validate_bounds=False,
+            )
+        )
+
+    frame = pd.concat(frames).sort_index()
+    if updater is not None:
+        updater.set_frame(frame)
+        if run:
+            updater.run(update_tree=False)
+    return frame
+
+
+def virtual_fund_holdings_from_plan(
+    plan: AccountVirtualFundAllocationPlan,
+) -> list[dict[str, Any]]:
+    """Return the virtual funds an applied plan writes, each with its holdings rows.
+
+    One entry per virtual-fund claim with a positive allocation:
+    ``unique_identifier``, ``target_portfolio_uid`` and ``holdings`` (the
+    ``VirtualFundHoldingsStorage`` values of each allocated asset). Claims whose
+    allocations are all within ``quantity_tolerance`` are left out.
+    """
+
+    funds: list[dict[str, Any]] = []
     for claim_uid, group_lines in _lines_by_claim(plan.virtual_fund_allocations).items():
         metadata = dict(plan.virtual_fund_metadata.get(claim_uid, {}))
         portfolio_uid = metadata.get("target_portfolio_uid") or _first_value(
@@ -431,19 +476,7 @@ def apply_account_virtual_fund_allocation_plan(
         )
         if portfolio_uid in (None, ""):
             raise ValueError(f"Virtual-fund claim {claim_uid!r} is missing target_portfolio_uid.")
-        virtual_fund = VirtualFund.upsert(
-            {
-                "unique_identifier": metadata.get("virtual_fund_unique_identifier") or claim_uid,
-                "account_uid": plan.account_uid,
-                "target_portfolio_uid": portfolio_uid,
-            }
-        )
-        holdings_set_uid = _deterministic_holdings_set_uid(
-            source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
-            virtual_fund_uid=str(virtual_fund.uid),
-            valuation_time=plan.valuation_time,
-        )
-        allocations = [
+        holdings = [
             {
                 ASSET_IDENTIFIER_DIMENSION: line.asset_identifier,
                 "allocated_quantity": line.allocated_abs_quantity,
@@ -460,28 +493,18 @@ def apply_account_virtual_fund_allocation_plan(
             for line in group_lines
             if line.allocated_abs_quantity > plan.allocation_policy.quantity_tolerance
         ]
-        if not allocations:
+        if not holdings:
             continue
-        frames.append(
-            virtual_fund.allocate_from_account_holdings_set(
-                source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
-                allocation_time=plan.valuation_time,
-                allocations=allocations,
-                virtual_fund_holdings_set_uid=holdings_set_uid,
-                updater=None,
-                run=False,
-                validate_bounds=False,
-            )
+        funds.append(
+            {
+                "unique_identifier": metadata.get("virtual_fund_unique_identifier") or claim_uid,
+                "target_portfolio_uid": str(portfolio_uid),
+                "holdings": holdings,
+            }
         )
-
-    if not frames:
+    if not funds:
         raise ValueError("Plan produced no positive virtual-fund allocation rows to apply.")
-    frame = pd.concat(frames).sort_index()
-    if updater is not None:
-        updater.set_frame(frame)
-        if run:
-            updater.run(update_tree=False)
-    return frame
+    return funds
 
 
 def virtual_fund_unique_identifier_for_target(
@@ -1270,14 +1293,41 @@ def _expand_portfolio_target_rows(
         portfolio_identifiers=sorted(set(portfolio_identifier_by_uid.values())),
         valuation_time=valuation_time,
     )
-    weights_by_portfolio_identifier: dict[str, list[dict[str, Any]]] = {}
-    for row in weight_records:
+    return expand_portfolio_target_rows(
+        portfolio_rows,
+        portfolio_identifier_by_uid=portfolio_identifier_by_uid,
+        weight_rows=weight_records,
+        valuation_time=valuation_time,
+    )
+
+
+def expand_portfolio_target_rows(
+    target_position_rows: Sequence[Mapping[str, Any]],
+    *,
+    portfolio_identifier_by_uid: Mapping[str, str],
+    weight_rows: Sequence[Mapping[str, Any]],
+    valuation_time: dt.datetime,
+) -> list[dict[str, Any]]:
+    """Expand portfolio target rows into one row per portfolio asset.
+
+    ``weight_rows`` are each target portfolio's latest weights at or before
+    ``valuation_time`` (``portfolio_identifier``, ``asset_identifier``,
+    ``weight``). A portfolio target's notional exposure is split across its
+    assets by weight.
+    """
+
+    weights_by_portfolio_identifier: dict[str, list[Mapping[str, Any]]] = {}
+    for row in weight_rows:
         weights_by_portfolio_identifier.setdefault(str(row["portfolio_identifier"]), []).append(row)
 
     expanded_rows: list[dict[str, Any]] = []
-    for row in portfolio_rows:
+    for row in target_position_rows:
+        if row.get("target_type") != TARGET_TYPE_PORTFOLIO:
+            continue
         portfolio_uid = _required_string(row.get("portfolio_uid"), "portfolio_uid")
-        portfolio_identifier = portfolio_identifier_by_uid[portfolio_uid]
+        portfolio_identifier = portfolio_identifier_by_uid.get(portfolio_uid)
+        if portfolio_identifier is None:
+            raise ValueError(f"Could not resolve PortfolioTable rows for {[portfolio_uid]}.")
         portfolio_weights = weights_by_portfolio_identifier.get(portfolio_identifier, [])
         if not portfolio_weights:
             raise ValueError(
@@ -1857,6 +1907,8 @@ __all__ = [
     "ValuationPolicy",
     "ValuationResolver",
     "apply_account_virtual_fund_allocation_plan",
+    "expand_portfolio_target_rows",
     "plan_account_virtual_fund_allocations",
+    "virtual_fund_holdings_from_plan",
     "virtual_fund_unique_identifier_for_target",
 ]

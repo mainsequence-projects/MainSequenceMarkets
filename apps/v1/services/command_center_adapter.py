@@ -170,6 +170,7 @@ MUTATION_OPERATION_IDS = frozenset(
         "deleteAssetCategory",
         "addAccountHoldings",
         "addAccountTargetPositions",
+        "allocateAccountVirtualFunds",
         "createAccount",
         "updateAccount",
         "deleteIndex",

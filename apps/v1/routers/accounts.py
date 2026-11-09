@@ -17,11 +17,14 @@ from apps.v1.schemas.accounts import (
     AccountTargetAllocationCandidate,
     AccountTargetAllocationTargetSearchType,
     AccountTargetPositionsSnapshotResponse,
+    AccountVirtualFundAllocationRequest,
+    AccountVirtualFundAllocationResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
+    allocate_account_virtual_funds,
     create_account,
     get_account_holdings,
     get_account_holdings_by_fund,
@@ -399,6 +402,48 @@ def get_account_holdings_by_fund_by_uid(
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
     return snapshot
+
+
+@router.post(
+    "/{account_uid}/virtual-fund-allocations/",
+    response_model=AccountVirtualFundAllocationResponse,
+    summary="Allocate an account holdings snapshot to its virtual funds",
+    description=(
+        "Run the virtual-fund allocation planner (ADR 0029) for one account holdings "
+        "snapshot and answer the plan: the funds, the allocation lines, the residuals, the "
+        "deficits and the warnings. The target is `position_set_uid` or, by default, the target "
+        "in force at the snapshot's time. The Markets API values the account itself: the "
+        "valuation asset at one and every other asset at its target portfolios' latest "
+        "weights price (`price_current`) at or before the snapshot's time; an asset with no "
+        "such price is a 400. With `apply`, the virtual funds and their holdings for the "
+        "snapshot are written to the core tables, replacing what the account's funds held for "
+        "it, and `holdings/by-fund/` shows them. A dry run writes nothing."
+    ),
+    operation_id="allocateAccountVirtualFunds",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The allocation cannot be planned or applied.",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The account, its holdings set or the PositionSet was not found.",
+        },
+    },
+)
+def allocate_account_virtual_funds_by_uid(
+    account_uid: str,
+    payload: AccountVirtualFundAllocationRequest,
+) -> AccountVirtualFundAllocationResponse:
+    try:
+        result = allocate_account_virtual_funds(account_uid=account_uid, payload=payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return result
 
 
 @router.post(

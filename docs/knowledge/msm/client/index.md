@@ -147,10 +147,10 @@ or `tickers` and returns each existing asset with its latest snapshot
 without a snapshot). `tickers` selects the assets that ever had one of those
 tickers; compare the latest `ticker` to keep the ones that still carry it.
 
-## Account Targets
+## Account Targets And Virtual-Fund Allocation
 
-An account's target has typed client methods, so a caller never builds its
-paths:
+An account's target and its virtual-fund allocation have typed client methods,
+so a caller never builds their paths:
 
 ```python
 client = MarketsClient.from_environment()
@@ -162,11 +162,23 @@ client.add_account_target_positions(
 )
 target = client.account_target_positions(account_uid)
 client.clear_account_target_positions(account_uid, target_positions_date=closed_at)
+
+plan = client.allocate_account_virtual_funds(
+    account_uid,
+    holdings_set_uid=captured_set_uid,
+    valuation_asset_uid=usd_asset_uid,
+    apply=True,
+)
 ```
 
-They return `AccountTargetPositionsSnapshotResponse`. A clear writes an empty
-snapshot, so the history records it, and sets the account's target allocation
-inactive. See the [accounts routes](../../../fast_api/v1/accounts.md).
+The target methods return `AccountTargetPositionsSnapshotResponse`. A clear
+writes an empty snapshot, so the history records it, and sets the account's
+target allocation inactive. `allocate_account_virtual_funds` runs the planner
+for one holdings snapshot against the target in force at its time (or
+`position_set_uid=`), values it with ms-markets' own prices and, with
+`apply=True`, writes the funds' holdings to the core tables; it returns
+`AccountVirtualFundAllocationResponse`. See the
+[accounts routes](../../../fast_api/v1/accounts.md) for the valuation rule.
 
 ## Provider Time Series
 

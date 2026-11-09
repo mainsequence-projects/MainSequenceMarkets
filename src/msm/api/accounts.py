@@ -801,6 +801,149 @@ class AccountAddTargetPositionsRequest(BaseModel):
     )
 
 
+# Markets API wire contracts for `POST /account/{account_uid}/virtual-fund-allocations/`.
+
+
+class AccountVirtualFundAllocationPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["proportional_attribution", "strict_feasible"] = Field(
+        default="proportional_attribution",
+        description=(
+            "`proportional_attribution` scales underfunded virtual-fund claims down; "
+            "`strict_feasible` marks the plan infeasible instead, and it is never applied."
+        ),
+    )
+    stale_data_policy: Literal["allow_latest", "reject"] = Field(
+        default="allow_latest",
+        description=(
+            "Target-portfolio weights and prices are each portfolio's latest weights at or "
+            "before the snapshot's time. `reject` requires weights at exactly that time."
+        ),
+    )
+
+
+class AccountVirtualFundAllocationRequest(BaseModel):
+    """Plan, and optionally apply, the virtual-fund allocation of one holdings snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    holdings_set_uid: str = Field(
+        min_length=1,
+        description="The account's `AccountHoldingsSet` to attribute; its time is the valuation time.",
+    )
+    valuation_asset_uid: str = Field(
+        min_length=1,
+        description="`Asset.uid` of the account's cash asset: the numeraire, valued at one.",
+    )
+    position_set_uid: str | None = Field(
+        default=None,
+        description=(
+            "The target to attribute against. By default, the target in force at the "
+            "snapshot's time: the latest `PositionSet` at or before it of the account's "
+            "active target allocations."
+        ),
+    )
+    allocation_policy: AccountVirtualFundAllocationPolicy = Field(
+        default_factory=AccountVirtualFundAllocationPolicy,
+    )
+    apply: bool = Field(
+        default=False,
+        description=(
+            "When true, write the virtual funds and their holdings for the snapshot, replacing "
+            "what the account's funds held for it. A dry run (the default) writes nothing."
+        ),
+    )
+
+
+class AccountVirtualFundAllocationFund(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    virtual_fund_unique_identifier: str
+    target_portfolio_uid: str | None = None
+    virtual_fund_uid: str | None = Field(default=None, description="Set when applied.")
+    holdings_set_uid: str | None = Field(
+        default=None,
+        description="The fund's `VirtualFundHoldingsSet` for the snapshot; set when applied.",
+    )
+    requested_notional: float | None = None
+    allocated_notional: float | None = None
+
+
+class AccountVirtualFundAllocationLine(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    claim_type: Literal["virtual_fund_target", "direct_account_residual"]
+    claim_uid: str
+    virtual_fund_unique_identifier: str | None = None
+    target_portfolio_uid: str | None = None
+    target_row_key: str | None = None
+    asset_uid: str
+    asset_identifier: str
+    requested_direction: Literal[1, -1]
+    requested_signed_quantity: float
+    allocated_signed_quantity: float
+    target_gap_signed_quantity: float
+    requested_notional: float | None = None
+    allocated_notional: float | None = None
+    target_gap_notional: float | None = None
+    scale: float
+
+
+class AccountVirtualFundAllocationResidual(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    asset_uid: str
+    asset_identifier: str
+    signed_account_holding: float
+    virtual_allocated_signed_quantity: float
+    direct_sleeve_signed_quantity: float
+    direct_target_signed_quantity: float
+    direct_target_gap_signed_quantity: float
+    scale: float
+
+
+class AccountVirtualFundAllocationDeficit(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    asset_uid: str
+    asset_identifier: str
+    gross_source_capacity: float
+    virtual_gross_demand: float
+    deficit_abs_quantity: float
+    scale: float
+
+
+class AccountVirtualFundAllocationWarning(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    code: str
+    message: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountVirtualFundAllocationResponse(BaseModel):
+    """The allocation plan of one holdings snapshot, and whether it was written."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_uid: str
+    holdings_set_uid: str
+    position_set_uid: str
+    valuation_time: dt.datetime
+    valuation_asset_uid: str
+    allocation_mode: Literal["proportional_attribution", "strict_feasible"]
+    status: Literal["feasible", "attributed_with_target_gap", "infeasible"]
+    account_nav: float | None = None
+    applied: bool
+    funds: list[AccountVirtualFundAllocationFund] = Field(default_factory=list)
+    allocations: list[AccountVirtualFundAllocationLine] = Field(default_factory=list)
+    residuals: list[AccountVirtualFundAllocationResidual] = Field(default_factory=list)
+    deficits: list[AccountVirtualFundAllocationDeficit] = Field(default_factory=list)
+    warnings: list[AccountVirtualFundAllocationWarning] = Field(default_factory=list)
+
+
 __all__ = [
     "AccountAddAssetTargetPositionRequest",
     "AccountAddPortfolioTargetPositionRequest",
@@ -831,6 +974,14 @@ __all__ = [
     "AccountTargetPositionsSnapshotResponse",
     "AccountUpdate",
     "AccountUpsert",
+    "AccountVirtualFundAllocationDeficit",
+    "AccountVirtualFundAllocationFund",
+    "AccountVirtualFundAllocationLine",
+    "AccountVirtualFundAllocationPolicy",
+    "AccountVirtualFundAllocationRequest",
+    "AccountVirtualFundAllocationResidual",
+    "AccountVirtualFundAllocationResponse",
+    "AccountVirtualFundAllocationWarning",
     "HoldingAssetCurrentSnapshot",
     "PositionSet",
     "PositionSetCreate",
