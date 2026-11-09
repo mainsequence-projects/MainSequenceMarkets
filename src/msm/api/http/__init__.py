@@ -1,5 +1,13 @@
 """Installable provider-neutral HTTP contracts and adapter helpers."""
 
+from .account_sync import (
+    ACCOUNT_SYNC_ACTION,
+    ACCOUNT_SYNC_PATH,
+    OPERATION_PATH,
+    AccountSyncOperation,
+    AccountSyncRequest,
+    AccountSyncResult,
+)
 from .bulk_actions import (
     BULK_ACTION_EXECUTION_CONTRACT,
     BULK_ACTION_PREFLIGHT_CONTRACT,
@@ -87,12 +95,18 @@ from .table_impact import (
 )
 
 __all__ = [
+    "ACCOUNT_SYNC_ACTION",
+    "ACCOUNT_SYNC_PATH",
     "BULK_ACTION_EXECUTION_CONTRACT",
     "BULK_ACTION_PREFLIGHT_CONTRACT",
     "CORE_TABULAR_FRAME_CONTRACT",
+    "OPERATION_PATH",
     "PRESENTATION_QUERY_KEYS",
     "RESOURCE_COLLECTION_CONTRACT",
     "RESOURCE_DISCOVERY_CONTRACT",
+    "AccountSyncOperation",
+    "AccountSyncRequest",
+    "AccountSyncResult",
     "ApiErrorDetail",
     "ApiErrorResponse",
     "BulkActionAllMatchingQuery",

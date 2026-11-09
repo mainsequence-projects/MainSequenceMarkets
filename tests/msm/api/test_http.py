@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import datetime as dt
+import uuid
+
+import pytest
 from mainsequence.client.exceptions import ConflictError
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from msm.api.http import (
+    ACCOUNT_SYNC_ACTION,
+    AccountSyncOperation,
+    AccountSyncRequest,
+    AccountSyncResult,
     InMemoryOperationStore,
     OperationError,
     OperationNotFoundError,
@@ -133,3 +141,114 @@ def test_observable_operation_failure_retains_sanitized_public_error() -> None:
     assert failed.error is not None
     assert failed.error.retryable is True
     assert failed.steps[0].status == "failed"
+
+
+ACCOUNT_UID = str(uuid.UUID("00000000-0000-0000-0000-000000000301"))
+HOLDINGS_SET_UID = str(uuid.UUID("00000000-0000-0000-0000-000000000304"))
+
+
+def _account_sync_store() -> tuple[InMemoryOperationStore, str]:
+    store = InMemoryOperationStore[AccountSyncRequest, AccountSyncResult]()
+    created = store.create(
+        action=ACCOUNT_SYNC_ACTION,
+        request=AccountSyncRequest(account_uid=ACCOUNT_UID),
+        owner_uid="user-a",
+        steps=[("capture", "Capture holdings"), ("publish", "Publish holdings set")],
+    )
+    store.start(created.operation_uid, step_key="capture")
+    return store, created.operation_uid
+
+
+def test_succeeded_account_sync_validates_with_its_result() -> None:
+    store, operation_uid = _account_sync_store()
+    store.advance(operation_uid, step_key="publish")
+    completed = store.succeed(
+        operation_uid,
+        result=AccountSyncResult(
+            account_uid=ACCOUNT_UID,
+            holdings_set_uid=HOLDINGS_SET_UID,
+            time_index=dt.datetime(2026, 11, 9, 10, 30, tzinfo=dt.timezone(dt.timedelta(hours=-5))),
+            holdings_rows=3,
+            extra={"unresolved_symbols": ["XYZ"]},
+        ),
+    )
+
+    operation = AccountSyncOperation.model_validate(completed.model_dump(mode="json"))
+
+    assert operation.action == "account_sync"
+    assert operation.result is not None
+    assert operation.result.holdings_set_uid == HOLDINGS_SET_UID
+    assert operation.result.time_index == dt.datetime(2026, 11, 9, 15, 30, tzinfo=dt.UTC)
+    assert operation.result.extra == {"unresolved_symbols": ["XYZ"]}
+
+
+def test_account_sync_result_requires_every_documented_field() -> None:
+    published_none = AccountSyncResult(
+        account_uid=ACCOUNT_UID,
+        holdings_set_uid=None,
+        time_index=dt.datetime(2026, 11, 9, tzinfo=dt.UTC),
+        holdings_rows=0,
+    )
+    assert published_none.extra == {}
+
+    with pytest.raises(ValidationError, match="holdings_set_uid"):
+        AccountSyncResult(
+            account_uid=ACCOUNT_UID,
+            time_index=dt.datetime(2026, 11, 9, tzinfo=dt.UTC),
+            holdings_rows=0,
+        )
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        AccountSyncResult(
+            account_uid=ACCOUNT_UID,
+            holdings_set_uid=None,
+            time_index=dt.datetime(2026, 11, 9),
+            holdings_rows=0,
+        )
+    with pytest.raises(ValidationError, match="holdings_rows"):
+        AccountSyncResult(
+            account_uid=ACCOUNT_UID,
+            holdings_set_uid=None,
+            time_index=dt.datetime(2026, 11, 9, tzinfo=dt.UTC),
+            holdings_rows=-1,
+        )
+
+
+def test_account_sync_operation_enforces_terminal_payloads() -> None:
+    store, operation_uid = _account_sync_store()
+    failed = store.fail(
+        operation_uid,
+        error=OperationError(code="venue_unavailable", message="The venue did not answer."),
+    )
+    assert AccountSyncOperation.model_validate(failed.model_dump(mode="json")).status == "failed"
+
+    without_error = {**failed.model_dump(mode="json"), "error": None}
+    with pytest.raises(ValidationError, match="must contain an error"):
+        AccountSyncOperation.model_validate(without_error)
+
+    succeeded_without_result = {
+        **failed.model_dump(mode="json"),
+        "status": "succeeded",
+        "error": None,
+    }
+    with pytest.raises(ValidationError, match="AccountSyncResult"):
+        AccountSyncOperation.model_validate(succeeded_without_result)
+
+    other_action = {**failed.model_dump(mode="json"), "action": "register"}
+    with pytest.raises(ValidationError, match="action"):
+        AccountSyncOperation.model_validate(other_action)
+
+
+def test_account_sync_result_must_describe_the_requested_account() -> None:
+    store, operation_uid = _account_sync_store()
+    completed = store.succeed(
+        operation_uid,
+        result=AccountSyncResult(
+            account_uid=str(uuid.uuid4()),
+            holdings_set_uid=None,
+            time_index=dt.datetime(2026, 11, 9, tzinfo=dt.UTC),
+            holdings_rows=0,
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="requested account"):
+        AccountSyncOperation.model_validate(completed.model_dump(mode="json"))

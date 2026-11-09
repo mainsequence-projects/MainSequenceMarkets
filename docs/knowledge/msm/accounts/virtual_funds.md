@@ -107,6 +107,23 @@ PositionSetTable.uid
   -> valuation resolver
 ```
 
+The holdings set is the one captured at `valuation_time`: the capture is the
+valuation. The target is the `PositionSet` the caller passes, used as it is.
+A target is in force from its own `position_set_time` on, so a capture taken
+after the target was written is attributed against it: plan it with the later
+capture's `valuation_time` and the earlier `position_set_uid`. A `PositionSet`
+written after `valuation_time` is refused, since it cannot apply to holdings
+captured before it.
+
+An application without grants on `mainsequence.markets` runs the same planner
+through the Markets API: `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+(`MarketsClient.allocate_account_virtual_funds`) takes the holdings snapshot,
+defaults the target to the one in force at the snapshot's time, values the
+account with ms-markets' own prices (the valuation asset at one, every other
+asset at its target portfolios' latest weights `price_current`) and, when
+applied, writes the funds' holdings to the core tables. See the
+[accounts routes](../../../fast_api/v1/accounts.md).
+
 Core `msm` owns the account and virtual-fund allocation logic. Portfolio
 weights still come from an explicit portfolio-target expander at the workflow
 boundary, so `msm` does not import `msm_portfolios`.

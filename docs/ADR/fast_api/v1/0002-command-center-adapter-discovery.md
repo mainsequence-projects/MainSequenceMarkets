@@ -308,6 +308,7 @@ Account operations:
 
 - `addAccountHoldings`
 - `addAccountTargetPositions`
+- `allocateAccountVirtualFunds` (a dry run by default; it writes only with `apply`)
 
 Index operations:
 

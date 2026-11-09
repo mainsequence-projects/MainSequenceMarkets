@@ -4,9 +4,9 @@ import datetime as dt
 import uuid
 from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from msm.api.base import MarketsMetaTableRow, PayloadWithRenamedFields, pre_3_0_field
 from msm.api.remote import RemoteRowOperations
@@ -682,7 +682,273 @@ class AccountHoldingsSnapshots(RemoteRowOperations, BaseModel):
         return resolve_runtime(models=cls.__required_tables__, row_model_name=cls.__name__).context
 
 
+
+# Markets API wire contracts for account target positions
+# (`GET /account/{account_uid}/target-positions/`, `POST .../add-target-positions/`).
+
+
+class HoldingAssetCurrentSnapshot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    ticker: str | None = None
+
+
+class AccountTargetPositionAssetReference(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str | None = None
+    unique_identifier: str | None = None
+    current_snapshot: HoldingAssetCurrentSnapshot = Field(
+        default_factory=HoldingAssetCurrentSnapshot,
+    )
+
+
+class AccountTargetPositionPortfolioReference(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str | None = None
+    unique_identifier: str | None = None
+    published_index_uid: str | None = None
+
+
+class AccountTargetPositionRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    target_type: Literal["asset", "portfolio"]
+    target_uid: str
+    asset_uid: str | None = None
+    portfolio_uid: str | None = None
+    unique_identifier: str
+    weight_notional_exposure: str | None = None
+    constant_notional_exposure: str | None = None
+    single_asset_quantity: str | None = None
+    asset: AccountTargetPositionAssetReference | None = None
+    portfolio: AccountTargetPositionPortfolioReference | None = None
+
+
+class AccountTargetPositionsSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    related_account_uid: str | None = None
+    target_positions_date: dt.datetime | None = None
+    position_set_uid: str | None = None
+    positions: list[AccountTargetPositionRow] = Field(default_factory=list)
+
+
+class _AccountAddTargetPositionBaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_uid: str = Field(min_length=1)
+    weight_notional_exposure: str | int | float | None = None
+    constant_notional_exposure: str | int | float | None = None
+    single_asset_quantity: str | int | float | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_single_exposure(self):
+        provided_fields = [
+            field_name
+            for field_name in (
+                "weight_notional_exposure",
+                "constant_notional_exposure",
+                "single_asset_quantity",
+            )
+            if getattr(self, field_name) is not None
+        ]
+        if len(provided_fields) != 1:
+            raise ValueError("Each target position must provide exactly one exposure field.")
+        return self
+
+
+class AccountAddAssetTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
+    target_type: Literal["asset"]
+    asset_uid: str = Field(min_length=1)
+    portfolio_uid: None = None
+
+
+class AccountAddPortfolioTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
+    target_type: Literal["portfolio"]
+    asset_uid: None = None
+    portfolio_uid: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _reject_portfolio_units(self):
+        if self.single_asset_quantity is not None:
+            raise ValueError("Portfolio target positions cannot use single_asset_quantity.")
+        return self
+
+
+AccountAddTargetPositionRequest = Annotated[
+    AccountAddAssetTargetPositionRequest | AccountAddPortfolioTargetPositionRequest,
+    Field(discriminator="target_type"),
+]
+
+
+class AccountAddTargetPositionsRequest(BaseModel):
+    """One account target snapshot; an empty ``positions`` list clears the target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_positions_date: dt.datetime
+    overwrite: bool
+    positions: list[AccountAddTargetPositionRequest] = Field(
+        description=(
+            "The whole target at target_positions_date. An empty list clears the "
+            "account's target: it writes an empty snapshot and sets the account's target "
+            "allocation inactive."
+        ),
+    )
+
+
+# Markets API wire contracts for `POST /account/{account_uid}/virtual-fund-allocations/`.
+
+
+class AccountVirtualFundAllocationPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["proportional_attribution", "strict_feasible"] = Field(
+        default="proportional_attribution",
+        description=(
+            "`proportional_attribution` scales underfunded virtual-fund claims down; "
+            "`strict_feasible` marks the plan infeasible instead, and it is never applied."
+        ),
+    )
+    stale_data_policy: Literal["allow_latest", "reject"] = Field(
+        default="allow_latest",
+        description=(
+            "Target-portfolio weights and prices are each portfolio's latest weights at or "
+            "before the snapshot's time. `reject` requires weights at exactly that time."
+        ),
+    )
+
+
+class AccountVirtualFundAllocationRequest(BaseModel):
+    """Plan, and optionally apply, the virtual-fund allocation of one holdings snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    holdings_set_uid: str = Field(
+        min_length=1,
+        description="The account's `AccountHoldingsSet` to attribute; its time is the valuation time.",
+    )
+    valuation_asset_uid: str = Field(
+        min_length=1,
+        description="`Asset.uid` of the account's cash asset: the numeraire, valued at one.",
+    )
+    position_set_uid: str | None = Field(
+        default=None,
+        description=(
+            "The target to attribute against. By default, the target in force at the "
+            "snapshot's time: the latest `PositionSet` at or before it of the account's "
+            "active target allocations."
+        ),
+    )
+    allocation_policy: AccountVirtualFundAllocationPolicy = Field(
+        default_factory=AccountVirtualFundAllocationPolicy,
+    )
+    apply: bool = Field(
+        default=False,
+        description=(
+            "When true, write the virtual funds and their holdings for the snapshot, replacing "
+            "what the account's funds held for it. A dry run (the default) writes nothing."
+        ),
+    )
+
+
+class AccountVirtualFundAllocationFund(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    virtual_fund_unique_identifier: str
+    target_portfolio_uid: str | None = None
+    virtual_fund_uid: str | None = Field(default=None, description="Set when applied.")
+    holdings_set_uid: str | None = Field(
+        default=None,
+        description="The fund's `VirtualFundHoldingsSet` for the snapshot; set when applied.",
+    )
+    requested_notional: float | None = None
+    allocated_notional: float | None = None
+
+
+class AccountVirtualFundAllocationLine(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    claim_type: Literal["virtual_fund_target", "direct_account_residual"]
+    claim_uid: str
+    virtual_fund_unique_identifier: str | None = None
+    target_portfolio_uid: str | None = None
+    target_row_key: str | None = None
+    asset_uid: str
+    asset_identifier: str
+    requested_direction: Literal[1, -1]
+    requested_signed_quantity: float
+    allocated_signed_quantity: float
+    target_gap_signed_quantity: float
+    requested_notional: float | None = None
+    allocated_notional: float | None = None
+    target_gap_notional: float | None = None
+    scale: float
+
+
+class AccountVirtualFundAllocationResidual(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    asset_uid: str
+    asset_identifier: str
+    signed_account_holding: float
+    virtual_allocated_signed_quantity: float
+    direct_sleeve_signed_quantity: float
+    direct_target_signed_quantity: float
+    direct_target_gap_signed_quantity: float
+    scale: float
+
+
+class AccountVirtualFundAllocationDeficit(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    asset_uid: str
+    asset_identifier: str
+    gross_source_capacity: float
+    virtual_gross_demand: float
+    deficit_abs_quantity: float
+    scale: float
+
+
+class AccountVirtualFundAllocationWarning(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    code: str
+    message: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountVirtualFundAllocationResponse(BaseModel):
+    """The allocation plan of one holdings snapshot, and whether it was written."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_uid: str
+    holdings_set_uid: str
+    position_set_uid: str
+    valuation_time: dt.datetime
+    valuation_asset_uid: str
+    allocation_mode: Literal["proportional_attribution", "strict_feasible"]
+    status: Literal["feasible", "attributed_with_target_gap", "infeasible"]
+    account_nav: float | None = None
+    applied: bool
+    funds: list[AccountVirtualFundAllocationFund] = Field(default_factory=list)
+    allocations: list[AccountVirtualFundAllocationLine] = Field(default_factory=list)
+    residuals: list[AccountVirtualFundAllocationResidual] = Field(default_factory=list)
+    deficits: list[AccountVirtualFundAllocationDeficit] = Field(default_factory=list)
+    warnings: list[AccountVirtualFundAllocationWarning] = Field(default_factory=list)
+
+
 __all__ = [
+    "AccountAddAssetTargetPositionRequest",
+    "AccountAddPortfolioTargetPositionRequest",
+    "AccountAddTargetPositionRequest",
+    "AccountAddTargetPositionsRequest",
     "AccountHoldingsSnapshots",
     "Account",
     "AccountCreate",
@@ -702,8 +968,21 @@ __all__ = [
     "AccountTargetAllocationCreate",
     "AccountTargetAllocationUpdate",
     "AccountTargetAllocationUpsert",
+    "AccountTargetPositionAssetReference",
+    "AccountTargetPositionPortfolioReference",
+    "AccountTargetPositionRow",
+    "AccountTargetPositionsSnapshotResponse",
     "AccountUpdate",
     "AccountUpsert",
+    "AccountVirtualFundAllocationDeficit",
+    "AccountVirtualFundAllocationFund",
+    "AccountVirtualFundAllocationLine",
+    "AccountVirtualFundAllocationPolicy",
+    "AccountVirtualFundAllocationRequest",
+    "AccountVirtualFundAllocationResidual",
+    "AccountVirtualFundAllocationResponse",
+    "AccountVirtualFundAllocationWarning",
+    "HoldingAssetCurrentSnapshot",
     "PositionSet",
     "PositionSetCreate",
     "PositionSetUpdate",

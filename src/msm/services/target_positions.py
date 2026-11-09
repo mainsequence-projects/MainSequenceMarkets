@@ -313,10 +313,16 @@ def add_account_target_positions_snapshot_response(
     )
     position_payloads = [_position_payload(position) for position in positions]
     candidate_position_set_uid = str(uuid4())
-    target_positions_frame = build_target_positions_frame(
-        target_positions_date=normalized_target_positions_date,
-        position_set_uid=candidate_position_set_uid,
-        positions=position_payloads,
+    position_rows = (
+        _target_positions_frame_operation_rows(
+            build_target_positions_frame(
+                target_positions_date=normalized_target_positions_date,
+                position_set_uid=candidate_position_set_uid,
+                positions=position_payloads,
+            )
+        )
+        if position_payloads
+        else []
     )
 
     from msm.repositories.accounts import replace_account_target_positions_snapshot
@@ -329,10 +335,11 @@ def add_account_target_positions_snapshot_response(
         account_uid=resolved_account_uid,
         account_name=account_name,
         target_positions_date=normalized_target_positions_date,
-        positions=_target_positions_frame_operation_rows(target_positions_frame),
+        positions=position_rows,
         overwrite=overwrite,
     )
-    if not operation_result_rows(write_result):
+    written_rows = operation_result_rows(write_result)
+    if not written_rows:
         if not overwrite:
             raise AccountTargetPositionsSnapshotExistsError(
                 "Account target-position snapshot already exists for "
@@ -340,6 +347,16 @@ def add_account_target_positions_snapshot_response(
                 f"{normalized_target_positions_date.isoformat()}."
             )
         raise RuntimeError("Account target-position replacement did not insert any rows.")
+
+    if not position_rows:
+        # A clear sets the target allocation inactive, which the read skips, so
+        # the cleared snapshot is answered from the write itself.
+        return {
+            "related_account_uid": resolved_account_uid,
+            "target_positions_date": normalized_target_positions_date,
+            "position_set_uid": _string_or_none(written_rows[0].get("uid")),
+            "positions": [],
+        }
 
     return get_account_target_positions_snapshot_response(
         context,

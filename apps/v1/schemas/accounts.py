@@ -2,28 +2,33 @@ from __future__ import annotations
 
 import datetime as dt
 from typing import Any
-from typing import Annotated
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
 from apps.v1.schemas.holdings import (
     BaseHoldingRow,
     BaseHoldingsSnapshotResponse,
-    HoldingAssetCurrentSnapshot,
     HoldingAssetReference,
 )
 
 
 def _account_contracts():
     prepare_apps_v1_import_namespace()
-    from msm.api.accounts import Account, AccountCreate, AccountUpdate
+    import msm.api.accounts as contracts
 
-    return Account, AccountCreate, AccountUpdate
+    return contracts
 
 
-Account, AccountCreate, AccountUpdate = _account_contracts()
+_contracts = _account_contracts()
+Account = _contracts.Account
+AccountCreate = _contracts.AccountCreate
+AccountUpdate = _contracts.AccountUpdate
+AccountAddTargetPositionsRequest = _contracts.AccountAddTargetPositionsRequest
+AccountTargetPositionsSnapshotResponse = _contracts.AccountTargetPositionsSnapshotResponse
+AccountVirtualFundAllocationRequest = _contracts.AccountVirtualFundAllocationRequest
+AccountVirtualFundAllocationResponse = _contracts.AccountVirtualFundAllocationResponse
 
 
 class AccountWithIncludes(Account):
@@ -117,105 +122,6 @@ class AccountAddHoldingsRequest(BaseModel):
     holdings_date: dt.datetime
     overwrite: bool = False
     positions: list[AccountAddHoldingsPositionRequest] = Field(min_length=1)
-
-
-class AccountTargetPositionAssetReference(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: str | None = None
-    unique_identifier: str | None = None
-    current_snapshot: HoldingAssetCurrentSnapshot = Field(
-        default_factory=HoldingAssetCurrentSnapshot,
-    )
-
-
-class AccountTargetPositionPortfolioReference(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: str | None = None
-    unique_identifier: str | None = None
-    published_index_uid: str | None = None
-
-
-class AccountTargetPositionRow(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    target_type: Literal["asset", "portfolio"]
-    target_uid: str
-    asset_uid: str | None = None
-    portfolio_uid: str | None = None
-    unique_identifier: str
-    weight_notional_exposure: str | None = None
-    constant_notional_exposure: str | None = None
-    single_asset_quantity: str | None = None
-    asset: AccountTargetPositionAssetReference | None = None
-    portfolio: AccountTargetPositionPortfolioReference | None = None
-
-
-class AccountTargetPositionsSnapshotResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    related_account_uid: str | None = None
-    target_positions_date: dt.datetime | None = None
-    position_set_uid: str | None = None
-    positions: list[AccountTargetPositionRow] = Field(default_factory=list)
-
-
-class _AccountAddTargetPositionBaseRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    target_uid: str = Field(min_length=1)
-    weight_notional_exposure: str | int | float | None = None
-    constant_notional_exposure: str | int | float | None = None
-    single_asset_quantity: str | int | float | None = None
-    metadata_json: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _validate_single_exposure(self):
-        provided_fields = [
-            field_name
-            for field_name in (
-                "weight_notional_exposure",
-                "constant_notional_exposure",
-                "single_asset_quantity",
-            )
-            if getattr(self, field_name) is not None
-        ]
-        if len(provided_fields) != 1:
-            raise ValueError("Each target position must provide exactly one exposure field.")
-        return self
-
-
-class AccountAddAssetTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
-    target_type: Literal["asset"]
-    asset_uid: str = Field(min_length=1)
-    portfolio_uid: None = None
-
-
-class AccountAddPortfolioTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
-    target_type: Literal["portfolio"]
-    asset_uid: None = None
-    portfolio_uid: str = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _reject_portfolio_units(self):
-        if self.single_asset_quantity is not None:
-            raise ValueError("Portfolio target positions cannot use single_asset_quantity.")
-        return self
-
-
-AccountAddTargetPositionRequest = Annotated[
-    AccountAddAssetTargetPositionRequest | AccountAddPortfolioTargetPositionRequest,
-    Field(discriminator="target_type"),
-]
-
-
-class AccountAddTargetPositionsRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    target_positions_date: dt.datetime
-    overwrite: bool
-    positions: list[AccountAddTargetPositionRequest] = Field(min_length=1)
 
 
 AccountTargetAllocationTargetSearchType = Literal["all", "asset", "portfolio"]

@@ -7,6 +7,14 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from msm.api.accounts import (
+    AccountAddTargetPositionRequest,
+    AccountAddTargetPositionsRequest,
+    AccountTargetPositionsSnapshotResponse,
+    AccountVirtualFundAllocationPolicy,
+    AccountVirtualFundAllocationRequest,
+    AccountVirtualFundAllocationResponse,
+)
 from msm.api.remote import MarketsApiError, raise_for_error
 from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoint
 
@@ -150,6 +158,112 @@ class MarketsClient:
             params.append(("as_of", "true" if as_of else "false"))
         frame = self.request("GET", f"{API_PREFIX}/portfolio/weights/", params=params)
         return tabular_frame_to_pandas(frame) if as_pandas else frame
+
+    def account_target_positions(
+        self,
+        account_uid: Any,
+        *,
+        target_positions_date: dt.datetime | None = None,
+        order: str = "desc",
+        include_asset_detail: bool = True,
+    ) -> AccountTargetPositionsSnapshotResponse:
+        """One target snapshot of an account (``getAccountTargetPositions``).
+
+        Without ``target_positions_date`` it is the latest snapshot (or the
+        earliest with ``order="asc"``). An account with no target, or whose
+        target was cleared, answers an empty ``positions`` list.
+        """
+
+        params: list[tuple[str, Any]] = [
+            ("order", order),
+            ("include_asset_detail", "true" if include_asset_detail else "false"),
+        ]
+        if target_positions_date is not None:
+            params.append(("target_positions_date", target_positions_date.isoformat()))
+        payload = self.request(
+            "GET",
+            f"{API_PREFIX}/account/{account_uid}/target-positions/",
+            params=params,
+        )
+        return AccountTargetPositionsSnapshotResponse.model_validate(payload)
+
+    def add_account_target_positions(
+        self,
+        account_uid: Any,
+        *,
+        target_positions_date: dt.datetime,
+        positions: Sequence[AccountAddTargetPositionRequest | Mapping[str, Any]],
+        overwrite: bool = False,
+    ) -> AccountTargetPositionsSnapshotResponse:
+        """Write an account's whole target at ``target_positions_date`` (``addAccountTargetPositions``).
+
+        An empty ``positions`` list clears the target; see
+        ``clear_account_target_positions``. A snapshot that already exists at
+        that time raises ``ValueError`` unless ``overwrite`` is true.
+        """
+
+        request = AccountAddTargetPositionsRequest(
+            target_positions_date=target_positions_date,
+            overwrite=overwrite,
+            positions=list(positions),
+        )
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/account/{account_uid}/add-target-positions/",
+            json=request.model_dump(mode="json"),
+        )
+        return AccountTargetPositionsSnapshotResponse.model_validate(payload)
+
+    def clear_account_target_positions(
+        self,
+        account_uid: Any,
+        *,
+        target_positions_date: dt.datetime,
+        overwrite: bool = False,
+    ) -> AccountTargetPositionsSnapshotResponse:
+        """Clear an account's target at ``target_positions_date``.
+
+        Writes an empty snapshot, so the target's history records the clearing,
+        and sets the account's target allocation inactive. Returns the empty
+        snapshot; later reads answer no positions until a new target is written.
+        """
+
+        return self.add_account_target_positions(
+            account_uid,
+            target_positions_date=target_positions_date,
+            positions=[],
+            overwrite=overwrite,
+        )
+
+    def allocate_account_virtual_funds(
+        self,
+        account_uid: Any,
+        *,
+        holdings_set_uid: Any,
+        valuation_asset_uid: Any,
+        position_set_uid: Any | None = None,
+        allocation_policy: AccountVirtualFundAllocationPolicy | Mapping[str, Any] | None = None,
+        apply: bool = False,
+    ) -> AccountVirtualFundAllocationResponse:
+        """Allocate one holdings snapshot to the account's virtual funds (``allocateAccountVirtualFunds``).
+
+        The Markets API values the snapshot itself and, with ``apply``, writes the
+        funds' holdings to the core tables; a dry run (the default) writes nothing.
+        """
+
+        request = AccountVirtualFundAllocationRequest(
+            holdings_set_uid=str(holdings_set_uid),
+            valuation_asset_uid=str(valuation_asset_uid),
+            position_set_uid=None if position_set_uid is None else str(position_set_uid),
+            allocation_policy=allocation_policy or AccountVirtualFundAllocationPolicy(),
+            apply=apply,
+        )
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/account/{account_uid}/virtual-fund-allocations/",
+            json=request.model_dump(mode="json"),
+        )
+        return AccountVirtualFundAllocationResponse.model_validate(payload)
 
     def _send(self, method: str, url: str, *, json: Any, params: Any, force: bool) -> Any:
         headers = dict(self._headers(force))

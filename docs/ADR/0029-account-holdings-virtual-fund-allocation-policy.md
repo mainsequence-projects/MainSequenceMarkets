@@ -208,6 +208,19 @@ so the default policy produces at most one source holdings set. If the selected
 policy resolves zero or more than one source holdings set, the planner must fail
 before loading holdings rows.
 
+### Target In Force
+
+The planner uses the rows of the `PositionSet` the caller passed, as they are:
+the caller chose the snapshot. A target is in force from its own
+`position_set_time` until the next one, so an account whose target changes on
+a rebalance and whose holdings are captured often attributes every capture
+against the target written before it: `valuation_time` is the capture's time
+and `position_set_uid` is the earlier target. A `PositionSet` written after
+`valuation_time` is refused, since it cannot apply to holdings captured before
+it. The first implementation also required the target rows' `time_index` to
+equal `valuation_time`, which made a capture taken after the target impossible
+to plan; that requirement is removed.
+
 Portfolio weights are resolved from the portfolio target row:
 
 ```text
@@ -233,7 +246,7 @@ The allocation planner requires:
 | Input | Type | Required relationship / FK check | Meaning |
 | --- | --- | --- | --- |
 | `position_set_uid` | `uuid.UUID` | Must exist as `PositionSetTable.uid`; `PositionSetTable.account_target_allocation_uid -> AccountTargetAllocationTable.uid`; `AccountTargetAllocationTable.account_uid -> AccountTable.uid`. | Concrete target allocation snapshot to satisfy. This is the authoritative account context. |
-| `valuation_time` | timezone-aware UTC `datetime.datetime` | Used to select valuations, conversions, portfolio weights, and target/holdings snapshots. It must be normalized to UTC before planning. | Time at which NAV and target quantities are calculated. |
+| `valuation_time` | timezone-aware UTC `datetime.datetime` | Used to select valuations, conversions, portfolio weights, and the holdings snapshot. It must be normalized to UTC before planning. The `PositionSet` must not be later than it (see "Target In Force"). | Time at which NAV and target quantities are calculated. |
 | `valuation_asset_uid` | `uuid.UUID` | Must exist as `AssetTable.uid`; this asset is the canonical valuation numeraire. | Asset used for account NAV, fixed notional targets, quantity conversion, and diagnostics. |
 | `holdings_selection_policy` | typed policy object | Must resolve exactly one `AccountHoldingsSetTable` row for the account derived from `position_set_uid`; default is exact `AccountHoldingsSetTable.time_index == valuation_time`. | Selects the canonical source holdings snapshot without accepting a raw holdings-set UID. |
 | `valuation_resolver` | batch protocol / callable | Planner calls it with requested valuation metrics, resolved source holdings, target notional demands, `valuation_time`, `valuation_asset_uid`, and valuation rules from `allocation_policy`. For this allocation planner, `nav` is required. | Owns instrument valuation, metric calculation, NAV contribution, and notional-to-quantity conversion. |

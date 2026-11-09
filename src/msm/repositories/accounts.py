@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     Integer,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     String,
     Uuid,
     bindparam,
+    case,
     cast,
     column,
     delete,
@@ -842,9 +844,21 @@ def build_replace_account_target_positions_snapshot_operation(
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool = False,
 ) -> MetaTableCompiledSQLOperation:
-    if not positions:
-        raise ValueError("Account target-position snapshot replacement requires positions.")
+    """Write one account target-position snapshot in one statement.
 
+    With positions, the account's target allocation becomes active and the
+    snapshot's rows replace any rows at ``target_positions_date``. With no
+    positions, the target is cleared: an empty ``PositionSet`` is written at
+    ``target_positions_date`` and the target allocation becomes inactive, so
+    the target's history records when it was cleared.
+
+    The allocation's ``is_active`` changes only when the snapshot write goes
+    through; a refused write (the snapshot exists and ``overwrite`` is false)
+    leaves it as it was. The statement returns the inserted target rows, or
+    the cleared ``PositionSet`` uid, and nothing when the write was refused.
+    """
+
+    clearing = not positions
     normalized_target_positions_date = _utc_timestamp(
         target_positions_date,
         field_name="target_positions_date",
@@ -861,6 +875,22 @@ def build_replace_account_target_positions_snapshot_operation(
         type_=DateTime(timezone=True),
     )
     overwrite_param = bindparam("overwrite", value=bool(overwrite))
+    is_active_param = bindparam("is_active", value=not clearing, type_=Boolean())
+    existing_allocation = AccountTargetAllocationTable.__table__.alias("existing_allocation")
+    existing_position_set = PositionSetTable.__table__.alias("existing_position_set")
+    snapshot_exists = (
+        select(existing_position_set.c.uid)
+        .join(
+            existing_allocation,
+            existing_position_set.c.account_target_allocation_uid == existing_allocation.c.uid,
+        )
+        .where(existing_allocation.c.unique_identifier == cast(account_uid_param, String()))
+        .where(
+            existing_position_set.c.position_set_time
+            == cast(target_positions_date_param, DateTime(timezone=True))
+        )
+        .exists()
+    )
 
     account_allocation_model = (
         postgresql_insert(AccountAllocationModelTable)
@@ -929,7 +959,7 @@ def build_replace_account_target_positions_snapshot_operation(
             cast(account_uid_param, Uuid(as_uuid=True)),
             account_allocation_model.c.uid,
             account_name_param,
-            true(),
+            is_active_param,
             literal("apps.v1"),
             cast(
                 bindparam(
@@ -950,7 +980,13 @@ def build_replace_account_target_positions_snapshot_operation(
                     account_target_allocation_insert.excluded.account_allocation_model_uid
                 ),
                 "display_name": account_target_allocation_insert.excluded.display_name,
-                "is_active": account_target_allocation_insert.excluded.is_active,
+                "is_active": case(
+                    (
+                        or_(overwrite_param, ~snapshot_exists),
+                        account_target_allocation_insert.excluded.is_active,
+                    ),
+                    else_=AccountTargetAllocationTable.is_active,
+                ),
                 "source": account_target_allocation_insert.excluded.source,
                 "metadata_json": account_target_allocation_insert.excluded.metadata_json,
             },
@@ -988,21 +1024,48 @@ def build_replace_account_target_positions_snapshot_operation(
             ),
         ).select_from(account_target_allocation),
     )
-    position_set = (
-        position_set_insert.on_conflict_do_update(
-            index_elements=[
-                PositionSetTable.account_target_allocation_uid,
-                PositionSetTable.position_set_time,
-            ],
-            set_={
-                "source": position_set_insert.excluded.source,
-                "metadata_json": position_set_insert.excluded.metadata_json,
-            },
-            where=overwrite_param,
+    position_set_upsert = position_set_insert.on_conflict_do_update(
+        index_elements=[
+            PositionSetTable.account_target_allocation_uid,
+            PositionSetTable.position_set_time,
+        ],
+        set_={
+            "source": position_set_insert.excluded.source,
+            "metadata_json": position_set_insert.excluded.metadata_json,
+        },
+        where=overwrite_param,
+    ).returning(PositionSetTable.uid)
+
+    if clearing:
+        cleared_rows = (
+            delete(TargetPositionsStorage)
+            .where(overwrite_param)
+            .where(
+                TargetPositionsStorage.position_set_uid.in_(
+                    select(existing_position_set.c.uid)
+                    .where(
+                        existing_position_set.c.account_target_allocation_uid.in_(
+                            select(account_target_allocation.c.uid)
+                        )
+                    )
+                    .where(
+                        existing_position_set.c.position_set_time
+                        == cast(target_positions_date_param, DateTime(timezone=True))
+                    )
+                )
+            )
+            .returning(true())
+            .cte("cleared_rows")
         )
-        .returning(PositionSetTable.uid)
-        .cte("position_set")
-    )
+        return compile_markets_statement(
+            position_set_upsert.add_cte(account_allocation_model)
+            .add_cte(account_target_allocation)
+            .add_cte(cleared_rows),
+            context=context,
+            operation="upsert",
+        )
+
+    position_set = position_set_upsert.cte("position_set")
 
     input_row_values = []
     for index, position in enumerate(positions):

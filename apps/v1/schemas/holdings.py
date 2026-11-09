@@ -5,14 +5,19 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
+
 HoldingRowT = TypeVar("HoldingRowT", bound="BaseHoldingRow")
 
 
-class HoldingAssetCurrentSnapshot(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+def _holding_contracts():
+    prepare_apps_v1_import_namespace()
+    from msm.api.accounts import HoldingAssetCurrentSnapshot
 
-    name: str | None = None
-    ticker: str | None = None
+    return HoldingAssetCurrentSnapshot
+
+
+HoldingAssetCurrentSnapshot = _holding_contracts()
 
 
 class HoldingAssetReference(BaseModel):
