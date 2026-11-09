@@ -189,6 +189,11 @@ as public planner arguments. Internal vector helpers may use already-resolved
 frames for tests, but examples and user workflows must use the canonical
 planner inputs.
 
+`valuation_time` selects the holdings capture exactly; the `PositionSet` is used
+as passed and is in force from its own time on. To attribute a capture taken
+after the target was written, pass the capture's time and the earlier
+`position_set_uid`. A `PositionSet` written after `valuation_time` is refused.
+
 The default policy is `proportional_attribution`: virtual-fund claims consume
 the asset-level gross source capacity first, and the direct account sleeve is
 the residual. `strict_feasible` is a validation mode that fails when

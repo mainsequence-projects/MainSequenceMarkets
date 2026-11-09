@@ -522,15 +522,17 @@ def build_account_virtual_fund_allocation_inputs(
         account_holdings,
         asset_uid_by_identifier=asset_uid_by_identifier,
     )
-    target_rows = _rows_from_records(target_positions)
+    target_rows = _position_set_target_rows(
+        _rows_from_records(target_positions),
+        position_set_uid=position_set_uid,
+        valuation_time=normalized_time,
+    )
     direct_demands: list[TargetQuantityDemand] = []
     virtual_demands: list[TargetQuantityDemand] = []
     notional_demands: list[TargetNotionalDemand] = []
     portfolio_rows: list[dict[str, Any]] = []
 
     for row in target_rows:
-        if not _same_timestamp(row.get("time_index"), normalized_time):
-            continue
         target_type = _required_string(row.get("target_type"), "target_type")
         if target_type == TARGET_TYPE_ASSET:
             _append_target_row_demands(
@@ -651,6 +653,11 @@ def resolve_account_virtual_fund_allocation_inputs(
         label="PositionSetTable",
         filters={"uid": str(position_set_uid)},
     )
+    _require_target_in_force(
+        position_set_row.get("position_set_time"),
+        position_set_uid=position_set_uid,
+        valuation_time=normalized_time,
+    )
     target_allocation_uid = _required_string(
         position_set_row.get("account_target_allocation_uid"),
         "PositionSetTable.account_target_allocation_uid",
@@ -695,22 +702,21 @@ def resolve_account_virtual_fund_allocation_inputs(
             limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
         )
     )
-    target_position_rows = [
-        row
-        for row in operation_result_rows(
+    target_position_rows = _position_set_target_rows(
+        operation_result_rows(
             search_model(
                 context,
                 model=TargetPositionsStorage,
                 filters={"position_set_uid": str(position_set_uid)},
                 limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
             )
-        )
-        if _same_timestamp(row.get("time_index"), normalized_time)
-    ]
+        ),
+        position_set_uid=position_set_uid,
+        valuation_time=normalized_time,
+    )
     if not target_position_rows:
         raise ValueError(
-            "No TargetPositionsStorage rows found for "
-            f"position_set_uid={position_set_uid!s} and valuation_time={normalized_time.isoformat()}."
+            f"No TargetPositionsStorage rows found for position_set_uid={position_set_uid!s}."
         )
 
     portfolio_rows = [
@@ -1403,11 +1409,60 @@ def _one_row(
     return dict(rows[0])
 
 
-def _same_timestamp(value: Any, expected: dt.datetime) -> bool:
-    if value in (None, ""):
-        return False
-    timestamp = pd.to_datetime(value, utc=True).to_pydatetime()
-    return timestamp == expected
+def _position_set_target_rows(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    position_set_uid: uuid.UUID | str,
+    valuation_time: dt.datetime,
+) -> list[dict[str, Any]]:
+    """Return the target rows of the caller's PositionSet, as they are.
+
+    The caller chose the snapshot, so its rows are used whatever their time. A
+    target is in force from its own time on: a holdings capture taken after the
+    target was written is attributed against it, but a target written after the
+    capture cannot apply to it.
+    """
+
+    expected_uid = str(position_set_uid)
+    selected: list[dict[str, Any]] = []
+    snapshot_times: set[dt.datetime] = set()
+    for row in rows:
+        row_uid = row.get("position_set_uid")
+        if not _is_missing(row_uid) and str(row_uid) != expected_uid:
+            raise ValueError(
+                f"Target row belongs to position_set_uid={row_uid!s}, not {expected_uid}."
+            )
+        if not _is_missing(row.get("time_index")):
+            snapshot_times.add(pd.to_datetime(row["time_index"], utc=True).to_pydatetime())
+        _require_target_in_force(
+            row.get("time_index"),
+            position_set_uid=expected_uid,
+            valuation_time=valuation_time,
+        )
+        selected.append(dict(row))
+    if len(snapshot_times) > 1:
+        raise ValueError(
+            f"Target rows for position_set_uid={expected_uid} span {len(snapshot_times)} "
+            "snapshot times; pass only that PositionSet's rows."
+        )
+    return selected
+
+
+def _require_target_in_force(
+    target_time: Any,
+    *,
+    position_set_uid: uuid.UUID | str,
+    valuation_time: dt.datetime,
+) -> None:
+    if _is_missing(target_time):
+        return
+    timestamp = pd.to_datetime(target_time, utc=True).to_pydatetime()
+    if timestamp > valuation_time:
+        raise ValueError(
+            f"PositionSet {position_set_uid!s} was written at {timestamp.isoformat()}, after "
+            f"valuation_time={valuation_time.isoformat()}; a target cannot apply to holdings "
+            "captured before it."
+        )
 
 
 def _holdings_vector(source_holdings: tuple[HoldingValuationInput, ...]) -> pd.DataFrame:

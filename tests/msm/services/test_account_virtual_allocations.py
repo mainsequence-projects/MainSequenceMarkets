@@ -444,6 +444,201 @@ def test_portfolio_expansion_uses_latest_weights_at_or_before_valuation_time(mon
     assert {row["target_portfolio_uid"] for row in expanded} == {str(PORTFOLIO_UID)}
 
 
+TARGET_TIME = VALUATION_TIME - dt.timedelta(days=3)
+
+
+def _portfolio_target_row(*, time_index: dt.datetime) -> dict[str, object]:
+    return {
+        "time_index": time_index,
+        "position_set_uid": str(POSITION_SET_UID),
+        "target_type": "portfolio",
+        "target_uid": str(PORTFOLIO_UID),
+        "portfolio_uid": str(PORTFOLIO_UID),
+        "weight_notional_exposure": 0.10,
+    }
+
+
+def _expand_to_btc_and_eth(rows):
+    return [
+        {**rows[0], "asset_uid": BTC_UID, "weight_notional_exposure": 0.04},
+        {**rows[0], "asset_uid": ETH_UID, "weight_notional_exposure": 0.06},
+    ]
+
+
+def test_build_inputs_uses_a_target_written_before_the_holdings_capture() -> None:
+    inputs = build_account_virtual_fund_allocation_inputs(
+        account_uid=ACCOUNT_UID,
+        account_target_allocation_uid=TARGET_ALLOCATION_UID,
+        position_set_uid=POSITION_SET_UID,
+        source_account_holdings_set_uid=HOLDINGS_SET_UID,
+        account_holdings=[
+            {"asset_identifier": "example-asset-btc", "quantity": 10, "direction": 1},
+            {"asset_identifier": "example-asset-eth", "quantity": 20, "direction": 1},
+        ],
+        target_positions=[_portfolio_target_row(time_index=TARGET_TIME)],
+        valuation_time=VALUATION_TIME,
+        account_nav=640_000,
+        asset_uid_by_identifier={"example-asset-btc": BTC_UID, "example-asset-eth": ETH_UID},
+        asset_identifier_by_uid={BTC_UID: "example-asset-btc", ETH_UID: "example-asset-eth"},
+        portfolio_target_expander=_expand_to_btc_and_eth,
+    )
+
+    assert [demand.notional_value for demand in inputs.target_notional_demands] == pytest.approx(
+        [25_600, 38_400]
+    )
+
+
+def test_build_inputs_refuses_a_target_written_after_the_holdings_capture() -> None:
+    with pytest.raises(ValueError, match="after valuation_time"):
+        build_account_virtual_fund_allocation_inputs(
+            account_uid=ACCOUNT_UID,
+            account_target_allocation_uid=TARGET_ALLOCATION_UID,
+            position_set_uid=POSITION_SET_UID,
+            source_account_holdings_set_uid=HOLDINGS_SET_UID,
+            account_holdings=[
+                {"asset_identifier": "example-asset-btc", "quantity": 10, "direction": 1},
+            ],
+            target_positions=[
+                _portfolio_target_row(time_index=VALUATION_TIME + dt.timedelta(minutes=1))
+            ],
+            valuation_time=VALUATION_TIME,
+            account_nav=600_000,
+            asset_uid_by_identifier={"example-asset-btc": BTC_UID},
+            asset_identifier_by_uid={BTC_UID: "example-asset-btc"},
+            portfolio_target_expander=_expand_to_btc_and_eth,
+        )
+
+
+def test_build_inputs_refuses_rows_of_another_position_set() -> None:
+    with pytest.raises(ValueError, match="belongs to position_set_uid"):
+        build_account_virtual_fund_allocation_inputs(
+            account_uid=ACCOUNT_UID,
+            account_target_allocation_uid=TARGET_ALLOCATION_UID,
+            position_set_uid=POSITION_SET_UID,
+            source_account_holdings_set_uid=HOLDINGS_SET_UID,
+            account_holdings=[
+                {"asset_identifier": "example-asset-btc", "quantity": 10, "direction": 1},
+            ],
+            target_positions=[
+                {
+                    **_portfolio_target_row(time_index=TARGET_TIME),
+                    "position_set_uid": str(uuid.uuid4()),
+                }
+            ],
+            valuation_time=VALUATION_TIME,
+            account_nav=600_000,
+            asset_uid_by_identifier={"example-asset-btc": BTC_UID},
+            asset_identifier_by_uid={BTC_UID: "example-asset-btc"},
+            portfolio_target_expander=_expand_to_btc_and_eth,
+        )
+
+
+def test_build_inputs_refuses_rows_from_several_snapshots() -> None:
+    with pytest.raises(ValueError, match="span 2 snapshot times"):
+        build_account_virtual_fund_allocation_inputs(
+            account_uid=ACCOUNT_UID,
+            account_target_allocation_uid=TARGET_ALLOCATION_UID,
+            position_set_uid=POSITION_SET_UID,
+            source_account_holdings_set_uid=HOLDINGS_SET_UID,
+            account_holdings=[
+                {"asset_identifier": "example-asset-btc", "quantity": 10, "direction": 1},
+            ],
+            target_positions=[
+                {**_portfolio_target_row(time_index=TARGET_TIME), "position_set_uid": None},
+                {**_portfolio_target_row(time_index=VALUATION_TIME), "position_set_uid": None},
+            ],
+            valuation_time=VALUATION_TIME,
+            account_nav=600_000,
+            asset_uid_by_identifier={"example-asset-btc": BTC_UID},
+            asset_identifier_by_uid={BTC_UID: "example-asset-btc"},
+            portfolio_target_expander=_expand_to_btc_and_eth,
+        )
+
+
+def _fake_allocation_tables(monkeypatch, *, position_set_time: dt.datetime) -> None:
+    context = object()
+    rows_by_model = {
+        "PositionSetTable": [
+            {
+                "uid": str(POSITION_SET_UID),
+                "account_target_allocation_uid": str(TARGET_ALLOCATION_UID),
+                "position_set_time": position_set_time,
+            }
+        ],
+        "AccountTargetAllocationTable": [
+            {"uid": str(TARGET_ALLOCATION_UID), "account_uid": str(ACCOUNT_UID)}
+        ],
+        "AccountHoldingsSetTable": [
+            {"uid": str(HOLDINGS_SET_UID), "account_uid": str(ACCOUNT_UID)}
+        ],
+        "AccountHoldingsStorage": [
+            {"asset_identifier": "example-asset-btc", "quantity": 10, "direction": 1},
+            {"asset_identifier": "example-asset-eth", "quantity": 20, "direction": 1},
+        ],
+        "TargetPositionsStorage": [_portfolio_target_row(time_index=position_set_time)],
+    }
+    assets = [
+        {"uid": str(BTC_UID), "unique_identifier": "example-asset-btc"},
+        {"uid": str(ETH_UID), "unique_identifier": "example-asset-eth"},
+    ]
+
+    def fake_resolve_runtime(**kwargs):
+        return SimpleNamespace(context=context)
+
+    def fake_search_model(search_context, *, model, filters=None, in_filters=None, limit=None):
+        assert search_context is context
+        if model.__name__ == "AccountHoldingsSetTable":
+            assert filters == {"account_uid": str(ACCOUNT_UID), "time_index": VALUATION_TIME}
+        if model.__name__ == "AssetTable":
+            return {"rows": assets}
+        return {"rows": rows_by_model[model.__name__]}
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    monkeypatch.setattr("msm.repositories.crud.search_model", fake_search_model)
+
+
+def test_planner_attributes_a_later_capture_against_an_earlier_target(monkeypatch) -> None:
+    _fake_allocation_tables(monkeypatch, position_set_time=TARGET_TIME)
+
+    plan = account_allocations.plan_account_virtual_fund_allocations(
+        position_set_uid=POSITION_SET_UID,
+        valuation_time=VALUATION_TIME,
+        valuation_asset_uid=USD_UID,
+        holdings_selection_policy=HoldingsSelectionPolicy(),
+        valuation_resolver=_spot_valuation_resolver,
+        allocation_policy=AllocationPolicy(),
+        portfolio_target_expander=_expand_to_btc_and_eth,
+    )
+
+    assert plan.status == PLAN_STATUS_FEASIBLE
+    assert plan.valuation_time == VALUATION_TIME
+    assert plan.position_set_uid == str(POSITION_SET_UID)
+    assert plan.source_account_holdings_set_uid == str(HOLDINGS_SET_UID)
+    assert plan.account_nav == pytest.approx(640_000)
+    allocated = {
+        line.asset_identifier: line.allocated_signed_quantity
+        for line in plan.virtual_fund_allocations
+    }
+    assert allocated == pytest.approx(
+        {"example-asset-btc": 25_600 / 60_000, "example-asset-eth": 38_400 / 2_000}
+    )
+
+
+def test_planner_refuses_a_target_written_after_the_capture(monkeypatch) -> None:
+    _fake_allocation_tables(monkeypatch, position_set_time=VALUATION_TIME + dt.timedelta(hours=1))
+
+    with pytest.raises(ValueError, match="after valuation_time"):
+        account_allocations.plan_account_virtual_fund_allocations(
+            position_set_uid=POSITION_SET_UID,
+            valuation_time=VALUATION_TIME,
+            valuation_asset_uid=USD_UID,
+            holdings_selection_policy=HoldingsSelectionPolicy(),
+            valuation_resolver=_spot_valuation_resolver,
+            allocation_policy=AllocationPolicy(),
+            portfolio_target_expander=_expand_to_btc_and_eth,
+        )
+
+
 def _plan(
     *,
     holdings_quantity: float,
