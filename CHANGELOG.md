@@ -7,6 +7,53 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-09
+
+### Added
+
+- `msm.api.http` has the account sync contract every venue connector shares (#44):
+  `AccountSyncRequest`, `AccountSyncResult` (`account_uid`, `holdings_set_uid` or
+  `null`, `time_index` in UTC, `holdings_rows`, optional `extra`) and
+  `AccountSyncOperation`, the `ObservableOperation` with `action = "account_sync"`.
+  A succeeded sync must carry its result, for the requested account. The convention
+  (`POST /v1/accounts/{account_uid}/actions/sync` with no body, `200` with a terminal
+  operation or `202` with a queued one polled at `GET /v1/operations/{operation_uid}`)
+  is documented in the provider toolkit guide.
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  (`allocateAccountVirtualFunds`) runs the virtual-fund allocation planner for one
+  account holdings snapshot inside the Markets API, so a caller needs no grants on
+  `mainsequence.markets` (#46). The target defaults to the one in force at the
+  snapshot's time. The Markets API values the account itself: the valuation asset at
+  one and every other asset at its target portfolios' latest weights `price_current`
+  at or before the snapshot's time; an asset without such a price fails the request.
+  The response is the plan (funds, allocation lines, residuals, deficits, warnings).
+  With `apply`, the funds and their holdings for the snapshot are written to the core
+  `VirtualFund`, `VirtualFundHoldingsSet` and `VirtualFundHoldingsStorage` tables in
+  one statement, replacing what the account's funds held for it, and
+  `holdings/by-fund/` shows them; a dry run writes nothing.
+- `MarketsClient.add_account_target_positions`, `account_target_positions`,
+  `clear_account_target_positions` and `allocate_account_virtual_funds` call those
+  routes and return typed responses (#47). The target-position request and response
+  models now live in `msm.api.accounts`, so the client returns them from the wheel.
+
+### Changed
+
+- An empty `positions` list on `POST /api/v1/account/{account_uid}/add-target-positions/`
+  clears the account's target (#47): it writes an empty `PositionSet` at
+  `target_positions_date`, so the history records the clearing, and sets the account's
+  target allocation inactive. The read then returns no positions until a new target is
+  written. A refused snapshot write (`overwrite=false` on an existing snapshot) no
+  longer changes the allocation's `is_active`.
+
+### Fixed
+
+- The allocation planner used a target only when its rows' time equalled the holdings
+  valuation time, so a capture taken after the target was written could never be
+  attributed to the virtual funds (#45). The planner now uses the rows of the
+  `PositionSet` the caller passes, as they are, in both the resolved and the in-memory
+  paths. A `PositionSet` written after the valuation time is refused, as are target
+  rows of another `PositionSet` or of several snapshots.
+
 ## [3.0.5] - 2026-11-04
 
 ### Changed
