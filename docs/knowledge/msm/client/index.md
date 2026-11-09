@@ -147,6 +147,27 @@ or `tickers` and returns each existing asset with its latest snapshot
 without a snapshot). `tickers` selects the assets that ever had one of those
 tickers; compare the latest `ticker` to keep the ones that still carry it.
 
+## Account Targets
+
+An account's target has typed client methods, so a caller never builds its
+paths:
+
+```python
+client = MarketsClient.from_environment()
+client.add_account_target_positions(
+    account_uid,
+    target_positions_date=rebalanced_at,
+    positions=[{"target_type": "portfolio", "target_uid": p, "portfolio_uid": p,
+                "weight_notional_exposure": 0.25}],
+)
+target = client.account_target_positions(account_uid)
+client.clear_account_target_positions(account_uid, target_positions_date=closed_at)
+```
+
+They return `AccountTargetPositionsSnapshotResponse`. A clear writes an empty
+snapshot, so the history records it, and sets the account's target allocation
+inactive. See the [accounts routes](../../../fast_api/v1/accounts.md).
+
 ## Provider Time Series
 
 Time series a provider produces live in its own namespace (ADR 0047). Besides

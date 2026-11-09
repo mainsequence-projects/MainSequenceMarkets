@@ -143,6 +143,16 @@ direct account snapshots and virtual-fund-grouped views.
     `overwrite=true` replaces rows through one scoped MetaTable operation so the
     parent upserts, delete, and replacement insert share the same backend
     transaction boundary
+  - an empty `positions` list clears the account's target: it writes an empty
+    position set at `target_positions_date`, so the target's history shows when
+    it was cleared, and sets the account's target allocation inactive. The
+    response is that empty snapshot; the read then answers no positions until a
+    new target is written, which makes the allocation active again. A refused
+    write (`overwrite=false` on an existing snapshot) changes neither the rows
+    nor the allocation's `is_active`
+  - `MarketsClient.add_account_target_positions(...)`,
+    `account_target_positions(...)` and `clear_account_target_positions(...)`
+    call these routes and return `AccountTargetPositionsSnapshotResponse`
 - `GET /api/v1/account/{account_uid}/target-positions/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `target_positions_date`
