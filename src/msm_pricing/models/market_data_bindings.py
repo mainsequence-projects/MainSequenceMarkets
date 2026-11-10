@@ -160,7 +160,7 @@ class PricingMarketDataSetBindingTable(MarketsMetaTableMixin, MarketsBase):
     )
     storage_table_uid: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        # Nullable until revision 0023 has copied every pre-3.0 row (ADR 0048).
+        # Nullable until revision 0024 has copied every pre-3.0 row (ADR 0048).
         nullable=True,
         info={
             "label": "Storage Table UID",

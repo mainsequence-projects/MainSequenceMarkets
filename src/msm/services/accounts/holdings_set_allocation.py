@@ -365,6 +365,7 @@ def _apply_plan(
             "deficits); nothing was written. Run it without apply to see the deficits."
         )
     funds = virtual_fund_holdings_from_plan(plan)
+    _refuse_retired_portfolios(context, plan, funds)
     written = _rows_of(
         replace_account_virtual_fund_holdings(
             context,
@@ -565,6 +566,30 @@ def _first_row(
 ) -> dict[str, Any] | None:
     rows = _rows(context=context, model=model, filters=filters, limit=1)
     return rows[0] if rows else None
+
+
+def _refuse_retired_portfolios(
+    context: MarketsRepositoryContext,
+    plan: AccountVirtualFundAllocationPlan,
+    funds: Sequence[Mapping[str, Any]],
+) -> None:
+    """No fund or fund holdings for a portfolio retired at or before the snapshot (ADR 0049)."""
+
+    from msm.services.portfolio_lifecycle import PortfolioRetiredError, retired_portfolios
+
+    retired = retired_portfolios(
+        context,
+        (fund["target_portfolio_uid"] for fund in funds),
+        as_of=plan.valuation_time,
+    )
+    if retired:
+        raise PortfolioRetiredError(
+            retired,
+            action=(
+                f"The virtual-fund allocation of account {plan.account_uid} at "
+                f"{plan.valuation_time.isoformat()}"
+            ),
+        )
 
 
 def _rows(

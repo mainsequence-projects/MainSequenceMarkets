@@ -148,9 +148,9 @@ def test_every_mutating_service_is_a_registry_write() -> None:
             "delete_portfolio_signal_weights",
         },
         "portfolios": {
-            "delete_portfolio", "cascade_delete_portfolio", "delete_portfolio_weights",
-            "bulk_delete_portfolios", "bulk_cascade_delete_portfolios",
+            "delete_portfolio", "delete_portfolio_weights", "bulk_delete_portfolios",
             "register_portfolio_dataset_catalog", "reconcile_portfolio_dataset_catalog",
+            "retire_portfolio", "reinstate_portfolio",
         },
         "pricing_curves": {"delete_pricing_curve"},
         "pricing_market_data": {

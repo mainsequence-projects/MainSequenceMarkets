@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import DateTime, Uuid, bindparam, delete, func, insert, or_, select, update
 
 from metatables import MetaTableCompiledSQLOperation
 from msm.repositories.base import (
@@ -173,6 +174,83 @@ def build_update_portfolio_operation(
         statement,
         context=context,
         operation="update",
+    )
+
+
+def build_retire_portfolio_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+    retired_at: dt.datetime,
+) -> MetaTableCompiledSQLOperation:
+    """Set ``retired_at`` on a live portfolio that no account's current target names.
+
+    Returns the updated row, or nothing when the portfolio is missing, already
+    retired, or named by an account's current target (ADR 0049).
+    """
+
+    from msm.repositories.accounts import current_portfolio_target_rows_select
+
+    uid_param = bindparam("uid", value=uuid.UUID(str(uid)), type_=Uuid(as_uuid=True))
+    statement = (
+        update(PortfolioTable)
+        .where(PortfolioTable.uid == uid_param)
+        .where(PortfolioTable.retired_at.is_(None))
+        .where(~current_portfolio_target_rows_select(portfolio_uid=uid_param).exists())
+        .values(
+            retired_at=bindparam(
+                "retired_at",
+                value=retired_at,
+                type_=DateTime(timezone=True),
+            )
+        )
+        .returning(PortfolioTable)
+    )
+    return compile_markets_statement(statement, context=context, operation="update")
+
+
+def build_clear_portfolio_retirement_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+    retired_at: dt.datetime | None = None,
+) -> MetaTableCompiledSQLOperation:
+    """Clear ``retired_at``; with ``retired_at``, only when it still holds that value."""
+
+    statement = update(PortfolioTable).where(
+        PortfolioTable.uid
+        == bindparam("uid", value=uuid.UUID(str(uid)), type_=Uuid(as_uuid=True))
+    )
+    if retired_at is not None:
+        statement = statement.where(
+            PortfolioTable.retired_at
+            == bindparam(
+                "expected_retired_at",
+                value=retired_at,
+                type_=DateTime(timezone=True),
+            )
+        )
+    statement = statement.values(retired_at=None).returning(PortfolioTable)
+    return compile_markets_statement(statement, context=context, operation="update")
+
+
+def retire_portfolio(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_retire_portfolio_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def clear_portfolio_retirement(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_clear_portfolio_retirement_operation(context, **kwargs),
+        context=context,
     )
 
 

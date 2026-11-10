@@ -422,8 +422,10 @@ def apply_account_virtual_fund_allocation_plan(
     if not plan.virtual_fund_allocations:
         raise ValueError("Plan contains no virtual-fund allocations to apply.")
 
+    funds = virtual_fund_holdings_from_plan(plan)
+    _refuse_retired_portfolios(plan, funds)
     frames: list[pd.DataFrame] = []
-    for fund in virtual_fund_holdings_from_plan(plan):
+    for fund in funds:
         virtual_fund = VirtualFund.upsert(
             {
                 "unique_identifier": fund["unique_identifier"],
@@ -454,6 +456,31 @@ def apply_account_virtual_fund_allocation_plan(
         if run:
             updater.run(update_tree=False)
     return frame
+
+
+def _refuse_retired_portfolios(
+    plan: AccountVirtualFundAllocationPlan,
+    funds: Sequence[Mapping[str, Any]],
+) -> None:
+    """No fund or fund holdings for a portfolio retired at or before the plan (ADR 0049)."""
+
+    from msm.services.portfolio_lifecycle import (
+        PortfolioRetiredError,
+        retired_portfolios_from_rows,
+    )
+
+    retired = retired_portfolios_from_rows(
+        (fund["target_portfolio_uid"] for fund in funds),
+        as_of=plan.valuation_time,
+    )
+    if retired:
+        raise PortfolioRetiredError(
+            retired,
+            action=(
+                f"The virtual-fund allocation of account {plan.account_uid} at "
+                f"{plan.valuation_time.isoformat()}"
+            ),
+        )
 
 
 def virtual_fund_holdings_from_plan(

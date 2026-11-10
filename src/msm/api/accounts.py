@@ -736,6 +736,25 @@ class AccountTargetPositionsSnapshotResponse(BaseModel):
     positions: list[AccountTargetPositionRow] = Field(default_factory=list)
 
 
+class PortfolioAccountTarget(BaseModel):
+    """One account whose current target names a portfolio (``listPortfolioAccountTargets``).
+
+    The exposure is the portfolio row's ``weight_notional_exposure`` or
+    ``constant_notional_exposure``; portfolio rows never use ``single_asset_quantity``.
+    ``position_set_uid`` identifies the snapshot read, so a caller can tell that
+    the account's target changed before a later write.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_uid: str
+    account_target_allocation_uid: str
+    position_set_uid: str
+    target_positions_date: dt.datetime
+    weight_notional_exposure: str | None = None
+    constant_notional_exposure: str | None = None
+
+
 class _AccountAddTargetPositionBaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -945,6 +964,7 @@ class AccountVirtualFundAllocationResponse(BaseModel):
 
 
 __all__ = [
+    "PortfolioAccountTarget",
     "AccountAddAssetTargetPositionRequest",
     "AccountAddPortfolioTargetPositionRequest",
     "AccountAddTargetPositionRequest",

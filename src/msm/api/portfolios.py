@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
@@ -64,6 +65,7 @@ class Portfolio(MarketsMetaTableRow):
     signal_uid: str | None = None
     portfolio_table_update_uid: uuid.UUID | None = None
     backtest_table_price_column_name: str = "close"
+    retired_at: dt.datetime | None = None
     portfolio_weights_data_node_uid: uuid.UUID | None = pre_3_0_field(
         "portfolio_weights_table_update_uid"
     )

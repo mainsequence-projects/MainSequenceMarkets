@@ -1,7 +1,8 @@
 # Portfolio Routes
 
 The `apps/v1` portfolio routes expose portfolio identity rows, detail-page
-composition, latest portfolio weights, and delete operations.
+composition, latest portfolio weights, the accounts whose current target names
+a portfolio, retirement, and delete operations.
 
 The routes do not create or update portfolios. Portfolio construction remains a
 library workflow outside this API surface. ADR 0047 adds the multi-portfolio
@@ -45,11 +46,13 @@ resolution. It is publication metadata only.
 ## List Portfolios
 
 ```text
-GET /api/v1/portfolio/?search=&calendar_uid=&limit=50&offset=0
+GET /api/v1/portfolio/?search=&calendar_uid=&include_retired=false&limit=50&offset=0
 ```
 
 Portfolio rows always include a non-null `calendar_uid` that references a
-persisted `CalendarTable` row.
+persisted `CalendarTable` row. Retired portfolios are left out unless
+`include_retired=true`; every row carries `retired_at`, null while the
+portfolio is live (see [Retire Portfolio](#retire-portfolio)).
 
 Returns `command-center.resource_collection@v1` and exposes
 `GET /api/v1/portfolio/discovery/`:
@@ -66,7 +69,8 @@ Returns `command-center.resource_collection@v1` and exposes
       "signal_weights_table_update_uid": null,
       "signal_uid": null,
       "portfolio_table_update_uid": null,
-      "backtest_table_price_column_name": "close"
+      "backtest_table_price_column_name": "close",
+      "retired_at": null
     }
   ],
   "pageInfo": {
@@ -400,6 +404,80 @@ response is 200 with an empty `weights` list:
 }
 ```
 
+## Accounts Whose Current Target Names The Portfolio
+
+```text
+GET /api/v1/portfolio/{uid}/account-targets/?limit=100&offset=0
+```
+
+`listPortfolioAccountTargets` pages the accounts whose current target has a
+portfolio row for this portfolio, ordered by account uid. The current target is
+the snapshot `GET /api/v1/account/{account_uid}/target-positions/` reads: the
+latest `PositionSet` across the account's active target allocations. An account
+that named the portfolio only in an earlier snapshot, or whose target was
+cleared, is not listed. The read is one query that starts from the
+`TargetPositionsStorage.portfolio_uid` index.
+
+Returns `command-center.resource_collection@v1` and exposes
+`GET /api/v1/portfolio/{uid}/account-targets/discovery/`; an unknown portfolio
+is a `404`:
+
+```json
+{
+  "items": [
+    {
+      "account_uid": "account-uid",
+      "account_target_allocation_uid": "allocation-uid",
+      "position_set_uid": "position-set-uid",
+      "target_positions_date": "2026-11-09T15:00:00Z",
+      "weight_notional_exposure": null,
+      "constant_notional_exposure": "250000"
+    }
+  ],
+  "pageInfo": {"pageIndex": 0, "pageSize": 100, "totalItems": 1, "hasNextPage": false, "hasPreviousPage": false}
+}
+```
+
+The exposure is the portfolio row's `weight_notional_exposure` or
+`constant_notional_exposure`; portfolio rows never use `single_asset_quantity`.
+`position_set_uid` identifies the snapshot read, so a caller that rewrites the
+account's target afterwards can tell whether it changed in between. The route
+returns the same accounts as the other account routes: per-account scoping
+waits for the ownership policies of
+[ADR 0047](../../ADR/0047-markets-api-application-boundary.md).
+`MarketsClient.portfolio_account_targets(...)` calls it.
+
+## Retire Portfolio
+
+```text
+POST /api/v1/portfolio/{uid}/retire/
+POST /api/v1/portfolio/{uid}/reinstate/
+```
+
+A portfolio that should no longer be used is retired, not deleted
+([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md)).
+`retirePortfolio` sets `retired_at` to the time of the request and returns the
+portfolio. Nothing is deleted: account target snapshots, virtual funds and their
+holdings, and the portfolio's weights and values stay, and reads of them still
+resolve the portfolio.
+
+- The route answers `409` while any account's current target names the
+  portfolio; the account-targets read above lists those accounts. The update
+  checks this in the same statement, and a second read afterwards undoes the
+  retirement if a target write that named the portfolio committed meanwhile.
+- Retiring a retired portfolio returns it unchanged.
+- While retired, no target snapshot may name the portfolio, whatever its date
+  (`409` from `add-target-positions`); applying a virtual-fund allocation for a
+  snapshot at or after `retired_at` is refused (`409`); the portfolio list and
+  the target-candidate search leave it out unless `include_retired=true`; and
+  the portfolio updaters write nothing dated at or after `retired_at`.
+
+`reinstatePortfolio` clears `retired_at`. Target snapshots may name the
+portfolio again, and the updaters fill the retired period on their next run.
+Both routes are registry writes, and their acting-identity records are the only
+record of when a portfolio was retired. `MarketsClient.retire_portfolio(...)`
+and `reinstate_portfolio(...)` call them.
+
 ## Delete Portfolio
 
 ```text
@@ -430,7 +508,8 @@ Returns:
 
 If protected rows, such as virtual funds or account target-position history,
 reference the portfolio, the route returns 409 and does not delete the
-portfolio.
+portfolio. No route removes that history: retire the portfolio instead
+([Retire Portfolio](#retire-portfolio)).
 
 When the Markets catalog (`PortfolioDatasetAvailabilityTable`, ADR 0047) places
 the portfolio's values or weights in a contract instance another application
@@ -458,8 +537,8 @@ place:
 
 The deleted counts cover the core tables only. A catalog row that names the
 core table itself counts as core. `POST /api/v1/portfolio/bulk-delete/preflight/`
-reports each retained table as a warning before the delete, and the bulk and
-cascade deletes return the same `retained_datasets` list.
+reports each retained table as a warning before the delete, and the bulk delete
+returns the same `retained_datasets` list.
 
 Storage cleanup uses each storage table's
 `TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)` API, scoped

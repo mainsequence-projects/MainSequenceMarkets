@@ -5,7 +5,7 @@ it holds: ``*_table_update_uid`` for a TimeIndexTableUpdate uid and
 ``*storage_table_uid`` for a TimeIndexMetaTable uid. This revision only adds the
 columns and copies the existing values, so the release that is still deployed
 keeps working during the rollout. ms-markets 3.0 writes both columns and reads the
-pre-3.0 ones, because 2.x writers update only those. Revision ``0023`` copies any
+pre-3.0 ones, because 2.x writers update only those. Revision ``0024`` copies any
 late 2.x writes and switches reads to the new columns; ms-markets 4.0 stops writing
 the pre-3.0 columns and 4.1 drops them.
 """

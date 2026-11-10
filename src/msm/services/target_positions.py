@@ -340,6 +340,20 @@ def add_account_target_positions_snapshot_response(
     )
     written_rows = operation_result_rows(write_result)
     if not written_rows:
+        from msm.services.portfolio_lifecycle import PortfolioRetiredError, retired_portfolios
+
+        retired = retired_portfolios(
+            context,
+            (row.get("portfolio_uid") for row in position_rows),
+        )
+        if retired:
+            raise PortfolioRetiredError(
+                retired,
+                action=(
+                    f"The target snapshot of account {resolved_account_uid} at "
+                    f"{normalized_target_positions_date.isoformat()}"
+                ),
+            )
         if not overwrite:
             raise AccountTargetPositionsSnapshotExistsError(
                 "Account target-position snapshot already exists for "
@@ -368,6 +382,67 @@ def add_account_target_positions_snapshot_response(
     )
 
 
+def list_portfolio_account_targets_response(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any] | None:
+    """Page the accounts whose current target names a portfolio.
+
+    "Current" is the snapshot ``get_account_target_positions_snapshot_response``
+    reads: the latest ``PositionSet`` across the account's active target
+    allocations. Returns ``None`` for an unknown portfolio.
+    """
+
+    from msm.models import PortfolioTable
+    from msm.repositories.accounts import (
+        count_portfolio_account_targets,
+        search_portfolio_account_targets,
+    )
+    from msm.repositories.crud import get_model_by_uid
+
+    resolved_portfolio_uid = _required_uuid_string(portfolio_uid, field_name="portfolio_uid")
+    if _first_operation_row(
+        get_model_by_uid(context, model=PortfolioTable, uid=resolved_portfolio_uid)
+    ) is None:
+        return None
+    count_row = _first_operation_row(
+        count_portfolio_account_targets(context, portfolio_uid=resolved_portfolio_uid)
+    )
+    rows = operation_result_rows(
+        search_portfolio_account_targets(
+            context,
+            portfolio_uid=resolved_portfolio_uid,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    return {
+        "count": _int_or_zero(count_row.get("count") if count_row else 0),
+        "results": [_build_portfolio_account_target_row(row) for row in rows],
+    }
+
+
+def _build_portfolio_account_target_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "account_uid": _required_string(row.get("account_uid")),
+        "account_target_allocation_uid": _required_string(
+            row.get("account_target_allocation_uid")
+        ),
+        "position_set_uid": _required_string(row.get("position_set_uid")),
+        "target_positions_date": _required_datetime(
+            row.get("target_positions_date"),
+            field_name="target_positions_date",
+        ),
+        "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
+        "constant_notional_exposure": _number_string_or_none(
+            row.get("constant_notional_exposure")
+        ),
+    }
+
+
 def search_account_target_allocation_candidates(
     context: MarketsRepositoryContext,
     *,
@@ -375,8 +450,12 @@ def search_account_target_allocation_candidates(
     target_type: str = "all",
     limit: int = 25,
     offset: int = 0,
+    include_retired: bool = False,
 ) -> dict[str, Any]:
-    """Return asset and portfolio rows that can be assigned as target positions."""
+    """Return asset and portfolio rows that can be assigned as target positions.
+
+    Retired portfolios are left out unless ``include_retired`` is true (ADR 0049).
+    """
 
     normalized_target_type = target_type.strip().lower()
     if normalized_target_type not in {"all", TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO}:
@@ -397,6 +476,7 @@ def search_account_target_allocation_candidates(
             target_type=normalized_target_type,
             limit=limit,
             offset=offset,
+            include_retired=include_retired,
         )
     )
     count = 0
@@ -935,6 +1015,7 @@ __all__ = [
     "TARGET_POSITION_EXPOSURE_FIELDS",
     "add_account_target_positions_snapshot_response",
     "build_target_positions_frame",
+    "list_portfolio_account_targets_response",
     "expand_portfolio_target_positions",
     "get_account_target_positions_snapshot_response",
     "search_account_target_allocation_candidates",

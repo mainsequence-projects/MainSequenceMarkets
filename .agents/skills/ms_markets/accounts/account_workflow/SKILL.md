@@ -204,7 +204,9 @@ portfolios' latest weights `price_current`) and writes the funds' holdings to th
 core tables, where `holdings/by-fund/` reads them. It writes and reads the target
 with `add_account_target_positions`, `account_target_positions` and
 `clear_account_target_positions`; an empty target clears it and leaves an empty
-snapshot in its history.
+snapshot in its history. A target that names a retired portfolio is refused
+(`MarketsConflictError`), and so is applying an allocation for a portfolio
+retired at or before the snapshot's time (ADR 0049).
 
 The default policy is `proportional_attribution`: virtual-fund claims consume
 the asset-level gross source capacity first, and the direct account sleeve is

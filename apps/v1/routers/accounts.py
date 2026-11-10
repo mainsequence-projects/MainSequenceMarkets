@@ -258,6 +258,10 @@ def search_account_target_allocation_target_rows(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered candidate list."),
     ] = 0,
+    include_retired: Annotated[
+        bool,
+        Query(description="Include retired portfolios (ADR 0049). Off by default."),
+    ] = False,
 ) -> ResourceCollection[AccountTargetAllocationCandidate]:
     try:
         response = search_account_target_allocation_targets(
@@ -265,6 +269,7 @@ def search_account_target_allocation_target_rows(
             target_type=target_type,
             limit=limit,
             offset=offset,
+            include_retired=include_retired,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -417,7 +422,9 @@ def get_account_holdings_by_fund_by_uid(
         "weights price (`price_current`) at or before the snapshot's time; an asset with no "
         "such price is a 400. With `apply`, the virtual funds and their holdings for the "
         "snapshot are written to the core tables, replacing what the account's funds held for "
-        "it, and `holdings/by-fund/` shows them. A dry run writes nothing."
+        "it, and `holdings/by-fund/` shows them. A dry run writes nothing. Applying is refused "
+        "with 409 when a fund's portfolio was retired at or before the snapshot's time "
+        "(ADR 0049)."
     ),
     operation_id="allocateAccountVirtualFunds",
     responses={
@@ -428,6 +435,10 @@ def get_account_holdings_by_fund_by_uid(
         404: {
             "model": ErrorResponse,
             "description": "The account, its holdings set or the PositionSet was not found.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "A fund's portfolio is retired at the snapshot's time.",
         },
     },
 )
@@ -440,6 +451,8 @@ def allocate_account_virtual_funds_by_uid(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
+        if exc.__class__.__name__ == "PortfolioRetiredError":
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
@@ -493,7 +506,8 @@ def add_account_holdings_by_uid(
     description=(
         "Create or replace one account target-position snapshot and return it using "
         "the same response contract as the target-positions read endpoint. Parent "
-        "allocation rows are derived from the account uid in the path."
+        "allocation rows are derived from the account uid in the path. A snapshot that "
+        "names a retired portfolio is refused with 409, whatever its date (ADR 0049)."
     ),
     operation_id="addAccountTargetPositions",
     responses={
@@ -507,7 +521,10 @@ def add_account_holdings_by_uid(
         },
         409: {
             "model": ErrorResponse,
-            "description": "A target-position snapshot already exists and overwrite is false.",
+            "description": (
+                "A target-position snapshot already exists and overwrite is false, or the "
+                "snapshot names a retired portfolio."
+            ),
         },
     },
 )
@@ -518,7 +535,10 @@ def add_account_target_positions_by_uid(
     try:
         snapshot = add_account_target_positions(account_uid=account_uid, payload=payload)
     except ValueError as exc:
-        if exc.__class__.__name__ == "AccountTargetPositionsSnapshotExistsError":
+        if exc.__class__.__name__ in {
+            "AccountTargetPositionsSnapshotExistsError",
+            "PortfolioRetiredError",
+        }:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

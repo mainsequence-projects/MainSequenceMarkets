@@ -17,6 +17,12 @@ from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
 
+from msm_portfolios.retirement import (
+    drop_retired_rows,
+    end_before_retirement,
+    retirement_boundary,
+    window_is_empty,
+)
 from ..base import (
     AssetScopedPortfolioCanonicalUpdater,
     OutputTable,
@@ -120,6 +126,14 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
 
         latest = self._latest_transition_time_index_value()
         start, end = self._execution_window(latest)
+        boundary = self._retirement_boundary()
+        end = end_before_retirement(end, boundary)
+        if window_is_empty(start, end):
+            return normalize_rebalance_state_frame(
+                pd.DataFrame(),
+                portfolio_identifier=self._resolve_portfolio_identifier(),
+                output_table=self.output_table,
+            )
         assets = self._required_asset_identifiers()
         signals = self._signal_observations(start=start, end=end, assets=assets)
         if not assets and not signals.empty:
@@ -138,11 +152,24 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             observed_inputs=observed_inputs,
             previous_state=previous_state,
         )
-        return normalize_rebalance_state_frame(
-            transitions,
-            portfolio_identifier=self._resolve_portfolio_identifier(),
-            output_table=self.output_table,
+        return drop_retired_rows(
+            normalize_rebalance_state_frame(
+                transitions,
+                portfolio_identifier=self._resolve_portfolio_identifier(),
+                output_table=self.output_table,
+            ),
+            boundary,
         )
+
+    def _retirement_boundary(self) -> pd.Timestamp | None:
+        portfolio = getattr(self, "_portfolio", None)
+        configuration = getattr(self, "_portfolio_configuration", None)
+        if portfolio is None and configuration is not None:
+            portfolio = get_or_create_portfolio(
+                configuration,
+                portfolio_resolver=getattr(self, "_portfolio_resolver", None),
+            )
+        return retirement_boundary(portfolio)
 
     def _execution_window(self, latest: Any | None) -> tuple[Any, Any]:
         start: Any = self.OFFSET_START

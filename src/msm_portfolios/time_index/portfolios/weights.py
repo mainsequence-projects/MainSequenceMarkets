@@ -9,6 +9,12 @@ import pytz
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
+from msm_portfolios.retirement import (
+    drop_retired_rows,
+    end_before_retirement,
+    retirement_boundary,
+    window_is_empty,
+)
 from ..base import (
     AssetScopedPortfolioCanonicalUpdater,
     OutputTable,
@@ -156,12 +162,26 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
                     portfolio_identifier=self._resolve_portfolio_identifier(),
                     output_table=self.output_table,
                 )
+        frame = drop_retired_rows(frame, self._retirement_boundary())
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
+
+    def _retirement_boundary(self) -> pd.Timestamp | None:
+        portfolio = getattr(self, "_portfolio", None)
+        configuration = getattr(self, "_portfolio_configuration", None)
+        if portfolio is None and configuration is not None:
+            portfolio = get_or_create_portfolio(
+                configuration,
+                portfolio_resolver=getattr(self, "_portfolio_resolver", None),
+            )
+        return retirement_boundary(portfolio)
 
     def _calculate_projected_weights(self) -> pd.DataFrame:
         latest = self._latest_projection_time_index_value()
         start, end = self._projection_window(latest)
+        end = end_before_retirement(end, self._retirement_boundary())
+        if window_is_empty(start, end):
+            return pd.DataFrame()
         state = self.portfolio_rebalance.get_df_between_dates(
             start_date=start,
             end_date=end,

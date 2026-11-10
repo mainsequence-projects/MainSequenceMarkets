@@ -327,6 +327,10 @@ def test_apply_virtual_fund_allocation_plan_writes_allocation_strategy(
         "VirtualFund",
         SimpleNamespace(upsert=fake_upsert),
     )
+    monkeypatch.setattr(
+        "msm.services.portfolio_lifecycle.retired_portfolios_from_rows",
+        lambda portfolio_uids, *, as_of=None: {},
+    )
 
     account_allocations.apply_account_virtual_fund_allocation_plan(plan)
 

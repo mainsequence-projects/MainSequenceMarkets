@@ -84,6 +84,25 @@ Rules:
   `weight_notional_exposure`, `constant_notional_exposure`, or
   `single_asset_quantity`.
 
+## Retiring A Portfolio
+
+Account history is never rewritten to remove a portfolio (ADR 0049). Target
+snapshots and virtual funds reference `PortfolioTable` with `RESTRICT`; do not
+delete them, relax those foreign keys, or delete a portfolio that accounts
+referenced. Retire it instead:
+
+- `MarketsClient.portfolio_account_targets(uid)`
+  (`GET /api/v1/portfolio/{uid}/account-targets/`) lists the accounts whose
+  current target names the portfolio. Write their targets without it first.
+- `MarketsClient.retire_portfolio(uid)` (`POST /api/v1/portfolio/{uid}/retire/`)
+  sets `Portfolio.retired_at`; it is refused while that list is not empty.
+  `reinstate_portfolio(uid)` clears it.
+- While retired, no target snapshot may name the portfolio, whatever its date,
+  no virtual-fund holdings are written for it from `retired_at` on, lists and
+  target search hide it unless `include_retired=true`, and the portfolio
+  updaters write nothing dated at or after `retired_at`.
+- Delete a portfolio only when nothing references it.
+
 ## Portfolio Group Boundary
 
 Portfolio groups are optional classification metadata, not portfolio identity

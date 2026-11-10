@@ -7,13 +7,10 @@ from typing import Any, Literal
 
 from sqlalchemy import String, cast, delete, func, literal, or_, select
 
-from msm.time_index.accounts.constants import TARGET_TYPE_PORTFOLIO
 from msm.time_index.accounts.storage import TargetPositionsStorage
-from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
     CalendarTable,
     PortfolioTable,
-    VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
 from msm.repositories import MarketsRepositoryContext
@@ -39,7 +36,6 @@ from msm_portfolios.services.portfolio_reads import (
 from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
-MAX_PORTFOLIO_SCAN_LIMIT = 500
 
 
 class PortfolioDeleteConflictError(ValueError):
@@ -76,12 +72,17 @@ def list_portfolio_rows_response(
     calendar_uid: str | uuid.UUID | None = None,
     limit: int = DEFAULT_PORTFOLIO_PAGE_SIZE,
     offset: int = 0,
+    include_retired: bool = False,
 ) -> dict[str, Any]:
-    """Return paginated core Portfolio rows with a total count."""
+    """Return paginated core Portfolio rows with a total count.
+
+    Retired portfolios are left out unless ``include_retired`` is true (ADR 0049).
+    """
 
     filters = _portfolio_filter_args(
         search=search,
         calendar_uid=calendar_uid,
+        include_retired=include_retired,
     )
     rows = _operation_result_rows(
         _execute_portfolio_select(
@@ -787,73 +788,6 @@ def delete_portfolio_record(
     }
 
 
-def cascade_delete_portfolio_record(
-    context: MarketsRepositoryContext,
-    *,
-    uid: str,
-) -> dict[str, Any] | None:
-    existing = _get_portfolio_row(context, uid=uid)
-    if existing is None:
-        return None
-
-    portfolio = _build_portfolio_row(existing)
-    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
-    portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
-    retained_datasets = _retained_portfolio_datasets(
-        _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
-        portfolio_uid=portfolio_uid,
-        portfolio_identifier=portfolio_identifier,
-    )
-    virtual_fund_uids = _virtual_fund_uids_for_portfolio(context, portfolio_uid=portfolio_uid)
-    deleted_virtual_fund_holdings_count = _delete_virtual_fund_holding_rows(
-        context,
-        virtual_fund_uids=virtual_fund_uids,
-    )
-    deleted_target_positions_count = _delete_portfolio_target_position_rows(
-        context,
-        portfolio_uid=portfolio_uid,
-    )
-    deleted_weights_count = _delete_portfolio_weight_rows(
-        context,
-        portfolio_identifier=portfolio_identifier,
-        after_date=None,
-    )
-    deleted_values_count = _delete_portfolio_value_rows(
-        context,
-        portfolio_identifier=portfolio_identifier,
-        after_date=None,
-    )
-
-    rows = _operation_result_rows(
-        execute_markets_operation(
-            _compile_cascade_delete_portfolio_operation(
-                context,
-                portfolio_uid=portfolio_uid,
-            ),
-            context=context,
-        )
-    )
-    if not rows:
-        raise PortfolioDeleteConflictError(
-            "Portfolio cascade delete did not delete the portfolio row."
-        )
-
-    row = rows[0]
-    return {
-        "detail": _deleted_detail("Portfolio cascade deleted.", retained_datasets),
-        "deleted_count": 1,
-        "deleted_weights_count": deleted_weights_count,
-        "deleted_values_count": deleted_values_count,
-        "deleted_target_positions_count": deleted_target_positions_count,
-        "deleted_virtual_funds_count": _int_or_zero(row.get("deleted_virtual_funds_count")),
-        "deleted_virtual_fund_holdings_sets_count": _int_or_zero(
-            row.get("deleted_virtual_fund_holdings_sets_count")
-        ),
-        "deleted_virtual_fund_holdings_count": deleted_virtual_fund_holdings_count,
-        "retained_datasets": retained_datasets,
-    }
-
-
 def delete_portfolio_weights(
     context: MarketsRepositoryContext,
     *,
@@ -933,58 +867,6 @@ def bulk_delete_portfolio_records(
         "deleted_count": deleted_count,
         "deleted_weights_count": deleted_weights_count,
         "deleted_values_count": deleted_values_count,
-        "retained_datasets": retained_datasets,
-        "failed": failed,
-    }
-
-
-def bulk_cascade_delete_portfolio_records(
-    context: MarketsRepositoryContext,
-    *,
-    uids: Sequence[str],
-) -> dict[str, Any]:
-    totals = {
-        "deleted_count": 0,
-        "deleted_weights_count": 0,
-        "deleted_values_count": 0,
-        "deleted_target_positions_count": 0,
-        "deleted_virtual_funds_count": 0,
-        "deleted_virtual_fund_holdings_sets_count": 0,
-        "deleted_virtual_fund_holdings_count": 0,
-    }
-    retained_datasets: list[dict[str, str]] = []
-    failed: list[dict[str, str]] = []
-
-    for uid in dict.fromkeys(str(value) for value in uids if str(value).strip()):
-        try:
-            deleted = cascade_delete_portfolio_record(context, uid=uid)
-        except PortfolioDeleteConflictError as exc:
-            failed.append({"uid": uid, "reason": str(exc)})
-            continue
-        if deleted:
-            for key in totals:
-                totals[key] += _int_or_zero(deleted.get(key))
-            retained_datasets.extend(deleted.get("retained_datasets") or [])
-        else:
-            failed.append({"uid": uid, "reason": "Portfolio was not found."})
-
-    if failed and totals["deleted_count"]:
-        detail = (
-            f"Cascade deleted {totals['deleted_count']} "
-            f"portfolio{'s' if totals['deleted_count'] != 1 else ''}; "
-            f"{len(failed)} portfolio{'s' if len(failed) != 1 else ''} could not be deleted."
-        )
-    elif failed:
-        detail = f"No portfolios were cascade deleted; {len(failed)} portfolio deletion failed."
-    else:
-        detail = (
-            f"Cascade deleted {totals['deleted_count']} "
-            f"portfolio{'s' if totals['deleted_count'] != 1 else ''}."
-        )
-
-    return {
-        "detail": detail,
-        **totals,
         "retained_datasets": retained_datasets,
         "failed": failed,
     }
@@ -1165,22 +1047,6 @@ def _target_position_reference_count(
     )
 
 
-def _virtual_fund_uids_for_portfolio(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_uid: uuid.UUID,
-) -> list[uuid.UUID]:
-    rows = _operation_result_rows(
-        search_model(
-            context,
-            model=VirtualFundTable,
-            filters={"target_portfolio_uid": portfolio_uid},
-            limit=MAX_PORTFOLIO_SCAN_LIMIT,
-        )
-    )
-    return [uuid.UUID(str(row["uid"])) for row in rows]
-
-
 def _delete_signal_weight_rows(
     context: MarketsRepositoryContext,
     *,
@@ -1224,41 +1090,6 @@ def _delete_portfolio_value_rows(
             PortfoliosStorage,
             after_date=after_date,
             dimension_filters={"portfolio_identifier": [portfolio_identifier]},
-            context=context,
-        )
-    )
-
-
-def _delete_portfolio_target_position_rows(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_uid: uuid.UUID,
-) -> int:
-    return _time_index_delete_count(
-        _delete_time_index_storage_after_date(
-            TargetPositionsStorage,
-            after_date=None,
-            dimension_filters={
-                "target_type": [TARGET_TYPE_PORTFOLIO],
-                "target_uid": [str(portfolio_uid)],
-            },
-            context=context,
-        )
-    )
-
-
-def _delete_virtual_fund_holding_rows(
-    context: MarketsRepositoryContext,
-    *,
-    virtual_fund_uids: Sequence[uuid.UUID],
-) -> int:
-    if not virtual_fund_uids:
-        return 0
-    return _time_index_delete_count(
-        _delete_time_index_storage_after_date(
-            VirtualFundHoldingsStorage,
-            after_date=None,
-            dimension_filters={"virtual_fund_uid": [str(uid) for uid in virtual_fund_uids]},
             context=context,
         )
     )
@@ -1354,76 +1185,16 @@ def _compile_delete_portfolio_operation(
     )
 
 
-def _compile_cascade_delete_portfolio_operation(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_uid: uuid.UUID,
-):
-    portfolio_scope = (
-        select(
-            PortfolioTable.uid.label("uid"),
-        )
-        .select_from(PortfolioTable)
-        .where(PortfolioTable.uid == portfolio_uid)
-        .cte("portfolio_scope")
-    )
-    virtual_fund_scope = (
-        select(VirtualFundTable.uid.label("uid"))
-        .select_from(VirtualFundTable)
-        .where(VirtualFundTable.target_portfolio_uid.in_(select(portfolio_scope.c.uid)))
-        .cte("virtual_fund_scope")
-    )
-
-    deleted_virtual_fund_holdings_sets = (
-        delete(VirtualFundHoldingsSetTable)
-        .where(VirtualFundHoldingsSetTable.virtual_fund_uid.in_(select(virtual_fund_scope.c.uid)))
-        .returning(literal(1).label("deleted_virtual_fund_holdings_set"))
-        .cte("deleted_virtual_fund_holdings_sets")
-    )
-    deleted_virtual_fund_holdings_sets_count = (
-        select(func.count()).select_from(deleted_virtual_fund_holdings_sets).scalar_subquery()
-    )
-
-    deleted_virtual_funds = (
-        delete(VirtualFundTable)
-        .where(VirtualFundTable.uid.in_(select(virtual_fund_scope.c.uid)))
-        .returning(literal(1).label("deleted_virtual_fund"))
-        .cte("deleted_virtual_funds")
-    )
-    deleted_virtual_funds_count = (
-        select(func.count()).select_from(deleted_virtual_funds).scalar_subquery()
-    )
-
-    statement = (
-        delete(PortfolioTable)
-        .where(PortfolioTable.uid.in_(select(portfolio_scope.c.uid)))
-        .returning(
-            PortfolioTable.uid.label("uid"),
-            deleted_virtual_funds_count.label("deleted_virtual_funds_count"),
-            deleted_virtual_fund_holdings_sets_count.label(
-                "deleted_virtual_fund_holdings_sets_count"
-            ),
-        )
-        .add_cte(portfolio_scope)
-        .add_cte(virtual_fund_scope)
-        .add_cte(deleted_virtual_fund_holdings_sets)
-        .add_cte(deleted_virtual_funds)
-    )
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
-
-
 def _portfolio_filter_args(
     *,
     search: str,
     calendar_uid: str | uuid.UUID | None,
+    include_retired: bool = False,
 ) -> dict[str, Any]:
     return {
         "search": search.strip(),
         "calendar_uid": None if calendar_uid in (None, "") else calendar_uid,
+        "include_retired": include_retired,
     }
 
 
@@ -1431,8 +1202,11 @@ def _portfolio_select(
     *,
     search: str,
     calendar_uid: str | uuid.UUID | None,
+    include_retired: bool = False,
 ):
     statement = select(PortfolioTable)
+    if not include_retired:
+        statement = statement.where(PortfolioTable.retired_at.is_(None))
     if calendar_uid is not None:
         statement = statement.where(PortfolioTable.calendar_uid == calendar_uid)
 
@@ -1726,6 +1500,7 @@ def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
             row.get("backtest_table_price_column_name")
         )
         or "close",
+        "retired_at": row.get("retired_at"),
         **_pre_3_0_pointers(pointers),
     }
 
@@ -1880,9 +1655,7 @@ def _datetime_or_none(value: Any) -> dt.datetime | None:
 __all__ = [
     "PortfolioDeleteConflictError",
     "SignalDeleteConflictError",
-    "bulk_cascade_delete_portfolio_records",
     "bulk_delete_portfolio_records",
-    "cascade_delete_portfolio_record",
     "delete_portfolio_record",
     "delete_portfolio_weights",
     "delete_signal_metadata_record",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from typing import ClassVar
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -26,8 +27,9 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_identifier__ = "Portfolio"
     __metatable_description__ = (
         "Portfolio identity and configuration table keyed by unique_identifier. "
-        "Stores required calendar linkage, optional published index linkage, and TimeIndexTableUpdater "
-        "pointers used to publish portfolio weights, signals, and values."
+        "Stores required calendar linkage, optional published index linkage, TimeIndexTableUpdater "
+        "pointers used to publish portfolio weights, signals, and values, and the retirement "
+        "time after which the portfolio is no longer used (ADR 0049)."
     )
     # Current UID column -> pre-3.0 column that ms-markets 3.x writes too (ADR 0048).
     __renamed_columns__: ClassVar[dict[str, str]] = {
@@ -184,6 +186,18 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Backtest Table Price Column Name",
             "description": "Column name used as the portfolio backtest price field when reading price tables.",
+        },
+    )
+    retired_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        info={
+            "label": "Retired At",
+            "description": (
+                "UTC time from which the portfolio is retired, an exclusive end (ADR 0049). "
+                "Null while the portfolio is live. Set and cleared only by the retire and "
+                "reinstate routes; account history that named the portfolio is kept."
+            ),
         },
     )
 

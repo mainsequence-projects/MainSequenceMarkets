@@ -82,6 +82,7 @@ def test_rows_by_uids_issues_one_in_filter_and_keeps_request_order(monkeypatch) 
                 "portfolio_table_update_uid": None,
                 "portfolio_data_node_uid": None,
                 "backtest_table_price_column_name": "close",
+                "retired_at": None,
             },
         ),
         (

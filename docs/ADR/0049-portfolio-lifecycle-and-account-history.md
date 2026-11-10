@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-11-10). Amends
+Accepted (2026-11-10), implemented in 3.2.0. Amends
 [ADR 0027](0027-account-target-position-portfolio-exposure.md) (target writes
 refuse a retired portfolio),
 [ADR 0029](0029-account-holdings-virtual-fund-allocation-policy.md) (no
@@ -198,7 +198,9 @@ owns. The updaters already hold the portfolio row, or can read it once per run.
 - The Markets API gains `retire` and `reinstate`, an opt-in parameter for
   retired portfolios on the portfolio list and the target-candidate search, and
   refusals on target writes and allocation applies. It loses
-  `bulk-cascade-delete`, a breaking change that ships in a major release.
+  `bulk-cascade-delete`, a breaking change. It ships in the 3.2.0 minor release,
+  as the 3.0.1 patch release removed the registry-write allow-list, and leaves
+  4.0.0 to ADR 0048.
 - `PortfolioEngine` reads its portfolio row once per run.
 - A live portfolio whose valuation source is a retired portfolio's values table
   stops updating at the boundary. ms-markets itself has no such use, but the
@@ -210,3 +212,54 @@ owns. The updaters already hold the portfolio row, or can read it once per run.
   portfolio. It goes with the accounts that hold it.
 - `docs/fast_api/v1/portfolio.md`, `docs/fast_api/v1/accounts.md` and the
   portfolio and account knowledge pages describe retirement.
+
+## Implementation Notes
+
+### 2026-11-10: 3.2.0
+
+Implemented with revision `0023`, which adds `Portfolio.retired_at`. ADR 0048
+had assigned `0023` to its read switch, which 3.1.0 did not ship; its remaining
+steps are now `0024` to `0026`, and ADR 0048 and the 3.x upgrade guide say so.
+
+- **Current targets.** `msm.repositories.accounts.current_portfolio_target_rows_select`
+  is the one definition of "an account's current target names the portfolio".
+  It starts from the `TargetPositionsStorage.portfolio_uid` index and keeps a row
+  when no later `PositionSet` of the same account's active allocations exists
+  (ties broken by the higher uid, as the target read does). The issue #49 read,
+  its count and the retire statement all use it.
+- **Retire.** `msm.services.portfolio_lifecycle.retire_portfolio_record` runs one
+  `UPDATE` that sets `retired_at` only on a live portfolio no current target
+  names. Under PostgreSQL's READ COMMITTED, that `NOT EXISTS` sees the snapshot
+  taken when the statement starts, so a target write that commits while the
+  update waits on the portfolio row does not stop it. The service therefore
+  counts current targets again after the update and, if any appeared, clears
+  `retired_at` again (only while it still holds the value it set) and answers
+  `409`. The target write is the other half: it locks the named `Portfolio` rows
+  `FOR SHARE` in a CTE and gates its allocation upsert on every one being live,
+  so a write that waited on an uncommitted retirement writes nothing once it
+  commits. A refused write runs only the idempotent default allocation-model
+  upsert. Both orderings were run against PostgreSQL 16 with two sessions.
+- **Virtual funds.** Decision 4's rule is applied per allocation run: applying an
+  allocation whose snapshot time is at or after a fund portfolio's `retired_at`
+  writes nothing, in the Markets API route and in
+  `apply_account_virtual_fund_allocation_plan`. An allocation of a snapshot taken
+  before the retirement may still create or update the fund, because that
+  attributes holdings from before the boundary.
+- **Updaters.** `msm_portfolios.retirement` clamps each updater's window end to
+  the last instant before `retired_at` and drops output rows dated at or after
+  it. Decision 4 says a caught-up run "returns before computing anything"; as
+  built, a run returns before reading inputs only when its stored data is at the
+  last instant before the boundary. Otherwise it reads inputs for the window
+  between its last stored row and the boundary, which is empty once it has
+  caught up, and writes nothing. `PortfolioEngine` replays from its initial
+  state on every run, so for it the clamp bounds the replay rather than skipping
+  it. `PortfoliosUpdater` takes `retired_at` from the portfolio row it resolves
+  at the start of a run; in a long-lived process that is the row the previous
+  run's pointer upsert returned.
+- **SDK writers.** The SDK `TargetPositions` updater refuses a frame that names
+  a retired portfolio, reading each named portfolio once through the
+  `Portfolio` row API.
+- **Discovery.** The portfolio and target-candidate discovery specs declare an
+  `include_retired` boolean filter, the portfolio list shows `retired_at`, and
+  `GET /api/v1/portfolio/{uid}/account-targets/discovery/` describes the new
+  collection.

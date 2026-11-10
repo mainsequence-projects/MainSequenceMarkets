@@ -8,13 +8,11 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
-    PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
     PortfolioDatasetReconciliationResult,
     PortfolioDatasetReconcileRequest,
     PortfolioDatasetRegistrationRequest,
     PortfolioDatasetState,
-    PortfolioDeleteRequest,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     Portfolio,
@@ -24,7 +22,6 @@ from apps.v1.schemas.portfolios import (
 )
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
-    bulk_cascade_delete_portfolios,
     bulk_delete_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
@@ -37,12 +34,16 @@ from apps.v1.services.portfolios import (
     get_portfolios_by_uids,
     get_portfolios_values_frame,
     get_portfolios_weights_frame,
+    list_portfolio_account_targets,
     list_portfolios,
     preflight_bulk_delete_portfolios,
     reconcile_portfolio_dataset_catalog,
     register_portfolio_dataset_catalog,
+    reinstate_portfolio,
+    retire_portfolio,
 )
 from apps.v1.services.includes import SidecarReadError
+from msm.api.accounts import PortfolioAccountTarget
 from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
     CORE_TABULAR_FRAME_CONTRACT,
@@ -101,6 +102,10 @@ def get_portfolios(
         int,
         Query(ge=0, description="Zero-based starting offset into the filtered portfolio list."),
     ] = 0,
+    include_retired: Annotated[
+        bool,
+        Query(description="Include retired portfolios (ADR 0049). Off by default."),
+    ] = False,
 ) -> ResourceCollection[Portfolio]:
     try:
         response = list_portfolios(
@@ -108,6 +113,7 @@ def get_portfolios(
             calendar_uid=calendar_uid,
             limit=limit,
             offset=offset,
+            include_retired=include_retired,
         )
     except PortfolioDataIntegrityError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -414,57 +420,6 @@ def preflight_portfolio_bulk_delete(
     return BulkDeletePreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
 
 
-@router.post(
-    "/bulk-cascade-delete/",
-    response_model=PortfolioBulkCascadeDeleteResponse,
-    summary="Cascade delete portfolios",
-    description=(
-        "Delete multiple portfolio identity rows by uid and cascade-delete dependent "
-        "portfolio values, portfolio weights, target-position rows, virtual funds, "
-        "virtual-fund holdings sets, and virtual-fund holdings storage rows."
-    ),
-    operation_id="bulkCascadeDeletePortfolios",
-    responses={
-        400: {
-            "model": ErrorResponse,
-            "description": "Invalid portfolio cascade-delete payload.",
-        },
-        409: {
-            "model": ErrorResponse,
-            "description": "One or more portfolios could not be cascade deleted.",
-        },
-    },
-)
-def bulk_cascade_delete_portfolio_rows(
-    payload: PortfolioDeleteRequest,
-) -> PortfolioBulkCascadeDeleteResponse:
-    try:
-        response = bulk_cascade_delete_portfolios(uids=payload.uids)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if response.failed:
-        detail = _portfolio_bulk_delete_error_detail(response)
-        logger.warning(
-            "Portfolio bulk cascade delete failed.",
-            extra={
-                "failed": [failure.model_dump(mode="json") for failure in response.failed],
-                "deleted_count": response.deleted_count,
-                "deleted_weights_count": response.deleted_weights_count,
-                "deleted_values_count": response.deleted_values_count,
-                "deleted_target_positions_count": response.deleted_target_positions_count,
-                "deleted_virtual_funds_count": response.deleted_virtual_funds_count,
-                "deleted_virtual_fund_holdings_sets_count": (
-                    response.deleted_virtual_fund_holdings_sets_count
-                ),
-                "deleted_virtual_fund_holdings_count": (
-                    response.deleted_virtual_fund_holdings_count
-                ),
-            },
-        )
-        raise HTTPException(status_code=409, detail=detail)
-    return response
-
-
 def _portfolio_bulk_delete_error_detail(response: PortfolioBulkDeleteResponse) -> str:
     failed_reasons = "; ".join(f"{failure.uid}: {failure.reason}" for failure in response.failed)
     if failed_reasons:
@@ -710,6 +665,108 @@ def remove_portfolio_weights(
     if response is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
     return response
+
+
+@router.get(
+    "/{uid}/account-targets/",
+    response_model=ResourceCollection[PortfolioAccountTarget],
+    summary="List accounts whose current target names the portfolio",
+    description=(
+        "Page the accounts whose current target has a portfolio row for this portfolio, "
+        "ordered by account uid. The current target is the latest PositionSet across the "
+        "account's active target allocations, as GET /api/v1/account/{account_uid}/"
+        "target-positions/ reads it; an account that named the portfolio only in an earlier "
+        "snapshot, or whose target was cleared, is not returned. Each item gives the account, "
+        "its target allocation, the snapshot's PositionSet uid and time, and the exposure."
+    ),
+    operation_id="listPortfolioAccountTargets",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid paging request."},
+        404: {"model": ErrorResponse, "description": "The requested portfolio uid was not found."},
+    },
+)
+def get_portfolio_account_targets(
+    uid: str,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=500, description="Maximum number of accounts to return."),
+    ] = 100,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Zero-based starting offset into the account list."),
+    ] = 0,
+) -> ResourceCollection[PortfolioAccountTarget]:
+    try:
+        response = list_portfolio_account_targets(uid=uid, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
+    return resource_collection_response(
+        items=response["results"],
+        total_items=int(response["count"]),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{uid}/retire/",
+    response_model=Portfolio,
+    summary="Retire portfolio",
+    description=(
+        "Retire the portfolio from now on (ADR 0049) and return it with retired_at. Nothing "
+        "is deleted: account target snapshots, virtual funds and the portfolio's weights and "
+        "values stay. While retired, no target snapshot may name it, no virtual-fund holdings "
+        "are written for it from retired_at on, lists and target search leave it out, and the "
+        "portfolio updaters write nothing from retired_at on. Refused with 409 while any "
+        "account's current target names it; GET /api/v1/portfolio/{uid}/account-targets/ "
+        "lists those accounts. Retiring a retired portfolio returns it unchanged."
+    ),
+    operation_id="retirePortfolio",
+    responses={
+        404: {"model": ErrorResponse, "description": "The requested portfolio uid was not found."},
+        409: {
+            "model": ErrorResponse,
+            "description": "An account's current target names the portfolio.",
+        },
+    },
+)
+def retire_portfolio_by_uid(uid: str) -> Portfolio:
+    try:
+        portfolio = retire_portfolio(uid=uid)
+    except ValueError as exc:
+        if exc.__class__.__name__ == "PortfolioRetirementConflictError":
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
+    return portfolio
+
+
+@router.post(
+    "/{uid}/reinstate/",
+    response_model=Portfolio,
+    summary="Reinstate portfolio",
+    description=(
+        "Clear the portfolio's retired_at (ADR 0049) and return it. Target snapshots may name "
+        "it again, and the portfolio updaters fill the retired period on their next run. "
+        "Reinstating a live portfolio returns it unchanged."
+    ),
+    operation_id="reinstatePortfolio",
+    responses={
+        404: {"model": ErrorResponse, "description": "The requested portfolio uid was not found."},
+    },
+)
+def reinstate_portfolio_by_uid(uid: str) -> Portfolio:
+    try:
+        portfolio = reinstate_portfolio(uid=uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
+    return portfolio
 
 
 @router.get(

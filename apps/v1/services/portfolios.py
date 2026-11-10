@@ -9,9 +9,7 @@ from apps.v1.identity import registry_write
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
-    PortfolioBulkCascadeDeleteResponse,
     PortfolioBulkDeleteResponse,
-    PortfolioCascadeDeleteResponse,
     PortfolioDatasetReconciliationResult,
     PortfolioDatasetReconcileRequest,
     PortfolioDatasetRegistrationRequest,
@@ -43,6 +41,7 @@ def list_portfolios(
     calendar_uid: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_retired: bool = False,
 ) -> dict[str, object]:
     runtime = _get_runtime()
     response = _list_portfolio_rows_response(
@@ -51,11 +50,80 @@ def list_portfolios(
         calendar_uid=calendar_uid,
         limit=limit,
         offset=offset,
+        include_retired=include_retired,
     )
     return {
         "count": int(response["count"]),
         "results": [_validate_portfolio_row(row) for row in response["results"]],
     }
+
+
+def list_portfolio_account_targets(
+    *,
+    uid: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object] | None:
+    """Page the accounts whose current target names the portfolio (issue #49)."""
+
+    from msm.api.accounts import PortfolioAccountTarget
+    from msm.services.target_positions import list_portfolio_account_targets_response
+
+    runtime = _get_lifecycle_runtime()
+    response = list_portfolio_account_targets_response(
+        runtime.context,
+        portfolio_uid=uid,
+        limit=limit,
+        offset=offset,
+    )
+    if response is None:
+        return None
+    return {
+        "count": int(response["count"]),
+        "results": [PortfolioAccountTarget.model_validate(row) for row in response["results"]],
+    }
+
+
+@registry_write("portfolio", "retire")
+def retire_portfolio(*, uid: str) -> Portfolio | None:
+    """Retire the portfolio (ADR 0049); refused while an account's current target names it."""
+
+    from msm.services.portfolio_lifecycle import retire_portfolio_record
+
+    runtime = _get_lifecycle_runtime()
+    row = retire_portfolio_record(runtime.context, uid=uid)
+    return None if row is None else _validate_lifecycle_row(row)
+
+
+@registry_write("portfolio", "reinstate")
+def reinstate_portfolio(*, uid: str) -> Portfolio | None:
+    """Clear the portfolio's retirement (ADR 0049)."""
+
+    from msm.services.portfolio_lifecycle import reinstate_portfolio_record
+
+    runtime = _get_lifecycle_runtime()
+    row = reinstate_portfolio_record(runtime.context, uid=uid)
+    return None if row is None else _validate_lifecycle_row(row)
+
+
+def _validate_lifecycle_row(row) -> Portfolio:
+    from msm_portfolios.services import public_api
+
+    return _validate_portfolio_row(public_api._build_portfolio_row(row))
+
+
+def _get_lifecycle_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+
+    return resolve_apps_v1_runtime(
+        models=[
+            "Portfolio",
+            "AccountTargetAllocation",
+            "PositionSet",
+            "TargetPositionsStorage",
+        ],
+        row_model_name="POST /api/v1/portfolio/{uid}/retire/",
+    )
 
 
 def get_portfolio_detail(*, uid: str) -> PortfolioDetailResponse | None:
@@ -442,15 +510,6 @@ def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
     return PortfolioDeleteResponse.model_validate(deleted)
 
 
-@registry_write("portfolio", "cascade-delete")
-def cascade_delete_portfolio(*, uid: str) -> PortfolioCascadeDeleteResponse | None:
-    runtime = _get_runtime()
-    deleted = _cascade_delete_portfolio_record(runtime.context, uid=uid)
-    if not deleted:
-        return None
-    return PortfolioCascadeDeleteResponse.model_validate(deleted)
-
-
 @registry_write("portfolio", "delete:portfolio-weights")
 def delete_portfolio_weights(
     *,
@@ -507,13 +566,6 @@ def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightR
     )
 
 
-@registry_write("portfolio", "bulk-cascade-delete")
-def bulk_cascade_delete_portfolios(*, uids: list[str]) -> PortfolioBulkCascadeDeleteResponse:
-    runtime = _get_runtime()
-    response = _bulk_cascade_delete_portfolio_records(runtime.context, uids=uids)
-    return PortfolioBulkCascadeDeleteResponse.model_validate(response)
-
-
 def _get_runtime():
     from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
 
@@ -531,8 +583,6 @@ def _get_runtime():
             "SignalWeightsStorage",
             "TargetPositionsStorage",
             "VirtualFund",
-            "VirtualFundHoldingsSet",
-            "VirtualFundHoldingsStorage",
         ],
         row_model_name="GET /api/v1/portfolio/",
     )
@@ -580,12 +630,6 @@ def _delete_portfolio_record(context, **kwargs):
     return delete_portfolio_record(context, **kwargs)
 
 
-def _cascade_delete_portfolio_record(context, **kwargs):
-    from msm_portfolios.services import cascade_delete_portfolio_record
-
-    return cascade_delete_portfolio_record(context, **kwargs)
-
-
 def _delete_portfolio_weights(context, **kwargs):
     from msm_portfolios.services import delete_portfolio_weights
 
@@ -630,12 +674,6 @@ def _portfolio_delete_preflight_item(
         for item in retained
     ]
     return True, blockers, warnings
-
-
-def _bulk_cascade_delete_portfolio_records(context, **kwargs):
-    from msm_portfolios.services import bulk_cascade_delete_portfolio_records
-
-    return bulk_cascade_delete_portfolio_records(context, **kwargs)
 
 
 def _validate_portfolio_row(row: object) -> Portfolio:

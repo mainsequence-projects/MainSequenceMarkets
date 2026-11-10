@@ -255,6 +255,7 @@ def search_account_target_allocation_targets(
     target_type: AccountTargetAllocationTargetSearchType = "all",
     limit: int = 25,
     offset: int = 0,
+    include_retired: bool = False,
 ) -> dict[str, object]:
     runtime = _get_target_allocation_candidates_runtime()
     response = _search_account_target_allocation_candidates(
@@ -263,6 +264,7 @@ def search_account_target_allocation_targets(
         target_type=target_type,
         limit=limit,
         offset=offset,
+        include_retired=include_retired,
     )
     return {
         "count": int(response["count"]),
