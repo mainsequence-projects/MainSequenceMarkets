@@ -14,7 +14,10 @@ from msm.api.accounts import (
     AccountVirtualFundAllocationPolicy,
     AccountVirtualFundAllocationRequest,
     AccountVirtualFundAllocationResponse,
+    PortfolioAccountTarget,
 )
+from msm.api.http import ResourceCollection
+from msm.api.portfolios import Portfolio
 from msm.api.remote import MarketsApiError, raise_for_error
 from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoint
 
@@ -264,6 +267,43 @@ class MarketsClient:
             json=request.model_dump(mode="json"),
         )
         return AccountVirtualFundAllocationResponse.model_validate(payload)
+
+    def portfolio_account_targets(
+        self,
+        portfolio_uid: Any,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ResourceCollection[PortfolioAccountTarget]:
+        """One page of the accounts whose current target names a portfolio (``listPortfolioAccountTargets``).
+
+        The current target is the one ``account_target_positions`` reads; an account
+        that named the portfolio only earlier, or whose target was cleared, is not
+        listed. Pages are ordered by account uid.
+        """
+
+        payload = self.request(
+            "GET",
+            f"{API_PREFIX}/portfolio/{portfolio_uid}/account-targets/",
+            params=[("limit", limit), ("offset", offset)],
+        )
+        return ResourceCollection[PortfolioAccountTarget].model_validate(payload)
+
+    def retire_portfolio(self, portfolio_uid: Any) -> Portfolio:
+        """Retire a portfolio from now on (``retirePortfolio``, ADR 0049).
+
+        Nothing is deleted. Raises ``MarketsConflictError`` while an account's
+        current target names the portfolio; ``portfolio_account_targets`` lists them.
+        """
+
+        payload = self.request("POST", f"{API_PREFIX}/portfolio/{portfolio_uid}/retire/")
+        return Portfolio.model_validate(payload)
+
+    def reinstate_portfolio(self, portfolio_uid: Any) -> Portfolio:
+        """Clear a portfolio's retirement (``reinstatePortfolio``, ADR 0049)."""
+
+        payload = self.request("POST", f"{API_PREFIX}/portfolio/{portfolio_uid}/reinstate/")
+        return Portfolio.model_validate(payload)
 
     def _send(self, method: str, url: str, *, json: Any, params: Any, force: bool) -> Any:
         headers = dict(self._headers(force))

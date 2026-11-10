@@ -23,6 +23,12 @@ from msm_portfolios.rebalance_strategy import (
     RebalanceStrategyBase,
 )
 
+from msm_portfolios.retirement import (
+    drop_retired_rows,
+    end_before_retirement,
+    retirement_boundary,
+    window_is_empty,
+)
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
 from .rebalance import normalize_rebalance_input
 from .storage import PortfolioEventLedgerStorage
@@ -136,6 +142,13 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         maximum_window = os.getenv("MAX_TD_FROM_LATEST_VALUE")
         if maximum_window:
             end = min(end, start + pd.Timedelta(maximum_window))
+        boundary = self._retirement_boundary(config.portfolio_identifier)
+        end = end_before_retirement(end, boundary)
+        if window_is_empty(start, end):
+            return normalize_portfolio_event_ledger_frame(
+                pd.DataFrame(),
+                output_table=self.output_table,
+            )
 
         signal_filters = None
         signal_uid = getattr(config.signal_weights_instance, "signal_uid", None)
@@ -247,10 +260,21 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         )
         _validate_replay_against_existing(existing, ledger)
         ledger = _new_ledger_tail(existing, ledger)
-        return normalize_portfolio_event_ledger_frame(
-            ledger,
-            output_table=self.output_table,
+        return drop_retired_rows(
+            normalize_portfolio_event_ledger_frame(
+                ledger,
+                output_table=self.output_table,
+            ),
+            boundary,
         )
+
+    @staticmethod
+    def _retirement_boundary(portfolio_identifier: str) -> pd.Timestamp | None:
+        """Read the portfolio row once per run for its ``retired_at`` (ADR 0049)."""
+
+        from msm.api.portfolios import Portfolio
+
+        return retirement_boundary(Portfolio.get_by_unique_identifier(portfolio_identifier))
 
     @classmethod
     def calculate_backtest(

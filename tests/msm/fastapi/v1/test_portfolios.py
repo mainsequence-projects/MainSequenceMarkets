@@ -21,6 +21,7 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "signal_uid": None,
         "portfolio_table_update_uid": None,
         "backtest_table_price_column_name": "close",
+        "retired_at": None,
         "portfolio_weights_data_node_uid": None,
         "signal_weights_data_node_uid": None,
         "portfolio_data_node_uid": None,
@@ -63,6 +64,7 @@ def test_get_portfolios_returns_core_portfolio_rows(monkeypatch) -> None:
         "calendar_uid": None,
         "limit": 10,
         "offset": 0,
+        "include_retired": False,
     }
 
 
@@ -810,100 +812,6 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
     }
 
 
-def test_bulk_cascade_delete_portfolios_returns_success(monkeypatch) -> None:
-    deleted_uid = uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_bulk_cascade_delete_portfolios(**kwargs):
-        from apps.v1.schemas.portfolios import PortfolioBulkCascadeDeleteResponse
-
-        captured.update(kwargs)
-        return PortfolioBulkCascadeDeleteResponse.model_validate(
-            {
-                "detail": "Cascade deleted 1 portfolio.",
-                "deleted_count": 1,
-                "deleted_weights_count": 3,
-                "deleted_values_count": 2,
-                "deleted_target_positions_count": 4,
-                "deleted_virtual_funds_count": 1,
-                "deleted_virtual_fund_holdings_sets_count": 1,
-                "deleted_virtual_fund_holdings_count": 5,
-                "failed": [],
-            }
-        )
-
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.bulk_cascade_delete_portfolios",
-        fake_bulk_cascade_delete_portfolios,
-    )
-
-    client = TestClient(app)
-    response = client.post(
-        "/api/v1/portfolio/bulk-cascade-delete/",
-        json={"uids": [str(deleted_uid)]},
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "detail": "Cascade deleted 1 portfolio.",
-        "deleted_count": 1,
-        "deleted_weights_count": 3,
-        "deleted_values_count": 2,
-        "deleted_target_positions_count": 4,
-        "deleted_virtual_funds_count": 1,
-        "deleted_virtual_fund_holdings_sets_count": 1,
-        "deleted_virtual_fund_holdings_count": 5,
-        "retained_datasets": [],
-        "failed": [],
-    }
-    assert captured == {"uids": [str(deleted_uid)]}
-
-
-def test_bulk_cascade_delete_portfolios_reports_failures(monkeypatch) -> None:
-    failed_uid = uuid.uuid4()
-
-    def fake_bulk_cascade_delete_portfolios(**kwargs):
-        from apps.v1.schemas.portfolios import PortfolioBulkCascadeDeleteResponse
-
-        return PortfolioBulkCascadeDeleteResponse.model_validate(
-            {
-                "detail": "No portfolios were cascade deleted; 1 portfolio deletion failed.",
-                "deleted_count": 0,
-                "deleted_weights_count": 0,
-                "deleted_values_count": 0,
-                "deleted_target_positions_count": 0,
-                "deleted_virtual_funds_count": 0,
-                "deleted_virtual_fund_holdings_sets_count": 0,
-                "deleted_virtual_fund_holdings_count": 0,
-                "failed": [
-                    {
-                        "uid": str(failed_uid),
-                        "reason": "Portfolio was not found.",
-                    }
-                ],
-            }
-        )
-
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.bulk_cascade_delete_portfolios",
-        fake_bulk_cascade_delete_portfolios,
-    )
-
-    client = TestClient(app)
-    response = client.post(
-        "/api/v1/portfolio/bulk-cascade-delete/",
-        json={"uids": [str(failed_uid)]},
-    )
-
-    assert response.status_code == 409
-    assert response.json() == {
-        "detail": (
-            "No portfolios were cascade deleted; 1 portfolio deletion failed. "
-            f"Failed: {failed_uid}: Portfolio was not found."
-        )
-    }
-
-
 def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -> None:
     failed_uid = uuid.uuid4()
 
@@ -1119,52 +1027,6 @@ def test_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
         "deleted_count": 1,
         "deleted_weights_count": 5,
         "deleted_values_count": 6,
-        "retained_datasets": [],
-    }
-    assert captured["context"] is runtime.context
-    assert captured["uid"] == str(portfolio_uid)
-
-
-def test_cascade_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
-    portfolio_uid = uuid.uuid4()
-    runtime = SimpleNamespace(context=object())
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr("apps.v1.services.portfolios._get_runtime", lambda: runtime)
-
-    def fake_cascade_delete_portfolio_record(context, **kwargs):
-        captured["context"] = context
-        captured.update(kwargs)
-        return {
-            "detail": "Portfolio cascade deleted.",
-            "deleted_count": 1,
-            "deleted_weights_count": 5,
-            "deleted_values_count": 6,
-            "deleted_target_positions_count": 7,
-            "deleted_virtual_funds_count": 2,
-            "deleted_virtual_fund_holdings_sets_count": 3,
-            "deleted_virtual_fund_holdings_count": 8,
-        }
-
-    monkeypatch.setattr(
-        "apps.v1.services.portfolios._cascade_delete_portfolio_record",
-        fake_cascade_delete_portfolio_record,
-    )
-
-    from apps.v1.services.portfolios import cascade_delete_portfolio
-
-    response = cascade_delete_portfolio(uid=str(portfolio_uid))
-
-    assert response is not None
-    assert response.model_dump() == {
-        "detail": "Portfolio cascade deleted.",
-        "deleted_count": 1,
-        "deleted_weights_count": 5,
-        "deleted_values_count": 6,
-        "deleted_target_positions_count": 7,
-        "deleted_virtual_funds_count": 2,
-        "deleted_virtual_fund_holdings_sets_count": 3,
-        "deleted_virtual_fund_holdings_count": 8,
         "retained_datasets": [],
     }
     assert captured["context"] is runtime.context
@@ -1505,38 +1367,6 @@ def test_public_delete_portfolio_operation_deletes_identity_only(monkeypatch) ->
     assert "deleted_weights" not in statement_text
     assert "deleted_values" not in statement_text
     assert "delete from" in statement_text
-
-
-def test_public_cascade_delete_portfolio_operation_deletes_dependents(monkeypatch) -> None:
-    portfolio_uid = uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_compile(statement, **kwargs):
-        captured["statement"] = statement
-        captured.update(kwargs)
-        return "compiled-cascade-delete-op"
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-
-    from msm_portfolios.services.public_api import _compile_cascade_delete_portfolio_operation
-
-    operation = _compile_cascade_delete_portfolio_operation(
-        object(),
-        portfolio_uid=portfolio_uid,
-    )
-
-    statement_text = str(captured["statement"]).lower()
-    assert operation == "compiled-cascade-delete-op"
-    assert captured["operation"] == "delete"
-    assert "deleted_virtual_funds" in statement_text
-    assert "deleted_virtual_fund_holdings_sets" in statement_text
-    assert "deleted_target_positions" not in statement_text
-    assert "deleted_virtual_fund_holdings as" not in statement_text
-    assert "deleted_weights" not in statement_text
-    assert "deleted_values" not in statement_text
 
 
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:

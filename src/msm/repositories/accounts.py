@@ -31,9 +31,12 @@ from sqlalchemy import (
     update,
     values,
 )
+from sqlalchemy import and_
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy.orm import aliased
 
 from metatables import MetaTableCompiledSQLOperation
+from msm.time_index.accounts.constants import TARGET_TYPE_PORTFOLIO
 from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.models import (
@@ -355,6 +358,7 @@ def build_search_account_target_allocation_candidates_operation(
     target_type: str = "all",
     limit: int = 25,
     offset: int = 0,
+    include_retired: bool = False,
 ) -> MetaTableCompiledSQLOperation:
     normalized_target_type = target_type.lower()
     if normalized_target_type not in {"all", "asset", "portfolio"}:
@@ -368,7 +372,12 @@ def build_search_account_target_allocation_candidates_operation(
     if normalized_target_type in {"all", "asset"}:
         branches.append(_account_target_asset_candidate_select(search=search))
     if normalized_target_type in {"all", "portfolio"}:
-        branches.append(_account_target_portfolio_candidate_select(search=search))
+        branches.append(
+            _account_target_portfolio_candidate_select(
+                search=search,
+                include_retired=include_retired,
+            )
+        )
 
     if len(branches) == 1:
         candidates = branches[0].cte("account_target_allocation_candidates")
@@ -487,7 +496,7 @@ def _account_target_asset_candidate_select(*, search: str):
     return statement
 
 
-def _account_target_portfolio_candidate_select(*, search: str):
+def _account_target_portfolio_candidate_select(*, search: str, include_retired: bool = False):
     statement = select(
         literal("portfolio").label("target_type"),
         cast(PortfolioTable.uid, String).label("target_uid"),
@@ -501,6 +510,8 @@ def _account_target_portfolio_candidate_select(*, search: str):
         cast(null(), String).label("asset_type"),
         cast(PortfolioTable.published_index_uid, String).label("published_index_uid"),
     )
+    if not include_retired:
+        statement = statement.where(PortfolioTable.retired_at.is_(None))
     normalized_search = search.strip().lower()
     if normalized_search:
         needle = f"%{normalized_search}%"
@@ -652,6 +663,129 @@ def delete_position_set(
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_delete_position_set_operation(context, uid=uid),
+        context=context,
+    )
+
+
+def current_portfolio_target_rows_select(*, portfolio_uid: Any):
+    """Select the target rows that name a portfolio in each account's current target.
+
+    An account's current target is the latest ``PositionSet`` across its active
+    ``AccountTargetAllocation`` rows, ties broken by the higher ``PositionSet`` uid,
+    which is what ``GET /api/v1/account/{account_uid}/target-positions/`` reads.
+    An account that named the portfolio only in an earlier snapshot, or whose
+    target was cleared, has no row. The scan starts from the ``portfolio_uid``
+    index of ``TargetPositionsStorage``.
+
+    ``portfolio_uid`` is a value or a SQL expression. Each result row carries
+    ``account_uid``, ``account_target_allocation_uid``, ``position_set_uid``,
+    ``target_positions_date`` and the row's exposure columns.
+    """
+
+    later_position_set = aliased(PositionSetTable, name="later_position_set")
+    later_allocation = aliased(AccountTargetAllocationTable, name="later_allocation")
+    later_snapshot = (
+        select(later_position_set.uid)
+        .join(
+            later_allocation,
+            later_position_set.account_target_allocation_uid == later_allocation.uid,
+        )
+        .where(later_allocation.account_uid == AccountTargetAllocationTable.account_uid)
+        .where(later_allocation.is_active.is_(True))
+        .where(
+            or_(
+                later_position_set.position_set_time > PositionSetTable.position_set_time,
+                and_(
+                    later_position_set.position_set_time == PositionSetTable.position_set_time,
+                    later_position_set.uid > PositionSetTable.uid,
+                ),
+            )
+        )
+    )
+    return (
+        select(
+            AccountTargetAllocationTable.account_uid.label("account_uid"),
+            AccountTargetAllocationTable.uid.label("account_target_allocation_uid"),
+            PositionSetTable.uid.label("position_set_uid"),
+            PositionSetTable.position_set_time.label("target_positions_date"),
+            TargetPositionsStorage.weight_notional_exposure.label("weight_notional_exposure"),
+            TargetPositionsStorage.constant_notional_exposure.label(
+                "constant_notional_exposure"
+            ),
+        )
+        .select_from(TargetPositionsStorage)
+        .join(PositionSetTable, PositionSetTable.uid == TargetPositionsStorage.position_set_uid)
+        .join(
+            AccountTargetAllocationTable,
+            AccountTargetAllocationTable.uid == PositionSetTable.account_target_allocation_uid,
+        )
+        .where(TargetPositionsStorage.target_type == TARGET_TYPE_PORTFOLIO)
+        .where(TargetPositionsStorage.portfolio_uid == portfolio_uid)
+        .where(TargetPositionsStorage.time_index == PositionSetTable.position_set_time)
+        .where(AccountTargetAllocationTable.is_active.is_(True))
+        .where(~later_snapshot.exists())
+    )
+
+
+def _portfolio_uid_param(portfolio_uid: uuid.UUID | str):
+    return bindparam(
+        "portfolio_uid",
+        value=uuid.UUID(str(portfolio_uid)),
+        type_=Uuid(as_uuid=True),
+    )
+
+
+def build_search_portfolio_account_targets_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID | str,
+    limit: int = 100,
+    offset: int = 0,
+) -> MetaTableCompiledSQLOperation:
+    """Page the accounts whose current target names a portfolio, ordered by account uid."""
+
+    current = current_portfolio_target_rows_select(
+        portfolio_uid=_portfolio_uid_param(portfolio_uid)
+    ).subquery("current_portfolio_targets")
+    statement = (
+        select(current)
+        .order_by(current.c.account_uid, current.c.position_set_uid)
+        .limit(limit)
+        .offset(offset)
+    )
+    return compile_markets_statement(statement, context=context, operation="select")
+
+
+def build_count_portfolio_account_targets_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uid: uuid.UUID | str,
+) -> MetaTableCompiledSQLOperation:
+    """Count the accounts whose current target names a portfolio."""
+
+    current = current_portfolio_target_rows_select(
+        portfolio_uid=_portfolio_uid_param(portfolio_uid)
+    ).subquery("current_portfolio_targets")
+    statement = select(func.count().label("count")).select_from(current)
+    return compile_markets_statement(statement, context=context, operation="select")
+
+
+def search_portfolio_account_targets(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_search_portfolio_account_targets_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def count_portfolio_account_targets(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_count_portfolio_account_targets_operation(context, **kwargs),
         context=context,
     )
 
@@ -856,6 +990,11 @@ def build_replace_account_target_positions_snapshot_operation(
     through; a refused write (the snapshot exists and ``overwrite`` is false)
     leaves it as it was. The statement returns the inserted target rows, or
     the cleared ``PositionSet`` uid, and nothing when the write was refused.
+
+    A snapshot that names a retired portfolio is refused whatever its date
+    (ADR 0049): the statement locks the named ``Portfolio`` rows ``FOR SHARE``
+    and writes nothing unless every one is live, so it cannot interleave with a
+    retirement of one of them.
     """
 
     clearing = not positions
@@ -935,6 +1074,53 @@ def build_replace_account_target_positions_snapshot_operation(
         .returning(AccountAllocationModelTable.uid)
         .cte("account_allocation_model")
     )
+    named_portfolio_uids = sorted(
+        {
+            uuid.UUID(str(position["portfolio_uid"]))
+            for position in positions
+            if position.get("portfolio_uid") not in (None, "")
+        }
+    )
+    live_portfolio_gate = None
+    if named_portfolio_uids:
+        live_portfolios = (
+            select(PortfolioTable.uid)
+            .where(PortfolioTable.uid.in_(named_portfolio_uids))
+            .where(PortfolioTable.retired_at.is_(None))
+            .with_for_update(read=True)
+            .cte("live_portfolios")
+        )
+        live_portfolio_gate = select(func.count()).select_from(
+            live_portfolios
+        ).scalar_subquery() == literal(len(named_portfolio_uids))
+    account_target_allocation_values = select(
+        cast(
+            bindparam(
+                "account_target_allocation_uid",
+                value=uuid.UUID(str(account_target_allocation_uid)),
+                type_=Uuid(as_uuid=True),
+            ),
+            Uuid(as_uuid=True),
+        ),
+        cast(account_uid_param, String()),
+        cast(account_uid_param, Uuid(as_uuid=True)),
+        account_allocation_model.c.uid,
+        account_name_param,
+        is_active_param,
+        literal("apps.v1"),
+        cast(
+            bindparam(
+                "account_target_allocation_metadata_json",
+                value={},
+                type_=JSON(),
+            ),
+            JSON(),
+        ),
+    ).select_from(account_allocation_model)
+    if live_portfolio_gate is not None:
+        account_target_allocation_values = account_target_allocation_values.where(
+            live_portfolio_gate
+        )
     account_target_allocation_insert = postgresql_insert(AccountTargetAllocationTable).from_select(
         [
             "uid",
@@ -946,30 +1132,7 @@ def build_replace_account_target_positions_snapshot_operation(
             "source",
             "metadata_json",
         ],
-        select(
-            cast(
-                bindparam(
-                    "account_target_allocation_uid",
-                    value=uuid.UUID(str(account_target_allocation_uid)),
-                    type_=Uuid(as_uuid=True),
-                ),
-                Uuid(as_uuid=True),
-            ),
-            cast(account_uid_param, String()),
-            cast(account_uid_param, Uuid(as_uuid=True)),
-            account_allocation_model.c.uid,
-            account_name_param,
-            is_active_param,
-            literal("apps.v1"),
-            cast(
-                bindparam(
-                    "account_target_allocation_metadata_json",
-                    value={},
-                    type_=JSON(),
-                ),
-                JSON(),
-            ),
-        ).select_from(account_allocation_model),
+        account_target_allocation_values,
     )
     account_target_allocation = (
         account_target_allocation_insert.on_conflict_do_update(

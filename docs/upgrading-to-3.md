@@ -63,19 +63,21 @@ have upgraded first:
 1. **3.0.0** adds the new columns (revision `0022`), writes both names and reads
    the pre-3.0 columns. Upgrade every project that writes accounts, portfolios
    or pricing bindings.
-2. **3.1.0** copies late 2.x writes and reads the new columns (revision
-   `0023`). Release it only when no 2.x writer remains in any Environment.
+2. **A later 3.x release** copies late 2.x writes and reads the new columns
+   (revision `0024`). Release it only when no 2.x writer remains in any
+   Environment. 3.1.0 and 3.2.0 do not include this step; 3.2.0's revision
+   `0023` adds `Portfolio.retired_at` (ADR 0049).
 3. **4.0.0** removes the pre-3.0 names and stops writing the pre-3.0 columns
-   (revision `0024`). Release it only when no project older than 3.1 reads
-   these tables, and after the scan is clean everywhere.
-4. **4.1.0** drops the pre-3.0 columns (revision `0025`). Release it only when
+   (revision `0025`). Release it only when no project older than the read
+   switch reads these tables, and after the scan is clean everywhere.
+4. **4.1.0** drops the pre-3.0 columns (revision `0026`). Release it only when
    no project older than 4.0 uses these tables, because every 3.x release
    still selects and writes them.
 
 In each Environment, a project can run a release only after the ms-markets
 deployment's `migrate-markets` Job has applied that release's revision there:
 3.0 selects the columns that `0022` adds, and 4.0 inserts pricing bindings
-without the `data_node_uid` value that `0024` makes optional.
+without the `data_node_uid` value that `0025` makes optional.
 
 To check what the stored account UIDs hold, run
 `msm rename-preflight account-uids` with the Markets runtime attached.

@@ -1106,6 +1106,32 @@ portfolio indices. They are expanded into asset-level exposure only when a
 downstream workflow explicitly calls the portfolio expansion service and
 provides a resolver for current portfolio weights.
 
+### Retirement Keeps Account History
+
+Target rows and virtual funds reference `PortfolioTable` with `RESTRICT`, so an
+account's record of what it targeted, and of how its holdings were attributed,
+outlives any change to the portfolio. A portfolio that should no longer be used
+is retired: `PortfolioTable.retired_at` holds the UTC time from which it is
+retired, an exclusive end, and is null while it is live
+([ADR 0049](../../../ADR/0049-portfolio-lifecycle-and-account-history.md)).
+
+- `msm.services.portfolio_lifecycle.retire_portfolio_record(context, uid=...)`
+  sets it and is refused while any account's current target names the
+  portfolio; `list_portfolio_account_targets_response` (in
+  `msm.services.target_positions`) lists those accounts.
+  `reinstate_portfolio_record` clears it.
+- While retired, no target snapshot may name the portfolio, whatever its date;
+  the API write and the SDK `TargetPositions` updater both refuse it. Applying a
+  virtual-fund allocation at or after `retired_at` is refused.
+- `PortfoliosUpdater`, with its `PortfolioWeights` and `PortfolioRebalance`
+  updaters, and `PortfolioEngine` clamp their update window to the last instant
+  before `retired_at` and drop any row dated at or after it
+  (`msm_portfolios.retirement`). A run after the portfolio has caught up reads
+  only the empty window up to the boundary; `PortfolioEngine` replays up to it.
+  The storage tables do not enforce the boundary, so a direct table write
+  bypasses it.
+- A portfolio is deleted only when nothing references it.
+
 ## Portfolio Construction And Account Virtual-Fund Allocation Boundary
 
 Portfolio construction produces portfolio artifacts. It does not own

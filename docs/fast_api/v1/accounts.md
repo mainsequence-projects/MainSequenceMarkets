@@ -60,8 +60,10 @@ direct account snapshots and virtual-fund-grouped views.
     pages
   - resolves the account by `uid`
 - `GET /api/v1/account/target-allocation/targets/`
-  - supports `search`, `target_type=all|asset|portfolio`, `limit`, and
-    `offset`
+  - supports `search`, `target_type=all|asset|portfolio`, `include_retired`,
+    `limit`, and `offset`; retired portfolios are left out unless
+    `include_retired=true`
+    ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
   - returns one paginated candidate list for target-position assignment
   - returns `command-center.resource_collection@v1` and exposes
     `GET /api/v1/account/target-allocation/targets/discovery/`
@@ -151,6 +153,10 @@ direct account snapshots and virtual-fund-grouped views.
     new target is written, which makes the allocation active again. A refused
     write (`overwrite=false` on an existing snapshot) changes neither the rows
     nor the allocation's `is_active`
+  - a snapshot that names a retired portfolio is refused with `409`, whatever
+    its date, and writes nothing: the statement locks the named portfolio rows
+    and writes only when every one is live
+    ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
   - `MarketsClient.add_account_target_positions(...)`,
     `account_target_positions(...)` and `clear_account_target_positions(...)`
     call these routes and return `AccountTargetPositionsSnapshotResponse`
@@ -200,6 +206,8 @@ direct account snapshots and virtual-fund-grouped views.
     (a fund no longer allocated loses its holdings set for it). Re-applying is
     idempotent. `holdings/by-fund/` then shows the funds. An infeasible plan is
     never applied (`400`); a dry run writes nothing
+  - applying is refused with `409` when a fund's portfolio was retired at or
+    before the snapshot's time; planning without applying still works
   - `MarketsClient.allocate_account_virtual_funds(...)` calls this route
 
 ## Related Concepts

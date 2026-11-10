@@ -180,6 +180,24 @@ for one holdings snapshot against the target in force at its time (or
 `AccountVirtualFundAllocationResponse`. See the
 [accounts routes](../../../fast_api/v1/accounts.md) for the valuation rule.
 
+## Portfolio Retirement
+
+A portfolio that should no longer be used is retired, not deleted
+([ADR 0049](../../../ADR/0049-portfolio-lifecycle-and-account-history.md)):
+
+```python
+page = client.portfolio_account_targets(portfolio_uid, limit=100, offset=0)
+for target in page.items:
+    ...  # write each account's target without the portfolio first
+client.retire_portfolio(portfolio_uid)
+client.reinstate_portfolio(portfolio_uid)
+```
+
+`portfolio_account_targets` returns a `ResourceCollection[PortfolioAccountTarget]`
+of the accounts whose current target names the portfolio. `retire_portfolio`
+returns the `Portfolio` with `retired_at` and raises `MarketsConflictError`
+while that list is not empty; `reinstate_portfolio` clears it.
+
 ## Provider Time Series
 
 Time series a provider produces live in its own namespace (ADR 0047). Besides

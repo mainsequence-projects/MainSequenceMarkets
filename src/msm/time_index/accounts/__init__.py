@@ -264,9 +264,19 @@ class TargetPositions(TimeIndexTableUpdater):
         return storage_column_dtypes_map(self.output_table)
 
     def update(self) -> pd.DataFrame:
+        from msm.services.portfolio_lifecycle import (
+            PortfolioRetiredError,
+            retired_portfolios_from_rows,
+        )
         from msm.services.target_positions import validate_target_positions_frame
 
-        return validate_target_positions_frame(self.get_target_positions_frame())
+        frame = validate_target_positions_frame(self.get_target_positions_frame())
+        # ADR 0049: no target snapshot may name a retired portfolio, whatever its date.
+        if "portfolio_uid" in frame.columns:
+            retired = retired_portfolios_from_rows(frame["portfolio_uid"].dropna().tolist())
+            if retired:
+                raise PortfolioRetiredError(retired, action="The target-position frame")
+        return frame
 
     def set_frame(self, frame: pd.DataFrame) -> TargetPositions:
         self._target_positions_frame = frame

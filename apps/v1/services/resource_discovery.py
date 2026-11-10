@@ -88,6 +88,7 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
                 "Target type",
                 (("all", "All"), ("asset", "Asset"), ("portfolio", "Portfolio")),
             ),
+            _boolean_filter("include_retired", "Include retired portfolios"),
         ),
         columns=(
             _column("display_label", "Name", importance="primary"),
@@ -361,14 +362,32 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
         item_label="portfolios",
         identity_fields=("uid",),
         search=True,
-        filters=(_text_filter("calendar_uid", "Calendar UID"),),
+        filters=(
+            _text_filter("calendar_uid", "Calendar UID"),
+            _boolean_filter("include_retired", "Include retired"),
+        ),
         bulk_actions=(_PORTFOLIO_DELETE,),
         columns=(
             _column("unique_identifier", "Identifier", importance="primary"),
             _column("calendar_uid", "Calendar", filter_key="calendar_uid"),
             _column("published_index_uid", "Published index"),
             _column("signal_uid", "Signal"),
+            _column("retired_at", "Retired", "datetime"),
             _column("uid", "UID"),
+        ),
+    ),
+    "portfolio-account-targets": _spec(
+        resource_id="portfolio-account-targets",
+        label="Accounts targeting the portfolio",
+        item_label="accounts",
+        identity_fields=("account_uid",),
+        columns=(
+            _column("account_uid", "Account", importance="primary"),
+            _column("target_positions_date", "Target time", "datetime"),
+            _column("weight_notional_exposure", "Weight"),
+            _column("constant_notional_exposure", "Notional"),
+            _column("account_target_allocation_uid", "Target allocation"),
+            _column("position_set_uid", "Position set"),
         ),
     ),
     "virtual-funds": _spec(

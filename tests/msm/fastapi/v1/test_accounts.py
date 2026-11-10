@@ -328,6 +328,7 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
         "target_type": "all",
         "limit": 1,
         "offset": 0,
+        "include_retired": False,
     }
     assert response.json() == {
         "items": [
@@ -419,6 +420,7 @@ def test_account_target_allocation_targets_service_maps_candidates(monkeypatch) 
         "target_type": "asset",
         "limit": 10,
         "offset": 5,
+        "include_retired": False,
     }
     assert {
         "count": response["count"],
@@ -2153,6 +2155,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
         "target_type": "all",
         "limit": 25,
         "offset": 0,
+        "include_retired": False,
     }
     assert response == {
         "count": 2,

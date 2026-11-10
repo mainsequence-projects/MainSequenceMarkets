@@ -11,6 +11,12 @@ import pytz
 import metatables.updaters.configuration as update_configuration
 from metatables import BaseUpdateStatistics, TimeIndexTableRef, TimeIndexTableUpdater
 
+from msm_portfolios.retirement import (
+    drop_retired_rows,
+    end_before_retirement,
+    retirement_boundary,
+    window_is_empty,
+)
 from ..base import (
     OutputTable,
     PortfolioCanonicalUpdater,
@@ -244,6 +250,7 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
                 output_table=self.output_table,
             )
         )
+        frame = drop_retired_rows(frame, retirement_boundary(getattr(self, "target_portfolio", None)))
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
 
@@ -257,6 +264,10 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
     def _calculate_portfolio_workflow_values(self) -> pd.DataFrame:
         latest_value = self._latest_portfolio_time_index_value()
         start, end = self._valuation_window(latest_value)
+        end = end_before_retirement(end, retirement_boundary(getattr(self, "target_portfolio", None)))
+        if window_is_empty(start, end):
+            self.logger.info("The portfolio is retired and valued up to its retirement.")
+            return pd.DataFrame()
         weights = self._executed_weights_between(start=start, end=end)
         if weights.empty:
             self.logger.info("No executed portfolio weights are available for valuation.")

@@ -250,6 +250,19 @@ def discover_portfolio_signals(request: Request) -> ResourceDiscovery:
 
 
 @router.get(
+    "/portfolio/{uid}/account-targets/discovery/",
+    response_model=ResourceDiscovery,
+    operation_id="discoverPortfolioAccountTargets",
+    summary="Discover accounts whose current target names a portfolio",
+    openapi_extra=_DISCOVERY_OPENAPI,
+    responses=_DISCOVERY_ERRORS,
+)
+def discover_portfolio_account_targets(uid: str, request: Request) -> ResourceDiscovery:
+    del uid
+    return _response("portfolio-account-targets", request)
+
+
+@router.get(
     "/portfolio/discovery/",
     response_model=ResourceDiscovery,
     operation_id="discoverPortfolios",

@@ -47,6 +47,7 @@ Recommended sections:
 - [0046. Preserve The Populated Legacy 0017 Schema](0046-legacy-0017-schema-bridge.md)
 - [0047. Markets API As The Application Boundary](0047-markets-api-application-boundary.md)
 - [0048. Rename DataNode To The MetaTables Time-Index Vocabulary](0048-time-index-vocabulary-rename.md)
+- [0049. Portfolio Lifecycle And Account History](0049-portfolio-lifecycle-and-account-history.md)
 
 ## Command Center Decisions
 

@@ -153,12 +153,6 @@ class PortfolioWeightsSnapshotResponse(BaseModel):
     weights: list[PortfolioWeightRow] = Field(default_factory=list)
 
 
-class PortfolioDeleteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    uids: list[str] = Field(default_factory=list)
-
-
 class PortfolioDeleteFailure(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -201,17 +195,6 @@ class PortfolioDeleteResponse(BaseModel):
 
 
 class PortfolioBulkDeleteResponse(PortfolioDeleteResponse):
-    failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
-
-
-class PortfolioCascadeDeleteResponse(PortfolioDeleteResponse):
-    deleted_target_positions_count: int = 0
-    deleted_virtual_funds_count: int = 0
-    deleted_virtual_fund_holdings_sets_count: int = 0
-    deleted_virtual_fund_holdings_count: int = 0
-
-
-class PortfolioBulkCascadeDeleteResponse(PortfolioCascadeDeleteResponse):
     failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
 
 

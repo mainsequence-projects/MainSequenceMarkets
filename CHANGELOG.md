@@ -7,6 +7,55 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-10
+
+### Added
+
+- `GET /api/v1/portfolio/{uid}/account-targets/` (`listPortfolioAccountTargets`) pages
+  the accounts whose current target names a portfolio (#49): each item gives the
+  account, its target allocation, the `PositionSet` uid and time of the snapshot, and
+  the portfolio row's exposure. The current target is the one
+  `GET /api/v1/account/{account_uid}/target-positions/` reads; an account that named
+  the portfolio only earlier, or whose target was cleared, is not listed. One query
+  starts from the `portfolio_uid` index. `MarketsClient.portfolio_account_targets`
+  returns a `ResourceCollection[PortfolioAccountTarget]`.
+- Portfolios can be retired instead of deleted (#51,
+  [ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
+  `Portfolio.retired_at` (revision `0023`) is null while a portfolio is live.
+  `POST /api/v1/portfolio/{uid}/retire/` (`retirePortfolio`) sets it to the time of
+  the request and is refused with `409` while any account's current target names the
+  portfolio; `POST /api/v1/portfolio/{uid}/reinstate/` (`reinstatePortfolio`) clears
+  it. `MarketsClient.retire_portfolio` and `reinstate_portfolio` call them. Nothing is
+  deleted: account target snapshots, virtual funds and their holdings, and the
+  portfolio's weights and values stay. While a portfolio is retired:
+  - a target snapshot that names it is refused with `409`, whatever its date, and
+    writes nothing; the statement locks the named portfolio rows, so it cannot
+    interleave with a retirement. The SDK `TargetPositions` updater refuses it too;
+  - applying a virtual-fund allocation for a snapshot at or after `retired_at` is
+    refused (`409` from the route, `PortfolioRetiredError` in the SDK);
+  - `GET /api/v1/portfolio/` and `GET /api/v1/account/target-allocation/targets/`
+    leave it out unless `include_retired=true`;
+  - `PortfoliosUpdater`, `PortfolioWeights`, `PortfolioRebalance` and
+    `PortfolioEngine` write nothing dated at or after `retired_at`.
+
+### Removed
+
+- `POST /api/v1/portfolio/bulk-cascade-delete/` (`bulkCascadeDeletePortfolios`), the
+  `apps.v1` services `cascade_delete_portfolio` and `bulk_cascade_delete_portfolios`,
+  `msm_portfolios.services.cascade_delete_portfolio_record` and
+  `bulk_cascade_delete_portfolio_records`, and the `PortfolioDeleteRequest`,
+  `PortfolioCascadeDeleteResponse` and `PortfolioBulkCascadeDeleteResponse` schemas.
+  The route deleted every account's target rows and virtual funds for a portfolio,
+  current targets included; account history is now kept, and a portfolio that
+  accounts referenced is retired instead (ADR 0049). `DELETE /api/v1/portfolio/{uid}/`
+  and `POST /api/v1/portfolio/bulk-delete/` are unchanged.
+
+### Changed
+
+- ADR 0048's remaining column steps are revisions `0024` to `0026`, because `0023`
+  holds `Portfolio.retired_at`; 3.1.0 shipped without the read switch the ADR had
+  assigned to it.
+
 ## [3.1.0] - 2026-11-09
 
 ### Added

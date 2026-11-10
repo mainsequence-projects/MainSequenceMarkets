@@ -151,6 +151,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/index/{uid}/related-meta-tables/",
         "/api/v1/index-type/",
         "/api/v1/portfolio/",
+        "/api/v1/portfolio/{uid}/account-targets/",
         "/api/v1/portfolio-group/",
         "/api/v1/portfolio-group/by-portfolio/{portfolio_uid}/",
         "/api/v1/portfolio-group/{uid}/portfolios/",
@@ -173,7 +174,7 @@ def test_every_resource_collection_exposes_canonical_discovery() -> None:
         == "command-center.resource_collection@v1"
     }
 
-    assert len(collection_paths) == 25
+    assert len(collection_paths) == 26
     for collection_path in collection_paths:
         discovery_path = f"{collection_path.rstrip('/')}/discovery/"
         discovery = payload["paths"][discovery_path]["get"]
@@ -744,17 +745,8 @@ def test_openapi_json_documents_portfolio_routes() -> None:
         "schema"
     ] == {"$ref": "#/components/schemas/PortfolioBulkDeleteResponse"}
 
-    portfolio_bulk_cascade_delete_operation = payload["paths"][
-        "/api/v1/portfolio/bulk-cascade-delete/"
-    ]["post"]
-    assert portfolio_bulk_cascade_delete_operation["summary"] == "Cascade delete portfolios"
-    assert portfolio_bulk_cascade_delete_operation["operationId"] == "bulkCascadeDeletePortfolios"
-    assert portfolio_bulk_cascade_delete_operation["requestBody"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/PortfolioDeleteRequest"}
-    assert portfolio_bulk_cascade_delete_operation["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"] == {"$ref": "#/components/schemas/PortfolioBulkCascadeDeleteResponse"}
+    # ADR 0049: account history is kept, so no route deletes it with a portfolio.
+    assert "/api/v1/portfolio/bulk-cascade-delete/" not in payload["paths"]
 
 
 def test_openapi_json_documents_portfolio_signal_routes() -> None:
