@@ -7,6 +7,45 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-11-11
+
+### Fixed
+
+- The account target-position, holdings and virtual-fund holdings snapshot writes run on
+  a SQLite DataSource, such as the MetaTables local runtime (#53). Before, the target and
+  holdings writes failed to compile there, and the clear and the virtual-fund write
+  compiled but SQLite refused them: each is one PostgreSQL statement whose data-modifying
+  CTEs upsert the parents, delete the old rows and insert the new ones, and SQLite accepts
+  only `SELECT` inside `WITH`. PostgreSQL keeps that statement. On SQLite the same steps
+  compile into a statement list that MetaTables runs in one transaction (MetaTables ADR
+  0026), so a snapshot still commits whole or not at all. The values bind without casts,
+  because SQLite casts `DATETIME` and `JSON` to numbers.
+- A refused write behaves the same on both dialects: an existing snapshot without
+  `overwrite`, a retired portfolio (ADR 0049) or a virtual fund of another account returns
+  no rows, and the services answer as before. On SQLite a refused write changes nothing at
+  all.
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.61,<0.2` (was `>=0.1.57`). 0.1.60 adds statement
+  lists; 0.1.61 binds UUIDs on SQLite inside `IN` lists and when given as text
+  (MetaTables#100, #101), which the services' reads need on the local runtime.
+- Requires `mainsequence>=9.0.31,<10` (was `>=9.0.29`), the SDK that MetaTables 0.1.60 and
+  later require. The lock and `requirements.txt` select `mainsequence` 9.0.40 and
+  `mainsequence-metatable` 0.1.61.
+- The README, the getting-started, tutorial, release and FastAPI guides, and the migration
+  pages gave the minimums as SDK 9.0.29 and MetaTables 0.1.51; they now give 9.0.31 and
+  0.1.61.
+- The vendored skills in `.agents/skills/metatables/` and `.agents/skills/mainsequence/`
+  are refreshed from the locked releases; the MetaTables copy now includes ADR 0026.
+- `build_replace_account_target_positions_snapshot_operation`,
+  `build_replace_account_holdings_snapshot_operation` and
+  `build_replace_account_virtual_fund_holdings_operation` take `dialect=`. On SQLite they
+  return a `MetaTableCompiledSQLTransaction`.
+- `msm.repositories.base` adds `resolve_markets_sql_target`, `compile_markets_statements`
+  and `execute_markets_write`. `compile_markets_statement` takes `data_source_uid=`. A
+  write resolves the runtime once, as compiling it did before.
+
 ## [3.2.0] - 2026-11-10
 
 ### Added
