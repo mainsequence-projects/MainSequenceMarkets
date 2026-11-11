@@ -1,5 +1,13 @@
 # ADR 0019: MetaTables Analyst agent
 
+> Amendment (2026-10-27): ms-tau-sdk 2.0.26 (its ADR 0025) gives a deployed Agent only
+> `.tau/`: skills from `.tau/skills/`, no `AGENTS.md` and nothing under `.agents/`.
+> `discover-tables` and `analyze-with-sql` move to `.tau/skills/`, beside the vendored
+> pg-aiguide skills, and the agent card points there. The repository-root `AGENTS.md` is
+> no longer part of the agent's prompt, so `.tau/SYSTEM.md` no longer calls it developer
+> guidance. `TAU_INCLUDE_DEVELOPMENT_RESOURCES` stays unset: the Analyst is not a coding
+> agent.
+>
 > Amendment (2026-10-22): `list_table_producers` lists a time-index table's registered
 > producers with `code_repository_branch_uid`, the branch the SDK declared when each was
 > first registered, or null (issue #89). Only `GET /meta-tables/{uid}/updates` adds that

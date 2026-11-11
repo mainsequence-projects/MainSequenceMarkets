@@ -108,8 +108,8 @@ revisions; do not recompute identity from columns or rewrite applied history.
 
 A password, API key, token or similar value that an application stores in a table
 is declared with `EncryptedString`, never with `String`
-([ADR 0025](../../../../docs/adr/client/0025-application-encrypted-columns.md),
-[guide](../../../../docs/client/define-and-migrate-tables.md#protect-a-column-with-application-encryption)).
+(ADR 0025, `docs/adr/client/0025-application-encrypted-columns.md`; guide section
+"Protect a column with application encryption" in `docs/client/define-and-migrate-tables.md`).
 Table grants decide who reads the row; the Secret decides who reads the value.
 
 ```python
@@ -167,6 +167,14 @@ execution. The label does not classify the SQL. Database permissions enforce
 access; row/time limits and transaction handling remain in the API. Refer to the
 query guide for engine-specific statement/batch behavior. Application DDL belongs
 to the separate migration-provider workflow.
+
+A write that must change several tables together on SQLite, where `WITH` holds only
+`SELECT`, is a statement list: `compile_sqlalchemy_statements([...],
+operation=...)` and `MetaTable.execute_transaction(...)`, one API-owned transaction.
+Wrap a check in `GuardedStatement(statement, expect_rows=n or "at_least_one",
+label=...)`; a miss rolls back and raises `MetaTableTransactionGuardError`. Never
+put `COMMIT` or savepoints in a list. PostgreSQL and SQLite only; see the query
+guide's "Several statements in one transaction".
 
 To find tables, use `MetaTable.search` as described in the
 [table discovery skill](../metatables-table-discovery/SKILL.md). Legacy convenience

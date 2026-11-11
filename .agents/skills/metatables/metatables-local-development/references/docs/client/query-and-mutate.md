@@ -63,10 +63,80 @@ version tables. Sharing, schema changes and table deletion remain API operations
 
 Bind values instead of interpolating user input. Requests have row and time limits.
 A full page indicates that more rows may exist. PostgreSQL, SQLite and MySQL reject
-multiple statements. SQL Server accepts a batch under the same restricted identity;
-an explicit commit inside a write batch can persist writes before a later error.
-Use the supported table operations when an operation needs their transaction and
-journal guarantees. See [database access](../security/index.md#sql-and-schema-boundary).
+multiple statements in one SQL string. SQL Server accepts a batch under the same
+restricted identity; an explicit commit inside a write batch can persist writes
+before a later error. To write several statements atomically, send a
+[statement list](#several-statements-in-one-transaction). Use the supported table
+operations when an operation needs their journal guarantees. See
+[database access](../security/index.md#sql-and-schema-boundary).
+
+Only PostgreSQL runs `INSERT`, `UPDATE` or `DELETE` inside `WITH`. For SQLite, MySQL
+and SQL Server, `compile_sqlalchemy_statement` raises `ValueError` when a CTE wraps
+one, instead of returning SQL the database rejects when it runs.
+
+## Several statements in one transaction
+
+A write that changes several tables together, such as a snapshot header and its
+rows, can be one PostgreSQL statement with data-modifying CTEs. SQLite cannot run
+that. Send the steps as a statement list instead: the API runs them in order in one
+transaction it owns, commits after the last one and rolls back all of them on any
+error ([ADR 0026](../adr/api/0026-atomic-statement-lists.md)).
+
+```python
+from sqlalchemy import delete, insert, select
+
+from metatables import MetaTable, MetaTableTransactionGuardError
+from metatables.compiled_sql.v1 import (
+    GuardedStatement,
+    compile_sqlalchemy_statements,
+    dialect_upsert,
+)
+
+transaction = compile_sqlalchemy_statements(
+    [
+        GuardedStatement(
+            select(portfolio.c.uid).where(
+                portfolio.c.uid.in_(portfolio_uids), portfolio.c.retired_at.is_(None)
+            ),
+            expect_rows=len(portfolio_uids),
+            label="live_portfolios",
+        ),
+        dialect_upsert(snapshot, header, key_columns=["account_uid", "as_of"]),
+        delete(holding).where(holding.c.account_uid == account_uid),
+        insert(holding).values(rows).returning(holding.c.symbol),
+    ],
+    operation="upsert",
+)
+try:
+    result = MetaTable.execute_transaction(transaction)
+except MetaTableTransactionGuardError as error:
+    raise PortfolioRetired(error.label) from error  # Nothing was written.
+```
+
+- **Statements.** Each item is a SQLAlchemy statement, or a `GuardedStatement` with
+  `expect_rows` and a `label`. A list has 1 to 32 statements. Statements do not
+  pass values to each other: a later one finds an earlier one's rows by key.
+- **Guards.** `expect_rows` is an exact count or `"at_least_one"`. The count is the
+  statement's result rows, or the rows it changed when it returns none. A miss
+  rolls everything back and raises `MetaTableTransactionGuardError`, a subclass of
+  the SDK's `ConflictError` (HTTP 409, code `compiled_sql_guard_failed`) with
+  `statement_index` (from 0), `label`, `expect_rows` and `row_count`.
+- **Result.** The last statement's rows, in the `execute_operation` response shape.
+  `limits` cover the whole list: one time limit for every statement, and `max_rows`
+  for the last statement's rows.
+- **Writes only.** `operation` is `insert`, `update`, `delete` or `upsert`; it
+  selects the write identity, as in `execute_operation`.
+- **Engines.** PostgreSQL and SQLite, including the local runtime. MySQL and SQL
+  Server refuse a list: the compiler raises `ValueError`, and the API answers 422
+  with `compiled_sql_statement_list_unsupported`.
+- **Transaction control.** The API owns the transaction. SQLite refuses `COMMIT`,
+  `ROLLBACK` and savepoints as unauthorized. On PostgreSQL, a statement that ends or
+  controls the transaction stops the list with HTTP 400 and
+  `compiled_sql_transaction_ended`; statements before it may already be committed.
+
+Other errors keep their `execute_operation` codes. A database error is HTTP 400
+`compiled_sql_database_error`, raised as the SDK's `BadRequestError`; for a list,
+its `payload["detail"]` also names `statement_index` and `label`.
 
 ## Read another registered source
 
