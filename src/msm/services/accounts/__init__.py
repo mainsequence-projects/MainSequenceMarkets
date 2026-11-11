@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib import import_module
 from typing import Any
 
@@ -19,19 +21,19 @@ _search_account_holdings_rows = _core._search_account_holdings_rows
 
 
 def get_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
-    _sync_core_account_hooks()
-    return _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
+    with _core_account_hooks():
+        return _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
 
 
 def add_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
-    _sync_core_account_hooks()
-    return _CORE_ADD_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
+    with _core_account_hooks():
+        return _CORE_ADD_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
 
 
-_PACKAGE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = get_account_holdings_snapshot_response
-
-
-def _sync_core_account_hooks() -> None:
+# The value each core hook has on this package when nothing has replaced it.
+# A different value means the hook was replaced on the package (in a test).
+_UNPATCHED_CORE_ACCOUNT_HOOKS: dict[str, Any] = {
+    name: getattr(_core, name)
     for name in (
         "account_repository",
         "uuid",
@@ -40,15 +42,34 @@ def _sync_core_account_hooks() -> None:
         "_asset_snapshot_references_by_unique_identifier",
         "_build_account_holdings_frame",
         "_search_account_holdings_rows",
-    ):
-        if name in globals():
-            setattr(_core, name, globals()[name])
-    core_get_snapshot = globals().get("get_account_holdings_snapshot_response")
-    _core.get_account_holdings_snapshot_response = (
-        _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE
-        if core_get_snapshot is _PACKAGE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE
-        else core_get_snapshot
     )
+}
+_UNPATCHED_CORE_ACCOUNT_HOOKS["get_account_holdings_snapshot_response"] = (
+    get_account_holdings_snapshot_response
+)
+
+
+@contextmanager
+def _core_account_hooks() -> Iterator[None]:
+    """Give one core call the hooks replaced on this package, then put core's back.
+
+    A hook replaced on the package reaches core only while the call runs, so it
+    cannot outlive whatever replaced it. With nothing replaced, core is not written.
+    """
+
+    replaced: dict[str, Any] = {}
+    for name, unpatched in _UNPATCHED_CORE_ACCOUNT_HOOKS.items():
+        value = globals().get(name, unpatched)
+        if value is not unpatched:
+            replaced[name] = value
+    previous = {name: getattr(_core, name) for name in replaced}
+    for name, value in replaced.items():
+        setattr(_core, name, value)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            setattr(_core, name, value)
 
 
 _EXPORTS = {

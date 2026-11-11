@@ -7,6 +7,17 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- A test that replaced an account hook on `msm.services.accounts`, such as
+  `get_account_by_uid`, no longer leaves it on `msm.services.accounts.core` (#55). The
+  snapshot entry points copied the package's hooks onto `core` before each call and never
+  put them back. pytest's `monkeypatch` undid only the package attribute, so a later test
+  calling `core` directly got the earlier test's fake. Now the entry points hand `core` only
+  the hooks replaced on the package, for one call, and restore `core`'s own afterwards,
+  also when the call raises. With nothing replaced, as in a deployment, `core` is no longer
+  written on each call.
+
 ## [3.2.1] - 2026-11-11
 
 ### Fixed
