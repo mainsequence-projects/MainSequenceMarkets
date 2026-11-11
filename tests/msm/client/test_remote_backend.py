@@ -207,9 +207,45 @@ def test_delete_uses_the_service_delete(monkeypatch, remote) -> None:
 
 def test_delete_without_a_service_route_is_not_offered(remote) -> None:
     from msm.api.remote import MarketsOperationUnsupported
+    from msm.api.virtual_funds import VirtualFund
 
     with pytest.raises(MarketsOperationUnsupported, match="not offered remotely"):
+        VirtualFund.delete(uuid.uuid4())
+
+
+def test_account_delete_runs_the_cascading_delete_remotely(monkeypatch, remote) -> None:
+    uid = str(uuid.uuid4())
+    calls: list[tuple[str, Any]] = []
+
+    def delete_account(context, *, uid):
+        calls.append(("delete", str(uid)))
+        return {"detail": "deleted", "uid": str(uid), "deleted_count": 1, "deleted_rows": {"orders": 2}}
+
+    def bulk_delete_accounts(context, *, uids):
+        calls.append(("bulk_delete", list(uids)))
+        return {"detail": "deleted", "deleted_count": len(uids), "deleted": [], "failed": []}
+
+    monkeypatch.setattr("msm.services.delete_account", delete_account, raising=False)
+    monkeypatch.setattr("msm.services.bulk_delete_accounts", bulk_delete_accounts, raising=False)
+
+    assert Account.delete(uid)["deleted_rows"] == {"orders": 2}
+    assert Account.bulk_delete(uids=[uid])["deleted_count"] == 1
+    assert calls == [("delete", uid), ("bulk_delete", [uid])]
+
+
+def test_account_delete_conflicts_and_missing_accounts_come_back_typed(monkeypatch, remote) -> None:
+    from msm.api.remote import MarketsConflictError
+    from msm.services import AccountDeleteConflictError
+
+    def refused(context, *, uid):
+        raise AccountDeleteConflictError("Account 'a' cannot be deleted; nothing was deleted.")
+
+    monkeypatch.setattr("msm.services.delete_account", refused, raising=False)
+    with pytest.raises(MarketsConflictError, match="nothing was deleted"):
         Account.delete(uuid.uuid4())
+
+    monkeypatch.setattr("msm.services.delete_account", lambda context, *, uid: None, raising=False)
+    assert Account.delete(uuid.uuid4()) is None
 
 
 def test_validation_errors_come_back_as_value_errors(remote) -> None:
@@ -235,7 +271,9 @@ def test_rows_describe_their_remote_operations(remote) -> None:
     assert asset_operations["get_by_uid"]["write"] is False
     assert "delete" in asset_operations
     account_operations = {operation["name"] for operation in described["account"]["operations"]}
-    assert "delete" not in account_operations
+    assert {"delete", "bulk_delete"} <= account_operations
+    fund_operations = {operation["name"] for operation in described["virtual-fund"]["operations"]}
+    assert "delete" not in fund_operations
 
 
 def test_provider_row_classes_keep_the_runtime_backend(remote) -> None:

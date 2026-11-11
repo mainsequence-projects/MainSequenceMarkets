@@ -276,10 +276,6 @@ def update_account(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str
     return account_repository.update_account(context, **kwargs)
 
 
-def delete_account(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
-    return account_repository.delete_account(context, **kwargs)
-
-
 def create_account_allocation_model(
     context: MarketsRepositoryContext,
     **kwargs: Any,
@@ -308,13 +304,6 @@ def search_account_target_allocations(
     return account_repository.search_account_target_allocations(context, **kwargs)
 
 
-def delete_account_target_allocation(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return account_repository.delete_account_target_allocation(context, **kwargs)
-
-
 def create_position_set(
     context: MarketsRepositoryContext,
     **kwargs: Any,
@@ -327,13 +316,6 @@ def search_position_sets(
     **kwargs: Any,
 ) -> dict[str, Any]:
     return account_repository.search_position_sets(context, **kwargs)
-
-
-def delete_position_set(
-    context: MarketsRepositoryContext,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    return account_repository.delete_position_set(context, **kwargs)
 
 
 def _build_account_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -832,9 +814,6 @@ __all__ = [
     "create_account_allocation_model",
     "create_account_target_allocation",
     "create_position_set",
-    "delete_account",
-    "delete_account_target_allocation",
-    "delete_position_set",
     "get_account_by_uid",
     "get_account_frontend_detail_summary",
     "get_account_holdings_snapshot_response",

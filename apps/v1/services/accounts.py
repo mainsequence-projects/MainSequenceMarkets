@@ -18,6 +18,9 @@ from apps.v1.schemas.accounts import (
     AccountTargetPositionsSnapshotResponse,
     AccountVirtualFundAllocationRequest,
     AccountVirtualFundAllocationResponse,
+    AccountBulkDeleteResponse,
+    AccountDeletePreflightResponse,
+    AccountDeleteResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 
@@ -272,6 +275,61 @@ def search_account_target_allocation_targets(
             AccountTargetAllocationCandidate.model_validate(row) for row in response["results"]
         ],
     }
+
+
+@registry_write("account", "delete")
+def delete_account(*, uid: str) -> AccountDeleteResponse | None:
+    """Delete one account with its whole history (ADR 0050)."""
+
+    from msm.services import delete_account as delete_account_record
+
+    runtime = _get_delete_runtime()
+    deleted = delete_account_record(runtime.context, uid=uid)
+    if deleted is None:
+        return None
+    return AccountDeleteResponse.model_validate(deleted)
+
+
+@registry_write("account", "bulk-delete")
+def bulk_delete_accounts(*, uids: list[str]) -> AccountBulkDeleteResponse:
+    from msm.services import bulk_delete_accounts as bulk_delete_account_records
+
+    runtime = _get_delete_runtime()
+    return AccountBulkDeleteResponse.model_validate(
+        bulk_delete_account_records(runtime.context, uids=uids)
+    )
+
+
+def preflight_bulk_delete_accounts(*, uids: list[str]) -> AccountDeletePreflightResponse:
+    from msm.services import preflight_bulk_delete_accounts as preflight_account_records
+
+    runtime = _get_delete_runtime()
+    return AccountDeletePreflightResponse.model_validate(
+        preflight_account_records(runtime.context, uids=uids)
+    )
+
+
+def _get_delete_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+
+    return resolve_apps_v1_runtime(
+        models=[
+            "Account",
+            "AccountHoldingsSet",
+            "AccountHoldingsStorage",
+            "AccountTargetAllocation",
+            "PositionSet",
+            "TargetPositionsStorage",
+            "VirtualFund",
+            "VirtualFundHoldingsSet",
+            "VirtualFundHoldingsStorage",
+            "OrderManager",
+            "OrdersStorage",
+            "TradesStorage",
+            "OrderEventsStorage",
+        ],
+        row_model_name="DELETE /api/v1/account/{uid}/",
+    )
 
 
 def _get_runtime():

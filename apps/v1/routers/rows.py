@@ -10,8 +10,9 @@ methods, so the remote and runtime backends cannot drift apart; there is no
 generic query endpoint.
 
 Writes go through ``registry_write``, which records who made them. ``delete``
-runs the resource's service delete, with its preflight checks, and is offered
-only where such a service exists.
+runs the row class's own ``delete`` where the class defines one (``Account``
+and the composites), else the resource's service delete with its preflight
+checks, and is offered only where one of them exists.
 """
 
 from __future__ import annotations
@@ -201,15 +202,14 @@ def run_row_operation(
 def _owns_checked_delete(cls: type) -> bool:
     """Whether ``cls`` implements its own ``delete`` with its own checks.
 
-    The table row base class's ``delete`` removes one row with no preflight, so
-    a table row class deletes remotely only through its resource's service.
-    Composites such as ``Curve`` or ``PricingMarketDataSetBinding`` implement
-    ``delete`` themselves and run it remotely like any other operation.
+    The table row base class's ``delete`` removes one row with no preflight, so a
+    table row class that inherits it deletes remotely only through its resource's
+    service. A class that defines ``delete`` itself, such as ``Account`` (ADR 0050)
+    or the composites ``Curve`` and ``PricingMarketDataSetBinding``, runs it remotely
+    like any other operation.
     """
 
-    from msm.api.base import MarketsMetaTableRow
-
-    return not issubclass(cls, MarketsMetaTableRow) and "delete" in vars(cls)
+    return "delete" in vars(cls)
 
 
 def _run(call: Callable[[], Any], encode: Callable[[Any], Any]) -> RowOperationResponse | JSONResponse:

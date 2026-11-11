@@ -43,6 +43,17 @@ STORED_WHEN = "2026-11-10 15:30:00.000000"  # How the local runtime stores a UTC
 
 @pytest.fixture
 def sqlite_markets(tmp_path, monkeypatch):
+    return make_sqlite_markets(tmp_path, monkeypatch)
+
+
+def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
+    """A migrated SQLite DataSource whose operations run through MetaTables' server code.
+
+    ``prepare(engine)`` runs after the migration and before the execution identity is
+    built, so tables it creates are readable and writable by the identity. Every SQL
+    text sent to the backend is recorded in ``statements``.
+    """
+
     from mainsequence.code_repository_context import GitCodeRepositorySourceContext
     from metatables.api.backend.backends.access import ExecutionIdentity
     from metatables.api.backend.backends.contracts import SQLExecutionError
@@ -60,6 +71,8 @@ def sqlite_markets(tmp_path, monkeypatch):
     with engine.connect() as connection:
         command.upgrade(_config(connection), "head")
         connection.commit()
+    if prepare is not None:
+        prepare(engine)
 
     source = workspace.data_source
     backend = backend_for(source)
@@ -74,8 +87,11 @@ def sqlite_markets(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
 
+    statements: list[str] = []
+
     def execute_operation(cls, operation, *, timeout=None):
         wire = MetaTableCompiledSQLOperation.model_validate_json(operation.model_dump_json())
+        statements.append(wire.statement.sql)
         return backend.sql.execute(
             identity=identity,
             sql_text=wire.statement.sql,
@@ -87,6 +103,7 @@ def sqlite_markets(tmp_path, monkeypatch):
 
     def execute_transaction(cls, transaction, *, timeout=None):
         wire = MetaTableCompiledSQLTransaction.model_validate_json(transaction.model_dump_json())
+        statements.extend(statement.sql for statement in wire.statements)
         try:
             return backend.sql.execute_transaction(
                 identity=identity,
@@ -113,7 +130,7 @@ def sqlite_markets(tmp_path, monkeypatch):
 
     monkeypatch.setattr(MetaTable, "execute_operation", classmethod(execute_operation))
     monkeypatch.setattr(MetaTable, "execute_transaction", classmethod(execute_transaction))
-    return SimpleNamespace(engine=engine, context=MarketsRepositoryContext())
+    return SimpleNamespace(engine=engine, context=MarketsRepositoryContext(), statements=statements)
 
 
 def _insert(engine, table_name: str, **values) -> dict:

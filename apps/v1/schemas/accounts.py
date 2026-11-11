@@ -146,3 +146,92 @@ class AccountTargetAllocationCandidate(BaseModel):
     secondary_label: str | None = None
     current_snapshot: AccountTargetAllocationCandidateCurrentSnapshot | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+AccountDeletedRows = dict[str, int]
+
+
+class AccountDeleteResponse(BaseModel):
+    """One account deleted with its history (ADR 0050)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    uid: str
+    unique_identifier: str
+    deleted_count: int = 1
+    deleted_rows: AccountDeletedRows = Field(
+        default_factory=dict,
+        description=(
+            "Markets rows deleted with the account, per table: order_events, trades, "
+            "orders, order_managers, virtual_fund_holdings, virtual_fund_holdings_sets, "
+            "virtual_funds, target_positions, position_sets, target_allocations, holdings "
+            "and holdings_sets. Counted just before the delete ran."
+        ),
+    )
+    other_namespace_cascades: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Tables in other namespaces whose own CASCADE keys delete their rows that "
+            "reference the account or its rows. Markets sends them no statement."
+        ),
+    )
+
+
+class AccountDeleteFailure(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    detail: str
+
+
+class AccountBulkDeleteResponse(BaseModel):
+    """Accounts deleted with their history, each in its own transaction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    deleted_count: int = 0
+    deleted: list[AccountDeleteResponse] = Field(default_factory=list)
+    failed: list[AccountDeleteFailure] = Field(default_factory=list)
+    other_namespace_cascades: list[str] = Field(default_factory=list)
+
+
+class AccountDeletePreflightItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    unique_identifier: str
+    row_counts: AccountDeletedRows = Field(
+        default_factory=dict,
+        description="Markets rows the delete would remove, per table.",
+    )
+    blockers: list[str] = Field(default_factory=list)
+
+
+def _bulk_delete_preflight_response() -> type[BaseModel]:
+    prepare_apps_v1_import_namespace()
+    from msm.api.http import BulkDeletePreflightResponse
+
+    return BulkDeletePreflightResponse
+
+
+class AccountDeletePreflightResponse(_bulk_delete_preflight_response()):
+    """What deleting the selected accounts removes, reaches and is blocked by (ADR 0050)."""
+
+    accounts: list[AccountDeletePreflightItem] = Field(default_factory=list)
+    other_namespace_cascades: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Tables in other namespaces whose own CASCADE keys delete their rows that "
+            "reference the accounts or their rows. Markets sends them no statement."
+        ),
+    )
+    other_namespace_restricts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Tables in other namespaces whose RESTRICT keys refuse the delete while they "
+            "hold rows that reference the accounts or their rows. Markets cannot count "
+            "those rows; the application that owns each table deletes them first."
+        ),
+    )

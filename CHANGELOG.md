@@ -7,6 +7,55 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- Accounts can be deleted with their whole history (#58,
+  [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)).
+  `DELETE /api/v1/account/{uid}/` (`deleteAccount`), `POST /api/v1/account/bulk-delete/`
+  (`bulkDeleteAccounts`) and `POST /api/v1/account/bulk-delete/preflight/`
+  (`preflightBulkDeleteAccounts`), offered as a bulk action on the account list. One
+  transaction removes the account's orders, trades and the order events of those
+  orders, its order managers, virtual funds, target allocations, position sets,
+  holdings sets and their rows, then the account, on PostgreSQL and SQLite; if
+  anything refuses, nothing is deleted.
+  - Markets sends deletes only to its own tables. A table in another namespace loses
+    rows only through its own foreign key: a `CASCADE` key deletes them with their
+    parent and the response lists the table in `other_namespace_cascades`; a
+    `RESTRICT` key refuses the delete with `409`. The preflight reports both kinds of
+    table from the MetaTables impact, and the Markets rows per table for each
+    account.
+  - Orders of other accounts that name the account's order managers, and virtual
+    funds of other accounts allocated from its holdings sets, block the delete.
+  - The same identities that may delete a portfolio may delete an account; both
+    routes are registry writes.
+- `msm.services.delete_account`, `bulk_delete_accounts`, `preflight_account_delete`,
+  `preflight_bulk_delete_accounts` and `account_delete_impact` run the delete for the
+  routes and for `msm.api`; `msm.repositories.account_deletion` compiles it.
+
+### Changed
+
+- `Account.delete(uid)` deletes the account with its history, as the route does,
+  under the runtime and the remote backend; it was a one-row delete in-process and
+  `MarketsOperationUnsupported` remotely. It returns `None` for an unknown account and
+  raises `AccountDeleteConflictError` (`MarketsConflictError` remotely) when a key
+  refuses it. `Account.bulk_delete(uids=...)` is new. The row router now runs any
+  row class's own `delete`.
+- The API runtime also binds `OrdersStorage`, `TradesStorage` and
+  `OrderEventsStorage`.
+
+### Removed
+
+- `msm.services.delete_account_target_allocation`, `delete_position_set` and
+  `delete_virtual_fund`, with `msm.repositories.accounts`'
+  `build_delete_account_target_allocation_operation`,
+  `delete_account_target_allocation`, `build_delete_position_set_operation`,
+  `delete_position_set` and `msm.repositories.virtual_funds`'
+  `build_delete_virtual_fund_operation` and `delete_virtual_fund`. Nothing called
+  them, and an account's history is not removed from an account that is kept
+  (ADR 0049). `msm.repositories.build_delete_account_operation` and `delete_account`
+  now compile and run the cascading delete and take the account's
+  `unique_identifier` as well as its `uid`.
+
 ### Fixed
 
 - `Curve.delete(uid, delete_values=True)` and

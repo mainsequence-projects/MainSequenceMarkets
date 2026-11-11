@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-11-11), not implemented. Tracked in
+Accepted (2026-11-11), implemented in 3.3.0 through
 [issue #58](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/58).
 Builds on [ADR 0049](0049-portfolio-lifecycle-and-account-history.md) decision 1
 (account history is kept for as long as the account exists) and amends
@@ -201,6 +201,46 @@ the two registry deletes behave differently with no ms-markets rule behind it.
 - The Markets API gains three account routes. The release is a minor version.
 - `docs/fast_api/v1/accounts.md` and the account knowledge pages describe the
   delete, its preflight and what blocks it.
-- Not yet verified: whether MetaTables' `delete_rows` impact reports blockers
-  and cascades from foreign keys in other namespaces. If it does not, the
-  preflight must find those tables another way.
+- MetaTables' `delete_rows` impact reports both kinds of key from other
+  namespaces: its cascade walk follows every table's declared cascade targets,
+  and it adds a `restrict` edge for each registered key that targets a table the
+  delete reaches. Tables the caller cannot view appear as opaque nodes.
+
+## Implementation Notes
+
+### 2026-11-11: 3.3.0
+
+- **Statements.** `msm.repositories.account_deletion` compiles thirteen
+  statements in decision 1's order and runs them as one MetaTables statement list
+  on both dialects (ADR 0026 allows lists on PostgreSQL too). The last deletes the
+  account only while it still has the `unique_identifier` read before, and is
+  guarded to one row: an account that vanished in between answers `404`, one that
+  was renamed answers `409`, and nothing is deleted either way. Order events are
+  deleted when their `order_identifier` belongs to one of the account's orders and
+  to no other account's order, because orders are unique per account, not
+  globally.
+- **Counts.** A statement list returns only its last statement's rows, so
+  `deleted_rows` and the preflight's `row_counts` come from one counting read
+  just before the delete. The same read counts decision 3's Markets-side
+  blockers, which refuse the delete before it is sent: orders of other accounts on
+  its order managers, and virtual-fund holdings sets and rows of other accounts
+  allocated from its holdings sets.
+- **Other namespaces.** `account_delete_impact` splits the MetaTables impact by
+  namespace: nodes outside the Markets namespace that the delete reaches are
+  `other_namespace_cascades`, and `restrict` edges whose source is outside it are
+  `other_namespace_restricts`. Both are warnings, because Markets cannot count
+  rows in those tables. A `RESTRICT` refusal from the database becomes
+  `AccountDeleteConflictError` naming those tables.
+- **SQLite.** MetaTables' SQLite authorizer is also asked about the reads SQLite
+  makes to enforce a foreign key, so on the local runtime the delete is refused
+  while any table the caller cannot read has a key into the account tables, even
+  with no referencing rows. MetaTables documents this limitation;
+  [MetaTables#105](https://github.com/mainsequence-projects/MetaTables/issues/105)
+  asks to lift it. The SQLite tests give the identity access to the provider
+  tables and check separately that no statement names them; a strict `xfail`
+  test turns red once MetaTables lifts the limitation.
+- **Row router.** `_owns_checked_delete` now accepts any row class that defines
+  `delete` itself, so `Account.delete` and `Account.bulk_delete` run through the
+  generic row path, wrapped in `registry_write("account", "delete")` and
+  `registry_write("account", "bulk_delete")`. The HTTP routes use
+  `registry_write("account", "delete")` and `("account", "bulk-delete")`.

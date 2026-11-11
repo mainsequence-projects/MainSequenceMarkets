@@ -10,6 +10,7 @@ pinned to command-center-sdk `0.1.13`, commit
 
 | Resource | Discovery | Preflight | Execution |
 | --- | --- | --- | --- |
+| Accounts | `GET /api/v1/account/discovery/` | `POST /api/v1/account/bulk-delete/preflight/` | `POST /api/v1/account/bulk-delete/` |
 | Asset categories | `GET /api/v1/asset-category/discovery/` | `POST /api/v1/asset-category/bulk-delete/preflight/` | `POST /api/v1/asset-category/bulk-delete/` |
 | Portfolios | `GET /api/v1/portfolio/discovery/` | `POST /api/v1/portfolio/bulk-delete/preflight/` | `POST /api/v1/portfolio/bulk-delete/` |
 | Portfolio groups | `GET /api/v1/portfolio-group/discovery/` | `POST /api/v1/portfolio-group/bulk-delete/preflight/` | `POST /api/v1/portfolio-group/bulk-delete/` |
@@ -67,7 +68,11 @@ table reaches through foreign keys. It asks MetaTables
 
 Deleting portfolios or portfolio groups cascades to their
 `PortfolioGroupMembership` rows; deleting asset categories cascades to their
-`AssetCategoryMembership` rows. If MetaTables cannot compute the impact,
+`AssetCategoryMembership` rows. Deleting accounts removes their whole history
+([ADR 0050](../../ADR/0050-account-deletion.md)); its preflight also lists, per
+account, the Markets rows it removes (`accounts[].row_counts`), the rows of other
+accounts that block it, and the tables in other namespaces that its foreign keys
+reach (`other_namespace_cascades`, `other_namespace_restricts`). If MetaTables cannot compute the impact,
 `impact` is `null` and a warning says so. The preflight is not blocked, because
 the database still applies and enforces every foreign-key action.
 
@@ -92,6 +97,7 @@ The discovery and preflight operation IDs are also exposed through
 `/.well-known/command-center/connection-contract` as resource operations. The
 three execution operation IDs remain mutation operations:
 
+- `discoverAccounts` / `preflightBulkDeleteAccounts` / `bulkDeleteAccounts`
 - `discoverAssetCategories` / `preflightBulkDeleteAssetCategories` /
   `bulkDeleteAssetCategories`
 - `discoverPortfolios` / `preflightBulkDeletePortfolios` /

@@ -51,6 +51,17 @@ _PORTFOLIO_GROUP_DELETE = build_bulk_delete_action(
     confirmation_title="Delete portfolio groups",
     confirmation_warning="Deleted portfolio groups cannot be restored.",
 )
+_ACCOUNT_DELETE = build_bulk_delete_action(
+    action_id="bulk-delete-accounts",
+    label="Delete selected",
+    endpoint="/api/v1/account/bulk-delete/",
+    preflight_endpoint="/api/v1/account/bulk-delete/preflight/",
+    confirmation_title="Delete accounts",
+    confirmation_warning=(
+        "Deleted accounts cannot be restored. Each account's orders, trades, order "
+        "managers, virtual funds, targets and holdings history are deleted with it."
+    ),
+)
 _PORTFOLIO_DELETE = build_bulk_delete_action(
     action_id="bulk-delete-portfolios",
     label="Delete selected",
@@ -68,6 +79,7 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
         item_label="accounts",
         identity_fields=("uid",),
         search=True,
+        bulk_actions=(_ACCOUNT_DELETE,),
         columns=(
             _column("account_name", "Name", importance="primary"),
             _column("unique_identifier", "Identifier"),
