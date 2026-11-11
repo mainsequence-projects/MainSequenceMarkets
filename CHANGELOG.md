@@ -7,6 +7,14 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-11-11
+
+### Changed
+
+- No code changes from 3.2.2. This release redeploys the Production Markets API: the
+  platform workflow for the 3.2.2 merge failed while preparing its image, so its migration
+  Job and API rollout never ran.
+
 ## [3.2.2] - 2026-11-11
 
 ### Fixed
