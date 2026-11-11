@@ -163,7 +163,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.51).
+requirement; the Markets migration client requirement is separate (currently 0.1.61).
 
 FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
 canonical and pricing runtime attachments. Discovery during shared-API wake or
@@ -178,11 +178,11 @@ persistent temporary failures also stop startup. Normal requests do not use this
 
 ### Upgrading the migration client
 
-The project requires `mainsequence>=9.0.29,<10` and
-`mainsequence-metatable>=0.1.51,<0.2`; `uv.lock` and `requirements.txt` select
-`mainsequence` 9.0.30 and `mainsequence-metatable` 0.1.51. Move the SDK and the
-client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.51
-itself requires SDK 9.0.29 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
+The project requires `mainsequence>=9.0.31,<10` and
+`mainsequence-metatable>=0.1.61,<0.2`; `uv.lock` and `requirements.txt` select
+`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.61. Move the SDK and the
+client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.60
+and later require SDK 9.0.31 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
 which raise on the request identity's Teams. After changing the dependency, run
 `mainsequence code-repository sync --path .`, refresh the MetaTables-owned guidance
 with `metatables copy-metatables-skills --path .`, and run the checks above. Keep the

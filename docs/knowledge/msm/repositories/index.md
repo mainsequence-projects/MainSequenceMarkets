@@ -45,6 +45,27 @@ permission checks to repository helpers. See
 [MetaTable Registration](../platform/meta_table_registration.md) for the
 DataSource and dialect selection rules.
 
+### Writes That Change Several Tables
+
+The account target, holdings and virtual-fund holdings snapshot writes each change
+several tables and must commit together. They resolve the DataSource and dialect once
+with `resolve_markets_sql_target(context)`, then compile for it:
+
+- **PostgreSQL:** one statement whose data-modifying CTEs upsert the parents, delete
+  the old rows and insert the new ones.
+- **SQLite (the local runtime):** SQLite accepts only `SELECT` inside `WITH`, so the
+  same steps compile with `compile_markets_statements(...)` into an ordered statement
+  list. MetaTables runs the list in one transaction (MetaTables ADR 0026). Later
+  statements find what earlier ones wrote by key. Values bind without casts, because
+  SQLite casts `DATETIME` and `JSON` to numbers.
+
+`execute_markets_write(write, *, context, refused_by=...)` runs either form. On
+PostgreSQL a refused write (an existing snapshot without `overwrite`, a retired
+portfolio, a virtual fund of another account) writes nothing and returns no rows. On
+SQLite a guard statement with the matching label stops the transaction, so nothing at
+all is written, and the call also returns no rows. Services check for that empty
+result the same way on both dialects.
+
 ## Extension Notes
 
 Add generic behavior in `crud` only when it applies across models. Add

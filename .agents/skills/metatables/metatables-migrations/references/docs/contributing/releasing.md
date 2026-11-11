@@ -66,7 +66,9 @@ The minimum and lockfile now select published SDK `9.0.19`. SDK 9.0.14 is the fi
 caller and to name workloads
 ([ADR 0002](../adr/api/0002-application-administration-and-table-ownership.md)).
 SDK 9.0.10 is the first whose `User` reads workload User rows.
-The repository requires SDK 9.0.26, whose request identity asks Team membership on
+The repository requires SDK 9.0.31, the first whose `Agent` parses platform Agent reads
+without the retired `runtime_update`; with earlier SDKs the hosted API cannot name its
+Analyst (ADR 0019). SDK 9.0.26 is the first whose request identity asks Team membership on
 demand with `in_teams()` (SDK #225); caller assertions stop carrying Team UIDs.
 SDK 9.0.9 is the first whose request identity exposes the caller's signed Team UIDs
 and admin flag; hosted admission needs them to admit workload Users
@@ -82,6 +84,7 @@ minimum, update it in `pyproject.toml`, then run:
 
 ```bash
 uv lock --upgrade-package mainsequence
+uv export --locked --no-dev --no-hashes --extra agent --format requirements-txt -o requirements.txt
 uv sync --frozen --all-extras
 uv run --frozen --all-extras python -m metatables.sdk_compat
 ```

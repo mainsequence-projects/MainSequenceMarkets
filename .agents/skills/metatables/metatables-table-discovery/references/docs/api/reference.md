@@ -23,6 +23,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/meta-tables/` | Reserve Tables | 201 |
 | GET | `/meta-tables/column-search/` | Column Search | 200 |
 | POST | `/meta-tables/execute-operation/` | Execute Operation | 200 |
+| POST | `/meta-tables/execute-transaction/` | Execute Transaction | 200 |
 | POST | `/meta-tables/filter/` | Filter Meta Tables | 200 |
 | POST | `/meta-tables/finalize-managed/` | Finalize Managed | 200 |
 | POST | `/meta-tables/import-from-data-source/` | Import Source | 200 |
@@ -83,6 +84,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | POST | `/time-index-meta-tables/` | Reserve Tables | 201 |
 | GET | `/time-index-meta-tables/column-search/` | Time Index Column Search | 200 |
 | POST | `/time-index-meta-tables/execute-operation/` | Time Index Execute Operation | 200 |
+| POST | `/time-index-meta-tables/execute-transaction/` | Time Index Execute Transaction | 200 |
 | POST | `/time-index-meta-tables/filter/` | Time Index Filter Meta Tables | 200 |
 | POST | `/time-index-meta-tables/finalize-managed/` | Time Index Finalize Managed | 200 |
 | POST | `/time-index-meta-tables/get-data-between-dates-from-table-update/` | Get Data Between Dates From Table Update | 200 |

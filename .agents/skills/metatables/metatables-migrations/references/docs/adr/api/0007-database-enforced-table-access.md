@@ -1,5 +1,12 @@
 # ADR 0007: Enforce table grants in the database
 
+> Amendment (2026-11-10, [MetaTables #98](https://github.com/mainsequence-projects/MetaTables/issues/98)):
+> [ADR 0026](0026-atomic-statement-lists.md) lets a write carry an ordered list of
+> statements that the API runs in one transaction. One statement per request still holds
+> for each statement: each goes to the driver alone, and after each one the driver must
+> report the API's transaction still open, or the API stops and rolls back. Reads keep
+> one statement.
+
 > Amendment (2026-10-19): [ADR 0024](0024-namespace-and-table-access-roles.md) keeps the two
 > privilege sets: `data_viewer` maps to Reader's `SELECT`, `data_writer`, `editor` and `owner`
 > to Writer's privileges, and `metadata_viewer` to none. An admin group role holds write
@@ -214,7 +221,8 @@ with `SET ROLE` is not safe: caller SQL can switch to another User's role with
 `set_config('role', …)`.
 
 Each request sends exactly one statement through PostgreSQL's extended query
-protocol, which rejects a second statement such as `COMMIT; DELETE …`. Read-only
+protocol, which rejects a second statement such as `COMMIT; DELETE …`. (A write may
+send an ordered list of such statements in one API transaction: see ADR 0026.) Read-only
 requests run in a `READ ONLY` transaction. The API cancels queries that exceed
 their time limit, because callers can change their own timeout settings.
 

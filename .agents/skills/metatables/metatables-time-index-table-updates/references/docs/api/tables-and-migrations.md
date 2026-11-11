@@ -150,6 +150,26 @@ default to 1,000 and are capped at 10,000; time limits default to 15 seconds and
 capped at 60 seconds. `operation="select"` selects read mode; the other operation
 labels select write mode. They do not classify SQL.
 
+`POST /meta-tables/execute-transaction/` accepts the same fields with `statements`,
+a list of 1 to 32 statements, in place of `statement`, and a write operation
+(`insert`, `update`, `delete` or `upsert`). Each statement may add `expect_rows`
+(an exact count or `"at_least_one"`) and a `label`. The API runs them in order in
+one write transaction, commits after the last and rolls back on any error. It
+returns the last statement's rows in the `execute-operation` shape; the limits cover
+the whole list. Its errors:
+
+| Status | Code | When |
+| --- | --- | --- |
+| 400 | `compiled_sql_database_error` | A statement failed in the database; the body adds `statement_index` and `label`. |
+| 400 | `compiled_sql_transaction_ended` | Caller SQL ended or controlled the API's transaction (PostgreSQL). |
+| 400 | `sql_deadline_exceeded` | The list ran past its time limit. |
+| 409 | `compiled_sql_guard_failed` | A statement missed `expect_rows`; the body adds `statement_index`, `label`, `expect_rows` and `row_count`. |
+| 422 | `compiled_sql_statement_list_unsupported` | The DataSource is MySQL or SQL Server. |
+| 422 | `compiled_sql_dialect_mismatch` | A statement's dialect or paramstyle differs from the DataSource's. |
+| 422 | (request validation) | A read operation, an empty or longer list, or an invalid `expect_rows`. |
+
+See [ADR 0026](../adr/api/0026-atomic-statement-lists.md).
+
 `POST /meta-tables/run-query/` accepts `{"data_source_uid": "…", "sql": "…"}` and
 optional `limits`. It uses the same restricted execution path in read mode and
 returns the `ok/results/truncated/max_rows/row_count/error` success envelope. Errors

@@ -31,6 +31,7 @@ certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
+    #   mainsequence
     #   mainsequence-metatable
     #   ms-markets
     #   requests
@@ -122,11 +123,11 @@ keyring==25.7.0
     #   mainsequence-metatable
 loguru==0.7.3
     # via fastembed
-mainsequence==9.0.30
+mainsequence==9.0.40
     # via
     #   mainsequence-metatable
     #   ms-markets
-mainsequence-metatable==0.1.57
+mainsequence-metatable==0.1.61
     # via ms-markets
 mako==1.3.12
     # via alembic

@@ -33,9 +33,11 @@ from sqlalchemy import (
 )
 from sqlalchemy import and_
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import aliased
 
-from metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
+from metatables.compiled_sql.v1 import GuardedStatement
 from msm.time_index.accounts.constants import TARGET_TYPE_PORTFOLIO
 from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
 from msm.time_index.assets.storage import AssetSnapshotsStorage
@@ -50,9 +52,13 @@ from msm.models import (
 )
 
 from .base import (
+    MarketsCompiledWrite,
     MarketsRepositoryContext,
     compile_markets_statement,
+    compile_markets_statements,
     execute_markets_operation,
+    execute_markets_write,
+    resolve_markets_sql_target,
 )
 from .crud import (
     build_create_model_operation,
@@ -62,6 +68,12 @@ from .crud import (
     mirror_renamed_columns,
     renamed_keyword,
 )
+
+# Guard labels of the SQLite statement lists. Each marks a write the single
+# PostgreSQL statement would also have refused by writing nothing.
+LIVE_PORTFOLIOS_GUARD = "live_portfolios"
+POSITION_SET_GUARD = "position_set"
+HOLDINGS_SET_GUARD = "holdings_set"
 
 
 def build_create_account_operation(
@@ -798,11 +810,35 @@ def build_replace_account_holdings_snapshot_operation(
     holdings_date: dt.datetime | str,
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool = False,
-) -> MetaTableCompiledSQLOperation:
+    dialect: MetaTableCompiledSQLDialect | None = None,
+) -> MarketsCompiledWrite:
+    """Write one account holdings snapshot atomically.
+
+    On PostgreSQL this is one statement. SQLite accepts only `SELECT` inside
+    `WITH`, so there the same steps run as a statement list in one transaction
+    (MetaTables ADR 0026). Either way the write returns the inserted rows, and
+    nothing when the snapshot exists and `overwrite` is false.
+    """
+
     if not positions:
         raise ValueError("Account holdings snapshot replacement requires positions.")
 
     normalized_holdings_date = _utc_timestamp(holdings_date, field_name="holdings_date")
+    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
+    if dialect == "sqlite":
+        return compile_markets_statements(
+            _holdings_snapshot_statement_list(
+                holdings_set_uid=holdings_set_uid,
+                account_uid=account_uid,
+                holdings_date=normalized_holdings_date,
+                positions=positions,
+                overwrite=overwrite,
+            ),
+            context=context,
+            operation="upsert",
+            data_source_uid=data_source_uid,
+            dialect=dialect,
+        )
     holdings_set_uid_param = bindparam(
         "holdings_set_uid",
         value=uuid.UUID(str(holdings_set_uid)),
@@ -953,16 +989,153 @@ def build_replace_account_holdings_snapshot_operation(
         statement,
         context=context,
         operation="upsert",
+        dialect=dialect,
+        data_source_uid=data_source_uid,
     )
+
+
+def _holdings_snapshot_statement_list(
+    *,
+    holdings_set_uid: uuid.UUID | str,
+    account_uid: uuid.UUID | str,
+    holdings_date: dt.datetime,
+    positions: Sequence[Mapping[str, Any]],
+    overwrite: bool,
+) -> list[GuardedStatement | Any]:
+    """The holdings snapshot write as ordered statements for one transaction.
+
+    Upsert the holdings set, refused by the `holdings_set` guard when it exists
+    and `overwrite` is false; with `overwrite`, delete its rows; insert the new
+    rows. Later statements find the set by its key. Values bind without casts:
+    SQLite casts `DATETIME` and `JSON` to numbers.
+    """
+
+    account = uuid.UUID(str(account_uid))
+
+    def account_param() -> Any:
+        return bindparam("account_uid", value=account, type_=Uuid(as_uuid=True))
+
+    def holdings_date_param() -> Any:
+        return bindparam("holdings_date", value=holdings_date, type_=DateTime(timezone=True))
+
+    def overwrite_param() -> Any:
+        return bindparam("overwrite", value=bool(overwrite), type_=Boolean())
+
+    def holdings_set_lookup() -> Any:
+        return (
+            select(AccountHoldingsSetTable.uid)
+            .where(AccountHoldingsSetTable.account_uid == account_param())
+            .where(AccountHoldingsSetTable.time_index == holdings_date_param())
+            .scalar_subquery()
+        )
+
+    holdings_set_insert = sqlite_insert(AccountHoldingsSetTable).values(
+        uid=bindparam(
+            "holdings_set_uid", value=uuid.UUID(str(holdings_set_uid)), type_=Uuid(as_uuid=True)
+        ),
+        account_uid=account_param(),
+        time_index=holdings_date_param(),
+    )
+    upsert_holdings_set = GuardedStatement(
+        holdings_set_insert.on_conflict_do_update(
+            index_elements=[AccountHoldingsSetTable.account_uid, AccountHoldingsSetTable.time_index],
+            set_={"time_index": holdings_set_insert.excluded.time_index},
+            where=overwrite_param(),
+        ).returning(AccountHoldingsSetTable.uid),
+        expect_rows=1,
+        label=HOLDINGS_SET_GUARD,
+    )
+    remove_rows = (
+        delete(AccountHoldingsStorage)
+        .where(overwrite_param())
+        .where(AccountHoldingsStorage.holdings_set_uid == holdings_set_lookup())
+    )
+
+    input_rows = (
+        values(
+            column("asset_identifier", String()),
+            column("quantity", Float()),
+            column("direction", SmallInteger()),
+            column("target_trade_time", DateTime(timezone=True)),
+            column("extra_details", JSON()),
+            name="input_rows",
+        )
+        .data(
+            [
+                (
+                    bindparam(
+                        f"asset_identifier_{index}",
+                        value=str(position["asset_identifier"]),
+                        type_=String(),
+                    ),
+                    bindparam(
+                        f"quantity_{index}",
+                        value=_python_scalar(position.get("quantity")),
+                        type_=Float(),
+                    ),
+                    bindparam(
+                        f"direction_{index}",
+                        value=int(position.get("direction", 1)),
+                        type_=SmallInteger(),
+                    ),
+                    bindparam(
+                        f"target_trade_time_{index}",
+                        value=_utc_timestamp(
+                            position.get("target_trade_time") or holdings_date,
+                            field_name=f"positions[{index}].target_trade_time",
+                        ),
+                        type_=DateTime(timezone=True),
+                    ),
+                    bindparam(
+                        f"extra_details_{index}",
+                        value=position.get("extra_details") or {},
+                        type_=JSON(),
+                    ),
+                )
+                for index, position in enumerate(positions)
+            ]
+        )
+        .cte("input_rows")
+    )
+    insert_rows = (
+        insert(AccountHoldingsStorage)
+        .from_select(
+            [
+                "time_index",
+                "account_uid",
+                "asset_identifier",
+                "holdings_set_uid",
+                "is_trade_snapshot",
+                "quantity",
+                "direction",
+                "target_trade_time",
+                "extra_details",
+            ],
+            select(
+                holdings_date_param(),
+                account_param(),
+                input_rows.c.asset_identifier,
+                holdings_set_lookup(),
+                false(),
+                input_rows.c.quantity,
+                input_rows.c.direction,
+                input_rows.c.target_trade_time,
+                input_rows.c.extra_details,
+            ).select_from(input_rows),
+        )
+        .returning(AccountHoldingsStorage)
+    )
+    return [upsert_holdings_set, remove_rows, insert_rows]
 
 
 def replace_account_holdings_snapshot(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return execute_markets_operation(
+    return execute_markets_write(
         build_replace_account_holdings_snapshot_operation(context, **kwargs),
         context=context,
+        refused_by=(HOLDINGS_SET_GUARD,),
     )
 
 
@@ -977,8 +1150,13 @@ def build_replace_account_target_positions_snapshot_operation(
     target_positions_date: dt.datetime | str,
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool = False,
-) -> MetaTableCompiledSQLOperation:
-    """Write one account target-position snapshot in one statement.
+    dialect: MetaTableCompiledSQLDialect | None = None,
+) -> MarketsCompiledWrite:
+    """Write one account target-position snapshot atomically.
+
+    On PostgreSQL this is one statement. SQLite accepts only `SELECT` inside
+    `WITH`, so there the same steps run as a statement list in one transaction
+    (MetaTables ADR 0026), and a refused write changes nothing at all.
 
     With positions, the account's target allocation becomes active and the
     snapshot's rows replace any rows at ``target_positions_date``. With no
@@ -994,7 +1172,8 @@ def build_replace_account_target_positions_snapshot_operation(
     A snapshot that names a retired portfolio is refused whatever its date
     (ADR 0049): the statement locks the named ``Portfolio`` rows ``FOR SHARE``
     and writes nothing unless every one is live, so it cannot interleave with a
-    retirement of one of them.
+    retirement of one of them. On SQLite the transaction holds the database's
+    write lock instead, and the ``live_portfolios`` guard refuses the write.
     """
 
     clearing = not positions
@@ -1002,6 +1181,24 @@ def build_replace_account_target_positions_snapshot_operation(
         target_positions_date,
         field_name="target_positions_date",
     )
+    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
+    if dialect == "sqlite":
+        return compile_markets_statements(
+            _target_positions_snapshot_statement_list(
+                account_allocation_model_uid=account_allocation_model_uid,
+                account_target_allocation_uid=account_target_allocation_uid,
+                position_set_uid=position_set_uid,
+                account_uid=account_uid,
+                account_name=account_name,
+                target_positions_date=normalized_target_positions_date,
+                positions=positions,
+                overwrite=overwrite,
+            ),
+            context=context,
+            operation="upsert",
+            data_source_uid=data_source_uid,
+            dialect=dialect,
+        )
     account_uid_param = bindparam(
         "account_uid",
         value=uuid.UUID(str(account_uid)),
@@ -1226,6 +1423,8 @@ def build_replace_account_target_positions_snapshot_operation(
             .add_cte(cleared_rows),
             context=context,
             operation="upsert",
+            dialect=dialect,
+            data_source_uid=data_source_uid,
         )
 
     position_set = position_set_upsert.cte("position_set")
@@ -1370,16 +1569,310 @@ def build_replace_account_target_positions_snapshot_operation(
         statement,
         context=context,
         operation="upsert",
+        dialect=dialect,
+        data_source_uid=data_source_uid,
     )
+
+
+def _target_positions_snapshot_statement_list(
+    *,
+    account_allocation_model_uid: uuid.UUID | str,
+    account_target_allocation_uid: uuid.UUID | str,
+    position_set_uid: uuid.UUID | str,
+    account_uid: uuid.UUID | str,
+    account_name: str,
+    target_positions_date: dt.datetime,
+    positions: Sequence[Mapping[str, Any]],
+    overwrite: bool,
+) -> list[GuardedStatement | Any]:
+    """The target-position snapshot write as ordered statements for one transaction.
+
+    The same steps as the single PostgreSQL statement:
+
+    1. With portfolio positions, the `live_portfolios` guard: every named
+       portfolio exists and is not retired (ADR 0049).
+    2. Upsert the account's allocation model, then its target allocation, whose
+       `is_active` changes only when the snapshot write goes through.
+    3. Upsert the `PositionSet`, refused by the `position_set` guard when it
+       exists and `overwrite` is false.
+    4. With `overwrite`, delete the snapshot's earlier rows; then insert the new
+       rows. A clear inserts none and returns the `PositionSet` uid instead.
+
+    Later statements find what earlier ones wrote by key. Values bind without
+    casts: SQLite casts `DATETIME` and `JSON` to numbers, and a `Uuid` cast to
+    text would drop the dashes `unique_identifier` keeps.
+    """
+
+    clearing = not positions
+    account = uuid.UUID(str(account_uid))
+    account_key = str(account)
+
+    def account_key_param() -> Any:
+        return bindparam("account_key", value=account_key, type_=String())
+
+    def account_uid_param() -> Any:
+        return bindparam("account_uid", value=account, type_=Uuid(as_uuid=True))
+
+    def target_positions_date_param() -> Any:
+        return bindparam(
+            "target_positions_date", value=target_positions_date, type_=DateTime(timezone=True)
+        )
+
+    def overwrite_param() -> Any:
+        return bindparam("overwrite", value=bool(overwrite), type_=Boolean())
+
+    def allocation_lookup() -> Any:
+        return (
+            select(AccountTargetAllocationTable.uid)
+            .where(AccountTargetAllocationTable.unique_identifier == account_key_param())
+            .scalar_subquery()
+        )
+
+    def position_set_lookup() -> Any:
+        return (
+            select(PositionSetTable.uid)
+            .where(PositionSetTable.account_target_allocation_uid == allocation_lookup())
+            .where(PositionSetTable.position_set_time == target_positions_date_param())
+            .scalar_subquery()
+        )
+
+    statements: list[GuardedStatement | Any] = []
+    named_portfolio_uids = sorted(
+        {
+            uuid.UUID(str(position["portfolio_uid"]))
+            for position in positions
+            if position.get("portfolio_uid") not in (None, "")
+        }
+    )
+    if named_portfolio_uids:
+        statements.append(
+            GuardedStatement(
+                select(PortfolioTable.uid)
+                .where(PortfolioTable.uid.in_(named_portfolio_uids))
+                .where(PortfolioTable.retired_at.is_(None)),
+                expect_rows=len(named_portfolio_uids),
+                label=LIVE_PORTFOLIOS_GUARD,
+            )
+        )
+
+    model_description = f"Default target allocation model for account {account!s}"
+    model_insert = sqlite_insert(AccountAllocationModelTable).values(
+        uid=bindparam(
+            "account_allocation_model_uid",
+            value=uuid.UUID(str(account_allocation_model_uid)),
+            type_=Uuid(as_uuid=True),
+        ),
+        allocation_model_name=account_key_param(),
+        allocation_model_description=model_description,
+        metadata_json=bindparam(
+            "account_allocation_model_metadata_json", value={"source": "apps.v1"}, type_=JSON()
+        ),
+    )
+    statements.append(
+        model_insert.on_conflict_do_update(
+            index_elements=[AccountAllocationModelTable.allocation_model_name],
+            set_={
+                "allocation_model_description": model_insert.excluded.allocation_model_description,
+                "metadata_json": model_insert.excluded.metadata_json,
+            },
+        )
+    )
+
+    existing_allocation = AccountTargetAllocationTable.__table__.alias("existing_allocation")
+    existing_position_set = PositionSetTable.__table__.alias("existing_position_set")
+    snapshot_exists = (
+        select(existing_position_set.c.uid)
+        .join(
+            existing_allocation,
+            existing_position_set.c.account_target_allocation_uid == existing_allocation.c.uid,
+        )
+        .where(existing_allocation.c.unique_identifier == account_key_param())
+        .where(existing_position_set.c.position_set_time == target_positions_date_param())
+        .exists()
+    )
+    allocation_insert = sqlite_insert(AccountTargetAllocationTable).from_select(
+        [
+            "uid",
+            "unique_identifier",
+            "account_uid",
+            "account_allocation_model_uid",
+            "display_name",
+            "is_active",
+            "source",
+            "metadata_json",
+        ],
+        select(
+            bindparam(
+                "account_target_allocation_uid",
+                value=uuid.UUID(str(account_target_allocation_uid)),
+                type_=Uuid(as_uuid=True),
+            ),
+            account_key_param(),
+            account_uid_param(),
+            select(AccountAllocationModelTable.uid)
+            .where(AccountAllocationModelTable.allocation_model_name == account_key_param())
+            .scalar_subquery(),
+            bindparam("account_name", value=str(account_name), type_=String()),
+            bindparam("is_active", value=not clearing, type_=Boolean()),
+            literal("apps.v1"),
+            bindparam("account_target_allocation_metadata_json", value={}, type_=JSON()),
+        ).where(true()),  # SQLite needs a WHERE before ON CONFLICT in INSERT ... SELECT.
+    )
+    statements.append(
+        allocation_insert.on_conflict_do_update(
+            index_elements=[AccountTargetAllocationTable.unique_identifier],
+            set_={
+                "account_uid": allocation_insert.excluded.account_uid,
+                "account_allocation_model_uid": allocation_insert.excluded.account_allocation_model_uid,
+                "display_name": allocation_insert.excluded.display_name,
+                "is_active": case(
+                    (or_(overwrite_param(), ~snapshot_exists), allocation_insert.excluded.is_active),
+                    else_=AccountTargetAllocationTable.is_active,
+                ),
+                "source": allocation_insert.excluded.source,
+                "metadata_json": allocation_insert.excluded.metadata_json,
+            },
+        )
+    )
+
+    position_set_insert = sqlite_insert(PositionSetTable).from_select(
+        ["uid", "account_target_allocation_uid", "position_set_time", "source", "metadata_json"],
+        select(
+            bindparam(
+                "position_set_uid", value=uuid.UUID(str(position_set_uid)), type_=Uuid(as_uuid=True)
+            ),
+            allocation_lookup(),
+            target_positions_date_param(),
+            literal("apps.v1"),
+            bindparam(
+                "position_set_metadata_json", value={"account_uid": str(account_uid)}, type_=JSON()
+            ),
+        ).where(true()),
+    )
+    upsert_position_set = GuardedStatement(
+        position_set_insert.on_conflict_do_update(
+            index_elements=[
+                PositionSetTable.account_target_allocation_uid,
+                PositionSetTable.position_set_time,
+            ],
+            set_={
+                "source": position_set_insert.excluded.source,
+                "metadata_json": position_set_insert.excluded.metadata_json,
+            },
+            where=overwrite_param(),
+        ).returning(PositionSetTable.uid),
+        expect_rows=1,
+        label=POSITION_SET_GUARD,
+    )
+    remove_rows = (
+        delete(TargetPositionsStorage)
+        .where(overwrite_param())
+        .where(TargetPositionsStorage.position_set_uid == position_set_lookup())
+    )
+    if clearing:
+        # The clear answers with the PositionSet uid, as the PostgreSQL statement does.
+        return [*statements, remove_rows, upsert_position_set]
+
+    input_rows = (
+        values(
+            column("target_type", String()),
+            column("target_uid", Uuid(as_uuid=True)),
+            column("asset_uid", Uuid(as_uuid=True)),
+            column("portfolio_uid", Uuid(as_uuid=True)),
+            column("weight_notional_exposure", Float()),
+            column("constant_notional_exposure", Float()),
+            column("single_asset_quantity", Float()),
+            column("metadata_json", JSON()),
+            name="input_rows",
+        )
+        .data(
+            [
+                (
+                    bindparam(
+                        f"target_type_{index}", value=str(position["target_type"]), type_=String()
+                    ),
+                    bindparam(
+                        f"target_uid_{index}",
+                        value=uuid.UUID(str(position["target_uid"])),
+                        type_=Uuid(as_uuid=True),
+                    ),
+                    bindparam(
+                        f"asset_uid_{index}",
+                        value=_optional_uuid(position.get("asset_uid")),
+                        type_=Uuid(as_uuid=True),
+                    ),
+                    bindparam(
+                        f"portfolio_uid_{index}",
+                        value=_optional_uuid(position.get("portfolio_uid")),
+                        type_=Uuid(as_uuid=True),
+                    ),
+                    bindparam(
+                        f"weight_notional_exposure_{index}",
+                        value=_python_scalar(position.get("weight_notional_exposure")),
+                        type_=Float(),
+                    ),
+                    bindparam(
+                        f"constant_notional_exposure_{index}",
+                        value=_python_scalar(position.get("constant_notional_exposure")),
+                        type_=Float(),
+                    ),
+                    bindparam(
+                        f"single_asset_quantity_{index}",
+                        value=_python_scalar(position.get("single_asset_quantity")),
+                        type_=Float(),
+                    ),
+                    bindparam(
+                        f"metadata_json_{index}",
+                        value=position.get("metadata_json") or {},
+                        type_=JSON(),
+                    ),
+                )
+                for index, position in enumerate(positions)
+            ]
+        )
+        .cte("input_rows")
+    )
+    insert_rows = (
+        insert(TargetPositionsStorage)
+        .from_select(
+            [
+                "time_index",
+                "position_set_uid",
+                "target_type",
+                "target_uid",
+                "asset_uid",
+                "portfolio_uid",
+                "weight_notional_exposure",
+                "constant_notional_exposure",
+                "single_asset_quantity",
+                "metadata_json",
+            ],
+            select(
+                target_positions_date_param(),
+                position_set_lookup(),
+                input_rows.c.target_type,
+                input_rows.c.target_uid,
+                input_rows.c.asset_uid,
+                input_rows.c.portfolio_uid,
+                input_rows.c.weight_notional_exposure,
+                input_rows.c.constant_notional_exposure,
+                input_rows.c.single_asset_quantity,
+                input_rows.c.metadata_json,
+            ).select_from(input_rows),
+        )
+        .returning(TargetPositionsStorage)
+    )
+    return [*statements, upsert_position_set, remove_rows, insert_rows]
 
 
 def replace_account_target_positions_snapshot(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return execute_markets_operation(
+    return execute_markets_write(
         build_replace_account_target_positions_snapshot_operation(context, **kwargs),
         context=context,
+        refused_by=(LIVE_PORTFOLIOS_GUARD, POSITION_SET_GUARD),
     )
 
 
@@ -1402,6 +1895,10 @@ def _python_scalar(value: Any) -> Any:
     if callable(item):
         return item()
     return value
+
+
+def _optional_uuid(value: Any) -> uuid.UUID | None:
+    return uuid.UUID(str(value)) if value not in (None, "") else None
 
 
 __all__ = [

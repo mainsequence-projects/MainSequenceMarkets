@@ -31,12 +31,14 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("9.0.5") not in requirement.specifier
     assert Version("9.0.18") not in requirement.specifier
     assert Version("9.0.19") not in requirement.specifier
-    # 9.0.25/26 raise on `team_uids`, and 9.0.29 brought access policies.
+    # 9.0.25/26 raise on `team_uids`, 9.0.29 brought access policies, and MetaTables
+    # 0.1.60 and later need 9.0.31, the first SDK whose `Agent` parses platform Agent reads.
     assert Version("9.0.25") not in requirement.specifier
     assert Version("9.0.26") not in requirement.specifier
     assert Version("9.0.28") not in requirement.specifier
-    assert Version("9.0.29") in requirement.specifier
-    assert Version("9.0.30") in requirement.specifier
+    assert Version("9.0.29") not in requirement.specifier
+    assert Version("9.0.30") not in requirement.specifier
+    assert Version("9.0.31") in requirement.specifier
     assert Version("9.99.0") in requirement.specifier
     assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
@@ -51,12 +53,16 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.33") not in requirement.specifier
     assert Version("0.1.34") not in requirement.specifier
     assert Version("0.1.35") not in requirement.specifier
-    # 0.1.46 brought roles, 0.1.47's client is broken, 0.1.20-0.1.50 break on SDK 9.0.30, and
-    # 0.1.57 is the first release that hashes updater configurations holding dates and times.
+    # 0.1.46 brought roles, 0.1.47's client is broken, 0.1.20-0.1.50 break on SDK 9.0.30,
+    # 0.1.57 is the first release that hashes updater configurations holding dates and times,
+    # 0.1.60 runs statement lists in one transaction, and 0.1.61 binds UUIDs on SQLite inside
+    # `IN` lists and as text, which the snapshot writes need on a SQLite DataSource.
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
-    assert Version("0.1.57") in requirement.specifier
+    assert Version("0.1.57") not in requirement.specifier
+    assert Version("0.1.60") not in requirement.specifier
+    assert Version("0.1.61") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

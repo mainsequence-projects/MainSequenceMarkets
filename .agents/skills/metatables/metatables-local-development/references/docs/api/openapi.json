@@ -294,6 +294,62 @@
         "title": "CompiledOperation",
         "type": "object"
       },
+      "CompiledTransaction": {
+        "additionalProperties": false,
+        "properties": {
+          "data_source_uid": {
+            "format": "uuid",
+            "title": "Data Source Uid",
+            "type": "string"
+          },
+          "dialect": {
+            "default": "postgresql",
+            "enum": [
+              "postgresql",
+              "sqlite",
+              "mysql",
+              "mssql"
+            ],
+            "title": "Dialect",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "operation": {
+            "enum": [
+              "insert",
+              "update",
+              "delete",
+              "upsert"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionStatement"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Statements",
+            "type": "array"
+          },
+          "version": {
+            "const": "compiled-sql.v1",
+            "default": "compiled-sql.v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "statements",
+          "data_source_uid"
+        ],
+        "title": "CompiledTransaction",
+        "type": "object"
+      },
       "CompressedStatistics": {
         "properties": {
           "data": {
@@ -4580,6 +4636,88 @@
         "title": "TimescaleTablePolicies",
         "type": "object"
       },
+      "TransactionStatement": {
+        "additionalProperties": false,
+        "properties": {
+          "expect_rows": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "const": "at_least_one",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expect Rows"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "parameter_types": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter Types"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ],
+            "title": "Parameters"
+          },
+          "paramstyle": {
+            "default": "pyformat",
+            "enum": [
+              "pyformat",
+              "named",
+              "qmark"
+            ],
+            "title": "Paramstyle",
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 1000000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "title": "TransactionStatement",
+        "type": "object"
+      },
       "TransferLimits": {
         "properties": {
           "chunk_receipts": {
@@ -5745,6 +5883,46 @@
           }
         },
         "summary": "Execute Operation",
+        "tags": [
+          "MetaTables"
+        ]
+      }
+    },
+    "/meta-tables/execute-transaction/": {
+      "post": {
+        "description": "Run compiled statements in order in one API-owned transaction (ADR 0026).\n\nThe API commits after the last statement and rolls back on any error, on a\nstatement that misses its ``expect_rows`` (409 ``compiled_sql_guard_failed``) and\non caller SQL that ends or controls the transaction. The last statement's rows\nreturn in the ``execute-operation`` response shape.",
+        "operationId": "execute_transaction_meta_tables_execute_transaction__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompiledTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Transaction",
         "tags": [
           "MetaTables"
         ]
@@ -8836,6 +9014,46 @@
           }
         },
         "summary": "Time Index Execute Operation",
+        "tags": [
+          "TimeIndexMetaTables"
+        ]
+      }
+    },
+    "/time-index-meta-tables/execute-transaction/": {
+      "post": {
+        "description": "Run compiled statements in order in one API-owned transaction (ADR 0026).\n\nThe API commits after the last statement and rolls back on any error, on a\nstatement that misses its ``expect_rows`` (409 ``compiled_sql_guard_failed``) and\non caller SQL that ends or controls the transaction. The last statement's rows\nreturn in the ``execute-operation`` response shape.",
+        "operationId": "time_index_execute_transaction_time_index_meta_tables_execute_transaction__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompiledTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Time Index Execute Transaction",
         "tags": [
           "TimeIndexMetaTables"
         ]
