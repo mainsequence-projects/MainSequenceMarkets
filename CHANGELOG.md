@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-11-11
+
 ### Fixed
 
 - A test that replaced an account hook on `msm.services.accounts`, such as
