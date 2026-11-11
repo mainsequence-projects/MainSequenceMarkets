@@ -7,6 +7,27 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Curve.delete(uid, delete_values=True)` and
+  `DELETE /api/v1/pricing/curves/{uid}/?delete_values=true` no longer delete rows
+  in a discount-curve storage another application owns (#59). They deleted the
+  curve's observations from every storage table a pricing market-data-set binding
+  named, including a provider's instance in its own namespace, which broke ADR
+  0047. `delete_values` now cleans only Markets' `DiscountCurvesStorage`. A
+  provider's instance keeps the core storage's `RESTRICT` key on
+  `curve_identifier`, so while it holds rows of the curve the delete preflight
+  lists it as a blocker (`provider_discount_curve_observations:{storage_table_uid}`,
+  whatever the flags), and the delete sends that table no statement, deletes
+  nothing and answers 409 naming the table and pointing to the owning
+  application. The row API raises the new `CurveDatasetOwnershipError`, a
+  `CurveDeleteConflictError`. A bound table Markets cannot resolve still blocks
+  the delete and is reported with `count_accuracy: "unavailable"`.
+  `PROVIDER_TABLE_DELETE_GUIDANCE` and the ownership check behind the portfolio
+  and signal deletes moved to `msm.storage_instances` (`provider_owned_table_uid`)
+  so both deletes share them; `msm_portfolios.services.public_api` still exposes
+  `PROVIDER_TABLE_DELETE_GUIDANCE`.
+
 ## [3.2.3] - 2026-11-11
 
 ### Changed

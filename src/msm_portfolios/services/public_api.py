@@ -24,6 +24,7 @@ from msm.repositories.crud import (
 )
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.services.assets.reference_details import asset_reference_details
+from msm.storage_instances import PROVIDER_TABLE_DELETE_GUIDANCE, provider_owned_table_uid
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage, PortfoliosStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services.portfolio_reads import (
@@ -57,12 +58,6 @@ class PortfolioDatasetOwnershipError(PortfolioDeleteConflictError):
 
 class SignalDatasetOwnershipError(SignalDeleteConflictError):
     """Raised when a delete would remove signal rows from a table another application owns."""
-
-
-PROVIDER_TABLE_DELETE_GUIDANCE = (
-    "Markets does not delete rows in a table another application owns (ADR 0047); "
-    "delete them through the application that owns the table."
-)
 
 
 def list_portfolio_rows_response(
@@ -692,7 +687,7 @@ def delete_signal_weights(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = str(signal["uid"])
     signal_uid = _string_or_empty(signal.get("signal_uid"))
-    owned_table_uid = _provider_owned_table_uid(
+    owned_table_uid = provider_owned_table_uid(
         existing.get("meta_table_uid"),
         core_storage=SignalWeightsStorage,
     )
@@ -802,7 +797,7 @@ def delete_portfolio_weights(
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
     tables = _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier)
-    owned_table_uid = _provider_owned_table_uid(
+    owned_table_uid = provider_owned_table_uid(
         tables.weights_meta_table_uid if tables is not None else None,
         core_storage=PortfolioWeightsStorage,
     )
@@ -887,23 +882,6 @@ def _portfolio_dataset_tables(
     ).get(portfolio_identifier)
 
 
-def _provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
-    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
-
-    ``None`` means the core table, which Markets owns and deletes from. Any other
-    uid is a contract instance registered by another application.
-    """
-
-    if meta_table_uid in (None, ""):
-        return None
-    core_meta_table = core_storage.get_time_index_meta_table()
-    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
-        meta_table_uid
-    ):
-        return None
-    return str(meta_table_uid)
-
-
 def _retained_portfolio_datasets(
     tables: PortfolioDatasetTables | None,
     *,
@@ -919,7 +897,7 @@ def _retained_portfolio_datasets(
         ("values", tables.values_meta_table_uid, PortfoliosStorage),
         ("weights", tables.weights_meta_table_uid, PortfolioWeightsStorage),
     ):
-        owned_table_uid = _provider_owned_table_uid(meta_table_uid, core_storage=core_storage)
+        owned_table_uid = provider_owned_table_uid(meta_table_uid, core_storage=core_storage)
         if owned_table_uid is not None:
             retained.append(
                 {
@@ -939,7 +917,7 @@ def _retained_signal_datasets(
 ) -> list[dict[str, str]]:
     """List the signal dataset a delete leaves in a table another application owns."""
 
-    owned_table_uid = _provider_owned_table_uid(
+    owned_table_uid = provider_owned_table_uid(
         signal_metadata_row.get("meta_table_uid"),
         core_storage=SignalWeightsStorage,
     )
