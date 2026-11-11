@@ -33,6 +33,28 @@ from msm.settings import markets_identifier, markets_namespace
 INSTANCE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,62}$")
 STORAGE_CONTRACT_COMPONENT = "storage_contract"
 INSTANCE_KEY_COMPONENT = "instance_key"
+PROVIDER_TABLE_DELETE_GUIDANCE = (
+    "Markets does not delete rows in a table another application owns (ADR 0047); "
+    "delete them through the application that owns the table."
+)
+
+
+def provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
+    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
+
+    ``None`` means no table or the core table, which Markets owns and deletes from.
+    Any other uid is an instance another application registered, so Markets
+    reads it but never deletes its rows.
+    """
+
+    if meta_table_uid in (None, ""):
+        return None
+    core_meta_table = core_storage.get_time_index_meta_table()
+    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
+        meta_table_uid
+    ):
+        return None
+    return str(meta_table_uid)
 
 
 def configured_time_index_instance(
@@ -214,7 +236,9 @@ def _copy_table(
 
 
 __all__ = [
+    "PROVIDER_TABLE_DELETE_GUIDANCE",
     "configured_time_index_instance",
     "markets_reference_table",
+    "provider_owned_table_uid",
     "time_index_instance_identifier",
 ]

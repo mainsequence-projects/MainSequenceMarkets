@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
@@ -19,13 +19,18 @@ from apps.v1.schemas.accounts import (
     AccountTargetPositionsSnapshotResponse,
     AccountVirtualFundAllocationRequest,
     AccountVirtualFundAllocationResponse,
+    AccountBulkDeleteResponse,
+    AccountDeletePreflightResponse,
+    AccountDeleteResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
     allocate_account_virtual_funds,
+    bulk_delete_accounts,
     create_account,
+    delete_account,
     get_account_holdings,
     get_account_holdings_by_fund,
     get_account,
@@ -33,14 +38,19 @@ from apps.v1.services.accounts import (
     get_account_target_positions,
     get_accounts_by_uids,
     list_accounts,
+    preflight_bulk_delete_accounts,
     search_account_target_allocation_targets,
     update_account,
 )
 from apps.v1.services.includes import SidecarReadError
 from msm.api.http import (
+    BULK_ACTION_PREFLIGHT_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
+    BulkActionExecutionRequest,
     ErrorResponse,
     ResourceCollection,
+    blocked_preflight_detail,
+    explicit_uuid_selection,
     resource_collection_response,
 )
 
@@ -196,6 +206,103 @@ def get_account_by_uid(uid: str) -> Account:
     if account is None:
         raise HTTPException(status_code=404, detail=f"Account {uid!r} was not found.")
     return account
+
+
+_ACCOUNT_DELETE_DESCRIPTION = (
+    "Each account is deleted with its whole history in one transaction: its orders, "
+    "trades and their order events, order managers, virtual funds, target allocations, "
+    "position sets, holdings sets and their rows (ADR 0050). Only Markets tables receive "
+    "statements. A table in another namespace loses rows only through its own foreign key: "
+    "a CASCADE key deletes them and is listed in `other_namespace_cascades`, and a "
+    "RESTRICT key refuses the delete."
+)
+
+
+@router.post(
+    "/bulk-delete/",
+    response_model=AccountBulkDeleteResponse,
+    summary="Bulk delete accounts",
+    description=(
+        "Delete the selected accounts. " + _ACCOUNT_DELETE_DESCRIPTION + " The route runs "
+        "the preflight first and answers 409 when it reports a blocker."
+    ),
+    operation_id="bulkDeleteAccounts",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid account bulk-delete payload."},
+        409: {"model": ErrorResponse, "description": "One or more accounts could not be deleted."},
+    },
+)
+def bulk_delete_account_rows(
+    payload: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request."),
+    ],
+) -> AccountBulkDeleteResponse:
+    try:
+        uids = explicit_uuid_selection(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    preflight = preflight_bulk_delete_accounts(uids=uids)
+    if not preflight.allowed:
+        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    response = bulk_delete_accounts(uids=uids)
+    if response.failed:
+        details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
+        raise HTTPException(
+            status_code=409,
+            detail=f"{response.detail} Not deleted: {details}",
+        )
+    return response
+
+
+@router.post(
+    "/bulk-delete/preflight/",
+    response_model=AccountDeletePreflightResponse,
+    summary="Preflight account bulk deletion",
+    description=(
+        "Report, without deleting, the Markets rows each selected account's delete would "
+        "remove, the rows of other accounts that block it, and the tables in other "
+        "namespaces it reaches through their own foreign keys."
+    ),
+    operation_id="preflightBulkDeleteAccounts",
+    openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
+    responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def preflight_account_bulk_delete(
+    payload: Annotated[
+        BulkActionExecutionRequest,
+        Body(description="Command Center bulk-action execution request to preflight."),
+    ],
+) -> AccountDeletePreflightResponse:
+    try:
+        uids = explicit_uuid_selection(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return preflight_bulk_delete_accounts(uids=uids)
+
+
+@router.delete(
+    "/{uid}/",
+    response_model=AccountDeleteResponse,
+    summary="Delete account",
+    description="Delete one account. " + _ACCOUNT_DELETE_DESCRIPTION,
+    operation_id="deleteAccount",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid account uid."},
+        404: {"model": ErrorResponse, "description": "Account not found."},
+        409: {"model": ErrorResponse, "description": "A foreign key refuses the delete."},
+    },
+)
+def remove_account(uid: str) -> AccountDeleteResponse:
+    try:
+        response = delete_account(uid=uid)
+    except ValueError as exc:
+        status_code = 409 if exc.__class__.__name__ == "AccountDeleteConflictError" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Account {uid!r} was not found.")
+    return response
 
 
 @router.get(

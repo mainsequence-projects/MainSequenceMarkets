@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
 from apps.v1.schemas.pricing_curves import Curve, CurveSelectionsResponse
 from msm_pricing.api import CurveDeleteConflictError
+from tests.msm_pricing.api.provider_discount_curves import (
+    CURVE_IDENTIFIER,
+    PROVIDER_TABLE_UID,
+    bind_discount_curve_storages,
+)
 
 
 def _curve_row(
@@ -504,6 +510,65 @@ def test_delete_pricing_curve_returns_409_for_delete_conflict(monkeypatch) -> No
 
     assert response.status_code == 409
     assert response.json() == {"detail": "Pricing curve deletion is blocked."}
+
+
+def test_pricing_curve_delete_routes_refuse_a_provider_owned_discount_curve_storage(
+    monkeypatch,
+) -> None:
+    """ADR 0047: delete_values never reaches another application's storage instance."""
+
+    curve = _curve_row()
+    storages = bind_discount_curve_storages(
+        monkeypatch,
+        core_curve_identifiers=[CURVE_IDENTIFIER],
+        provider_curve_identifiers=[CURVE_IDENTIFIER],
+    )
+    deleted_curves: list[object] = []
+    monkeypatch.setattr(
+        "apps.v1.services.pricing_curves.ensure_apps_v1_pricing_runtime",
+        lambda: None,
+    )
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: curve))
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._active_curve_delete_context",
+        lambda: SimpleNamespace(timeout=30),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._count_model_rows",
+        lambda active_context, *, model, filters: 0,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves.delete_model",
+        lambda active_context, *, model, uid: deleted_curves.append(uid),
+    )
+    client = TestClient(app)
+
+    preflight = client.get(
+        f"/api/v1/pricing/curves/{curve.uid}/delete-impact/",
+        params={"delete_values": "true"},
+    )
+    response = client.delete(
+        f"/api/v1/pricing/curves/{curve.uid}/",
+        params={"delete_values": "true"},
+    )
+
+    assert preflight.status_code == 200
+    assert preflight.json()["can_delete"] is False
+    blockers = [item for item in preflight.json()["relationships"] if item["blocks_delete"]]
+    assert [(item["key"], item["model"], item["count"]) for item in blockers] == [
+        (
+            f"provider_discount_curve_observations:{PROVIDER_TABLE_UID}",
+            "example-provider.DiscountCurvesTS.main",
+            1,
+        )
+    ]
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert f"example-provider.DiscountCurvesTS.main ({PROVIDER_TABLE_UID})" in detail
+    assert "delete them through the application that owns the table" in detail
+    assert storages.provider.writes() == []
+    assert storages.core.writes() == []
+    assert deleted_curves == []
 
 
 def test_get_pricing_discount_curve_returns_latest_nodes(monkeypatch) -> None:

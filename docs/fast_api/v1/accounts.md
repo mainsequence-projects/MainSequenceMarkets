@@ -55,6 +55,43 @@ direct account snapshots and virtual-fund-grouped views.
     `account_is_active`, `account_group_uid`, `holdings_storage_table_uid`,
     `metadata_json`); omitted fields are unchanged
   - `404` when the uid is unknown
+- `DELETE /api/v1/account/{uid}/`
+  - deletes the account with its whole history in one transaction
+    ([ADR 0050](../../ADR/0050-account-deletion.md)): its orders, trades and the
+    order events of those orders, its order managers, virtual funds with their
+    holdings sets and rows, target allocations with their position sets and
+    target rows, holdings sets with their rows, then the account
+  - only Markets tables receive statements. A table in another namespace loses
+    rows only through its own foreign key: a `CASCADE` key deletes them with
+    their parent, and the response lists that table in
+    `other_namespace_cascades`; a `RESTRICT` key refuses the whole delete. Rows
+    with no key, such as order events in a provider's copy of the events
+    storage, stay
+  - returns `deleted_rows`, the Markets rows per table counted just before the
+    delete ran
+  - `404` when the uid is unknown; `409` when a key refuses the delete,
+    including orders of other accounts that name its order managers or virtual
+    funds of other accounts allocated from its holdings sets; nothing is deleted
+  - on the local SQLite runtime, MetaTables refuses the delete while any table
+    the caller cannot read has a key into the account tables
+    ([MetaTables#105](https://github.com/mainsequence-projects/MetaTables/issues/105));
+    PostgreSQL does not
+  - there is no delete for a single virtual fund, target allocation, position
+    set or holdings set: an account's history is kept for as long as the account
+    exists ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
+- `POST /api/v1/account/bulk-delete/preflight/`
+  - takes the Command Center bulk-action request with explicit uids and returns,
+    without deleting, per account the Markets rows the delete removes
+    (`accounts[].row_counts`) and its blockers, the MetaTables impact, and the
+    tables in other namespaces it reaches (`other_namespace_cascades`,
+    `other_namespace_restricts`). Markets cannot count rows in those tables, so
+    they are warnings, not blockers
+- `POST /api/v1/account/bulk-delete/`
+  - runs the preflight, answers `409` when it reports a blocker, then deletes
+    each account as `DELETE /api/v1/account/{uid}/` does, each in its own
+    transaction; `409` lists any account that could not be deleted
+  - the same identities that may delete a portfolio may delete an account; both
+    routes are registry writes that record the acting identity
 - `GET /api/v1/account/{uid}/summary/`
   - returns the reusable `FrontEndDetailSummary` response for account detail
     pages

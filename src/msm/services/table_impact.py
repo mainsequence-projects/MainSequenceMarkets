@@ -104,6 +104,12 @@ def _rows(node: TableImpactNode | None, *, sentence_start: bool = False) -> str:
     return f"{_label(node)} rows"
 
 
+def impact_node_label(node: TableImpactNode | None, *, sentence_start: bool = False) -> str:
+    """How warnings and blockers name an impact node; hidden tables stay unnamed."""
+
+    return _label(node, sentence_start=sentence_start)
+
+
 def _label(node: TableImpactNode | None, *, sentence_start: bool = False) -> str:
     # Hidden tables are opaque: MetaTables reports that they are affected, not which.
     if node is None or node.type == "hidden":
@@ -120,4 +126,5 @@ __all__ = [
     "IMPACT_UNAVAILABLE_WARNING",
     "DeleteRowsImpact",
     "delete_rows_impact",
+    "impact_node_label",
 ]

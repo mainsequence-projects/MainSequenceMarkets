@@ -309,6 +309,8 @@ Account operations:
 - `addAccountHoldings`
 - `addAccountTargetPositions`
 - `allocateAccountVirtualFunds` (a dry run by default; it writes only with `apply`)
+- `deleteAccount` and `bulkDeleteAccounts`, which delete accounts with their history
+  ([ADR 0050](../../0050-account-deletion.md))
 
 Index operations:
 

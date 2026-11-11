@@ -219,10 +219,21 @@ block or be affected.
 Query parameters:
 
 - `delete_values`: when `true`, preview deletion of timestamped
-  `DiscountCurvesStorage` observations whose `curve_identifier` matches the
-  curve.
+  observations whose `curve_identifier` matches the curve from Markets' own
+  `DiscountCurvesStorage`. It covers no other table.
 - `delete_curve_selections`: when `true`, preview deletion of
   `PricingMarketDataSetCurveBindingTable` rows that point to the curve.
+
+The preview checks Markets' `DiscountCurvesStorage` and every discount-curve
+storage table a pricing market-data-set binding names (`storage_table_uid`).
+A bound table other than `DiscountCurvesStorage` is a storage instance another
+application owns (ADR 0047). When such a table holds rows of the curve, the
+preview lists it as a blocker whatever the flags, with key
+`provider_discount_curve_observations:{storage_table_uid}` and the table's
+identifier as `model`: the instance keeps the core storage's `RESTRICT` key on
+`curve_identifier`, and Markets does not delete rows in a table another
+application owns. A bound table Markets cannot resolve is listed the same way
+with `count: null` and `count_accuracy: "unavailable"`.
 
 Response model: `DeleteImpactResponse`
 
@@ -276,7 +287,20 @@ Response:
       "effect": "blocks_delete",
       "severity": "blocking",
       "blocks_delete": true,
-      "description": "Timestamped discount-curve rows reference this curve by curve_identifier. Cleanup uses TimeIndexMetaTable.delete_after_date with a scoped curve_identifier dimension filter."
+      "description": "Timestamped rows in Markets' DiscountCurvesStorage reference this curve by curve_identifier. delete_values=true deletes them with TimeIndexMetaTable.delete_after_date and a scoped curve_identifier dimension filter. It never deletes rows in another application's storage instance."
+    },
+    {
+      "key": "discount_curve_storage_sources",
+      "label": "Discount curve storage sources",
+      "model": "PricingMarketDataSetBindingTable",
+      "column": "storage_table_uid",
+      "relationship_type": "indirect",
+      "on_delete": "NO ACTION",
+      "count": 1,
+      "effect": "informational",
+      "severity": "info",
+      "blocks_delete": false,
+      "description": "Unique discount_curves storage tables checked for curve observations: Markets' DiscountCurvesStorage and the tables pricing market-data-set bindings name. Market-data-set source bindings are not deleted with the curve."
     }
   ],
   "warnings": [
@@ -303,10 +327,15 @@ Cleanup semantics:
   `curve_uid`.
 - `PricingMarketDataSetCurveBindingTable` rows are deleted only when
   `delete_curve_selections=true`.
-- `DiscountCurvesStorage` observations are deleted only when
-  `delete_values=true`.
+- Observations in Markets' own `DiscountCurvesStorage` are deleted only when
+  `delete_values=true`. `delete_values` cleans that table and no other.
 - Discount-curve value cleanup must remain scoped to the curve identifier:
   `TimeIndexMetaTable.delete_after_date(None, dimension_filters={"curve_identifier": [curve_identifier]})`.
+- Observations in a discount-curve storage instance another application owns,
+  found through a pricing market-data-set binding, are never deleted (ADR 0047).
+  The endpoint sends that table no delete statement; while it holds rows of the
+  curve, the route returns `409` and deletes nothing. Delete those rows through
+  the application that owns the table, then delete the curve.
 - `PricingMarketDataSetBindingTable` source bindings are not deleted by this
   endpoint.
 
@@ -336,11 +365,22 @@ Response:
 }
 ```
 
+`deleted_values_count` and `storage_cleanups` cover Markets' `DiscountCurvesStorage`
+only.
+
 Returns:
 
 - `404` when the curve `uid` does not exist.
 - `409` when dependent rows still block deletion because the requested cleanup
-  flags do not cover them.
+  flags do not cover them, or when a discount-curve storage another application
+  owns holds observations of the curve. The detail names each such table by
+  identifier and uid, for example:
+
+```json
+{
+  "detail": "Pricing curve deletion is blocked by dependent rows: Discount curve observations in provider-namespace.DiscountCurvesTS.main (provider-table-uid) (4). Table provider-namespace.DiscountCurvesTS.main (provider-table-uid) holds discount-curve observations of curve 'USD-SOFR-3M-DISCOUNT' and belongs to another application. Markets does not delete rows in a table another application owns (ADR 0047); delete them through the application that owns the table."
+}
+```
 
 ## Discount Curve Nodes
 

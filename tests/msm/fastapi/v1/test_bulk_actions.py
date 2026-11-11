@@ -16,6 +16,12 @@ from msm.services.table_impact import DeleteRowsImpact
     ("path", "action_id", "endpoint", "preflight_endpoint"),
     [
         (
+            "/api/v1/account/discovery/",
+            "bulk-delete-accounts",
+            "/api/v1/account/bulk-delete/",
+            "/api/v1/account/bulk-delete/preflight/",
+        ),
+        (
             "/api/v1/asset-category/discovery/",
             "bulk-delete-asset-categories",
             "/api/v1/asset-category/bulk-delete/",
@@ -187,6 +193,8 @@ def test_bulk_action_operations_are_exposed_by_command_center_adapter() -> None:
     }
 
     for operation_id in (
+        "discoverAccounts",
+        "preflightBulkDeleteAccounts",
         "discoverAssetCategories",
         "preflightBulkDeleteAssetCategories",
         "discoverPortfolios",
@@ -197,6 +205,7 @@ def test_bulk_action_operations_are_exposed_by_command_center_adapter() -> None:
         assert operations[operation_id]["kind"] == "resource"
 
     for operation_id in (
+        "bulkDeleteAccounts",
         "bulkDeleteAssetCategories",
         "bulkDeletePortfolios",
         "bulkDeletePortfolioGroups",

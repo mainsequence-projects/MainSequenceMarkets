@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, ClassVar, Literal
 
@@ -183,6 +183,35 @@ class Account(MarketsMetaTableRow):
     ) -> Account:
         values = _validated_payload_values(AccountUpdate, payload, kwargs)
         return super().update(uid, values)
+
+    @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any] | None:
+        """Delete the account with its whole history, in one transaction (ADR 0050).
+
+        Removes its orders, trades and their order events, order managers, virtual
+        funds, target allocations, position sets, holdings sets and their rows, then
+        the account. Only Markets tables receive statements; rows in another
+        application's table go only through a foreign key that table declares, and a
+        `RESTRICT` key there refuses the delete. Returns `None` when the account does
+        not exist and raises `AccountDeleteConflictError` when a key refuses it. The
+        same call does the same under the runtime and the remote backend.
+        """
+
+        from msm.services import delete_account
+
+        return delete_account(cls._active_context(), uid=uid)
+
+    @classmethod
+    def bulk_delete(cls, *, uids: Sequence[uuid.UUID | str]) -> dict[str, Any]:
+        """Delete each account as `delete` does, each in its own transaction.
+
+        Accounts that are missing or refused are listed in `failed`; the others are
+        deleted.
+        """
+
+        from msm.services import bulk_delete_accounts
+
+        return bulk_delete_accounts(cls._active_context(), uids=[str(uid) for uid in uids])
 
     def pretty_print_positions(
         self,

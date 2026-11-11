@@ -109,6 +109,14 @@ Rules:
   publisher. It is not the allocation policy engine.
 - TimeIndexTableUpdaters do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
+- Account history is never removed from an account that stays (ADR 0049). The only
+  delete is the whole account: `Account.delete(uid)` / `Account.bulk_delete(uids=...)`
+  or `DELETE /api/v1/account/{uid}/` remove the account with its orders, trades and
+  their order events, order managers, virtual funds, targets and holdings in one
+  transaction (ADR 0050). Preflight a selection with
+  `POST /api/v1/account/bulk-delete/preflight/`. Markets sends deletes only to its own
+  tables; another application's table loses rows only through its own `CASCADE` key,
+  and its `RESTRICT` key refuses the delete.
 
 ## Runtime Attachment
 
@@ -427,6 +435,8 @@ and uses `extra_details["ticker"]` when available.
 
 - `msm.accounts` compatibility shims.
 - `AccountTargetPositionAssignmentTable`.
+- Deletes of single virtual funds, target allocations, position sets or holdings sets
+  (`delete_virtual_fund`, `delete_account_target_allocation`, `delete_position_set`).
 - Account allocation-model references directly on `AccountTable`.
 - Fake schema-bootstrap rows or placeholder holdings.
 - updater-side dtype, nullable, index-name, or FK mirrors.

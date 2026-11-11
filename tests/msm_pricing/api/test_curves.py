@@ -7,8 +7,19 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from msm_pricing.api.curves import Curve, CurveDeleteConflictError, CurveUpsert
+from msm_pricing.api.curves import (
+    Curve,
+    CurveDatasetOwnershipError,
+    CurveDeleteConflictError,
+    CurveUpsert,
+)
 from msm_pricing.models import CurveTable
+from tests.msm_pricing.api.provider_discount_curves import (
+    CORE_TABLE_UID,
+    CURVE_IDENTIFIER,
+    PROVIDER_TABLE_UID,
+    bind_discount_curve_storages,
+)
 
 
 def _pricing_curve(*, uid: uuid.UUID | None = None) -> Curve:
@@ -1013,17 +1024,22 @@ def test_curve_delete_impact_blocks_until_explicit_cleanup_flags(monkeypatch) ->
             return 2
         raise AssertionError(model.__name__)
 
-    def fake_observation_counts(**kwargs):
+    def fake_observation_impact(**kwargs):
         calls.append(("observations", kwargs))
-        return 3, 0, 1
+        return {
+            "markets_observation_count": 3,
+            "markets_unsupported_storage_count": 0,
+            "provider_tables": [],
+            "storage_scope_count": 1,
+        }
 
     monkeypatch.setattr(
         "msm_pricing.api.curves._count_model_rows",
         fake_count_model_rows,
     )
     monkeypatch.setattr(
-        "msm_pricing.api.curves._discount_curve_observation_impact_counts",
-        fake_observation_counts,
+        "msm_pricing.api.curves._discount_curve_observation_impact",
+        fake_observation_impact,
     )
 
     blocked = Curve.get_delete_impact(uid=curve.uid)
@@ -1193,6 +1209,7 @@ def test_curve_value_cleanup_uses_scoped_time_index_delete(monkeypatch) -> None:
                 "storage_table_uid": str(storage_table_uid),
                 "storage_table_identifier": "DiscountCurvesStorage",
                 "time_index_meta_table": table,
+                "provider_owned": False,
                 "unsupported_reason": None,
             }
         ],
@@ -1218,3 +1235,127 @@ def test_curve_value_cleanup_uses_scoped_time_index_delete(monkeypatch) -> None:
             "table_empty": False,
         }
     ]
+
+
+def test_curve_delete_never_writes_a_provider_owned_discount_curve_storage(monkeypatch) -> None:
+    """ADR 0047: delete_values cleans Markets' DiscountCurvesStorage only.
+
+    A provider's instance of the storage, bound to a pricing market-data set,
+    holds rows of the curve. The preflight lists it as a blocker, the delete
+    refuses without sending it a statement, and once the provider has removed
+    its rows the delete cleans the core storage and leaves the instance alone.
+    """
+
+    curve = _pricing_curve()
+    context = SimpleNamespace(timeout=30)
+    storages = bind_discount_curve_storages(
+        monkeypatch,
+        core_curve_identifiers=[CURVE_IDENTIFIER] * 3 + ["EUR-ESTR-DISCOUNT"],
+        provider_curve_identifiers=[CURVE_IDENTIFIER] * 2 + ["EUR-ESTR-DISCOUNT"],
+    )
+    deleted_curves: list[object] = []
+
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: curve))
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._active_curve_delete_context",
+        lambda: context,
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._count_model_rows",
+        lambda active_context, *, model, filters: 0,
+    )
+
+    def fake_delete_model(active_context, *, model, uid):
+        deleted_curves.append(uid)
+        return {"deleted_count": 1}
+
+    monkeypatch.setattr("msm_pricing.api.curves.delete_model", fake_delete_model)
+
+    impact = Curve.get_delete_impact(uid=curve.uid, delete_values=True)
+
+    assert impact is not None
+    assert impact["can_delete"] is False
+    assert impact["blocking_count"] == 2
+    relationships = {item["key"]: item for item in impact["relationships"]}
+    provider_relationship = relationships[
+        f"provider_discount_curve_observations:{PROVIDER_TABLE_UID}"
+    ]
+    assert provider_relationship["count"] == 2
+    assert provider_relationship["effect"] == "blocks_delete"
+    assert provider_relationship["blocks_delete"] is True
+    assert provider_relationship["model"] == "example-provider.DiscountCurvesTS.main"
+    assert "application that owns the table" in provider_relationship["description"]
+    assert relationships["discount_curve_observations"]["count"] == 3
+    assert relationships["discount_curve_observations"]["effect"] == "delete_cleanup"
+    assert relationships["discount_curve_observations"]["blocks_delete"] is False
+    assert relationships["discount_curve_storage_sources"]["count"] == 2
+    assert any(PROVIDER_TABLE_UID in warning for warning in impact["warnings"])
+
+    with pytest.raises(CurveDatasetOwnershipError) as refused:
+        Curve.delete(curve.uid, delete_values=True)
+
+    message = str(refused.value)
+    assert "example-provider.DiscountCurvesTS.main" in message
+    assert PROVIDER_TABLE_UID in message
+    assert "delete them through the application that owns the table" in message
+    assert storages.provider.writes() == []
+    assert storages.core.writes() == []
+    assert deleted_curves == []
+
+    storages.provider.rows = [
+        row for row in storages.provider.rows if row["curve_identifier"] != CURVE_IDENTIFIER
+    ]
+    response = Curve.delete(curve.uid, delete_values=True)
+
+    assert response is not None
+    assert response["deleted_values_count"] == 3
+    assert response["storage_cleanups"] == [
+        {
+            "storage_table_uid": CORE_TABLE_UID,
+            "storage_table_identifier": "DiscountCurvesTS",
+            "deleted_count": 3,
+            "table_empty": False,
+        }
+    ]
+    assert storages.core.writes() == [
+        ("delete_after_date", None, {"curve_identifier": [CURVE_IDENTIFIER]}),
+    ]
+    assert storages.provider.writes() == []
+    assert storages.provider.rows == [{"curve_identifier": "EUR-ESTR-DISCOUNT"}]
+    assert deleted_curves == [curve.uid]
+
+
+def test_curve_delete_preflight_blocks_on_an_unreadable_provider_storage(monkeypatch) -> None:
+    curve = _pricing_curve()
+    storages = bind_discount_curve_storages(
+        monkeypatch,
+        core_curve_identifiers=[],
+        provider_curve_identifiers=[],
+    )
+    monkeypatch.setattr(Curve, "get_by_uid", classmethod(lambda cls, uid: curve))
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._active_curve_delete_context",
+        lambda: SimpleNamespace(timeout=30),
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.curves._count_model_rows",
+        lambda active_context, *, model, filters: 0,
+    )
+    missing_table_uid = "6a6a6a6a-0000-4000-8000-000000000007"
+    storages.bindings.append(
+        storages.bindings[1].model_copy(update={"storage_table_uid": uuid.UUID(missing_table_uid)})
+    )
+
+    impact = Curve.get_delete_impact(uid=curve.uid, delete_values=True)
+
+    assert impact is not None
+    assert impact["can_delete"] is False
+    relationships = {item["key"]: item for item in impact["relationships"]}
+    assert f"provider_discount_curve_observations:{PROVIDER_TABLE_UID}" not in relationships
+    unreadable = relationships[f"provider_discount_curve_observations:{missing_table_uid}"]
+    assert unreadable["count"] is None
+    assert unreadable["count_accuracy"] == "unavailable"
+    assert unreadable["blocks_delete"] is True
+    with pytest.raises(CurveDatasetOwnershipError, match="could not be checked"):
+        Curve.delete(curve.uid, delete_values=True)
+    assert storages.core.writes() == []

@@ -9,20 +9,19 @@ from .base import (
 )
 from .accounts import (
     build_create_account_operation,
-    build_delete_account_operation,
     build_get_account_by_unique_identifier_operation,
     build_replace_account_target_positions_snapshot_operation,
     build_search_accounts_operation,
     build_search_account_target_allocation_candidates_operation,
     build_update_account_operation,
     create_account,
-    delete_account,
     get_account_by_unique_identifier,
     replace_account_target_positions_snapshot,
     search_account_target_allocation_candidates,
     search_accounts,
     update_account,
 )
+from .account_deletion import build_delete_account_operation, delete_account
 from .crud import (
     build_create_model_operation,
     build_delete_model_operation,

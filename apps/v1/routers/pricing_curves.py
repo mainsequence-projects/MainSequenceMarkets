@@ -177,8 +177,12 @@ def list_pricing_curve_selections_by_uid(
     description=(
         "Return the rows and storage observations that would block or be affected by "
         "deleting one pricing curve. Set `delete_values=true` to include scoped "
-        "discount-curve observation cleanup in the preview, and "
-        "`delete_curve_selections=true` to include market-data-set curve-selection cleanup."
+        "cleanup of the curve's observations in Markets' `DiscountCurvesStorage` in the "
+        "preview, and `delete_curve_selections=true` to include market-data-set "
+        "curve-selection cleanup. Observations in a discount-curve storage another "
+        "application owns, bound through a pricing market-data set, are always listed "
+        "as blockers: Markets does not delete rows in another application's table "
+        "(ADR 0047)."
     ),
     operation_id="getPricingCurveDeleteImpact",
     responses={
@@ -195,7 +199,8 @@ def get_pricing_curve_delete_impact_by_uid(
         Query(
             description=(
                 "When true, preview deletion of timestamped discount-curve observations "
-                "for this curve_identifier."
+                "for this curve_identifier from Markets' DiscountCurvesStorage. Rows in "
+                "another application's storage instance still block the delete."
             ),
         ),
     ] = False,
@@ -225,8 +230,11 @@ def get_pricing_curve_delete_impact_by_uid(
     summary="Delete pricing curve",
     description=(
         "Delete one pricing curve registry row. Curve-building details cascade by database "
-        "foreign key. Discount-curve observations and market-data-set curve selections are "
-        "deleted only when their explicit cleanup flags are true."
+        "foreign key. Discount-curve observations in Markets' `DiscountCurvesStorage` and "
+        "market-data-set curve selections are deleted only when their explicit cleanup "
+        "flags are true. Observations in a discount-curve storage another application "
+        "owns are never deleted; while that table holds rows for the curve, the route "
+        "returns 409 and deletes nothing (ADR 0047)."
     ),
     operation_id="deletePricingCurve",
     status_code=http_status.HTTP_200_OK,
@@ -241,7 +249,10 @@ def get_pricing_curve_delete_impact_by_uid(
         },
         409: {
             "model": ErrorResponse,
-            "description": "The pricing curve has dependent rows not covered by flags.",
+            "description": (
+                "The pricing curve has dependent rows not covered by flags, or another "
+                "application's discount-curve storage holds observations of the curve."
+            ),
         },
     },
 )
@@ -252,7 +263,8 @@ def delete_pricing_curve_by_uid(
         Query(
             description=(
                 "Delete timestamped discount-curve observations for this curve_identifier "
-                "before deleting the curve."
+                "from Markets' DiscountCurvesStorage before deleting the curve. Rows in "
+                "another application's storage instance are never deleted."
             ),
         ),
     ] = False,

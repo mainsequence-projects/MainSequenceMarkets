@@ -62,7 +62,6 @@ from .base import (
 )
 from .crud import (
     build_create_model_operation,
-    build_delete_model_operation,
     build_get_model_by_uid_operation,
     build_search_model_operation,
     mirror_renamed_columns,
@@ -263,30 +262,6 @@ def update_account(
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_update_account_operation(context, **kwargs),
-        context=context,
-    )
-
-
-def build_delete_account_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    statement = delete(AccountTable).where(AccountTable.uid == uid)
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
-
-
-def delete_account(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_account_operation(context, uid=uid),
         context=context,
     )
 
@@ -564,29 +539,6 @@ def _latest_asset_snapshots_subquery():
     )
 
 
-def build_delete_account_target_allocation_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(
-        context,
-        model=AccountTargetAllocationTable,
-        uid=uid,
-    )
-
-
-def delete_account_target_allocation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_account_target_allocation_operation(context, uid=uid),
-        context=context,
-    )
-
-
 def build_create_position_set_operation(
     context: MarketsRepositoryContext,
     *,
@@ -652,29 +604,6 @@ def search_position_sets(
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_search_position_sets_operation(context, **kwargs),
-        context=context,
-    )
-
-
-def build_delete_position_set_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    return build_delete_model_operation(
-        context,
-        model=PositionSetTable,
-        uid=uid,
-    )
-
-
-def delete_position_set(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_position_set_operation(context, uid=uid),
         context=context,
     )
 
@@ -1907,9 +1836,6 @@ __all__ = [
     "build_create_account_target_allocation_operation",
     "build_create_account_operation",
     "build_create_position_set_operation",
-    "build_delete_account_target_allocation_operation",
-    "build_delete_account_operation",
-    "build_delete_position_set_operation",
     "build_get_account_by_uid_operation",
     "build_get_account_by_unique_identifier_operation",
     "build_search_accounts_operation",
@@ -1920,9 +1846,6 @@ __all__ = [
     "create_account_target_allocation",
     "create_account",
     "create_position_set",
-    "delete_account_target_allocation",
-    "delete_account",
-    "delete_position_set",
     "get_account_by_uid",
     "get_account_by_unique_identifier",
     "replace_account_holdings_snapshot",

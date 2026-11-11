@@ -205,30 +205,6 @@ def update_virtual_fund(
     )
 
 
-def build_delete_virtual_fund_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    statement = delete(VirtualFundTable).where(VirtualFundTable.uid == uid)
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
-
-
-def delete_virtual_fund(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_virtual_fund_operation(context, uid=uid),
-        context=context,
-    )
-
-
 def build_replace_account_virtual_fund_holdings_operation(
     context: MarketsRepositoryContext,
     *,
@@ -770,13 +746,11 @@ def _uuid_value(name: str, value: uuid.UUID | str) -> Any:
 __all__ = [
     "build_create_virtual_fund_operation",
     "build_replace_account_virtual_fund_holdings_operation",
-    "build_delete_virtual_fund_operation",
     "build_get_virtual_fund_by_unique_identifier_operation",
     "build_get_virtual_funds_by_account_operation",
     "build_get_virtual_funds_by_portfolio_operation",
     "build_update_virtual_fund_operation",
     "create_virtual_fund",
-    "delete_virtual_fund",
     "get_virtual_fund_by_unique_identifier",
     "get_virtual_funds_by_account",
     "get_virtual_funds_by_portfolio",

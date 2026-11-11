@@ -50,11 +50,12 @@ Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
 `publish`, `register`, `register_signal`, `unregister`, `unregister_signal`, `reconcile`, `activate_definition`,
 `retire_definition`) run through `registry_write`, which records who made them.
-A table row class's `delete` runs the resource's service delete with its
-preflight checks and exists only for `asset`, `asset-category`, `calendar`,
-`index`, `portfolio` and `portfolio-group`. Composites that implement `delete`
-themselves (`curve`, `pricing-market-data-set`, the binding resources) run it
-like any other operation.
+A row class that defines its own `delete` runs it like any other operation:
+`account` (the cascading account delete, with `bulk_delete`, ADR 0050) and the
+composites (`curve`, `pricing-market-data-set`, the binding resources). Any other
+table row class's `delete` runs the resource's service delete with its preflight
+checks and exists only for `asset`, `asset-category`, `calendar`, `index`,
+`portfolio` and `portfolio-group`.
 
 The resources include the `msm_portfolios.api` metadata rows
 (`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and
