@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-11
+
 ### Added
 
 - Accounts can be deleted with their whole history (#58,
