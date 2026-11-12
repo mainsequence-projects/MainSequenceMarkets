@@ -178,6 +178,7 @@ MUTATION_OPERATION_IDS = frozenset(
         "updateAccount",
         "deleteAccount",
         "bulkDeleteAccounts",
+        "registerAccount",
         "deleteIndex",
         "createIndex",
         "updateIndex",

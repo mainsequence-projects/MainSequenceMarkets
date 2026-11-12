@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from msm.services.assets.currency import AssetTypeConflictError, get_or_create_currency_asset
+
 if TYPE_CHECKING:
     from msm.repositories import MarketsOperationContext
 
@@ -74,11 +76,13 @@ def asset_reference_details_by_uids(*args: Any, **kwargs: Any) -> list[dict[str,
 
 
 __all__ = [
+    "AssetTypeConflictError",
     "asset_identifiers_by_ticker",
     "asset_reference_details",
     "asset_reference_details_by_uids",
     "create_asset",
     "delete_asset",
+    "get_or_create_currency_asset",
     "get_asset_by_uid",
     "get_asset_by_unique_identifier",
     "search_assets",

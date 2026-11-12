@@ -122,6 +122,25 @@ class Asset(MarketsMetaTableRow):
         return super().update(uid, _validate_payload(AssetUpdate, payload, kwargs))
 
     @classmethod
+    def get_or_create_currency(cls, code: str) -> Asset:
+        """The currency asset ``code``, created with the ``currency`` type when missing.
+
+        One Markets operation. The ``currency`` asset type is created first when it is
+        missing, since the migrations do not seed built-in asset types. An existing asset
+        is returned unchanged. Raises ``AssetTypeConflictError`` (``MarketsConflictError``
+        remotely) when ``code`` is an existing asset of another type (ADR 0051).
+        """
+
+        from msm.bootstrap import resolve_runtime
+        from msm.services import get_or_create_currency_asset
+
+        context = resolve_runtime(
+            models=[AssetTypeTable, AssetTable],
+            row_model_name=cls.__name__,
+        ).context
+        return cls.model_validate(get_or_create_currency_asset(context, code=code))
+
+    @classmethod
     def list_related_meta_tables(
         cls,
         uid: uuid.UUID | str,

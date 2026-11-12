@@ -5,6 +5,9 @@ from typing import Any
 
 _EXPORTS = {
     "AccountHoldingsSnapshotExistsError": ".accounts",
+    "AccountRegistrationResult": ".accounts",
+    "AccountRegistrationWrite": ".accounts",
+    "AssetTypeConflictError": ".assets",
     "AccountTargetPositionsSnapshotExistsError": ".target_positions",
     "add_account_holdings_snapshot_response": ".accounts",
     "add_account_target_positions_snapshot_response": ".target_positions",
@@ -57,6 +60,7 @@ _EXPORTS = {
     "impact_node_label": ".table_impact",
     "preflight_account_delete": ".accounts",
     "preflight_bulk_delete_accounts": ".accounts",
+    "register_account": ".accounts",
     "delete_calendar": ".reference_data",
     "delete_calendar_date_record": ".calendars",
     "delete_calendar_event_record": ".calendars",
@@ -83,6 +87,7 @@ _EXPORTS = {
     "get_asset_frontend_detail_summary": ".asset_master_lists",
     "get_asset_record": ".asset_master_lists",
     "get_asset_by_uid": ".assets",
+    "get_or_create_currency_asset": ".assets",
     "get_asset_by_unique_identifier": ".assets",
     "get_asset_category_by_uid": ".asset_categories",
     "get_asset_category_by_unique_identifier": ".asset_categories",

@@ -248,6 +248,30 @@ def test_account_delete_conflicts_and_missing_accounts_come_back_typed(monkeypat
     assert Account.delete(uuid.uuid4()) is None
 
 
+def test_currency_get_or_create_runs_remotely_and_conflicts_come_back_typed(monkeypatch, remote) -> None:
+    from msm.api.remote import MarketsConflictError
+    from msm.services import AssetTypeConflictError
+
+    uid = str(uuid.uuid4())
+    calls: list[str] = []
+
+    def get_or_create(context, *, code):
+        calls.append(code)
+        if code == "BTC":
+            raise AssetTypeConflictError("Asset 'BTC' exists with an asset_type other than 'currency'.")
+        return {"uid": uid, "unique_identifier": code, "asset_type": "currency"}
+
+    monkeypatch.setattr("msm.services.get_or_create_currency_asset", get_or_create, raising=False)
+
+    asset = Asset.get_or_create_currency("USD")
+
+    assert isinstance(asset, Asset)
+    assert (str(asset.uid), asset.unique_identifier, asset.asset_type) == (uid, "USD", "currency")
+    with pytest.raises(MarketsConflictError, match="other than 'currency'"):
+        Asset.get_or_create_currency("BTC")
+    assert calls == ["USD", "BTC"]
+
+
 def test_validation_errors_come_back_as_value_errors(remote) -> None:
     with pytest.raises(ValueError):
         Asset.upsert(asset_type="equity")
@@ -456,6 +480,7 @@ def test_a_snapshot_repeated_with_other_values_is_a_400(monkeypatch, remote) -> 
         ("portfolio-datasets", "register", {"registration": {"portfolio_uid": str(uuid.uuid4())}}),
         ("portfolio-datasets", "reconcile", {"portfolio_uids": [str(uuid.uuid4())]}),
         ("asset", "upsert_many", {"payloads": [{"unique_identifier": "A"}]}),
+        ("asset", "get_or_create_currency", {"code": "USD"}),
         (
             "portfolio-datasets",
             "register_signal",

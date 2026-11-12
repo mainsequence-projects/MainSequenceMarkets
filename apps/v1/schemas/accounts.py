@@ -29,6 +29,8 @@ AccountAddTargetPositionsRequest = _contracts.AccountAddTargetPositionsRequest
 AccountTargetPositionsSnapshotResponse = _contracts.AccountTargetPositionsSnapshotResponse
 AccountVirtualFundAllocationRequest = _contracts.AccountVirtualFundAllocationRequest
 AccountVirtualFundAllocationResponse = _contracts.AccountVirtualFundAllocationResponse
+AccountRegistrationRequest = _contracts.AccountRegistrationRequest
+AccountRegistrationResponse = _contracts.AccountRegistrationResponse
 
 
 class AccountWithIncludes(Account):

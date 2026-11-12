@@ -22,6 +22,8 @@ from apps.v1.schemas.accounts import (
     AccountBulkDeleteResponse,
     AccountDeletePreflightResponse,
     AccountDeleteResponse,
+    AccountRegistrationRequest,
+    AccountRegistrationResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
@@ -39,6 +41,7 @@ from apps.v1.services.accounts import (
     get_accounts_by_uids,
     list_accounts,
     preflight_bulk_delete_accounts,
+    register_account,
     search_account_target_allocation_targets,
     update_account,
 )
@@ -122,6 +125,45 @@ def create_account_record(payload: AccountCreate) -> Account:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/registration/",
+    response_model=AccountRegistrationResponse,
+    summary="Register account with holdings",
+    description=(
+        "Register an account and write one holdings snapshot in one MetaTables transaction "
+        "(ADR 0051). Creates the missing asset types, assets and cash currency asset, "
+        "writes asset snapshots whose values changed, creates or updates the account, and "
+        "writes the holdings. Idempotent on `(account.unique_identifier, holdings_date)`: "
+        "holdings equal to the stored ones are not written again, and different ones are "
+        "replaced only with `overwrite`. A provider writes its own account sidecar "
+        "afterwards, with the returned account uid."
+    ),
+    operation_id="registerAccount",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid payload, or a position names an unknown asset.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": (
+                "An existing asset has another asset_type, or different holdings exist at "
+                "holdings_date and overwrite is false. Nothing was written."
+            ),
+        },
+    },
+)
+def register_account_with_holdings(payload: AccountRegistrationRequest) -> AccountRegistrationResponse:
+    try:
+        return register_account(payload=payload)
+    except ValueError as exc:
+        conflict = exc.__class__.__name__ in {
+            "AssetTypeConflictError",
+            "AccountHoldingsSnapshotExistsError",
+        }
+        raise HTTPException(status_code=409 if conflict else 400, detail=str(exc)) from exc
 
 
 @router.get(

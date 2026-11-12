@@ -311,6 +311,8 @@ Account operations:
 - `allocateAccountVirtualFunds` (a dry run by default; it writes only with `apply`)
 - `deleteAccount` and `bulkDeleteAccounts`, which delete accounts with their history
   ([ADR 0050](../../0050-account-deletion.md))
+- `registerAccount`, which registers an account with its holdings snapshot in one
+  transaction ([ADR 0051](../../0051-account-registration-in-one-transaction.md))
 
 Index operations:
 

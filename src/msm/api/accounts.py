@@ -992,6 +992,144 @@ class AccountVirtualFundAllocationResponse(BaseModel):
     warnings: list[AccountVirtualFundAllocationWarning] = Field(default_factory=list)
 
 
+
+# Markets API wire contracts for account registration
+# (`POST /account/registration/`, ADR 0051).
+
+ACCOUNT_REGISTRATION_MAX_ASSETS = 1000
+"""Most distinct asset identifiers one registration names: one MetaTables read page."""
+
+ACCOUNT_REGISTRATION_MAX_POSITIONS = 1000
+"""Most positions one registration writes."""
+
+ACCOUNT_REGISTRATION_TABLES: tuple[str, ...] = (
+    "asset_types",
+    "assets",
+    "asset_snapshots",
+    "accounts",
+    "holdings_sets",
+    "holdings",
+)
+"""The tables a registration writes, as keys of its ``written`` counts."""
+
+
+class AccountRegistrationAccount(BaseModel):
+    """The account to register. A flag left out keeps an existing account's value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    account_name: str = Field(min_length=1, max_length=255)
+    is_paper: bool | None = None
+    account_is_active: bool | None = None
+
+
+class AccountRegistrationAssetType(BaseModel):
+    """The asset type an asset is created with; created too when it is missing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_type: str = Field(min_length=1, max_length=64)
+    display_name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+
+    @field_validator("asset_type")
+    @classmethod
+    def _normalize_asset_type(cls, value: str) -> str:
+        from msm.api.assets import normalize_asset_type
+
+        return normalize_asset_type(value)
+
+
+class AccountRegistrationAssetSnapshot(BaseModel):
+    """The asset's display values; written when they differ from its latest snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    ticker: str | None = None
+    exchange_code: str | None = None
+    asset_ticker_group_id: str | None = None
+
+
+class AccountRegistrationAsset(BaseModel):
+    """An asset the registration creates when it is missing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unique_identifier: str = Field(min_length=1, max_length=255)
+    asset_type: AccountRegistrationAssetType
+    snapshot: AccountRegistrationAssetSnapshot | None = None
+
+
+class AccountRegistrationPosition(BaseModel):
+    """One holdings position: a positive quantity of an asset, long (1) or short (-1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_identifier: str = Field(min_length=1, max_length=255)
+    quantity: Decimal = Field(gt=0)
+    direction: Literal[-1, 1] = 1
+    extra_details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountRegistrationRequest(BaseModel):
+    """Register an account and write one holdings snapshot (``registerAccount``, ADR 0051).
+
+    ``assets`` are created when missing, with their asset types; ``cash_currency`` names a
+    currency asset created the same way. A position may name one of them or an asset that
+    already exists. The call is idempotent on ``(account.unique_identifier,
+    holdings_date)``: stored holdings equal to ``positions`` are not written again, and
+    different ones are replaced only with ``overwrite``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    account: AccountRegistrationAccount
+    assets: list[AccountRegistrationAsset] = Field(
+        default_factory=list,
+        max_length=ACCOUNT_REGISTRATION_MAX_ASSETS,
+    )
+    cash_currency: str | None = Field(default=None, min_length=1, max_length=255)
+    holdings_date: dt.datetime
+    overwrite: bool = False
+    positions: list[AccountRegistrationPosition] = Field(
+        min_length=1,
+        max_length=ACCOUNT_REGISTRATION_MAX_POSITIONS,
+    )
+
+
+class AccountRegistrationWriteCount(BaseModel):
+    """Rows of one table a registration created, and existing rows it changed."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    created: int = 0
+    changed: int = 0
+
+
+class AccountRegistrationResponse(BaseModel):
+    """The registered account, its assets' uids, its holdings set and what was written."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account: Account
+    asset_uids: dict[str, uuid.UUID]
+    holdings_set_uid: uuid.UUID
+    holdings_date: dt.datetime
+    written: dict[str, AccountRegistrationWriteCount] = Field(
+        default_factory=lambda: {
+            table: AccountRegistrationWriteCount() for table in ACCOUNT_REGISTRATION_TABLES
+        }
+    )
+
+    @property
+    def uid(self) -> uuid.UUID:
+        """The registered account's uid."""
+
+        return self.account.uid
+
+
 __all__ = [
     "PortfolioAccountTarget",
     "AccountAddAssetTargetPositionRequest",
@@ -999,6 +1137,17 @@ __all__ = [
     "AccountAddTargetPositionRequest",
     "AccountAddTargetPositionsRequest",
     "AccountHoldingsSnapshots",
+    "ACCOUNT_REGISTRATION_MAX_ASSETS",
+    "ACCOUNT_REGISTRATION_MAX_POSITIONS",
+    "ACCOUNT_REGISTRATION_TABLES",
+    "AccountRegistrationAccount",
+    "AccountRegistrationAsset",
+    "AccountRegistrationAssetSnapshot",
+    "AccountRegistrationAssetType",
+    "AccountRegistrationPosition",
+    "AccountRegistrationRequest",
+    "AccountRegistrationResponse",
+    "AccountRegistrationWriteCount",
     "Account",
     "AccountCreate",
     "AccountGroup",

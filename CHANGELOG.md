@@ -9,6 +9,38 @@ and this project follows versioned releases.
 
 ### Added
 
+- One call registers an account and writes its holdings snapshot (#63,
+  [ADR 0051](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0051-account-registration-in-one-transaction/)):
+  `POST /api/v1/account/registration/` (`registerAccount`), `MarketsClient.register_account`
+  and `msm.services.register_account`. In one MetaTables transaction it creates the
+  missing asset types, assets and cash currency asset, writes asset snapshots whose values
+  changed, creates the account or updates the fields that differ, and writes the
+  holdings. It reads twice whatever the number of assets and positions: the assets with
+  their latest snapshots, and the account with its holdings at `holdings_date`. A
+  re-registration of known assets costs those two reads and one transaction, or no
+  transaction when nothing changed; before, a connector made about 13 Markets calls.
+  - Idempotent on `(account.unique_identifier, holdings_date)`: holdings equal to the
+    stored ones are not written again and the call succeeds, with or without
+    `overwrite`. Different holdings answer `409` without `overwrite`, and nothing in the
+    call is written.
+  - An existing asset keeps its `asset_type`; a different requested type answers `409`
+    listing each asset, and nothing is written. A position naming an asset that is
+    neither listed nor existing answers `400`.
+  - Snapshot rows are written with plain SQL inside the transaction, not through the
+    `AssetSnapshot` updater, only when the asset has none or its latest snapshot is
+    earlier than `holdings_date` and differs in `name`, `ticker`, `exchange_code` or
+    `asset_ticker_group_id`. MetaTables catalog statistics do not count them.
+  - The holdings rows look the account uid up by `unique_identifier` inside the
+    transaction, so concurrent first registrations reference the account that won.
+  - Audited as `registry_write("account", "register")`, with one record per row
+    created or changed. Command Center lists it as a mutation.
+  - Provider sidecars stay provider-owned: the provider writes its sidecar afterwards
+    with the returned account uid.
+- `Asset.get_or_create_currency(code)` and `msm.services.get_or_create_currency_asset`
+  return the currency asset `code`, creating it and the built-in `currency` asset type
+  when missing, in one transaction. The migrations do not seed built-in asset types. An
+  existing asset of another type raises `AssetTypeConflictError` (`409`). It is a row
+  operation, so it runs through the Markets API too.
 - `msm.time_index.assets.snapshots.changed_asset_snapshots` and
   `SNAPSHOT_VALUE_COLUMNS`; `AssetSnapshot.without_stored_snapshots` and
   `stored_snapshot_values`; `msm.api.assets.AssetSnapshotPublication`.

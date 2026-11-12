@@ -16,6 +16,8 @@ below). It builds on two fixes:
 Statement lists run on PostgreSQL and SQLite, as in
 [ADR 0050](0050-account-deletion.md) (MetaTables ADR 0026).
 
+Implemented on `development` for 3.4.0; see "Implementation Notes".
+
 ## Context
 
 A venue connector registers a brokerage account through the Markets API. Issue #63 reports
@@ -77,16 +79,19 @@ The request:
   "holdings_date": "2026-01-02T21:00:00Z",
   "overwrite": true,
   "positions": [{"asset_identifier": "<venue>::<venue asset id>", "quantity": "3",
-                 "direction": 1, "target_trade_time": null, "extra_details": {}}]
+                 "direction": 1, "extra_details": {}}]
 }
 ```
 
 - `assets` lists the assets the call may create. Each one names its asset type, and may carry
   a `snapshot`. The snapshot fields are the value columns of `AssetSnapshotsStorage`, so the
-  exchange is `exchange_code`.
+  exchange is `exchange_code`. A built-in asset type key, such as `equity`, is created from
+  its built-in definition.
 - `cash_currency` is optional. It names a currency asset, as in decision 9.
 - A position may name any asset in `assets`, the cash currency, or an asset that already
-  exists. Each asset appears at most once among the positions.
+  exists. Each asset appears at most once among the positions. Its `quantity` is positive
+  and `direction` gives the side. Every holdings row takes `holdings_date` as its
+  `target_trade_time`, as `add-holdings` requires.
 - `is_paper` and `account_is_active` are optional. When one is left out, a new account gets
   the `AccountCreate` default and an existing account keeps its value.
 - A call names at most 1,000 distinct asset identifiers and 1,000 positions. That keeps each
@@ -177,7 +182,8 @@ An asset in `assets` that carries a `snapshot` gets a row at `holdings_date` whe
   an empty string are equal.
 
 Otherwise the call writes no snapshot for it. A re-registration or sync with unchanged values
-therefore writes none.
+therefore writes none. A missing value is written as an empty string, as the updater writes
+it, so the table keeps one representation.
 
 This is #62's comparison, limited to what the first read returns. #62 compares each row with
 the snapshot in effect at that row's time. For a `holdings_date` after the latest snapshot,
@@ -211,8 +217,7 @@ the stored type.
 The call is idempotent on `(account.unique_identifier, holdings_date)`. The second read
 returns the holdings stored at `holdings_date`. They equal the request when both name the same
 assets and, for each asset, the same `quantity` (as stored, a float), `direction`,
-`target_trade_time` and `extra_details`. As in `add-holdings`, a position without
-`target_trade_time` uses `holdings_date`.
+`target_trade_time` and `extra_details`.
 
 | Stored holdings at `holdings_date` | `overwrite: false` | `overwrite: true` |
 |---|---|---|
@@ -353,3 +358,41 @@ what is missing, and the caller makes any ownership check in its own sidecar.
   `get_or_create_currency`. The release is a minor version. `MUTATION_OPERATION_IDS`, the
   exact set of registry writes in `tests/msm/fastapi/v1/test_acting_identity.py` and the
   account route documentation list them.
+
+## Implementation Notes
+
+### 2026-11-12: 3.4.0
+
+- **Modules.**
+  - `msm.repositories.account_registration` builds the state read, the statement list
+    and the answer select.
+  - `msm.repositories.asset_registration` builds the inserts of missing asset types and
+    assets, and the currency get-or-create.
+  - `msm.services.accounts.registration` decides what to write from the two reads.
+  - `msm.services.assets.currency` holds `get_or_create_currency_asset` and
+    `AssetTypeConflictError`.
+  - `apps.v1.services.accounts.register_account` records the audit.
+- **Statements.** A registration sends at most eight statements, well under MetaTables'
+  limit of 32. Without `overwrite`, the holdings set is inserted with
+  `ON CONFLICT DO NOTHING`, and its guard expects one row. With `overwrite`, the conflict
+  updates the set instead. Positions bind through `values_parameter`, as #62's upserts do.
+- **Account insert.** An omitted `is_paper` or `account_is_active` is inserted with the
+  `AccountCreate` default. The conflict update sets only the supplied fields. The row
+  needs every `NOT NULL` value even when it then conflicts; SQLite refused it otherwise.
+- **Snapshots.** The value columns are #62's `SNAPSHOT_VALUE_COLUMNS`. #62's
+  `changed_asset_snapshots` isn't used, because it reads the snapshots in effect itself,
+  which would be a third read.
+- **Second read.** It returns at most one row more than the request has positions. More
+  stored rows than positions already means the holdings differ.
+- **Answer.** The final select returns one row per named asset, with the uid of its asset
+  type's row. Created asset types and assets are the rows carrying a uid the route
+  chose.
+- **Tests.**
+  - `tests/msm/repositories/test_sqlite_account_registration.py` runs the registration
+    end to end through MetaTables' SQLite server code and counts the requests: 2 reads
+    and 1 transaction for a first registration and for a sync of known assets, and 2
+    reads for an identical repeat.
+  - `tests/msm/repositories/test_postgresql_account_registration.py` runs the same flows
+    on PostgreSQL when `MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL` names a disposable
+    `markets_*` database on localhost. It binds and executes each statement as MetaTables'
+    PostgreSQL backend does. It passed against PostgreSQL 16.
