@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from metatables import MetaTableOperationLimits
 from sqlalchemy import String, cast, func, or_, select
 
 from msm.api.base import operation_result_rows
@@ -227,13 +228,22 @@ def add_account_holdings_snapshot_response(
     overwrite: bool = False,
     include_asset_detail: bool = True,
 ) -> dict[str, Any] | None:
+    """Write one holdings snapshot and answer with it; ``None`` when the account does not exist.
+
+    Three MetaTables operations whatever the number of positions: read the
+    account, read every position's asset, and write. The write returns the rows
+    it inserted, so the answer is the snapshot that
+    ``get_account_holdings_snapshot_response`` reads at ``holdings_date``
+    without reading it back.
+    """
+
     account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
     if account_row is None:
         return None
 
     resolved_account_uid = str(account_row["uid"])
     normalized_holdings_date = _required_datetime(holdings_date, field_name="holdings_date")
-    normalized_positions = _normalize_add_holdings_positions(
+    normalized_positions, asset_details = _normalize_add_holdings_positions(
         context,
         positions=positions,
         holdings_date=normalized_holdings_date,
@@ -245,15 +255,17 @@ def add_account_holdings_snapshot_response(
         holdings_set_uid=candidate_holdings_set_uid,
         positions=normalized_positions,
     )
+    write_positions = _account_holdings_frame_operation_rows(holdings_frame)
     write_result = account_repository.replace_account_holdings_snapshot(
         context,
         holdings_set_uid=candidate_holdings_set_uid,
         account_uid=resolved_account_uid,
         holdings_date=normalized_holdings_date,
-        positions=_account_holdings_frame_operation_rows(holdings_frame),
+        positions=write_positions,
         overwrite=overwrite,
     )
-    if not operation_result_rows(write_result):
+    written_rows = operation_result_rows(write_result)
+    if not written_rows:
         if not overwrite:
             raise AccountHoldingsSnapshotExistsError(
                 "Account holdings snapshot already exists for "
@@ -261,14 +273,23 @@ def add_account_holdings_snapshot_response(
                 f"{normalized_holdings_date.isoformat()}."
             )
         raise RuntimeError("Account holdings replacement did not insert any rows.")
+    if len(written_rows) < len(write_positions):
+        # A write returns at most an operation's row cap of the rows it inserted.
+        written_rows = _account_holdings_snapshot_rows(
+            context,
+            account_uid=resolved_account_uid,
+            holdings_date=normalized_holdings_date,
+        )
 
-    return get_account_holdings_snapshot_response(
-        context,
+    return _build_account_holdings_snapshot(
         account_uid=resolved_account_uid,
-        order="desc",
-        limit=1,
+        rows=written_rows,
+        asset_references=(
+            _asset_snapshot_references(asset_details, details_by_identifier=asset_details)
+            if include_asset_detail
+            else {}
+        ),
         include_asset_detail=include_asset_detail,
-        holdings_date=normalized_holdings_date,
     )
 
 
@@ -456,8 +477,10 @@ def _search_account_holdings_rows(
     descending: bool = True,
     holdings_dates: Sequence[dt.datetime] | None = None,
     offset: int = 0,
+    order_by: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Holdings rows of one account ordered by time, newest first unless ``descending`` is false."""
+    """Holdings rows of one account ordered by time, newest first unless ``descending`` is
+    false, or by ``order_by`` columns."""
 
     from msm.time_index.accounts.storage import AccountHoldingsStorage
     from msm.repositories.crud import search_model
@@ -472,11 +495,45 @@ def _search_account_holdings_rows(
                 in_filters={"time_index": list(holdings_dates)} if holdings_dates else None,
                 limit=limit,
                 offset=offset,
-                order_by=["-time_index" if descending else "time_index"],
+                order_by=list(order_by or ["-time_index" if descending else "time_index"]),
             )
         )
         if isinstance(row, Mapping)
     ]
+
+
+def _account_holdings_snapshot_rows(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    holdings_date: dt.datetime,
+) -> list[dict[str, Any]]:
+    """Every row of one holdings snapshot, one page per operation row cap.
+
+    Rows of one snapshot share their time, so they page by asset identifier, the
+    rest of their key, which keeps the pages stable.
+    """
+
+    page_size = _operation_row_cap(context)
+    rows: list[dict[str, Any]] = []
+    while True:
+        page = _search_account_holdings_rows(
+            context,
+            account_uid=account_uid,
+            limit=page_size,
+            holdings_dates=[holdings_date],
+            offset=len(rows),
+            order_by=["asset_identifier"],
+        )
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows
+
+
+def _operation_row_cap(context: MarketsRepositoryContext) -> int:
+    """The most rows one MetaTables operation of ``context`` returns."""
+
+    return MetaTableOperationLimits.model_validate(getattr(context, "limits", None) or {}).max_rows
 
 
 def _normalize_add_holdings_positions(
@@ -484,45 +541,71 @@ def _normalize_add_holdings_positions(
     *,
     positions: Sequence[Mapping[str, Any] | Any],
     holdings_date: dt.datetime,
-) -> list[dict[str, Any]]:
-    normalized_positions: list[dict[str, Any]] = []
-    for position in positions:
-        payload = _position_payload(position)
-        asset_identifier = _required_string(payload.get("asset_identifier"), "asset_identifier")
-        asset_row = _asset_row_by_unique_identifier(context, unique_identifier=asset_identifier)
-        if asset_row is None:
-            raise ValueError(f"Asset {asset_identifier!r} was not found.")
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Validate the positions and read every position's asset in one operation.
 
+    Returns the positions to write and the asset reference details by asset
+    identifier. Every unknown identifier is named in one ``ValueError``.
+    """
+
+    payloads = [_position_payload(position) for position in positions]
+    normalized_positions = [
+        _normalize_add_holdings_position(payload, holdings_date=holdings_date)
+        for payload in payloads
+    ]
+    identifiers = list(
+        dict.fromkeys(position["asset_identifier"] for position in normalized_positions)
+    )
+    details = _asset_reference_details_by_identifier(context, identifiers=identifiers)
+    unknown = [identifier for identifier in identifiers if identifier not in details]
+    if unknown:
+        names = ", ".join(repr(identifier) for identifier in unknown)
+        raise ValueError(
+            f"Asset {names} was not found."
+            if len(unknown) == 1
+            else f"Assets {names} were not found."
+        )
+
+    for payload, position in zip(payloads, normalized_positions, strict=True):
+        asset_identifier = position["asset_identifier"]
         asset_uid = _string_or_none(payload.get("asset_uid"))
-        if asset_uid is not None and asset_uid != str(asset_row["uid"]):
+        resolved_asset_uid = str(details[asset_identifier]["asset_uid"])
+        if asset_uid is not None and asset_uid != resolved_asset_uid:
             raise ValueError(
                 f"asset_uid {asset_uid!r} does not match asset "
-                f"{asset_identifier!r} uid {asset_row['uid']!s}."
+                f"{asset_identifier!r} uid {resolved_asset_uid}."
             )
+    return normalized_positions, details
 
-        position_type = _string_or_none(payload.get("position_type")) or "units"
-        if position_type != "units":
-            raise ValueError("Only position_type='units' is supported for account holdings.")
 
-        target_trade_time = payload.get("target_trade_time")
-        normalized_target_trade_time = (
-            holdings_date
-            if target_trade_time in (None, "")
-            else _required_datetime(target_trade_time, field_name="target_trade_time")
-        )
-        if normalized_target_trade_time != holdings_date:
-            raise ValueError("target_trade_time must match holdings_date for add-holdings.")
+def _normalize_add_holdings_position(
+    payload: Mapping[str, Any],
+    *,
+    holdings_date: dt.datetime,
+) -> dict[str, Any]:
+    """Check one position's fields that need no read."""
 
-        normalized_positions.append(
-            {
-                "asset_identifier": asset_identifier,
-                "quantity": payload.get("quantity"),
-                "direction": payload.get("direction", 1),
-                "target_trade_time": normalized_target_trade_time,
-                "extra_details": _mapping_or_empty(payload.get("extra_details")),
-            }
-        )
-    return normalized_positions
+    asset_identifier = _required_string(payload.get("asset_identifier"), "asset_identifier")
+    position_type = _string_or_none(payload.get("position_type")) or "units"
+    if position_type != "units":
+        raise ValueError("Only position_type='units' is supported for account holdings.")
+
+    target_trade_time = payload.get("target_trade_time")
+    normalized_target_trade_time = (
+        holdings_date
+        if target_trade_time in (None, "")
+        else _required_datetime(target_trade_time, field_name="target_trade_time")
+    )
+    if normalized_target_trade_time != holdings_date:
+        raise ValueError("target_trade_time must match holdings_date for add-holdings.")
+
+    return {
+        "asset_identifier": asset_identifier,
+        "quantity": payload.get("quantity"),
+        "direction": payload.get("direction", 1),
+        "target_trade_time": normalized_target_trade_time,
+        "extra_details": _mapping_or_empty(payload.get("extra_details")),
+    }
 
 
 def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
@@ -546,19 +629,30 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
     }
 
 
-def _asset_row_by_unique_identifier(
+def _asset_reference_details_by_identifier(
     context: MarketsRepositoryContext,
     *,
-    unique_identifier: str,
-) -> dict[str, Any] | None:
-    from msm.services.assets import get_asset_by_unique_identifier
+    identifiers: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """Each known asset's uid and latest snapshot name and ticker, by asset identifier.
 
-    return _first_operation_row(
-        get_asset_by_unique_identifier(
-            context,
-            unique_identifier=unique_identifier,
-        )
-    )
+    One read, or one per operation row cap of identifiers: an asset is one row,
+    and a read returns at most the cap. Unknown identifiers are absent.
+    """
+
+    from msm.services.assets import asset_reference_details
+
+    unique = list(dict.fromkeys(identifiers))
+    batch = _operation_row_cap(context)
+    details: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(unique), batch):
+        for row in asset_reference_details(
+            unique[start : start + batch],
+            repository_context=context,
+        ):
+            if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, ""):
+                details[str(row["asset_identifier"])] = dict(row)
+    return details
 
 
 def _build_account_holdings_frame(**kwargs: Any):
@@ -688,16 +782,22 @@ def _asset_snapshot_references_by_unique_identifier(
     if not identifiers:
         return {}
 
-    from msm.services.assets import asset_reference_details
+    return _asset_snapshot_references(
+        identifiers,
+        details_by_identifier=_asset_reference_details_by_identifier(
+            context,
+            identifiers=sorted(identifiers),
+        ),
+    )
 
-    details_by_identifier = {
-        str(row["asset_identifier"]): row
-        for row in asset_reference_details(
-            sorted(identifiers),
-            repository_context=context,
-        )
-        if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, "")
-    }
+
+def _asset_snapshot_references(
+    identifiers: Iterable[str],
+    *,
+    details_by_identifier: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """The holdings ``asset`` reference of each identifier, from already-read details."""
+
     return {
         unique_identifier: _build_asset_snapshot_reference(
             unique_identifier=unique_identifier,

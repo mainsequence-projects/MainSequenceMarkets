@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Publishing an account holdings snapshot costs 3 MetaTables operations whatever
+  the number of positions, down from N + 4, or N + 5 with asset detail (#61):
+  `POST /api/v1/account/{uid}/add-holdings/`, `AccountHoldingsSnapshots.publish` and
+  `msm.services.add_account_holdings_snapshot_response`. One select reads every
+  position's asset, and the answer is built from the rows the write returns
+  instead of reading the snapshot back. The response is unchanged. A write whose
+  rows exceed an operation's `max_rows` reads the rest back in pages.
+- A holdings publish with several unknown assets names all of them in one error
+  (`400` on the route), and writes nothing.
+
 ## [3.3.0] - 2026-11-11
 
 ### Added

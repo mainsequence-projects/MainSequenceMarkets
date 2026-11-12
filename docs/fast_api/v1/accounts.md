@@ -151,8 +151,12 @@ direct account snapshots and virtual-fund-grouped views.
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
+  - costs three MetaTables operations whatever the number of positions: read
+    the account, read every position's asset in one select, and write; the
+    response is built from the rows the write returns, not read back
   - request body contains `holdings_date`, `overwrite`, and `positions`
-  - each position uses the storage field name `asset_identifier`
+  - each position uses the storage field name `asset_identifier`; one `400`
+    names every unknown `asset_identifier`
   - `asset_uid`, when provided, is validation only and must match the asset row
     for the supplied `asset_identifier`
   - `quantity` is stored as a positive magnitude and `direction` stores side

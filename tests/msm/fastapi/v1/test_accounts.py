@@ -1799,10 +1799,10 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
     )
     monkeypatch.setattr(
         account_services,
-        "_asset_row_by_unique_identifier",
-        lambda context, unique_identifier: {
-            "uid": str(asset_uid),
-            "unique_identifier": unique_identifier,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
         },
     )
     monkeypatch.setattr(
@@ -1833,21 +1833,21 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
         return {
             "rows": [
                 {
+                    "time_index": holdings_date.isoformat(),
+                    "account_uid": str(account_uid),
                     "asset_identifier": "example-asset-btc",
+                    "holdings_set_uid": str(holdings_set_uid),
+                    "is_trade_snapshot": False,
                     "quantity": 10.0,
                     "direction": -1,
+                    "target_trade_time": holdings_date.isoformat(),
+                    "extra_details": {"source": "test"},
                 }
             ]
         }
 
-    def fake_get_account_holdings_snapshot_response(context, **kwargs):
-        captured["response_context"] = context
-        captured["response_kwargs"] = kwargs
-        return {
-            "holdings_set_uid": str(holdings_set_uid),
-            "holdings_date": holdings_date,
-            "holdings": [],
-        }
+    def no_read_back(context, **kwargs):
+        raise AssertionError("The snapshot comes from the write's rows, not a read.")
 
     monkeypatch.setattr(
         account_services,
@@ -1859,11 +1859,7 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
         "replace_account_holdings_snapshot",
         fake_replace_account_holdings_snapshot,
     )
-    monkeypatch.setattr(
-        account_services,
-        "get_account_holdings_snapshot_response",
-        fake_get_account_holdings_snapshot_response,
-    )
+    monkeypatch.setattr(account_services, "_search_account_holdings_rows", no_read_back)
 
     snapshot = account_services.add_account_holdings_snapshot_response(
         context,
@@ -1913,16 +1909,29 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
         ],
         "overwrite": True,
     }
-    assert captured["response_context"] is context
-    assert captured["response_kwargs"] == {
-        "account_uid": str(account_uid),
-        "order": "desc",
-        "limit": 1,
-        "include_asset_detail": True,
+    assert snapshot == {
+        "holdings_set_uid": str(holdings_set_uid),
         "holdings_date": holdings_date,
+        "holdings": [
+            {
+                "time_index": holdings_date,
+                "asset_identifier": "example-asset-btc",
+                "asset": {
+                    "uid": str(asset_uid),
+                    "asset_identifier": "example-asset-btc",
+                    "current_snapshot": {"name": None, "ticker": None},
+                },
+                "position_type": "units",
+                "price": None,
+                "quantity": "10.0",
+                "direction": -1,
+                "signed_quantity": "-10.0",
+                "missing_price": True,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
     }
-    assert snapshot is not None
-    assert snapshot["holdings_set_uid"] == str(holdings_set_uid)
 
 
 def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
@@ -1942,10 +1951,10 @@ def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
     )
     monkeypatch.setattr(
         account_services,
-        "_asset_row_by_unique_identifier",
-        lambda context, unique_identifier: {
-            "uid": str(asset_uid),
-            "unique_identifier": unique_identifier,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
         },
     )
 
@@ -2065,10 +2074,10 @@ def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
     )
     monkeypatch.setattr(
         account_services,
-        "_asset_row_by_unique_identifier",
-        lambda context, unique_identifier: {
-            "uid": str(asset_uid),
-            "unique_identifier": unique_identifier,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
         },
     )
 
