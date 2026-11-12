@@ -122,6 +122,25 @@ class Asset(MarketsMetaTableRow):
         return super().update(uid, _validate_payload(AssetUpdate, payload, kwargs))
 
     @classmethod
+    def get_or_create_currency(cls, code: str) -> Asset:
+        """The currency asset ``code``, created with the ``currency`` type when missing.
+
+        One Markets operation. The ``currency`` asset type is created first when it is
+        missing, since the migrations do not seed built-in asset types. An existing asset
+        is returned unchanged. Raises ``AssetTypeConflictError`` (``MarketsConflictError``
+        remotely) when ``code`` is an existing asset of another type (ADR 0051).
+        """
+
+        from msm.bootstrap import resolve_runtime
+        from msm.services import get_or_create_currency_asset
+
+        context = resolve_runtime(
+            models=[AssetTypeTable, AssetTable],
+            row_model_name=cls.__name__,
+        ).context
+        return cls.model_validate(get_or_create_currency_asset(context, code=code))
+
+    @classmethod
     def list_related_meta_tables(
         cls,
         uid: uuid.UUID | str,
@@ -870,6 +889,16 @@ class AssetSnapshotReference(BaseModel):
     asset_ticker_group_id: str | None = None
 
 
+class AssetSnapshotPublication(BaseModel):
+    """What ``AssetSnapshots.publish`` did with the rows it was given."""
+
+    written: int
+    """Rows written: each changes its asset's snapshot."""
+    skipped: int
+    """Rows equal to the snapshot in effect at their ``time_index``, or repeating a
+    stored or an earlier ``(time_index, asset_identifier)`` with the same values."""
+
+
 _SNAPSHOT_READ_BATCH = 500
 
 
@@ -933,22 +962,35 @@ class AssetSnapshots(RemoteRowOperations, BaseModel):
         return [AssetSnapshotReference.model_validate(row) for row in rows]
 
     @classmethod
-    def publish(cls, snapshots: list[dict[str, Any]]) -> int:
-        """Write snapshot rows (``asset_identifier``, ``time_index``, ``name``, ``ticker`` ...).
+    def publish(cls, snapshots: list[dict[str, Any]]) -> AssetSnapshotPublication:
+        """Write the snapshot rows that change their asset's snapshot (MainSequenceMarkets#62).
 
-        Returns the number of rows written.
+        Each row (``asset_identifier``, ``time_index``, ``name``, ``ticker``,
+        ``exchange_code``, ``asset_ticker_group_id``) is compared on its four values with
+        the snapshot in effect at its own ``time_index``: the asset's latest stored row
+        at or before it, or the asset's previous row in ``snapshots`` when that one is
+        later. Rows equal to it are skipped, so republishing unchanged assets writes
+        nothing; when nothing changed, no update run starts. A row that repeats a stored
+        ``(time_index, asset_identifier)`` with the same values is skipped too; with
+        different values it raises ``ValueError``.
         """
 
         if not snapshots:
-            return 0
+            return AssetSnapshotPublication(written=0, skipped=0)
         from msm.bootstrap import resolve_runtime
         from msm.time_index.assets import AssetSnapshot
+        from msm.time_index.assets.snapshots import changed_asset_snapshots
 
-        resolve_runtime(models=["Asset", "AssetSnapshotsStorage"], row_model_name=cls.__name__)
-        error, _ = AssetSnapshot().set_snapshots([dict(row) for row in snapshots]).run()
-        if error:
-            raise RuntimeError("Asset snapshot publication failed.")
-        return len(snapshots)
+        context = resolve_runtime(
+            models=["Asset", "AssetSnapshotsStorage"], row_model_name=cls.__name__
+        ).context
+        rows = [dict(row) for row in snapshots]
+        changed = changed_asset_snapshots(rows, repository_context=context)
+        if changed:
+            error, _ = AssetSnapshot().set_snapshots(changed).run()
+            if error:
+                raise RuntimeError("Asset snapshot publication failed.")
+        return AssetSnapshotPublication(written=len(changed), skipped=len(rows) - len(changed))
 
 
 def _batches(values: list[Any]) -> list[list[Any]]:
@@ -957,6 +999,7 @@ def _batches(values: list[Any]) -> list[list[Any]]:
 
 
 __all__ = [
+    "AssetSnapshotPublication",
     "AssetSnapshotReference",
     "AssetSnapshots",
     "Asset",

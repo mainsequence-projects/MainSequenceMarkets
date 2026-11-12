@@ -108,7 +108,11 @@ CalendarSession.filter(calendar_uid=uid, local_date__gte=start, local_date__lte=
 ```
 
 `upsert_many` validates each payload through the row module's `<Row>Upsert`
-model and writes them in one statement on `__upsert_keys__`. `filter` takes
+model and writes them in one statement on `__upsert_keys__`. An existing row is
+updated only when a value differs, so an unchanged row is not rewritten; every
+payload's row still comes back, in order. Under the runtime backend,
+`msm.repositories.crud.upsert_model` and `bulk_upsert_model` also give each row
+an `upsert_status` of `inserted`, `updated` or `unchanged`. `filter` takes
 equality, `<field>_contains`, `<field>__in` and `<field>__gte`/`__gt`/`__lte`/
 `__lt` filters, `order_by` (`-column` for descending), `limit` and `offset`;
 `count` takes the same filters. Remote values are typed by the row model's
@@ -137,9 +141,44 @@ AccountHoldingsSnapshots.publish(
 )
 latest = AccountHoldingsSnapshots.get(account_uid=account_uid)
 history = AccountHoldingsSnapshots.get_many(account_uid=account_uid, limit=10)
-AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}])
+published = AssetSnapshots.publish(
+    [{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}]
+)
 current = AssetSnapshots.latest(tickers=["ACME"])
 ```
+
+`AssetSnapshots.publish` writes only the rows that change their asset's
+snapshot at their `time_index` and returns an `AssetSnapshotPublication`
+(`written`, `skipped`). Republishing an unchanged asset writes nothing, and a
+`(time_index, asset_identifier)` already stored with different values is
+refused with `ValueError` (`400` from the Markets API).
+
+A connector that registers a brokerage account, and syncs its holdings, makes one
+call instead ([ADR 0051](../../../ADR/0051-account-registration-in-one-transaction.md)):
+
+```python
+client = MarketsClient.from_environment()
+registered = client.register_account(
+    account={"unique_identifier": "venue::account-1", "account_name": "Venue account",
+             "is_paper": True, "account_is_active": True},
+    assets=[{"unique_identifier": "venue::ACME",
+             "asset_type": {"asset_type": "venue_equity", "display_name": "Venue equity"},
+             "snapshot": {"name": "Acme Corp.", "ticker": "ACME"}}],
+    cash_currency="USD",
+    holdings_date=as_of,
+    positions=[{"asset_identifier": "venue::ACME", "quantity": "10"},
+               {"asset_identifier": "USD", "quantity": "2500"}],
+)
+account_uid = registered.account.uid
+```
+
+Markets creates the missing asset types, assets and cash currency asset, writes
+the snapshots whose values changed, creates or updates the account and writes
+the holdings, all in one transaction. A repeat with the same positions at the
+same `holdings_date` writes nothing; different positions there need
+`overwrite=True`. An existing asset of another type is refused with
+`MarketsConflictError`. `Asset.get_or_create_currency("USD")` gets or creates
+just a currency asset, with its `currency` type.
 
 `AssetSnapshots.latest` takes exactly one of `asset_identifiers`, `asset_uids`
 or `tickers` and returns each existing asset with its latest snapshot

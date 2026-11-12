@@ -348,9 +348,18 @@ frame, normalizes timestamps to `datetime64[ns, UTC]`, sets the
 inside the frame.
 
 Before a run persists rows, `AssetSnapshot` checks the backend for existing
-`(time_index, asset_identifier)` keys and fails if any incoming key already
-exists. Publish corrections as a new timestamped snapshot instead of overwriting
-the previous observation.
+`(time_index, asset_identifier)` keys. A row stored with the same values is
+dropped, so republishing it writes nothing; a key stored with different values
+fails the run with `ValueError`. Publish corrections as a new timestamped
+snapshot instead of overwriting the previous observation.
+
+`AssetSnapshots.publish(...)` (in `msm.api.assets`) goes further: it compares
+each row with the snapshot in effect at its own `time_index` (the asset's latest
+stored row at or before it, or the asset's previous row in the batch when that
+is later) on `name`, `ticker`, `exchange_code` and `asset_ticker_group_id`, and
+writes only the rows that change it. It returns an `AssetSnapshotPublication`
+with the `written` and `skipped` counts, and starts no update run when every
+row is unchanged.
 
 ## Shared Stamped Base
 

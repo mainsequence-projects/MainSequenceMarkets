@@ -6,13 +6,20 @@ from typing import Any
 
 from sqlalchemy import delete
 
-from metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 
 from msm.models import AssetCategoryTable, AssetCategoryMembershipTable
 
-from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
+from .base import (
+    MarketsCompiledWrite,
+    MarketsRepositoryContext,
+    compile_markets_statement,
+    execute_markets_operation,
+)
 from .crud import (
+    UpsertStatus,
     build_bulk_upsert_model_operation,
+    bulk_upsert_model,
     build_create_model_operation,
     build_delete_model_operation,
     build_get_model_by_uid_operation,
@@ -301,22 +308,26 @@ def build_replace_asset_category_memberships_operations(
     *,
     category_uid: uuid.UUID | str,
     asset_uids: Sequence[uuid.UUID | str],
-) -> list[MetaTableCompiledSQLOperation]:
+    dialect: MetaTableCompiledSQLDialect | None = None,
+    statuses: Sequence[UpsertStatus] | None = None,
+) -> list[MarketsCompiledWrite]:
+    """The membership upsert, when there are assets, then the delete of the other members.
+
+    On SQLite the upsert needs its rows' ``statuses``; ``replace_asset_category_memberships``
+    reads them.
+    """
+
     normalized_asset_uids = _normalize_asset_uids(asset_uids)
-    operations: list[MetaTableCompiledSQLOperation] = []
+    operations: list[MarketsCompiledWrite] = []
     if normalized_asset_uids:
         operations.append(
             build_bulk_upsert_model_operation(
                 context,
                 model=AssetCategoryMembershipTable,
-                values=[
-                    {
-                        "category_uid": category_uid,
-                        "asset_uid": asset_uid,
-                    }
-                    for asset_uid in normalized_asset_uids
-                ],
-                conflict_columns=("category_uid", "asset_uid"),
+                values=_membership_values(category_uid, normalized_asset_uids),
+                conflict_columns=_MEMBERSHIP_KEY,
+                dialect=dialect,
+                statuses=statuses,
             )
         )
     operations.append(
@@ -327,6 +338,15 @@ def build_replace_asset_category_memberships_operations(
         )
     )
     return operations
+
+
+_MEMBERSHIP_KEY = ("category_uid", "asset_uid")
+
+
+def _membership_values(
+    category_uid: uuid.UUID | str, asset_uids: Sequence[uuid.UUID]
+) -> list[dict[str, Any]]:
+    return [{"category_uid": category_uid, "asset_uid": asset_uid} for asset_uid in asset_uids]
 
 
 def delete_asset_category_membership(
@@ -376,14 +396,30 @@ def replace_asset_category_memberships(
     category_uid: uuid.UUID | str,
     asset_uids: Sequence[uuid.UUID | str],
 ) -> list[dict[str, Any]]:
-    return [
-        execute_markets_operation(operation, context=context)
-        for operation in build_replace_asset_category_memberships_operations(
-            context,
-            category_uid=category_uid,
-            asset_uids=asset_uids,
+    """Upsert the category's memberships of ``asset_uids``, then delete its other ones."""
+
+    normalized_asset_uids = _normalize_asset_uids(asset_uids)
+    results: list[dict[str, Any]] = []
+    if normalized_asset_uids:
+        results.append(
+            bulk_upsert_model(
+                context,
+                model=AssetCategoryMembershipTable,
+                values=_membership_values(category_uid, normalized_asset_uids),
+                conflict_columns=_MEMBERSHIP_KEY,
+            )
         )
-    ]
+    results.append(
+        execute_markets_operation(
+            build_delete_stale_asset_category_memberships_operation(
+                context,
+                category_uid=category_uid,
+                retained_asset_uids=normalized_asset_uids,
+            ),
+            context=context,
+        )
+    )
+    return results
 
 
 __all__ = [

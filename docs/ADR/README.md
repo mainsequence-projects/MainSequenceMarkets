@@ -49,6 +49,7 @@ Recommended sections:
 - [0048. Rename DataNode To The MetaTables Time-Index Vocabulary](0048-time-index-vocabulary-rename.md)
 - [0049. Portfolio Lifecycle And Account History](0049-portfolio-lifecycle-and-account-history.md)
 - [0050. Account Deletion](0050-account-deletion.md)
+- [0051. Account Registration In One Transaction](0051-account-registration-in-one-transaction.md)
 
 ## Command Center Decisions
 

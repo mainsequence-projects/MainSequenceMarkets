@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Sequence
 
-from apps.v1.identity import registry_write
+from apps.v1.identity import acting_identity, record_registry_write, registry_write
 from apps.v1.schemas.accounts import (
     AccountAddHoldingsRequest,
     AccountAddTargetPositionsRequest,
@@ -21,6 +21,8 @@ from apps.v1.schemas.accounts import (
     AccountBulkDeleteResponse,
     AccountDeletePreflightResponse,
     AccountDeleteResponse,
+    AccountRegistrationRequest,
+    AccountRegistrationResponse,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 
@@ -82,6 +84,30 @@ def create_account(*, payload: AccountCreate) -> Account:
 
     _get_runtime()
     return Account.create(payload)
+
+
+@registry_write("account", "register")
+def register_account(*, payload: AccountRegistrationRequest) -> AccountRegistrationResponse:
+    """Register an account and write its holdings snapshot in one transaction (ADR 0051).
+
+    Each row the call creates or changes gets its own audit record, carrying the account's
+    ``unique_identifier``; the wrapper records the registration itself.
+    """
+
+    from msm.services import register_account as register_account_record
+
+    runtime = _get_registration_runtime()
+    result = register_account_record(runtime.context, payload)
+    identity = acting_identity()
+    for write in result.writes:
+        record_registry_write(
+            write.action,
+            resource=write.resource,
+            uid=write.uid,
+            identity=identity,
+            details=write.details,
+        )
+    return AccountRegistrationResponse.model_validate(result.response)
 
 
 @registry_write("account", "update")
@@ -329,6 +355,22 @@ def _get_delete_runtime():
             "OrderEventsStorage",
         ],
         row_model_name="DELETE /api/v1/account/{uid}/",
+    )
+
+
+def _get_registration_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+
+    return resolve_apps_v1_runtime(
+        models=[
+            "AssetType",
+            "Asset",
+            "AssetSnapshotsStorage",
+            "Account",
+            "AccountHoldingsSet",
+            "AccountHoldingsStorage",
+        ],
+        row_model_name="POST /api/v1/account/registration/",
     )
 
 

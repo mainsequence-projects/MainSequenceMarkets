@@ -12,7 +12,7 @@ _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = _core.get_account_holdings_snapsh
 
 account_repository = _core.account_repository
 uuid = _core.uuid
-_asset_row_by_unique_identifier = _core._asset_row_by_unique_identifier
+_asset_reference_details_by_identifier = _core._asset_reference_details_by_identifier
 _asset_snapshot_references_by_unique_identifier = (
     _core._asset_snapshot_references_by_unique_identifier
 )
@@ -38,15 +38,12 @@ _UNPATCHED_CORE_ACCOUNT_HOOKS: dict[str, Any] = {
         "account_repository",
         "uuid",
         "get_account_by_uid",
-        "_asset_row_by_unique_identifier",
+        "_asset_reference_details_by_identifier",
         "_asset_snapshot_references_by_unique_identifier",
         "_build_account_holdings_frame",
         "_search_account_holdings_rows",
     )
 }
-_UNPATCHED_CORE_ACCOUNT_HOOKS["get_account_holdings_snapshot_response"] = (
-    get_account_holdings_snapshot_response
-)
 
 
 @contextmanager
@@ -85,6 +82,8 @@ _EXPORTS = {
     "AccountDeleteConflictError": ".deletion",
     "AccountDeleteImpact": ".deletion",
     "AccountHoldingsSnapshotExistsError": ".core",
+    "AccountRegistrationResult": ".registration",
+    "AccountRegistrationWrite": ".registration",
     "AccountVirtualFundAllocationPlan": ".account_virtual_allocations",
     "AccountVirtualHoldingLine": ".account_virtual_allocations",
     "AllocationPolicy": ".account_virtual_allocations",
@@ -129,6 +128,7 @@ _EXPORTS = {
     "plan_account_virtual_fund_allocations": ".account_virtual_allocations",
     "preflight_account_delete": ".deletion",
     "preflight_bulk_delete_accounts": ".deletion",
+    "register_account": ".registration",
     "search_account_allocation_models": ".core",
     "search_account_target_allocations": ".core",
     "search_accounts": ".core",

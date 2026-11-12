@@ -28,6 +28,46 @@ direct account snapshots and virtual-fund-grouped views.
   - ADR 0047: providers register accounts here instead of writing the Account
     table; the write runs as the Markets workload and records the acting
     identity
+- `POST /api/v1/account/registration/` (`registerAccount`)
+  - registers an account and writes one holdings snapshot in one MetaTables
+    transaction ([ADR 0051](../../ADR/0051-account-registration-in-one-transaction.md)).
+    A connector calls it once to register an account and once per holdings sync
+  - request body: `account` (`unique_identifier`, `account_name`, optional
+    `is_paper` and `account_is_active`; a flag left out keeps an existing
+    account's value), `assets` (each with `unique_identifier`, `asset_type`
+    `{asset_type, display_name, description}` and an optional `snapshot`
+    `{name, ticker, exchange_code, asset_ticker_group_id}`), optional
+    `cash_currency`, `holdings_date`, `overwrite` and `positions`
+    (`asset_identifier`, positive `quantity`, `direction`, `extra_details`).
+    At most 1,000 distinct assets and 1,000 positions
+  - two reads whatever the size: the named assets with their latest snapshots,
+    and the account by `unique_identifier` with its holdings at `holdings_date`.
+    Then one transaction creates the missing asset types, assets and cash
+    currency asset (`currency` type), writes changed snapshots, creates the
+    account or updates the fields that differ, and writes the holdings. When
+    nothing differs, no transaction is sent
+  - a position may name an asset in `assets`, the cash currency or an existing
+    asset; one `400` names every other identifier
+  - an existing asset keeps its `asset_type`: a different requested type is a
+    `409` listing each such asset, and nothing is written
+  - a snapshot row is written at `holdings_date` when the asset has none, or when
+    its latest snapshot is earlier and differs in `name`, `ticker`,
+    `exchange_code` or `asset_ticker_group_id` (a missing value equals an empty
+    string); never over or before a later one
+  - idempotent on `(account.unique_identifier, holdings_date)`: holdings equal to
+    the stored ones are not written again (`200`, with either `overwrite`);
+    different holdings are a `409` without `overwrite`, and nothing in the call
+    is written; with `overwrite` they replace the set's rows
+  - returns `account`, `asset_uids` by identifier, `holdings_set_uid`,
+    `holdings_date` and `written`: per table (`asset_types`, `assets`,
+    `asset_snapshots`, `accounts`, `holdings_sets`, `holdings`) the rows
+    `created` and `changed`
+  - audited as `registry_write("account", "register")`, with one record per
+    row created or changed, each carrying the account's `unique_identifier`
+  - writes only Markets tables: a provider writes its own account sidecar
+    afterwards with the returned account uid (ADR 0047)
+  - `MarketsClient.register_account(...)` calls this route and returns
+    `AccountRegistrationResponse`
 - `GET /api/v1/account/by-uids/?uid__in=<uid>&uid__in=<uid>`
   - batch lookup by uid; `uid__in` is repeated or comma-separated, at most 500
   - returns the matching `Account` rows in request order inside a
@@ -151,8 +191,12 @@ direct account snapshots and virtual-fund-grouped views.
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
+  - costs three MetaTables operations whatever the number of positions: read
+    the account, read every position's asset in one select, and write; the
+    response is built from the rows the write returns, not read back
   - request body contains `holdings_date`, `overwrite`, and `positions`
-  - each position uses the storage field name `asset_identifier`
+  - each position uses the storage field name `asset_identifier`; one `400`
+    names every unknown `asset_identifier`
   - `asset_uid`, when provided, is validation only and must match the asset row
     for the supplied `asset_identifier`
   - `quantity` is stored as a positive magnitude and `direction` stores side

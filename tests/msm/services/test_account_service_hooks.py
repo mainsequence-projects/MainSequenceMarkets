@@ -21,11 +21,10 @@ CORE_HOOKS = (
     "account_repository",
     "uuid",
     "get_account_by_uid",
-    "_asset_row_by_unique_identifier",
+    "_asset_reference_details_by_identifier",
     "_asset_snapshot_references_by_unique_identifier",
     "_build_account_holdings_frame",
     "_search_account_holdings_rows",
-    "get_account_holdings_snapshot_response",
 )
 
 
@@ -46,8 +45,8 @@ def test_patched_account_lookups_do_not_outlive_their_test(monkeypatch) -> None:
         test.setattr(account_services, "_search_account_holdings_rows", lambda context, **_: [])
         test.setattr(
             account_services,
-            "_asset_row_by_unique_identifier",
-            lambda context, unique_identifier: None,
+            "_asset_reference_details_by_identifier",
+            lambda context, identifiers: {},
         )
 
         snapshot = account_services.get_account_holdings_snapshot_response(
@@ -68,9 +67,10 @@ def test_patched_account_lookups_do_not_outlive_their_test(monkeypatch) -> None:
     assert _core_hooks() == core_hooks
 
 
-def test_patched_snapshot_read_and_write_do_not_outlive_their_test(monkeypatch) -> None:
+def test_patched_asset_read_and_write_do_not_outlive_their_test(monkeypatch) -> None:
     account_uid = str(uuid.uuid4())
-    written = {"holdings_set_uid": "written"}
+    when = dt.datetime(2026, 11, 11, tzinfo=dt.UTC)
+    written = {"holdings_set_uid": "written", "time_index": when, "asset_identifier": "A"}
     core_hooks = _core_hooks()
 
     with monkeypatch.context() as test:
@@ -79,26 +79,30 @@ def test_patched_snapshot_read_and_write_do_not_outlive_their_test(monkeypatch) 
             "get_account_by_uid",
             lambda context, uid: {"row": {"uid": account_uid}},
         )
+        test.setattr(
+            account_services,
+            "_asset_reference_details_by_identifier",
+            lambda context, identifiers: {"A": {"asset_uid": "a", "asset_identifier": "A"}},
+        )
         test.setattr(account_services, "_build_account_holdings_frame", lambda **_: pd.DataFrame())
         test.setattr(
             account_services,
             "account_repository",
             SimpleNamespace(
-                replace_account_holdings_snapshot=lambda context, **_: {"rows": [{"uid": "x"}]},
+                replace_account_holdings_snapshot=lambda context, **_: {"rows": [written]},
             ),
-        )
-        test.setattr(
-            account_services,
-            "get_account_holdings_snapshot_response",
-            lambda context, **_: written,
         )
 
         snapshot = account_services.add_account_holdings_snapshot_response(
             object(),
             account_uid=account_uid,
-            holdings_date=dt.datetime(2026, 11, 11, tzinfo=dt.UTC),
-            positions=[],
+            holdings_date=when,
+            positions=[{"asset_identifier": "A", "quantity": "1"}],
+            include_asset_detail=False,
         )
 
-    assert snapshot is written
+    # The snapshot is built from the fake write's rows...
+    assert snapshot["holdings_set_uid"] == "written"
+    assert [row["asset_identifier"] for row in snapshot["holdings"]] == ["A"]
+    # ...and core holds its own functions again.
     assert _core_hooks() == core_hooks

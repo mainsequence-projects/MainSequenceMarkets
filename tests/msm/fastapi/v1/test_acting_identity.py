@@ -119,6 +119,7 @@ def test_every_mutating_service_is_a_registry_write() -> None:
         "accounts": {
             "add_account_holdings", "add_account_target_positions", "create_account", "update_account",
             "apply_account_virtual_fund_allocation", "delete_account", "bulk_delete_accounts",
+            "register_account",
         },
         "asset_categories": {
             "create_asset_category", "update_asset_category", "delete_asset_category",

@@ -160,7 +160,24 @@ def test_asset_snapshot_frame_rejects_duplicate_index_rows() -> None:
         )
 
 
-def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monkeypatch) -> None:
+def _snapshot_node_with_stored_rows(monkeypatch, stored_rows):
+    node = object.__new__(AssetSnapshot)
+    node._output_table = AssetSnapshotsStorage
+    node._update_manager = SimpleNamespace(output_metadata=object())
+    node._log_existing_asset_snapshot_key = Mock()
+    node.get_df_between_dates = Mock(side_effect=AssertionError("per-key reads are too slow"))
+    calls = SimpleNamespace(
+        bind=Mock(),
+        compile=Mock(return_value=object()),
+        execute=Mock(return_value={"rows": stored_rows}),
+    )
+    monkeypatch.setattr(AssetSnapshotsStorage, "_bind_meta_table", calls.bind)
+    monkeypatch.setattr("msm.repositories.base.compile_markets_statement", calls.compile)
+    monkeypatch.setattr("msm.repositories.base.execute_markets_operation", calls.execute)
+    return node, calls
+
+
+def test_asset_snapshot_stored_values_use_one_compiled_query(monkeypatch) -> None:
     first_time = pd.Timestamp("2026-05-25T00:00:00Z")
     second_time = pd.Timestamp("2026-05-26T00:00:00Z")
     frame = AssetSnapshot.build_frame(
@@ -169,42 +186,53 @@ def test_asset_snapshot_existing_backend_index_keys_uses_one_compiled_query(monk
             {"time_index": second_time, "asset_identifier": "asset-b"},
         ]
     )
-
-    node = object.__new__(AssetSnapshot)
-    node._output_table = AssetSnapshotsStorage
-    node._update_manager = SimpleNamespace(output_metadata=object())
-    node._log_existing_asset_snapshot_key = Mock()
-    node.get_df_between_dates = Mock(side_effect=AssertionError("per-key reads are too slow"))
-
-    bind_meta_table = Mock()
-    compile_statement = Mock(return_value=object())
-    execute_operation = Mock(
-        return_value={
-            "rows": [
-                {
-                    "time_index": second_time,
-                    "asset_identifier": "asset-b",
-                }
-            ]
-        }
-    )
-    monkeypatch.setattr(AssetSnapshotsStorage, "_bind_meta_table", bind_meta_table)
-    monkeypatch.setattr(
-        "msm.repositories.base.compile_markets_statement",
-        compile_statement,
-    )
-    monkeypatch.setattr(
-        "msm.repositories.base.execute_markets_operation",
-        execute_operation,
+    node, calls = _snapshot_node_with_stored_rows(
+        monkeypatch,
+        [{"time_index": second_time, "asset_identifier": "asset-b", "name": "B", "ticker": None}],
     )
 
-    existing_keys = node.existing_backend_index_keys(frame)
+    stored = node.stored_snapshot_values(frame)
 
-    assert existing_keys == [(second_time.isoformat(), "asset-b")]
-    bind_meta_table.assert_called_once_with(node.update_manager.output_metadata)
-    compile_statement.assert_called_once()
-    execute_operation.assert_called_once()
+    assert stored == {(second_time, "asset-b"): ("B", "", "", "")}
+    calls.bind.assert_called_once_with(node.update_manager.output_metadata)
+    calls.compile.assert_called_once()
+    calls.execute.assert_called_once()
     node.get_df_between_dates.assert_not_called()
+
+
+def test_asset_snapshot_drops_rows_stored_with_the_same_values(monkeypatch) -> None:
+    time_index = pd.Timestamp("2026-05-25T00:00:00Z")
+    frame = AssetSnapshot.build_frame(
+        [
+            {"time_index": time_index, "asset_identifier": "asset-a", "name": "A"},
+            {"time_index": time_index, "asset_identifier": "asset-b", "name": "B"},
+        ]
+    )
+    node, _ = _snapshot_node_with_stored_rows(
+        monkeypatch,
+        [{"time_index": time_index, "asset_identifier": "asset-a", "name": "A", "ticker": ""}],
+    )
+
+    kept = node.without_stored_snapshots(frame)
+
+    assert kept.index.get_level_values("asset_identifier").tolist() == ["asset-b"]
+    node._log_existing_asset_snapshot_key.assert_called_once_with(
+        time_index=time_index, unique_identifier="asset-a"
+    )
+
+
+def test_asset_snapshot_refuses_a_key_stored_with_other_values(monkeypatch) -> None:
+    time_index = pd.Timestamp("2026-05-25T00:00:00Z")
+    frame = AssetSnapshot.build_frame(
+        [{"time_index": time_index, "asset_identifier": "asset-a", "name": "A", "ticker": "NEW"}]
+    )
+    node, _ = _snapshot_node_with_stored_rows(
+        monkeypatch,
+        [{"time_index": time_index, "asset_identifier": "asset-a", "name": "A", "ticker": "OLD"}],
+    )
+
+    with pytest.raises(ValueError, match="already exist with different values"):
+        node.without_stored_snapshots(frame)
 
 
 def test_openfigi_snapshot_builder_uses_generic_entrypoint() -> None:

@@ -10,6 +10,8 @@ from typing import Any
 from msm.api.accounts import (
     AccountAddTargetPositionRequest,
     AccountAddTargetPositionsRequest,
+    AccountRegistrationRequest,
+    AccountRegistrationResponse,
     AccountTargetPositionsSnapshotResponse,
     AccountVirtualFundAllocationPolicy,
     AccountVirtualFundAllocationRequest,
@@ -161,6 +163,37 @@ class MarketsClient:
             params.append(("as_of", "true" if as_of else "false"))
         frame = self.request("GET", f"{API_PREFIX}/portfolio/weights/", params=params)
         return tabular_frame_to_pandas(frame) if as_pandas else frame
+
+    def register_account(
+        self,
+        request: AccountRegistrationRequest | Mapping[str, Any] | None = None,
+        **fields: Any,
+    ) -> AccountRegistrationResponse:
+        """Register an account and write its holdings snapshot in one call (``registerAccount``).
+
+        Pass an ``AccountRegistrationRequest``, a mapping of one, or its fields as keywords:
+        ``account``, ``assets``, ``cash_currency``, ``holdings_date``, ``overwrite`` and
+        ``positions``. Markets creates the missing asset types, assets and cash currency
+        asset, writes changed asset snapshots, creates or updates the account and writes
+        the holdings, in one transaction (ADR 0051). A repeat with the same positions at
+        the same ``holdings_date`` writes nothing and succeeds. Different holdings raise
+        ``MarketsConflictError`` unless ``overwrite`` is true, as does an existing asset of
+        another type; nothing is written then.
+        """
+
+        if request is not None and fields:
+            raise TypeError("Pass either a request or its fields, not both.")
+        payload = (
+            request
+            if isinstance(request, AccountRegistrationRequest)
+            else AccountRegistrationRequest.model_validate(dict(request or fields))
+        )
+        response = self.request(
+            "POST",
+            f"{API_PREFIX}/account/registration/",
+            json=payload.model_dump(mode="json"),
+        )
+        return AccountRegistrationResponse.model_validate(response)
 
     def account_target_positions(
         self,

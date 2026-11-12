@@ -117,6 +117,15 @@ Rules:
   `POST /api/v1/account/bulk-delete/preflight/`. Markets sends deletes only to its own
   tables; another application's table loses rows only through its own `CASCADE` key,
   and its `RESTRICT` key refuses the delete.
+- A connector registers a brokerage account, and syncs its holdings, with one call:
+  `MarketsClient.register_account(...)` (`POST /api/v1/account/registration/`, ADR
+  0051). In one transaction it creates the missing asset types, assets and cash currency
+  asset, writes changed asset snapshots, creates or updates the account and writes the
+  holdings snapshot. Don't chain `Asset.upsert`, `AssetSnapshots.publish`,
+  `Account.upsert` and `AccountHoldingsSnapshots.publish` for this. The call is
+  idempotent on `(account.unique_identifier, holdings_date)`. It never changes an
+  existing asset's `asset_type`; a different type is a conflict. A provider sidecar is
+  written afterwards by the provider, with the returned account uid.
 
 ## Runtime Attachment
 

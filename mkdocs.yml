@@ -130,6 +130,7 @@ nav:
       - Rename DataNode To The MetaTables Time-Index Vocabulary: ADR/0048-time-index-vocabulary-rename.md
       - Portfolio Lifecycle And Account History: ADR/0049-portfolio-lifecycle-and-account-history.md
       - Account Deletion: ADR/0050-account-deletion.md
+      - Account Registration In One Transaction: ADR/0051-account-registration-in-one-transaction.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

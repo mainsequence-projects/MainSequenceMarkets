@@ -648,6 +648,139 @@ def test_the_holdings_service_writes_reads_back_and_refuses_a_repeat(sqlite_mark
     assert _rows(engine, "SELECT quantity FROM ms_markets__accountholdingsts") == [{"quantity": 2.0}]
 
 
+def _record_operations(monkeypatch) -> list[str]:
+    """The kind of each MetaTables operation run from here on, in order."""
+
+    operations: list[str] = []
+    execute_operation, execute_transaction = MetaTable.execute_operation, MetaTable.execute_transaction
+
+    def recorded_operation(cls, operation, *, timeout=None):
+        operations.append(operation.operation)
+        return execute_operation(operation, timeout=timeout)
+
+    def recorded_transaction(cls, transaction, *, timeout=None):
+        operations.append(transaction.operation)
+        return execute_transaction(transaction, timeout=timeout)
+
+    monkeypatch.setattr(MetaTable, "execute_operation", classmethod(recorded_operation))
+    monkeypatch.setattr(MetaTable, "execute_transaction", classmethod(recorded_transaction))
+    return operations
+
+
+def _holdings_positions(identifiers):
+    return [
+        {"asset_identifier": identifier, "quantity": index + 1.5, "direction": -1 if index % 2 else 1}
+        for index, identifier in enumerate(identifiers)
+    ]
+
+
+@pytest.mark.parametrize("include_asset_detail", [True, False])
+def test_a_holdings_publish_costs_three_operations_whatever_its_size(
+    sqlite_markets, monkeypatch, include_asset_detail
+) -> None:
+    """MainSequenceMarkets#61: read the account, read every asset at once, write. No read-back."""
+
+    from msm.services import add_account_holdings_snapshot_response
+    from msm.services.accounts import get_account_holdings_snapshot_response
+
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    identifiers = [f"ASSET-{index:02d}" for index in range(12)]
+    for identifier in identifiers:
+        _asset(engine, identifier)
+    _insert(
+        engine,
+        "ms_markets__assetsnapshotsts",
+        time_index=WHEN,
+        asset_identifier="ASSET-03",
+        name="Asset three",
+        ticker="A3",
+    )
+    operations = _record_operations(monkeypatch)
+
+    snapshot = add_account_holdings_snapshot_response(
+        sqlite_markets.context,
+        account_uid=str(account),
+        holdings_date=WHEN,
+        # Sent in reverse; the snapshot lists holdings by asset identifier.
+        positions=_holdings_positions(reversed(identifiers)),
+        include_asset_detail=include_asset_detail,
+    )
+
+    assert operations == ["select", "select", "upsert"]
+    # The answer is the snapshot a read returns.
+    assert snapshot == get_account_holdings_snapshot_response(
+        sqlite_markets.context,
+        account_uid=str(account),
+        holdings_date=WHEN,
+        include_asset_detail=include_asset_detail,
+    )
+    assert [row["asset_identifier"] for row in snapshot["holdings"]] == identifiers
+    asset = snapshot["holdings"][3]["asset"]
+    if include_asset_detail:
+        assert asset["asset_identifier"] == "ASSET-03"
+        assert asset["current_snapshot"] == {"name": "Asset three", "ticker": "A3"}
+    else:
+        assert asset is None
+
+
+def test_a_holdings_publish_names_every_unknown_asset_and_writes_nothing(
+    sqlite_markets, monkeypatch
+) -> None:
+    from msm.services import add_account_holdings_snapshot_response
+
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    _asset(engine, "AAA")
+    operations = _record_operations(monkeypatch)
+
+    with pytest.raises(ValueError) as raised:
+        add_account_holdings_snapshot_response(
+            sqlite_markets.context,
+            account_uid=str(account),
+            holdings_date=WHEN,
+            positions=_holdings_positions(["MISSING-1", "AAA", "MISSING-2"]),
+        )
+
+    assert str(raised.value) == "Assets 'MISSING-1', 'MISSING-2' were not found."
+    assert operations == ["select", "select"]
+    assert _count(engine, "ms_markets__accountholdingsset") == 0
+    assert _count(engine, "ms_markets__accountholdingsts") == 0
+
+
+def test_a_holdings_publish_over_the_row_cap_reads_the_rows_its_write_did_not_return(
+    sqlite_markets, monkeypatch
+) -> None:
+    """A write returns at most an operation's `max_rows` rows; the rest are read in pages."""
+
+    from msm.services import add_account_holdings_snapshot_response
+    from msm.services.accounts import get_account_holdings_snapshot_response
+
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    identifiers = ["A", "B", "C", "D", "E"]
+    for identifier in identifiers:
+        _asset(engine, identifier)
+    capped = MarketsRepositoryContext(limits={"max_rows": 2})
+    operations = _record_operations(monkeypatch)
+
+    snapshot = add_account_holdings_snapshot_response(
+        capped,
+        account_uid=str(account),
+        holdings_date=WHEN,
+        positions=_holdings_positions(identifiers),
+    )
+
+    # Account; assets in pages of two; the write; its five rows in pages of two.
+    assert operations == ["select"] + ["select"] * 3 + ["upsert"] + ["select"] * 3
+    assert [row["asset_identifier"] for row in snapshot["holdings"]] == identifiers
+    assert snapshot == get_account_holdings_snapshot_response(
+        sqlite_markets.context,
+        account_uid=str(account),
+        holdings_date=WHEN,
+    )
+
+
 def test_the_target_service_writes_reads_back_and_refuses_repeats_and_retired_portfolios(
     sqlite_markets,
 ) -> None:

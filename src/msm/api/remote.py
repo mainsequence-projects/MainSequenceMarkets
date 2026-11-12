@@ -63,6 +63,7 @@ WRITE_OPERATIONS = frozenset(
         "upsert_many",
         "add_many",
         "create_index_curve_selection",
+        "get_or_create_currency",
         "upsert_index_curve_selection",
         "publish",
         "register",

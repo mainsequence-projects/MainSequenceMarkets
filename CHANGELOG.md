@@ -7,6 +7,105 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-12
+
+### Added
+
+- One call registers an account and writes its holdings snapshot (#63,
+  [ADR 0051](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0051-account-registration-in-one-transaction/)):
+  `POST /api/v1/account/registration/` (`registerAccount`), `MarketsClient.register_account`
+  and `msm.services.register_account`. In one MetaTables transaction it creates the
+  missing asset types, assets and cash currency asset, writes asset snapshots whose values
+  changed, creates the account or updates the fields that differ, and writes the
+  holdings. It reads twice whatever the number of assets and positions: the assets with
+  their latest snapshots, and the account with its holdings at `holdings_date`. A
+  re-registration of known assets costs those two reads and one transaction, or no
+  transaction when nothing changed; before, a connector made about 13 Markets calls.
+  - Idempotent on `(account.unique_identifier, holdings_date)`: holdings equal to the
+    stored ones are not written again and the call succeeds, with or without
+    `overwrite`. Different holdings answer `409` without `overwrite`, and nothing in the
+    call is written.
+  - An existing asset keeps its `asset_type`; a different requested type answers `409`
+    listing each asset, and nothing is written. A position naming an asset that is
+    neither listed nor existing answers `400`.
+  - Snapshot rows are written with plain SQL inside the transaction, not through the
+    `AssetSnapshot` updater, only when the asset has none or its latest snapshot is
+    earlier than `holdings_date` and differs in `name`, `ticker`, `exchange_code` or
+    `asset_ticker_group_id`. MetaTables catalog statistics do not count them.
+  - The holdings rows look the account uid up by `unique_identifier` inside the
+    transaction, so concurrent first registrations reference the account that won.
+  - Audited as `registry_write("account", "register")`, with one record per row
+    created or changed. Command Center lists it as a mutation.
+  - Provider sidecars stay provider-owned: the provider writes its sidecar afterwards
+    with the returned account uid.
+- `Asset.get_or_create_currency(code)` and `msm.services.get_or_create_currency_asset`
+  return the currency asset `code`, creating it and the built-in `currency` asset type
+  when missing, in one transaction. The migrations do not seed built-in asset types. An
+  existing asset of another type raises `AssetTypeConflictError` (`409`). It is a row
+  operation, so it runs through the Markets API too.
+- `msm.time_index.assets.snapshots.changed_asset_snapshots` and
+  `SNAPSHOT_VALUE_COLUMNS`; `AssetSnapshot.without_stored_snapshots` and
+  `stored_snapshot_values`; `msm.api.assets.AssetSnapshotPublication`.
+- `msm.repositories.crud.UpsertStatus`, `UPSERT_STATUS_COLUMN` and
+  `UPSERT_STATUS_GUARD`; `msm.repositories.base.values_parameter`.
+
+### Changed
+
+- Upserts no longer rewrite unchanged rows (#62). `upsert_model`, `bulk_upsert_model`
+  (and so every row class's `upsert` and `upsert_many`) update a conflicting row only
+  when one of the updated columns differs from its new value; conflict, primary-key
+  and `onupdate` columns are not compared, and JSON columns compare as `jsonb` on
+  PostgreSQL, where the Markets migrations create them as `json`. A row with only key
+  columns is inserted or left alone (`ON CONFLICT DO NOTHING`). Every input row still
+  comes back, in input order, now with `upsert_status`: `inserted`, `updated` or
+  `unchanged`.
+  - On PostgreSQL this is one statement that reads the unchanged rows from its own
+    snapshot. A row another transaction commits with the same values after that
+    snapshot is read back afterwards and reported `unchanged`.
+  - On SQLite the statuses are read first, then one transaction refuses rows whose
+    status changed since (guard `upsert_status`, `UPSERT_STATUS_GUARD`), upserts and
+    returns the rows; a refused write is read and tried again, up to three times.
+  - An upsert refuses a `NULL` conflict-key value (a `NULL` never conflicts, so the
+    row was inserted again on every call) and a conflict key given twice, with
+    `ValueError`.
+  - `build_upsert_model_operation` and `build_bulk_upsert_model_operation` return a
+    `MarketsCompiledWrite` and take `dialect=` and, for SQLite, `statuses=`; so do
+    `build_upsert_asset_operation`, `build_upsert_portfolio_group_operation`,
+    `build_upsert_portfolio_group_membership_operation` and
+    `build_replace_asset_category_memberships_operations`. `upsert_asset`,
+    `upsert_portfolio_group`, `upsert_portfolio_group_membership` and
+    `replace_asset_category_memberships` run through `upsert_model` and
+    `bulk_upsert_model`.
+- **Breaking:** `AssetSnapshots.publish` writes only the rows that change their
+  asset's snapshot and returns `AssetSnapshotPublication(written=, skipped=)` instead
+  of an `int` (#62). Each row is compared on `name`, `ticker`, `exchange_code` and
+  `asset_ticker_group_id` (`None` equals `""`) with the snapshot in effect at its own
+  `time_index`: the asset's latest stored row at or before it, or the asset's
+  previous row in the batch when that one is later, so a backdated change is still
+  written. When every row is unchanged, no update run starts. A row that repeats a
+  stored or an earlier `(time_index, asset_identifier)` with the same values is
+  skipped; with different values it raises `ValueError` (`400` from the rows route),
+  as before. The remote client decodes the new result.
+- An `AssetSnapshot` run drops rows already stored with the same values instead of
+  failing; a key stored with different values still fails it with `ValueError`.
+
+### Removed
+
+- `AssetSnapshot.verify_backend_index_available` and `existing_backend_index_keys`,
+  replaced by `without_stored_snapshots` and `stored_snapshot_values`.
+
+### Fixed
+
+- Publishing an account holdings snapshot costs 3 MetaTables operations whatever
+  the number of positions, down from N + 4, or N + 5 with asset detail (#61):
+  `POST /api/v1/account/{uid}/add-holdings/`, `AccountHoldingsSnapshots.publish` and
+  `msm.services.add_account_holdings_snapshot_response`. One select reads every
+  position's asset, and the answer is built from the rows the write returns
+  instead of reading the snapshot back. The response is unchanged. A write whose
+  rows exceed an operation's `max_rows` reads the rest back in pages.
+- A holdings publish with several unknown assets names all of them in one error
+  (`400` on the route), and writes nothing.
+
 ## [3.3.0] - 2026-11-11
 
 ### Added

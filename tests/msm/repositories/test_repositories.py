@@ -251,6 +251,159 @@ def test_generic_upsert_operation_populates_python_defaults_for_backend_sql() ->
     assert "updated_at =" in operation.statement.sql
 
 
+def test_upsert_updates_a_row_only_when_a_value_differs() -> None:
+    operation = build_upsert_model_operation(
+        _repository_context(),
+        model=RepositoryDefaultTable,
+        values={"unique_identifier": "test-defaults", "display_name": "Test Defaults"},
+        conflict_columns=["unique_identifier"],
+    )
+    sql = " ".join(operation.statement.sql.split())
+
+    # The onupdate column is set with the change but never makes the row differ;
+    # the conflict key and the primary key are neither set nor compared.
+    assert (
+        "ON CONFLICT (unique_identifier) DO UPDATE SET display_name = excluded.display_name, "
+        "updated_at = %(param_3)s::TIMESTAMP WITH TIME ZONE "
+        "WHERE ms_markets__test_repositorydefault.display_name IS DISTINCT FROM "
+        "excluded.display_name RETURNING"
+    ) in sql
+    assert "updated_at IS DISTINCT FROM" not in sql
+    assert "unique_identifier IS DISTINCT FROM" not in sql
+    assert "uid IS DISTINCT FROM" not in sql
+    # Unchanged rows, which the conditional update leaves out of RETURNING, come back
+    # from the statement's own snapshot, in input order, each with its status.
+    assert "upsert_existing AS (SELECT" in sql
+    assert "UNION ALL SELECT upsert_existing.uid" in sql
+    assert "'unchanged' AS upsert_status" in sql
+    assert "THEN 'updated' ELSE 'inserted' END AS upsert_status" in sql
+    assert sql.endswith("ORDER BY upsert_input.upsert_index")
+
+
+def test_upsert_of_a_none_value_differs_from_any_stored_value() -> None:
+    operation = build_upsert_model_operation(
+        _repository_context(),
+        model=OpenFigiAssetDetailsTable,
+        values={"asset_uid": uuid.uuid4(), "metadata_text": None, "figi": "BBG00FNFPQH4"},
+        conflict_columns=["asset_uid"],
+    )
+    sql = " ".join(operation.statement.sql.split())
+
+    assert "openfigiassetdetails.metadata IS NOT NULL" in sql
+    assert "openfigiassetdetails.figi IS DISTINCT FROM excluded.figi" in sql
+
+
+def test_upsert_compares_json_columns_as_jsonb() -> None:
+    """The Markets migrations create ``json`` columns, which have no equality operator."""
+
+    operation = build_upsert_model_operation(
+        _repository_context(),
+        model=OpenFigiAssetDetailsTable,
+        values={"asset_uid": uuid.uuid4(), "raw_payload": {"figi": "BBG00FNFPQH4"}},
+        conflict_columns=["asset_uid"],
+    )
+    sql = " ".join(operation.statement.sql.split())
+
+    assert (
+        "CAST(ms_markets__openfigiassetdetails.raw_payload AS JSONB) IS DISTINCT FROM "
+        "CAST(excluded.raw_payload AS JSONB)"
+    ) in sql
+
+
+def test_upsert_of_keys_only_does_nothing_on_conflict() -> None:
+    operation = build_upsert_portfolio_group_membership_operation(
+        _repository_context(),
+        portfolio_group_uid=uuid.uuid4(),
+        portfolio_uid=uuid.uuid4(),
+    )
+
+    assert "ON CONFLICT (portfolio_group_uid, portfolio_uid) DO NOTHING" in operation.statement.sql
+
+
+def test_upsert_reads_back_a_row_a_concurrent_write_hid(monkeypatch) -> None:
+    """A row committed after the statement's snapshot with the same values is unchanged."""
+
+    from msm.repositories import crud
+
+    reads = []
+    monkeypatch.setattr(
+        crud,
+        "execute_markets_write",
+        lambda write, *, context: {
+            "ok": True,
+            "rows": [{"unique_identifier": "A", "upsert_status": "inserted", "upsert_index": 0}],
+            "row_count": 1,
+            "truncated": False,
+        },
+    )
+
+    def reread(operation, *, context):
+        reads.append(operation)
+        return {"rows": [{"unique_identifier": "B", "upsert_status": "unchanged", "upsert_index": 1}]}
+
+    monkeypatch.setattr(crud, "execute_markets_operation", reread)
+
+    result = crud.bulk_upsert_model(
+        _repository_context(),
+        model=AssetTable,
+        values=[{"unique_identifier": "A"}, {"unique_identifier": "B"}],
+        conflict_columns=("unique_identifier",),
+    )
+
+    assert result["rows"] == [
+        {"unique_identifier": "A", "upsert_status": "inserted"},
+        {"unique_identifier": "B", "upsert_status": "unchanged"},
+    ]
+    assert result["row_count"] == 2
+    [operation] = reads
+    assert operation.operation == "select"
+    assert "'unchanged' AS upsert_status" in operation.statement.sql
+    assert "B" in operation.statement.parameters.values()
+    assert "A" not in operation.statement.parameters.values()
+
+
+def test_a_truncated_upsert_result_is_not_read_back(monkeypatch) -> None:
+    from msm.repositories import crud
+
+    monkeypatch.setattr(
+        crud,
+        "execute_markets_write",
+        lambda write, *, context: {
+            "rows": [{"unique_identifier": "A", "upsert_status": "inserted", "upsert_index": 0}],
+            "truncated": True,
+        },
+    )
+    monkeypatch.setattr(crud, "execute_markets_operation", pytest.fail)
+
+    result = crud.bulk_upsert_model(
+        _repository_context(),
+        model=AssetTable,
+        values=[{"unique_identifier": "A"}, {"unique_identifier": "B"}],
+        conflict_columns=("unique_identifier",),
+    )
+
+    assert result["rows"] == [{"unique_identifier": "A", "upsert_status": "inserted"}]
+
+
+def test_statuses_are_read_first_only_on_sqlite() -> None:
+    with pytest.raises(ValueError, match="only on SQLite"):
+        build_upsert_model_operation(
+            _repository_context(),
+            model=AssetTable,
+            values={"unique_identifier": "A"},
+            conflict_columns=["unique_identifier"],
+            statuses=["inserted"],
+        )
+    with pytest.raises(ValueError, match="needs the status of every row"):
+        build_upsert_model_operation(
+            _repository_context(OTHER_DATA_SOURCE_UID),
+            model=AssetTable,
+            values={"unique_identifier": "A"},
+            conflict_columns=["unique_identifier"],
+            dialect="sqlite",
+        )
+
+
 def test_generic_bulk_upsert_operation_compiles_one_statement_for_many_rows() -> None:
     context = _repository_context()
     rows = [
@@ -315,10 +468,15 @@ def test_replace_asset_category_memberships_executes_bulk_upsert_before_stale_de
         ]
     }
 
-    def fake_execute(operation, *, context):
-        calls.append((operation, context))
-        return upsert_result if operation.operation == "upsert" else {"rows": []}
+    def fake_upsert(active_context, *, model, values, conflict_columns):
+        calls.append(("upsert", active_context, values, conflict_columns))
+        return upsert_result
 
+    def fake_execute(operation, *, context):
+        calls.append((operation.operation, context, None, None))
+        return {"rows": []}
+
+    monkeypatch.setattr("msm.repositories.asset_categories.bulk_upsert_model", fake_upsert)
     monkeypatch.setattr(
         "msm.repositories.asset_categories.execute_markets_operation",
         fake_execute,
@@ -330,8 +488,12 @@ def test_replace_asset_category_memberships_executes_bulk_upsert_before_stale_de
         asset_uids=asset_uids,
     )
 
-    assert [operation.operation for operation, _ in calls] == ["upsert", "delete"]
-    assert all(active_context is context for _, active_context in calls)
+    assert [call[0] for call in calls] == ["upsert", "delete"]
+    assert all(call[1] is context for call in calls)
+    assert calls[0][2] == [
+        {"category_uid": category_uid, "asset_uid": asset_uid} for asset_uid in asset_uids
+    ]
+    assert calls[0][3] == ("category_uid", "asset_uid")
     assert results == [upsert_result, {"rows": []}]
 
 
