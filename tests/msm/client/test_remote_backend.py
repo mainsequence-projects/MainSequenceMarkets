@@ -365,7 +365,7 @@ def test_bulk_count_and_ordering_run_remotely(monkeypatch, remote) -> None:
 
 def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> None:
     from msm.api.accounts import AccountHoldingsSnapshots
-    from msm.api.assets import AssetSnapshots
+    from msm.api.assets import AssetSnapshotPublication, AssetSnapshots
 
     account_uid = str(uuid.uuid4())
     published: dict[str, Any] = {}
@@ -373,6 +373,10 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
     def add_snapshot(context, **kwargs):
         published["holdings"] = kwargs
         return {"account_uid": kwargs["account_uid"], "holdings": [{"asset_identifier": "A"}]}
+
+    def changed_asset_snapshots(snapshots, *, repository_context):
+        published["compared"] = snapshots
+        return [row for row in snapshots if row["asset_identifier"] == "A"]
 
     class FakeSnapshotUpdater:
         def set_snapshots(self, rows):
@@ -383,6 +387,9 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
             return False, None
 
     monkeypatch.setattr("msm.services.add_account_holdings_snapshot_response", add_snapshot)
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots", changed_asset_snapshots
+    )
     monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", FakeSnapshotUpdater)
 
     snapshot = AccountHoldingsSnapshots.publish(
@@ -390,14 +397,51 @@ def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> 
         holdings_date=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
         positions=[{"asset_identifier": "A", "quantity": "10", "extra_details": {"source": "feed"}}],
     )
-    written = AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
+    publication = AssetSnapshots.publish(
+        [{"asset_identifier": "A", "name": "Acme"}, {"asset_identifier": "B", "name": "Beta"}]
+    )
 
     assert snapshot["holdings"] == [{"asset_identifier": "A"}]
     assert published["holdings"]["account_uid"] == account_uid
     assert published["holdings"]["positions"][0]["extra_details"] == {"source": "feed"}
     assert published["holdings"]["holdings_date"] == dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
-    assert written == 1
+    assert publication == AssetSnapshotPublication(written=1, skipped=1)
+    assert published["compared"] == [
+        {"asset_identifier": "A", "name": "Acme"},
+        {"asset_identifier": "B", "name": "Beta"},
+    ]
     assert published["snapshots"] == [{"asset_identifier": "A", "name": "Acme"}]
+
+
+def test_unchanged_snapshots_publish_without_an_update_run(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshotPublication, AssetSnapshots
+
+    def no_update_run():
+        raise AssertionError("an unchanged publication must not start an update run")
+
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots",
+        lambda snapshots, *, repository_context: [],
+    )
+    monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", no_update_run)
+
+    publication = AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
+
+    assert publication == AssetSnapshotPublication(written=0, skipped=1)
+
+
+def test_a_snapshot_repeated_with_other_values_is_a_400(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshots
+
+    def changed_asset_snapshots(snapshots, *, repository_context):
+        raise ValueError("AssetSnapshot rows already exist with different values for ...")
+
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots", changed_asset_snapshots
+    )
+
+    with pytest.raises(ValueError, match="already exist with different values"):
+        AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
 
 
 @pytest.mark.parametrize(

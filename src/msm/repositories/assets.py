@@ -4,21 +4,25 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 
-from metatables import MetaTableCompiledSQLOperation
-
-from msm.base import new_markets_uid
 from msm.models import AssetTable
 
-from .base import MarketsOperationContext, compile_markets_statement, execute_markets_operation
+from .base import (
+    MarketsCompiledWrite,
+    MarketsOperationContext,
+    execute_markets_operation,
+)
 from .crud import (
+    UpsertStatus,
     build_create_model_operation,
     build_delete_model_operation,
     build_get_model_by_uid_operation,
     build_get_model_by_unique_identifier_operation,
     build_search_model_operation,
     build_update_model_operation,
+    build_upsert_model_operation,
+    upsert_model,
 )
 
 
@@ -50,33 +54,30 @@ def build_upsert_asset_operation(
     *,
     unique_identifier: str,
     asset_type: str | None = None,
-) -> MetaTableCompiledSQLOperation:
-    statement = (
-        postgresql_insert(AssetTable)
-        .values(
-            uid=new_markets_uid(),
-            unique_identifier=unique_identifier,
-            asset_type=asset_type,
-        )
-        .on_conflict_do_update(
-            index_elements=[AssetTable.unique_identifier],
-            set_={
-                "asset_type": asset_type,
-            },
-        )
-        .returning(AssetTable)
-    )
-    return compile_markets_statement(
-        statement,
-        context=asset,
-        operation="upsert",
+    dialect: MetaTableCompiledSQLDialect | None = None,
+    statuses: Sequence[UpsertStatus] | None = None,
+) -> MarketsCompiledWrite:
+    return build_upsert_model_operation(
+        asset,
+        model=AssetTable,
+        values={"unique_identifier": unique_identifier, "asset_type": asset_type},
+        conflict_columns=("unique_identifier",),
+        dialect=dialect,
+        statuses=statuses,
     )
 
 
-def upsert_asset(asset: MarketsOperationContext, **kwargs: Any) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_upsert_asset_operation(asset, **kwargs),
-        context=asset,
+def upsert_asset(
+    asset: MarketsOperationContext,
+    *,
+    unique_identifier: str,
+    asset_type: str | None = None,
+) -> dict[str, Any]:
+    return upsert_model(
+        asset,
+        model=AssetTable,
+        values={"unique_identifier": unique_identifier, "asset_type": asset_type},
+        conflict_columns=("unique_identifier",),
     )
 
 

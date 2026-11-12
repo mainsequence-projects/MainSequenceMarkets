@@ -155,6 +155,20 @@ def resolve_markets_sql_target(
     return runtime_uid, runtime_dialect
 
 
+def values_parameter(value: Any, type_: Any, *, dialect: MetaTableCompiledSQLDialect) -> Any:
+    """A bound value for a row of a SQL ``VALUES`` list.
+
+    PostgreSQL types a ``VALUES`` list from its first row, so the value is cast to
+    ``type_`` there. SQLite casts ``DATETIME`` and ``JSON`` to numbers, so the value binds
+    bare and the type only converts it.
+    """
+
+    from sqlalchemy import cast, literal
+
+    parameter = literal(value, type_)
+    return cast(parameter, type_) if dialect == "postgresql" else parameter
+
+
 def compile_markets_statement(
     statement: Any,
     *,
@@ -249,4 +263,5 @@ __all__ = [
     "execute_markets_operation",
     "execute_markets_write",
     "resolve_markets_sql_target",
+    "values_parameter",
 ]

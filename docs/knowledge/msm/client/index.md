@@ -108,7 +108,11 @@ CalendarSession.filter(calendar_uid=uid, local_date__gte=start, local_date__lte=
 ```
 
 `upsert_many` validates each payload through the row module's `<Row>Upsert`
-model and writes them in one statement on `__upsert_keys__`. `filter` takes
+model and writes them in one statement on `__upsert_keys__`. An existing row is
+updated only when a value differs, so an unchanged row is not rewritten; every
+payload's row still comes back, in order. Under the runtime backend,
+`msm.repositories.crud.upsert_model` and `bulk_upsert_model` also give each row
+an `upsert_status` of `inserted`, `updated` or `unchanged`. `filter` takes
 equality, `<field>_contains`, `<field>__in` and `<field>__gte`/`__gt`/`__lte`/
 `__lt` filters, `order_by` (`-column` for descending), `limit` and `offset`;
 `count` takes the same filters. Remote values are typed by the row model's
@@ -137,9 +141,17 @@ AccountHoldingsSnapshots.publish(
 )
 latest = AccountHoldingsSnapshots.get(account_uid=account_uid)
 history = AccountHoldingsSnapshots.get_many(account_uid=account_uid, limit=10)
-AssetSnapshots.publish([{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}])
+published = AssetSnapshots.publish(
+    [{"asset_identifier": "ACME", "time_index": as_of, "name": "Acme"}]
+)
 current = AssetSnapshots.latest(tickers=["ACME"])
 ```
+
+`AssetSnapshots.publish` writes only the rows that change their asset's
+snapshot at their `time_index` and returns an `AssetSnapshotPublication`
+(`written`, `skipped`). Republishing an unchanged asset writes nothing, and a
+`(time_index, asset_identifier)` already stored with different values is
+refused with `ValueError` (`400` from the Markets API).
 
 `AssetSnapshots.latest` takes exactly one of `asset_identifiers`, `asset_uids`
 or `tickers` and returns each existing asset with its latest snapshot

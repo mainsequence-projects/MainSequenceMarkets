@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import DateTime, Uuid, bindparam, delete, func, insert, or_, select, update
 
-from metatables import MetaTableCompiledSQLOperation
+from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from msm.repositories.base import (
+    MarketsCompiledWrite,
     MarketsRepositoryContext,
     compile_markets_statement,
     execute_markets_operation,
@@ -23,6 +25,8 @@ from msm.repositories.crud import (
     build_upsert_model_operation,
     mirror_renamed_columns,
     renamed_keyword,
+    UpsertStatus,
+    upsert_model,
 )
 
 
@@ -322,25 +326,58 @@ def build_upsert_portfolio_group_operation(
     display_name: str,
     description: str | None = None,
     metadata_json: dict[str, Any] | None = None,
-) -> MetaTableCompiledSQLOperation:
+    dialect: MetaTableCompiledSQLDialect | None = None,
+    statuses: Sequence[UpsertStatus] | None = None,
+) -> MarketsCompiledWrite:
     return build_upsert_model_operation(
         context,
         model=PortfolioGroupTable,
-        values={
-            "unique_identifier": unique_identifier,
-            "display_name": display_name,
-            "description": description,
-            "metadata_json": metadata_json,
-        },
+        values=_portfolio_group_values(
+            unique_identifier=unique_identifier,
+            display_name=display_name,
+            description=description,
+            metadata_json=metadata_json,
+        ),
+        conflict_columns=("unique_identifier",),
+        dialect=dialect,
+        statuses=statuses,
+    )
+
+
+def upsert_portfolio_group(
+    context: MarketsRepositoryContext,
+    *,
+    unique_identifier: str,
+    display_name: str,
+    description: str | None = None,
+    metadata_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return upsert_model(
+        context,
+        model=PortfolioGroupTable,
+        values=_portfolio_group_values(
+            unique_identifier=unique_identifier,
+            display_name=display_name,
+            description=description,
+            metadata_json=metadata_json,
+        ),
         conflict_columns=("unique_identifier",),
     )
 
 
-def upsert_portfolio_group(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_upsert_portfolio_group_operation(context, **kwargs),
-        context=context,
-    )
+def _portfolio_group_values(
+    *,
+    unique_identifier: str,
+    display_name: str,
+    description: str | None,
+    metadata_json: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "unique_identifier": unique_identifier,
+        "display_name": display_name,
+        "description": description,
+        "metadata_json": metadata_json,
+    }
 
 
 def build_get_portfolio_group_by_uid_operation(
@@ -492,25 +529,30 @@ def build_upsert_portfolio_group_membership_operation(
     *,
     portfolio_group_uid: uuid.UUID | str,
     portfolio_uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
+    dialect: MetaTableCompiledSQLDialect | None = None,
+    statuses: Sequence[UpsertStatus] | None = None,
+) -> MarketsCompiledWrite:
     return build_upsert_model_operation(
         context,
         model=PortfolioGroupMembershipTable,
-        values={
-            "portfolio_group_uid": portfolio_group_uid,
-            "portfolio_uid": portfolio_uid,
-        },
+        values={"portfolio_group_uid": portfolio_group_uid, "portfolio_uid": portfolio_uid},
         conflict_columns=("portfolio_group_uid", "portfolio_uid"),
+        dialect=dialect,
+        statuses=statuses,
     )
 
 
 def upsert_portfolio_group_membership(
     context: MarketsRepositoryContext,
-    **kwargs: Any,
+    *,
+    portfolio_group_uid: uuid.UUID | str,
+    portfolio_uid: uuid.UUID | str,
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_upsert_portfolio_group_membership_operation(context, **kwargs),
-        context=context,
+    return upsert_model(
+        context,
+        model=PortfolioGroupMembershipTable,
+        values={"portfolio_group_uid": portfolio_group_uid, "portfolio_uid": portfolio_uid},
+        conflict_columns=("portfolio_group_uid", "portfolio_uid"),
     )
 
 

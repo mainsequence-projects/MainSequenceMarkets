@@ -7,6 +7,59 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- `msm.time_index.assets.snapshots.changed_asset_snapshots` and
+  `SNAPSHOT_VALUE_COLUMNS`; `AssetSnapshot.without_stored_snapshots` and
+  `stored_snapshot_values`; `msm.api.assets.AssetSnapshotPublication`.
+- `msm.repositories.crud.UpsertStatus`, `UPSERT_STATUS_COLUMN` and
+  `UPSERT_STATUS_GUARD`; `msm.repositories.base.values_parameter`.
+
+### Changed
+
+- Upserts no longer rewrite unchanged rows (#62). `upsert_model`, `bulk_upsert_model`
+  (and so every row class's `upsert` and `upsert_many`) update a conflicting row only
+  when one of the updated columns differs from its new value; conflict, primary-key
+  and `onupdate` columns are not compared, and JSON columns compare as `jsonb` on
+  PostgreSQL, where the Markets migrations create them as `json`. A row with only key
+  columns is inserted or left alone (`ON CONFLICT DO NOTHING`). Every input row still
+  comes back, in input order, now with `upsert_status`: `inserted`, `updated` or
+  `unchanged`.
+  - On PostgreSQL this is one statement that reads the unchanged rows from its own
+    snapshot. A row another transaction commits with the same values after that
+    snapshot is read back afterwards and reported `unchanged`.
+  - On SQLite the statuses are read first, then one transaction refuses rows whose
+    status changed since (guard `upsert_status`, `UPSERT_STATUS_GUARD`), upserts and
+    returns the rows; a refused write is read and tried again, up to three times.
+  - An upsert refuses a `NULL` conflict-key value (a `NULL` never conflicts, so the
+    row was inserted again on every call) and a conflict key given twice, with
+    `ValueError`.
+  - `build_upsert_model_operation` and `build_bulk_upsert_model_operation` return a
+    `MarketsCompiledWrite` and take `dialect=` and, for SQLite, `statuses=`; so do
+    `build_upsert_asset_operation`, `build_upsert_portfolio_group_operation`,
+    `build_upsert_portfolio_group_membership_operation` and
+    `build_replace_asset_category_memberships_operations`. `upsert_asset`,
+    `upsert_portfolio_group`, `upsert_portfolio_group_membership` and
+    `replace_asset_category_memberships` run through `upsert_model` and
+    `bulk_upsert_model`.
+- **Breaking:** `AssetSnapshots.publish` writes only the rows that change their
+  asset's snapshot and returns `AssetSnapshotPublication(written=, skipped=)` instead
+  of an `int` (#62). Each row is compared on `name`, `ticker`, `exchange_code` and
+  `asset_ticker_group_id` (`None` equals `""`) with the snapshot in effect at its own
+  `time_index`: the asset's latest stored row at or before it, or the asset's
+  previous row in the batch when that one is later, so a backdated change is still
+  written. When every row is unchanged, no update run starts. A row that repeats a
+  stored or an earlier `(time_index, asset_identifier)` with the same values is
+  skipped; with different values it raises `ValueError` (`400` from the rows route),
+  as before. The remote client decodes the new result.
+- An `AssetSnapshot` run drops rows already stored with the same values instead of
+  failing; a key stored with different values still fails it with `ValueError`.
+
+### Removed
+
+- `AssetSnapshot.verify_backend_index_available` and `existing_backend_index_keys`,
+  replaced by `without_stored_snapshots` and `stored_snapshot_values`.
+
 ### Fixed
 
 - Publishing an account holdings snapshot costs 3 MetaTables operations whatever
