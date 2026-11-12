@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-12
+
 ### Added
 
 - One call registers an account and writes its holdings snapshot (#63,
