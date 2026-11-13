@@ -3892,6 +3892,21 @@
             "title": "Paramstyle",
             "type": "string"
           },
+          "result_types": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "const": "uuid",
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Types"
+          },
           "sql": {
             "maxLength": 1000000,
             "minLength": 1,
@@ -4704,6 +4719,21 @@
             ],
             "title": "Paramstyle",
             "type": "string"
+          },
+          "result_types": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "const": "uuid",
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Types"
           },
           "sql": {
             "maxLength": 1000000,
@@ -7995,6 +8025,7 @@
     },
     "/runtime-context/": {
       "get": {
+        "description": "The runtime descriptor; with ``transfer_contract=1``, the data path's descriptor.\n\nClients ask for the data path's descriptor before compiling and transferring\nrows, so it answers from memory: the runtime DataSource as its runtime\nactivated, its SQL dialect and the transfer limits. It reads no file, database\nor platform service, and leaves out the bootstrap, credential-store and hosted\nEnvironment and Agent details that only the full descriptor reports\n(MetaTables #106).",
         "operationId": "runtime_context_runtime_context__get",
         "parameters": [
           {

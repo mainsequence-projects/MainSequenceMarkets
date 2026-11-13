@@ -112,10 +112,6 @@ direct account snapshots and virtual-fund-grouped views.
   - `404` when the uid is unknown; `409` when a key refuses the delete,
     including orders of other accounts that name its order managers or virtual
     funds of other accounts allocated from its holdings sets; nothing is deleted
-  - on the local SQLite runtime, MetaTables refuses the delete while any table
-    the caller cannot read has a key into the account tables
-    ([MetaTables#105](https://github.com/mainsequence-projects/MetaTables/issues/105));
-    PostgreSQL does not
   - there is no delete for a single virtual fund, target allocation, position
     set or holdings set: an account's history is kept for as long as the account
     exists ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))

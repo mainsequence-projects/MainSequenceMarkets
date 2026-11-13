@@ -239,6 +239,10 @@ the two registry deletes behave differently with no ms-markets rule behind it.
   asks to lift it. The SQLite tests give the identity access to the provider
   tables and check separately that no statement names them; a strict `xfail`
   test turns red once MetaTables lifts the limitation.
+
+  Amended in 3.4.1: MetaTables 0.1.64 lifted the limitation (#105), and
+  ms-markets requires it. The SQLite tests now create the provider tables
+  outside the identity, and the `xfail` marker is gone.
 - **Row router.** `_owns_checked_delete` now accepts any row class that defines
   `delete` itself, so `Account.delete` and `Account.bulk_delete` run through the
   generic row path, wrapped in `registry_write("account", "delete")` and

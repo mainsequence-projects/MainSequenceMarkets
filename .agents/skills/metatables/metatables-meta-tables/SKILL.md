@@ -176,6 +176,10 @@ label=...)`; a miss rolls back and raises `MetaTableTransactionGuardError`. Neve
 put `COMMIT` or savepoints in a list. PostgreSQL and SQLite only; see the query
 guide's "Several statements in one transaction".
 
+Select or return `Uuid` columns typed, not cast to text: compiled `Uuid` results come
+back dashed on every engine, while a `CAST` or untyped SQL returns SQLite's stored hex.
+Do not reformat uids in the application to paper over engine differences.
+
 To find tables, use `MetaTable.search` as described in the
 [table discovery skill](../metatables-table-discovery/SKILL.md). Legacy convenience
 sharing/label actions are not supported API workflows.

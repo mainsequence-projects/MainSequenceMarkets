@@ -145,6 +145,15 @@ SDK's existing retry contract within a bounded timeout and report failure when
 the target cannot be resolved. This decision introduces no new authentication
 mechanism, credential type, account-binding policy or Organization policy.
 
+While a new revision rolls out, the platform can answer `unavailable` although
+the active revision keeps serving
+([MetaTables#108](https://github.com/mainsequence-projects/MetaTables/issues/108)).
+Discovery therefore waits on an `unavailable` answer whose runtime presence is
+`redeploying` as it waits on `waking`, within the same budget.
+Any other `unavailable` answer, including presence `failed`, fails at once; a
+release with no active revision is not deployed. The budget is 30 s, or 300 s
+for application migrations, so a rollout that outlasts it still fails the call.
+
 ### 3. Cache the endpoint once per process
 
 Resolve lazily on the first operation that needs an API address. Cache a
@@ -212,6 +221,17 @@ The API's `/runtime-context/` response remains fresh under API ADR 0001. Resetti
 local storage, selecting another DataSource or restarting the API can change
 runtime state without changing its address. The endpoint cache must not hide
 those changes or introduce client database access.
+
+Amended 2026-11-12 ([MetaTables #106](https://github.com/mainsequence-projects/MetaTables/issues/106)):
+asking before every operation doubled the cost of each row operation against a
+hosted API. The client keeps a hosted endpoint's descriptor (DataSource, dialect,
+transfer limits) for the process, keyed by that endpoint, so a new endpoint, an
+endpoint reset and a fork start empty. A hosted runtime changes only when the API
+is redeployed, and the API checks every operation's DataSource and dialect, so a
+kept descriptor that went stale is refused, never used. Any 409, 413, 422 or 503
+answer drops it, and the next operation asks again; application migrations always
+ask. A loopback development API is still asked every time, because Settings, branch
+switches and local resets change its runtime at the same address.
 
 ## Ownership and consequences
 

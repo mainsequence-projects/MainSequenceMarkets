@@ -127,7 +127,7 @@ mainsequence==9.0.40
     # via
     #   mainsequence-metatable
     #   ms-markets
-mainsequence-metatable==0.1.61
+mainsequence-metatable==0.1.64
     # via ms-markets
 mako==1.3.12
     # via alembic

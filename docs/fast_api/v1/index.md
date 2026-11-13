@@ -187,15 +187,16 @@ push alone as deployment success.
 
 Runtime dependencies must be resolvable from the backend build environment.
 The published `ms-markets` package therefore declares
-`mainsequence>=9.0.31,<10` and `mainsequence-metatable>=0.1.61,<0.2` without
+`mainsequence>=9.0.31,<10` and `mainsequence-metatable>=0.1.64,<0.2` without
 exact patch pins. The lower bounds enforce the SDK 9 and MetaTables client
 extraction hard cut, the identity-only caller assertions the platform signs (SDK
 9.0.27 and later; 9.0.25 and 9.0.26 are excluded), the SDK that MetaTables 0.1.60
 and later require (9.0.31), and a MetaTables client that knows the namespace and
-table roles (0.1.51) and runs the snapshot writes on a SQLite DataSource (0.1.61),
+table roles (0.1.51) and runs the snapshot writes on a SQLite DataSource (0.1.61) and waits out a
+MetaTables API rollout during discovery (0.1.64),
 while the project lock and exported runtime requirements select the exact releases
 validated for this repository: `mainsequence` 9.0.40 and `mainsequence-metatable`
-0.1.61. MetaTables 0.1.51 and later retain batched migration inspections and a
+0.1.64. MetaTables 0.1.51 and later retain batched migration inspections and a
 five-minute migration API discovery budget, and refresh changed authored metadata
 at unchanged revisions. Metadata finalization requires the corresponding shared MetaTables API
 update. Do not replace the published dependencies with machine-local

@@ -38,7 +38,7 @@ dependencies = [
   "cachetools",
   "fastapi>=0.136.3",
   "mainsequence>=9.0.31,<10",
-  "mainsequence-metatable>=0.1.61,<0.2",
+  "mainsequence-metatable>=0.1.64,<0.2",
   "numpy",
   "pandas",
   "pip>=26.2.2",

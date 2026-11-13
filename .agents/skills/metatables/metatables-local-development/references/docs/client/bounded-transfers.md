@@ -9,9 +9,12 @@ error instead of collecting indefinitely, and uncertain writes stop for recovery
 
 The version 1 contract is available from
 `GET /runtime-context/?transfer_contract=1` in `transfer_limits` and from the
-updated client's `get_runtime_context().transfer_limits`. Responses are not
-permanently cached. Uploads refresh capabilities for each call. The query parameter
-keeps the new field out of descriptors consumed by older strict clients.
+updated client's `get_runtime_context().transfer_limits`. The API answers it from
+memory. The client keeps a hosted API's descriptor for the process and asks again
+after any 409, 413, 422 or 503 answer, so a row operation or upload sends no extra
+request; `get_runtime_context(refresh=True)` asks now, and a loopback development
+API is asked every time. The query parameter keeps the new field out of descriptors
+consumed by older strict clients.
 
 | Budget | Default |
 | --- | --- |

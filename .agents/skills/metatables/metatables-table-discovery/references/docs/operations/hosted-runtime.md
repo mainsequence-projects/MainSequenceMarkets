@@ -262,9 +262,15 @@ Each request's "HTTP request completed" log line carries, next to `duration_ms` 
 | `admission_wait_ms` | Data requests only: waiting for one of the T data-request slots. |
 | `connection_wait_ms` | Getting database connections: waiting for one under the cap, or opening one when none can be reused. |
 | `db_ms` | Running statements and fetching their rows. |
+| `db_statements` | How many statements those were. Each is at least one round trip, so `db_ms` divided by it approximates the latency to the database. |
+| `admission_ms` | Admitting the caller: the verified identity and the Team memberships its grants need. |
+| `resolution_ms` | SQL routes and the runtime descriptor: resolving the DataSource and admitting the caller's database identity. |
+| `execution_ms` | SQL routes: running the caller's statements, from getting the connection to the commit. |
+| `serialization_ms` | SQL routes: rendering the JSON response. |
 
-The rest of `duration_ms` is the API's own work, such as reading the body, permission
-checks and serialization. Once a minute each pod also logs a line such as
+The phases do not overlap and include their own database time, which `db_ms` also
+counts; a route without SQL logs only `admission_ms`. The rest of `duration_ms` is
+the API's other work, such as reading the body. Once a minute each pod also logs a line such as
 `database_connections total=42 max_connections=200 active=3 idle=27 unknown=12`: the
 sessions open on the runtime database server, from every pod and client, by state.
 Sessions of roles the `metatables` login cannot inspect count as `unknown`. The line
@@ -277,6 +283,7 @@ counted; local runtimes log nothing.
 | High thread or admission wait with the pod's CPU near one core | The process | Add pods, not T. |
 | High connection wait | The connection cap or connecting | The connection budget, not T. |
 | High `db_ms` | The database | Queries or database size; neither T nor pods help. |
+| High `db_ms` from many statements, each slow | Latency to the database | The network path between the pods and the database; neither T nor pods help. |
 | `total` near `max_connections` | The database's connection limit | Neither T nor maximum pods can grow until the database allows more connections. |
 
 ## Application grants
