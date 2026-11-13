@@ -284,32 +284,25 @@ def _create_provider_tables(engine) -> None:
             connection.exec_driver_sql(ddl)
 
 
-@pytest.fixture
-def markets_with_provider_tables(tmp_path, monkeypatch):
-    """The provider tables exist before the identity, so it may read and write them.
-
-    SQLite reads a referencing table to enforce its key, and MetaTables' SQLite
-    authorizer refuses that read for a table outside the identity
-    (mainsequence-projects/MetaTables#105). Until that is fixed, the identity must cover
-    the provider tables; the tests check separately that no statement names them.
-    """
-
-    return make_sqlite_markets(tmp_path, monkeypatch, prepare=_create_provider_tables)
-
-
 def _provider_statements(markets) -> list[str]:
     return [sql for sql in markets.statements if "provider_ns__" in sql]
 
 
+# The provider tables are created after the execution identity, so they lie outside
+# it, as another application's tables do. SQLite still reads them to enforce their
+# keys (mainsequence-projects/MetaTables#105).
+
+
 def test_other_namespace_tables_change_only_through_their_own_keys(
-    markets_with_provider_tables, monkeypatch
+    sqlite_markets, monkeypatch
 ) -> None:
-    markets = markets_with_provider_tables
+    markets = sqlite_markets
     _no_impact(monkeypatch)
     engine = markets.engine
     _asset(engine, "AAA")
     account = _account(engine)
     history = _history(markets, account)
+    _create_provider_tables(engine)
     (holdings_set,) = _rows(
         engine,
         "SELECT uid FROM ms_markets__accountholdingsset WHERE account_uid = :uid LIMIT 1",
@@ -336,14 +329,15 @@ def test_other_namespace_tables_change_only_through_their_own_keys(
 
 
 def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(
-    markets_with_provider_tables, monkeypatch
+    sqlite_markets, monkeypatch
 ) -> None:
-    markets = markets_with_provider_tables
+    markets = sqlite_markets
     _no_impact(monkeypatch)
     engine = markets.engine
     _asset(engine, "AAA")
     account = _account(engine)
     history = _history(markets, account)
+    _create_provider_tables(engine)
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "INSERT INTO provider_ns__ordersts__copy VALUES ('provider-order', ?)", (history["identifier"],)
@@ -359,14 +353,6 @@ def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(
     assert _count(engine, "provider_ns__ordersts__copy") == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "MetaTables#105: the SQLite authorizer refuses the reads SQLite makes to enforce a "
-        "key from a table outside the identity. Once fixed, this passes: drop the marker "
-        "and the provider-table fixture."
-    ),
-)
 def test_keys_from_tables_outside_the_identity_do_not_stop_the_delete(sqlite_markets, monkeypatch) -> None:
     _no_impact(monkeypatch)
     engine = sqlite_markets.engine

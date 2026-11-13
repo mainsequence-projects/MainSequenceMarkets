@@ -30,6 +30,13 @@ external sources without changing this runtime's catalog or write destination.
 Client endpoint selection is governed by
 [client ADR 0003](../client/0003-api-endpoint-resolution.md). Its endpoint cache
 does not cache this API's runtime context or select its runtime mode or DataSource.
+Amended 2026-11-12 (MetaTables #106): a client keeps a hosted endpoint's
+descriptor until that API answers in a way that can mean its runtime changed
+(client ADR 0003, section 4). This API checks every operation's DataSource and
+dialect, so a stale descriptor is refused. `?transfer_contract=1` returns the data
+path's descriptor from memory: the runtime DataSource as its runtime activated, its
+dialect and the transfer limits, without bootstrap, credential-store or hosted
+Environment and Agent details.
 
 Updated 2026-09-28: application Environment policy and relationships are removed.
 Amended 2026-09-29: one enforced runtime binding and explicit bootstrap select one
@@ -728,6 +735,7 @@ The authenticated `/runtime-context/` endpoint supplies both clients with their
 effective DataSource. Local mode uses SDK Git source facts and does not
 resolve or register a platform branch. The client does not cache effective
 context globally, so changing API or storage cannot reuse an old source binding.
+It keeps a hosted endpoint's descriptor per endpoint only (MetaTables #106).
 
 `METATABLES_LOCAL_STORAGE_DIR` selects the default parent directory. Settings
 selects the single runtime file. Independent catalog/table overrides are retired.

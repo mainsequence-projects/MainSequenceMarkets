@@ -188,7 +188,9 @@ on the Job (workflow API `3.0.0`):
 
 `upgrade_application()` waits up to five minutes for the API to wake or finish
 replacing its pods before it fails with `ApiResolutionError`; other client calls
-wait 30 seconds. Within the same budget, the runtime-context request is retried
+wait 30 seconds. That includes a rollout of a new API revision, which the platform
+can report as unavailable until it completes; an API whose revision failed is not
+waited for. Within the same budget, the runtime-context request is retried
 while the API answers 502, 503 or 504, for example while it cannot yet verify
 callers; the final error keeps the API's last detail.
 

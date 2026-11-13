@@ -1,5 +1,11 @@
 # ADR 0007: Enforce table grants in the database
 
+> Amendment (2026-11-12, [MetaTables #105](https://github.com/mainsequence-projects/MetaTables/issues/105)):
+> SQLite follows the 2026-10-03 rule too. A write needs only the written table's
+> grants; SQLite's reads and writes to enforce foreign keys, at any depth, need no
+> access to the tables they reach. The statement's own access is still checked
+> exactly as before. See [SQLite](#sqlite).
+
 > Amendment (2026-11-10, [MetaTables #98](https://github.com/mainsequence-projects/MetaTables/issues/98)):
 > [ADR 0026](0026-atomic-statement-lists.md) lets a write carry an ordered list of
 > statements that the API runs in one transaction. One statement per request still holds
@@ -288,7 +294,7 @@ client.
   is enabled. Role names are opaque, because table permissions are visible too.
 - Databases run foreign-key cascades as the table owner. The referencing table's
   own foreign key authorizes them, so they need no access from the caller
-  (amendment 2026-10-03). SQLite is the exception described below.
+  (amendment 2026-10-03). SQLite does the same, as described below.
 - Heavy queries still consume resources. Per-role connection limits, time limits
   and, optionally, a read replica bound them.
 
@@ -299,10 +305,16 @@ runtimes: reads on the caller's Reader and Writer tables, writes on Writer table
 only, and nothing else, including catalog tables, schema changes, transaction
 control and `PRAGMA`. The callback responds to SQLite's own authorization events
 inside the backend adapter; the API does not parse the query to infer its access.
-SQLite also asks it about the reads and writes of foreign-key actions, which it
-cannot tell apart from the caller's own. A local delete or key update on a
-referenced table therefore fails unless the caller can access every referencing
-table.
+
+SQLite also asks the callback about the reads and writes it makes to enforce
+foreign keys, and reports them exactly like the statement's own. When the grants
+deny a write statement, the backend compiles it once more with foreign keys off,
+which leaves only what the statement names itself, through subqueries, views and
+triggers included. If that passes, the denied accesses were enforcement: the
+statement runs again, and for that statement only the callback also allows the
+tables that foreign keys reach from the tables it writes. Accesses from a trigger
+or view never qualify. A statement that names a table outside the grants fails as
+before.
 
 ### Engine-specific enforcement
 

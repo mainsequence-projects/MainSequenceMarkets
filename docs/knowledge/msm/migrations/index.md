@@ -88,7 +88,8 @@ previous release keeps serving.
 
 ### Migration diagnostics and repeated runs
 
-ms-markets requires MetaTables 0.1.61 or later. `upgrade_application()` automatically
+ms-markets requires MetaTables 0.1.64 or later, which waits out a MetaTables API rollout during
+discovery instead of failing (MetaTables#108). `upgrade_application()` automatically
 uses fresh table inventories and batched physical inspections; PostgreSQL
 reflection is batched by schema. Finalization requests remain bounded to ten
 tables each, with the version table first. No batching option or project-specific
@@ -124,7 +125,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.61).
+requirement; the Markets migration client requirement is separate (currently 0.1.64).
 
 The runner carries changed, non-empty authored table descriptions, labels, and
 column descriptions, labels, and logical names in each finalization batch. An

@@ -7,6 +7,28 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-11-13
+
+### Changed
+
+- Requires `mainsequence-metatable>=0.1.64,<0.2` (was `>=0.1.61`). The lock and
+  `requirements.txt`, which hosted images install, select 0.1.64. No other locked package
+  changes.
+  - **Rollouts:** API discovery waits out a MetaTables API rollout within its budget
+    instead of failing at once (MetaTables#108). The 3.4.0 Markets API rollout stopped at
+    its migrate step this way, while MetaTables was rolling out.
+  - **Fewer requests:** a hosted row operation is one request (MetaTables#106).
+  - **SQLite account delete:** SQLite enforces foreign keys from tables outside the
+    caller's grants (MetaTables#105). On the local runtime, an account delete is no longer
+    refused because another namespace's table has a key into the account tables.
+- The SQLite account-delete tests create the provider tables outside the execution
+  identity. The strict `xfail` for MetaTables#105 is gone, and the API guide no longer lists
+  the limitation. [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)
+  carries an amendment.
+- The README, the getting-started, tutorial, release and FastAPI guides, and the migration
+  pages give the MetaTables minimum as 0.1.64. The vendored skills in
+  `.agents/skills/metatables/` are refreshed from 0.1.64.
+
 ## [3.4.0] - 2026-11-12
 
 ### Added

@@ -150,11 +150,10 @@ table drop reaches and what happens to each. Cascade effects are information,
 never a reason the action is blocked. Tables you cannot view appear as opaque
 nodes. See [ADR 0016](../adr/api/0016-impact-preflight.md).
 
-**SQLite limitation.** In a local SQLite runtime, MetaTables' authorizer is also
-asked about the reads and writes that foreign-key actions make, and it cannot
-tell them apart from the caller's own. A delete or key update on a referenced
-table therefore fails unless the caller can access every referencing table.
-PostgreSQL does not have this limitation; MySQL and SQL Server are pending
+**Local SQLite runtimes** follow the same rule. MetaTables' authorizer allows the
+reads and writes SQLite makes to enforce foreign keys, so deleting an asset needs
+no access to `details` there either. A statement that reads or writes `details`
+itself, for example in a subquery, still fails. MySQL and SQL Server are pending
 verification against their containers.
 
 ## Choosing the right page

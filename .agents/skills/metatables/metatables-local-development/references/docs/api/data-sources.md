@@ -208,10 +208,10 @@ while the database checks permissions during each query. See
 Registered foreign keys may use any referential action, including `CASCADE`,
 `SET NULL` and `SET DEFAULT`. The database runs a cascade as the table owner,
 authorized by the referencing table's own foreign key, so writing a referenced
-table needs no access to the tables that reference it. Local SQLite runtimes are
-the exception: SQLite's authorizer cannot tell a foreign-key action from the
-caller's own statement, so a local delete or key update on a referenced table
-fails unless the caller can access every referencing table. See
+table needs no access to the tables that reference it. Local SQLite runtimes
+follow the same rule: the authorizer allows the reads and writes SQLite makes to
+enforce foreign keys, while a statement that names a table outside the caller's
+grants still fails. See
 [ADR 0007](../adr/api/0007-database-enforced-table-access.md#sqlite) and
 [ADR 0016](../adr/api/0016-impact-preflight.md).
 

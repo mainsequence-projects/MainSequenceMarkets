@@ -6,6 +6,12 @@
 > removing write from such callers. Both are withdrawn with that rule
 > ([ADR 0007](0007-database-enforced-table-access.md), amended 2026-10-03).
 
+> Amendment (2026-11-12, [MetaTables #105](https://github.com/mainsequence-projects/MetaTables/issues/105)):
+> Local SQLite runtimes no longer refuse a delete or key update on a referenced
+> table when the caller lacks access to a referencing table: their authorizer
+> allows foreign-key enforcement ([ADR 0007](0007-database-enforced-table-access.md#sqlite)).
+> That row is removed from Remaining gaps.
+
 Date: 2026-10-03
 
 Status: Accepted.
@@ -96,7 +102,6 @@ every rule at execution time.
 | Need | Today |
 | --- | --- |
 | `on_update` in the catalog | `MetaTableForeignKey` and contracts carry only `on_delete`; contracts reject `set default`. Row-action edges use the physical actions, which are complete. |
-| SQLite runtimes | MetaTables' authorizer also checks the reads and writes of foreign-key actions, so a local delete or key update on a referenced table fails unless the caller can access every referencing table ([ADR 0007](0007-database-enforced-table-access.md)). The pre-flight does not report this. |
 | Plain delete | `DELETE /meta-tables/{uid}/` still answers 409 without listing references. |
 | Contract changes | No `change_contract` action; a PATCH that would invalidate an incoming key fails with a text message. |
 | Schema and update graphs | `get_schema_graph` returns an untyped dict; `update-graph` has no client method. |

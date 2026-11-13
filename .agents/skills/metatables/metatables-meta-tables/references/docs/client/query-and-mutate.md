@@ -54,6 +54,14 @@ constraints to identify the same row. Temporal parameters carry type information
 For PostgreSQL inserts, the compiler replaces an explicit `None` UUID primary key
 with `DEFAULT`; the database must define that default.
 
+A `Uuid` value binds as a `uuid.UUID` or as text, dashed or not; on SQLite and MySQL,
+text that is not a UUID raises `ValueError` naming the parameter. A `Uuid` result
+column returns as lowercase dashed text on every engine, although SQLite and MySQL
+store 32 hex characters: the compiler names those columns in the statement's
+`result_types` and the API renders them ([ADR 0027](../adr/api/0027-compiled-sql-result-types.md)).
+A `CAST` to text and SQL without SQLAlchemy types, such as `run_query`, return what
+the database stores.
+
 `table.run_query(sql)` submits a read-only request using that table's DataSource.
 It can query any table you can read in the same runtime. Compiled operations with
 `operation="select"` also use the read identity; insert/update/upsert/delete select
