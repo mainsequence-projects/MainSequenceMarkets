@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-11-13
+
 ### Changed
 
 - Requires `mainsequence-metatable>=0.1.64,<0.2` (was `>=0.1.61`). The lock and
