@@ -1,6 +1,6 @@
 ---
 name: mainsequence-markets-account-target-sizing
-description: Use this skill when writing, reviewing, or documenting how a caller sizes ms-markets account targets and virtual-fund unit baskets in units.
+description: Use this skill when a library or application that uses ms-markets sizes account targets or virtual-fund unit baskets, allocates holdings to virtual funds, or upgrades to ms-markets 3.6.
 ---
 
 # Account Target Sizing
@@ -17,9 +17,24 @@ position size, belong to the caller.
 Read with:
 
 1. `.agents/skills/ms_markets/accounts/account_workflow/SKILL.md`
-2. `docs/ADR/0052-account-targets-in-units.md`
-3. `docs/knowledge/msm/accounts/virtual_funds.md`
-4. `src/msm/services/target_positions.py`
+2. `docs/knowledge/msm/accounts/sizing_and_allocation.md`: the step-by-step guide
+3. `docs/upgrading-to-3-6.md`: what changes for existing code and data
+4. `docs/ADR/0052-account-targets-in-units.md`
+5. `docs/ADR/0053-virtual-fund-allocation-routes-and-described-policies.md`
+
+## Who Does What
+
+| Step | Who | Needs market data |
+| --- | --- | --- |
+| Take the request (a share, an amount, a risk budget) and keep it | The project | No |
+| Size it into units, at a sizing event | The project | Yes |
+| Record the target, the holdings and the fund holdings | ms-markets | No |
+| Assign holdings to funds | ms-markets | No |
+| Act on the deltas; value and report | The project | Yes |
+
+Do not add pricing, a NAV calculation or a sizing rule to ms-markets, and do not ask
+ms-markets to convert a share or an amount into units. That code belongs in the project
+that owns the prices.
 
 ## What A Target Row Is
 
@@ -97,6 +112,84 @@ In-process code builds the same rows with `build_target_positions_frame(...)`.
 
 `metadata_json` may record how a row was sized: the scale factor, the portfolio book
 time, the mandate share and a source note. ms-markets stores it and never reads it.
+
+## A Sizing Rule
+
+The project owns this function. It is an example, not an ms-markets API:
+
+```python
+import math
+
+
+def size_basket(fund_notional: float, legs: list[dict]) -> list[dict]:
+    rows = []
+    for leg in legs:
+        exposure = fund_notional * leg["share"]
+        raw_units = exposure / (leg["price"] * leg["multiplier"])
+        units = math.floor(raw_units / leg["lot"] + 0.5) * leg["lot"]
+        if units == 0:
+            continue
+        rows.append(
+            {
+                "asset_uid": leg["asset_uid"],
+                "quantity": abs(units),
+                "direction": 1 if units > 0 else -1,
+                "metadata_json": {"raw_units": raw_units, "share": leg["share"]},
+            }
+        )
+    return rows
+```
+
+- A stock: units are the notional divided by the price.
+- A future: it has no market value to weigh, so the share is an exposure; the multiplier
+  and the rounding to whole contracts are the project's rule.
+- An option: whether the share means premium or delta-adjusted exposure is the project's
+  model. ms-markets receives contracts and a side.
+
+## After Sizing: Plan And Allocate
+
+```python
+plan = client.plan_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+)
+result = client.allocate_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+    plan_digest=plan.plan_digest,
+)
+```
+
+- A plan writes nothing and takes no price. Each line has an owner (a fund or the direct
+  sleeve), a `target`, what is `assigned` and `delta = target - assigned`.
+- `plan.account_deltas` is each asset's total target minus what the account holds: what
+  the account would trade to be on target. Trading it is the project's decision.
+- The target is the full picture. Write a direct target for what the account keeps outside
+  its funds, cash included; otherwise its delta says to reduce it.
+- A shortfall is not refused. For all or nothing, allocate only when no account delta is
+  positive. That check belongs to the project.
+- An allocation is history. The same plan again writes nothing; a different allocation of
+  the same snapshot is refused. Correct it with a new holdings snapshot.
+- Read the policies with `virtual_fund_allocation_policies()` and send the version you
+  read. Never hand-write a policy's schema.
+
+## Upgrading A Project To 3.6
+
+1. Save each account's request in the project's own tables. Migration 0024 deletes every
+   existing target.
+2. Write the sizing step.
+3. Send `asset_uid`, `quantity` and `direction` on every target row.
+4. Replace the planner's valuation resolver, `AllocationPolicy` and updater arguments.
+5. Replace any strict mode with a check on the account deltas.
+6. Upgrade, then size and write every account's target again.
+
+Search for what is left:
+
+```bash
+grep -rnE "weight_notional_exposure|constant_notional_exposure|single_asset_quantity|valuation_resolver|AllocationPolicy|HoldingsSelectionPolicy|strict_feasible|expand_portfolio_target|plan\.status" src tests
+```
 
 ## Rules
 

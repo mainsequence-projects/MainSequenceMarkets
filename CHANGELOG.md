@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Projects that depend on ms-markets:
+[Upgrading To 3.6](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3-6/)
+lists what to change and in what order, and
+[Sizing Targets And Allocating](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/msm/accounts/sizing_and_allocation/)
+shows the whole flow, including a sizing rule for stocks, futures and options.
+
 ### Added
 
 - The Markets API allocates an account's holdings to its virtual funds again, and values

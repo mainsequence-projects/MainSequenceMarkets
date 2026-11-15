@@ -54,6 +54,9 @@ are handled the same way.
 
 ### Sizing a basket
 
+[Sizing Targets And Allocating](sizing_and_allocation.md) walks through every
+step with a sizing rule for stocks, futures and options.
+
 ms-markets is a record library: it stores the basket and derives nothing. The
 caller sizes it, with its own prices and rules, at a sizing event:
 

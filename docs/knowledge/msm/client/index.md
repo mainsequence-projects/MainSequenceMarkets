@@ -211,6 +211,10 @@ The target methods return `AccountTargetPositionsSnapshotResponse`. A clear
 writes an empty snapshot, so the history records it, and sets the account's
 target allocation inactive.
 
+[Sizing Targets And Allocating](../accounts/sizing_and_allocation.md) is the
+step-by-step guide for an application that sizes targets and allocates through
+this client.
+
 The allocation of an account's holdings to its virtual funds has typed methods
 too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md)).
 Targets and holdings are both in units, so no price or valuation is sent:

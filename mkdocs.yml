@@ -26,6 +26,7 @@ nav:
   - Getting Started: getting-started.md
   - Core Concepts: concepts.md
   - Upgrading To 3.0: upgrading-to-3.md
+  - Upgrading To 3.6: upgrading-to-3-6.md
   - Tutorial:
       - Overview: tutorial/index.md
       - Assets And Categories: tutorial/01-assets.md
@@ -39,6 +40,7 @@ nav:
       - Accounts:
           - Overview: knowledge/msm/accounts/index.md
           - Virtual Funds: knowledge/msm/accounts/virtual_funds.md
+          - Sizing Targets And Allocating: knowledge/msm/accounts/sizing_and_allocation.md
       - Assets:
           - Overview: knowledge/msm/assets/index.md
           - Bond Assets: knowledge/msm/assets/bonds.md

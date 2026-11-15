@@ -15,6 +15,9 @@ reference records.
 - [Account Virtual Funds](virtual_funds.md) covers derived virtual-fund
   allocation views over real account holdings, including target sizing, the
   planner, and the apply flow.
+- [Sizing Targets And Allocating](sizing_and_allocation.md) is the step-by-step
+  guide for a library or application that uses ms-markets: what your code sizes
+  with its own prices and rules, and what ms-markets records and assigns.
 
 ## What Is Stored Where
 
