@@ -21,6 +21,12 @@ from apps.v1.schemas.accounts import (
     AccountDeleteResponse,
     AccountRegistrationRequest,
     AccountRegistrationResponse,
+    AccountVirtualFundAllocateRequest,
+    AccountVirtualFundAllocationPlanRequest,
+    AccountVirtualFundAllocationPlanResponse,
+    AccountVirtualFundAllocationResponse,
+    VirtualFundAllocationPolicyDescription,
+    VirtualFundAllocationPolicyList,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 
@@ -165,6 +171,92 @@ def get_account_holdings_by_fund(
     if snapshot is None:
         return None
     return AccountHoldingsByFundResponse.model_validate(snapshot)
+
+
+ALLOCATION_POLICIES_PATH = "/api/v1/account/virtual-fund-allocation-policies/"
+
+
+def list_virtual_fund_allocation_policies() -> VirtualFundAllocationPolicyList:
+    """Every allocation policy of the registry (ADR 0053). No account data."""
+
+    from msm.services.accounts.allocation_policies import (
+        ALLOCATION_POLICIES,
+        allocation_policy_summary,
+    )
+
+    return VirtualFundAllocationPolicyList(
+        policies=[
+            {
+                **allocation_policy_summary(policy),
+                "path": f"{ALLOCATION_POLICIES_PATH}{policy.id}/",
+            }
+            for policy in ALLOCATION_POLICIES
+        ]
+    )
+
+
+def get_virtual_fund_allocation_policy(
+    *, policy_id: str
+) -> VirtualFundAllocationPolicyDescription | None:
+    from msm.services.accounts.allocation_policies import (
+        allocation_policy,
+        describe_allocation_policy,
+    )
+
+    policy = allocation_policy(policy_id)
+    if policy is None:
+        return None
+    return VirtualFundAllocationPolicyDescription.model_validate(
+        describe_allocation_policy(policy)
+    )
+
+
+def plan_account_virtual_funds(
+    *,
+    account_uid: str,
+    payload: AccountVirtualFundAllocationPlanRequest,
+) -> AccountVirtualFundAllocationPlanResponse:
+    """Plan the allocation of one holdings snapshot; writes nothing."""
+
+    from msm.services.accounts.account_virtual_allocations import (
+        plan_account_virtual_fund_allocations_in_context,
+        plan_response,
+    )
+
+    runtime = _get_virtual_fund_allocation_runtime()
+    plan = plan_account_virtual_fund_allocations_in_context(
+        runtime.context,
+        account_uid=account_uid,
+        position_set_uid=payload.position_set_uid,
+        valuation_time=payload.valuation_time,
+        policy=payload.policy.model_dump() if payload.policy is not None else None,
+    )
+    return AccountVirtualFundAllocationPlanResponse.model_validate(plan_response(plan))
+
+
+@registry_write("account", "apply:account-virtual-fund-allocation")
+def allocate_account_virtual_funds(
+    *,
+    account_uid: str,
+    payload: AccountVirtualFundAllocateRequest,
+) -> AccountVirtualFundAllocationResponse:
+    """Plan again from the same inputs, then write the allocation in one transaction."""
+
+    from msm.services.accounts.account_virtual_allocations import (
+        allocate_account_virtual_funds_in_context,
+        allocation_response,
+    )
+
+    runtime = _get_virtual_fund_allocation_runtime()
+    result = allocate_account_virtual_funds_in_context(
+        runtime.context,
+        account_uid=account_uid,
+        position_set_uid=payload.position_set_uid,
+        valuation_time=payload.valuation_time,
+        policy=payload.policy.model_dump() if payload.policy is not None else None,
+        plan_digest=payload.plan_digest,
+    )
+    return AccountVirtualFundAllocationResponse.model_validate(allocation_response(result))
 
 
 @registry_write("account", "add:account-holdings")
@@ -364,6 +456,27 @@ def _get_holdings_by_fund_runtime():
             "AssetSnapshotsStorage",
         ],
         row_model_name="GET /api/v1/account/{account_uid}/holdings/by-fund/",
+    )
+
+
+def _get_virtual_fund_allocation_runtime():
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+
+    return resolve_apps_v1_runtime(
+        models=[
+            "Account",
+            "AccountHoldingsSet",
+            "AccountHoldingsStorage",
+            "AccountTargetAllocation",
+            "PositionSet",
+            "TargetPositionsStorage",
+            "Asset",
+            "Portfolio",
+            "VirtualFund",
+            "VirtualFundHoldingsSet",
+            "VirtualFundHoldingsStorage",
+        ],
+        row_model_name="POST /api/v1/account/{account_uid}/virtual-fund-allocations/",
     )
 
 

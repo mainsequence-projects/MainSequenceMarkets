@@ -29,6 +29,40 @@ class ApiErrorResponse(HttpContractModel):
     detail: ApiErrorDetail
 
 
+class ApiInputError(HttpContractModel):
+    """One input an error is about, and why; never the value that was sent."""
+
+    input: str
+    message: str
+
+
+class ApiErrorDetailWithInputs(ApiErrorDetail):
+    """`ApiErrorDetail` plus the inputs the error is about, when the code lists them."""
+
+    errors: list[ApiInputError] = Field(default_factory=list)
+
+
+class ApiErrorWithInputsResponse(HttpContractModel):
+    detail: ApiErrorDetailWithInputs
+
+
+def api_error_with_inputs(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    errors: list[dict[str, str]] | None = None,
+) -> HTTPException:
+    """Create a structured HTTP exception that lists the inputs it is about."""
+
+    detail = ApiErrorDetailWithInputs(
+        code=code,
+        message=message,
+        errors=[ApiInputError(**error) for error in errors or []],
+    )
+    return HTTPException(status_code=status_code, detail=detail.model_dump())
+
+
 def api_error(
     *,
     status_code: int,
@@ -85,10 +119,14 @@ ErrorCode = Literal["bad_request", "not_found", "conflict", "dependency_unavaila
 
 __all__ = [
     "ApiErrorDetail",
+    "ApiErrorDetailWithInputs",
     "ApiErrorResponse",
+    "ApiErrorWithInputsResponse",
+    "ApiInputError",
     "ErrorCode",
     "ErrorResponse",
     "api_error",
+    "api_error_with_inputs",
     "api_http_error",
     "bad_request",
     "conflict",

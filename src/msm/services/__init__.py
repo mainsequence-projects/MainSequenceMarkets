@@ -181,10 +181,8 @@ _EXPORTS = {
     "validate_holdings_frame": ".holdings",
     "validate_virtual_fund_allocation_bounds": ".accounts",
     "apply_account_virtual_fund_allocation_plan": ".accounts",
-    "AllocationPolicy": ".accounts",
-    "AccountHoldingInput": ".accounts",
-    "HoldingsSelectionPolicy": ".accounts",
-    "TargetQuantityDemand": ".accounts",
+    "AllocationError": ".accounts",
+    "AllocationPolicyChoice": ".accounts",
     "virtual_fund_unique_identifier_for_target": ".accounts",
 }
 

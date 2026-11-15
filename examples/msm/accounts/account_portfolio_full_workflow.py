@@ -135,22 +135,10 @@ def print_frame(name: str, frame: pd.DataFrame) -> None:
 
 
 def print_virtual_fund_allocation_frames(frames: dict[str, pd.DataFrame]) -> None:
-    for name in (
-        "account_virtual_holding_lines",
-        "virtual_fund_allocations",
-        "residuals",
-    ):
+    """Print a plan: one line per owner and asset, then each asset's account delta."""
+
+    for name in ("lines", "account_deltas"):
         print_frame(name, frames[name])
-
-    if not frames["deficits"].empty:
-        print_frame("deficits", frames["deficits"])
-
-    print("\ndiagnostics")
-    print(
-        frames["diagnostics"].to_string(index=False)
-        if not frames["diagnostics"].empty
-        else "No diagnostics."
-    )
 
 
 def run_account_portfolio_full_workflow(
@@ -536,8 +524,6 @@ def _run_virtual_fund_allocation_extension(
     apply_plan: bool,
 ) -> dict[str, Any]:
     from msm.services.accounts import (
-        AllocationPolicy,
-        HoldingsSelectionPolicy,
         apply_account_virtual_fund_allocation_plan,
         plan_account_virtual_fund_allocations,
     )
@@ -548,37 +534,33 @@ def _run_virtual_fund_allocation_extension(
     valuation_time = workflow_result["holdings_date"]
 
     # The target and the holdings are both in units, so the plan needs no price.
+    # Without a policy, proportional_attribution runs with its default arguments.
     plan = plan_account_virtual_fund_allocations(
         position_set_uid=position_set.uid,
         valuation_time=valuation_time,
-        holdings_selection_policy=HoldingsSelectionPolicy(),
-        allocation_policy=AllocationPolicy(),
     )
 
     print("    Account virtual-fund allocation dry-run")
     print("      account_uid:", account.uid)
     print("      position_set_uid:", position_set.uid)
-    print("      status:", plan.status)
+    print("      policy:", plan.policy.id, plan.policy.version)
+    print("      plan_digest:", plan.plan_digest)
+    # Each line: what the owner should hold, what it gets, and delta = target - assigned.
     print_virtual_fund_allocation_frames(plan.to_frames())
 
-    applied_frame = None
+    result = None
     if apply_plan:
-        from msm.time_index.accounts import VirtualFundHoldings
-
-        print("2. Applying account virtual-fund allocation through VirtualFundHoldings.")
-        applied_frame = apply_account_virtual_fund_allocation_plan(
-            plan,
-            updater=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
-            run=True,
-        )
+        print("2. Applying the account virtual-fund allocation in one transaction.")
+        result = apply_account_virtual_fund_allocation_plan(plan)
+        print("    applied:", result.applied, "already_applied:", result.already_applied)
         print("    Applied virtual-fund holdings rows:")
-        print(applied_frame.reset_index().to_string(index=False))
+        print(result.to_frame().to_string(index=False))
 
     return {
         "account": account,
         "position_set": position_set,
         "plan": plan,
-        "applied_frame": applied_frame,
+        "result": result,
     }
 
 
@@ -619,8 +601,8 @@ def main() -> None:
         "--apply-virtual-fund-allocation",
         action="store_true",
         help=(
-            "Extend the workflow with virtual-fund allocation and publish the "
-            "resulting VirtualFundHoldings rows."
+            "Extend the workflow with virtual-fund allocation and write the "
+            "resulting virtual-fund holdings in one transaction."
         ),
     )
     args = parser.parse_args()
@@ -667,9 +649,9 @@ def main() -> None:
     print("Holdings date:", result["holdings_date"].isoformat())
     if result["virtual_fund_allocation_result"] is not None:
         allocation_result = result["virtual_fund_allocation_result"]
-        print("Virtual-fund allocation status:", allocation_result["plan"].status)
-        if allocation_result["applied_frame"] is not None:
-            print("Virtual-fund holdings rows:", len(allocation_result["applied_frame"]))
+        print("Virtual-fund allocation plan digest:", allocation_result["plan"].plan_digest)
+        if allocation_result["result"] is not None:
+            print("Virtual-fund holdings rows:", len(allocation_result["result"].rows))
 
 
 if __name__ == "__main__":

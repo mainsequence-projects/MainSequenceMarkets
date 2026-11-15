@@ -138,10 +138,10 @@ actual table provisioning and writes remain generic TDAG/TimeIndexTableUpdater b
 ## Virtual-fund allocation
 
 Virtual-fund allocation is a separate policy workflow. Start from the
-`PositionSet.uid`, pass `valuation_time`, `holdings_selection_policy` and
-`allocation_policy`,
+`PositionSet.uid`, pass `valuation_time` and, optionally, a `policy`,
 inspect the dry-run `AccountVirtualFundAllocationPlan`, and only then call
-`apply_account_virtual_fund_allocation_plan(...)`. The full account workflow
+`apply_account_virtual_fund_allocation_plan(plan)`. Each line of the plan gives
+an owner's `target`, what it is `assigned`, and `delta = target - assigned`. The full account workflow
 supports this as an extension: run
 `examples/msm/accounts/account_portfolio_full_workflow.py --with-virtual-fund-allocation`
 for dry-run planning, or add `--apply-virtual-fund-allocation` to publish the

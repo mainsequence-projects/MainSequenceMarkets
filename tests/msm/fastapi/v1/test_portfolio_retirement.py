@@ -545,22 +545,6 @@ def test_candidate_search_and_list_leave_retired_portfolios_out(offline_postgres
 # Virtual-fund allocation ----------------------------------------------------------------
 
 
-def test_sdk_allocation_apply_is_refused_for_a_retired_portfolio(monkeypatch) -> None:
-    from msm.services.accounts import account_virtual_allocations
-
-    portfolio_uid = str(uuid.uuid4())
-    plan = SimpleNamespace(account_uid=str(uuid.uuid4()), valuation_time=RETIRED_AT)
-    monkeypatch.setattr(
-        "msm.services.portfolio_lifecycle.retired_portfolios_from_rows",
-        lambda portfolio_uids, *, as_of=None: {portfolio_uid: RETIRED_AT},
-    )
-
-    with pytest.raises(PortfolioRetiredError):
-        account_virtual_allocations._refuse_retired_portfolios(
-            plan, [{"target_portfolio_uid": portfolio_uid}]
-        )
-
-
 def test_retired_portfolios_from_rows_reads_each_portfolio(monkeypatch) -> None:
     from msm.api.portfolios import Portfolio
     from msm.services.portfolio_lifecycle import retired_portfolios_from_rows

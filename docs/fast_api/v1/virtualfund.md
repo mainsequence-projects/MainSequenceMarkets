@@ -163,6 +163,5 @@ account virtual-fund allocation workflow.
 
 `allocation_strategy` is a first-class `VirtualFundHoldingsStorage` column. It
 is not read from `extra_details`. Low-level explicit publications use
-`explicit`; rows created by `apply_account_virtual_fund_allocation_plan(...)`
-use the allocation policy mode, such as `proportional_attribution` or
-`strict_feasible`.
+`explicit`; rows created by an allocation (ADR 0053) use the policy id, such as
+`proportional_attribution`.

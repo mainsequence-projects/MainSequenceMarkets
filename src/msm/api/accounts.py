@@ -854,6 +854,181 @@ class AccountAddTargetPositionsRequest(BaseModel):
     )
 
 
+# Markets API wire contracts for virtual-fund allocation (ADR 0053).
+
+
+class VirtualFundAllocationPolicySummary(BaseModel):
+    """One allocation policy as `getVirtualFundAllocationPolicies` lists it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    version: str
+    title: str
+    description: str
+    path: str = Field(description="The path of the policy's description.")
+
+
+class VirtualFundAllocationPolicyList(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    policies: list[VirtualFundAllocationPolicySummary] = Field(default_factory=list)
+
+
+class VirtualFundAllocationPolicyArgument(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    title: str
+    description: str
+    required: bool = Field(description="True when the argument has no default.")
+    json_schema: dict[str, Any] = Field(
+        alias="schema",
+        description="The argument's JSON Schema 2020-12: type, bounds and default.",
+    )
+
+
+class VirtualFundAllocationPolicyDescription(BaseModel):
+    """One allocation policy, described from the class that validates its arguments."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    version: str
+    title: str
+    description: str
+    arguments: dict[str, VirtualFundAllocationPolicyArgument] = Field(default_factory=dict)
+    arguments_schema: dict[str, Any] = Field(
+        description=(
+            "One JSON Schema 2020-12 object over every argument: what a form renders and what "
+            "a request's `policy.arguments` is validated against."
+        )
+    )
+
+
+class AccountVirtualFundAllocationPolicyChoice(BaseModel):
+    """The policy a request runs: its id, the version it was built against, its arguments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    version: str = Field(
+        min_length=1,
+        description=(
+            "The policy version the request was built against. Any other version than the "
+            "registry's answers 409 `policy_version_mismatch`."
+        ),
+    )
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class AccountVirtualFundAllocationPlanRequest(BaseModel):
+    """Plan the allocation of one holdings snapshot against one target, in units."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    position_set_uid: str = Field(
+        min_length=1,
+        description="The account's `PositionSet` to allocate against, used as it is.",
+    )
+    valuation_time: dt.datetime = Field(
+        description=(
+            "The time of the account's holdings snapshot: the `AccountHoldingsSet` at exactly "
+            "this time is allocated."
+        ),
+    )
+    policy: AccountVirtualFundAllocationPolicyChoice | None = Field(
+        default=None,
+        description=(
+            "By default, `proportional_attribution` at its current version with its default "
+            "arguments."
+        ),
+    )
+
+
+class AccountVirtualFundAllocateRequest(AccountVirtualFundAllocationPlanRequest):
+    """Plan again from the same inputs, then write the allocation."""
+
+    plan_digest: str | None = Field(
+        default=None,
+        description=(
+            "The `plan_digest` of a plan the caller saw. When given, a recomputed plan with "
+            "another digest answers 409 `plan_changed` and nothing is written."
+        ),
+    )
+
+
+class AccountVirtualFundAllocationFund(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    virtual_fund_unique_identifier: str
+    target_portfolio_uid: str
+    virtual_fund_uid: str | None = Field(default=None, description="Set when applied.")
+    holdings_set_uid: str | None = Field(
+        default=None,
+        description="The fund's `VirtualFundHoldingsSet` for the snapshot; set when applied.",
+    )
+
+
+class AccountVirtualFundAllocationLine(BaseModel):
+    """What one owner should hold of one asset, what it gets, and the difference, in units.
+
+    ``delta = target - assigned``. Positive: units are missing. Negative: there are more
+    units than the target asks for.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    owner: Literal["fund", "direct"]
+    asset_uid: str
+    asset_identifier: str
+    target: float
+    assigned: float
+    delta: float
+    target_portfolio_uid: str | None = None
+    virtual_fund_unique_identifier: str | None = None
+
+
+class AccountVirtualFundAssetDelta(BaseModel):
+    """One asset across the whole account: held, targeted, and ``target - held``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    asset_uid: str
+    asset_identifier: str
+    held: float
+    target: float
+    delta: float
+
+
+class AccountVirtualFundAllocationPlanResponse(BaseModel):
+    """The allocation of one holdings snapshot to the account's virtual funds, in units."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_uid: str
+    holdings_set_uid: str
+    position_set_uid: str
+    valuation_time: dt.datetime
+    policy: AccountVirtualFundAllocationPolicyChoice
+    funds: list[AccountVirtualFundAllocationFund] = Field(default_factory=list)
+    lines: list[AccountVirtualFundAllocationLine] = Field(default_factory=list)
+    account_deltas: list[AccountVirtualFundAssetDelta] = Field(default_factory=list)
+    apply_blockers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="What would stop the allocate route but not the plan.",
+    )
+    plan_digest: str
+
+
+class AccountVirtualFundAllocationResponse(AccountVirtualFundAllocationPlanResponse):
+    """A plan and what the allocate route did with it."""
+
+    applied: bool = Field(description="True when this call wrote the allocation.")
+    already_applied: bool = Field(
+        description="True when the same plan was already written and this call wrote nothing."
+    )
+
+
 # Markets API wire contracts for account registration
 # (`POST /account/registration/`, ADR 0051).
 
@@ -1033,6 +1208,18 @@ __all__ = [
     "AccountTargetPositionsSnapshotResponse",
     "AccountUpdate",
     "AccountUpsert",
+    "AccountVirtualFundAllocateRequest",
+    "AccountVirtualFundAllocationFund",
+    "AccountVirtualFundAllocationLine",
+    "AccountVirtualFundAllocationPlanRequest",
+    "AccountVirtualFundAllocationPlanResponse",
+    "AccountVirtualFundAllocationPolicyChoice",
+    "AccountVirtualFundAllocationResponse",
+    "AccountVirtualFundAssetDelta",
+    "VirtualFundAllocationPolicyArgument",
+    "VirtualFundAllocationPolicyDescription",
+    "VirtualFundAllocationPolicyList",
+    "VirtualFundAllocationPolicySummary",
     "HoldingAssetCurrentSnapshot",
     "PositionSet",
     "PositionSetCreate",

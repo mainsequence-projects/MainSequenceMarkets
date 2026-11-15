@@ -176,15 +176,55 @@ direct account snapshots and virtual-fund-grouped views.
     computed `signed_quantity`, and `allocation` metadata parsed from
     `extra_details`
   - `allocation` contains `target_gap_signed_quantity`, `scale`,
-    `target_row_key`, and `position_set_uid` when those fields were persisted
-    by the virtual-fund allocation apply step
+    `target_row_key`, and `position_set_uid` when the row carries them. Rows
+    written since 3.6.0 carry `position_set_uid` only: a delta is computed from
+    the target and the holdings, never stored (ADR 0053)
   - `residuals` are derived as source account signed quantity minus total
     virtual-fund allocated signed quantity per asset
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI and numeric
     asset IDs are not used
   - this read endpoint does not rerun or apply the allocation planner; it
-    shows what the planner's apply step wrote
-    ([ADR 0029](../../ADR/0029-account-holdings-virtual-fund-allocation-policy.md))
+    shows what an allocation wrote
+    ([ADR 0053](../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md))
+- `GET /api/v1/account/virtual-fund-allocation-policies/`
+  - operation `getVirtualFundAllocationPolicies`; answers every allocation
+    policy with its `id`, `version`, `title`, `description` and the `path` of
+    its description; holds no account data
+- `GET /api/v1/account/virtual-fund-allocation-policies/{policy_id}/`
+  - operation `getVirtualFundAllocationPolicy`; describes one policy: each
+    argument's JSON Schema 2020-12 and `arguments_schema` over all of them,
+    generated from the class that validates a request's `policy.arguments`
+  - an unknown id is a `404`
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/plan/`
+  - operation `planAccountVirtualFunds`; runs a policy and writes nothing
+  - request body contains `position_set_uid`, `valuation_time` and an optional
+    `policy` (`id`, `version`, `arguments`); without one,
+    `proportional_attribution` runs with its defaults
+  - the snapshot is the account's holdings set at exactly `valuation_time`;
+    targets and holdings are both in units, so the body carries no price, NAV
+    or valuation
+  - answers `funds`, `lines`, `account_deltas`, `apply_blockers` and
+    `plan_digest`; each line has an `owner` (`fund` or `direct`), a `target`,
+    what is `assigned` and `delta = target - assigned`
+  - a positive delta means units are missing, a negative one more units than
+    the target asks for; the target is the full picture, so an asset the
+    account holds that no target names has a target of zero
+  - a plan has no status and no deficits list: a shortfall is a positive
+    account delta
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  - operation `allocateAccountVirtualFunds`; plans again from the same inputs
+    and writes the virtual funds, one holdings set per fund and the holdings
+    rows in one transaction; never accepts a plan from the client
+  - the body is the plan request plus an optional `plan_digest`; a recomputed
+    plan with another digest is a `409` `plan_changed`
+  - answers the plan with `applied`, `already_applied` and each fund's
+    `virtual_fund_uid` and `holdings_set_uid`
+  - a shortfall is not refused; an applied allocation is account history, so
+    the same plan again writes nothing and a different allocation of the same
+    snapshot is a `409` `allocation_exists`; a retired portfolio is a `409`
+    `portfolio_retired`
+  - errors are structured: `detail` has a `code`, a `message` and the `errors`
+    it is about
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint

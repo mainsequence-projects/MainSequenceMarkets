@@ -203,15 +203,24 @@ contributed interpolation output table has already been migrated.
 ## Virtual-Fund Allocation Pattern
 
 Use `plan_account_virtual_fund_allocations(...)` to compute allocation before
-writing. The canonical workflow takes exactly the service inputs from ADR 0029:
-`position_set_uid`, `valuation_time`, `holdings_selection_policy` and
-`allocation_policy`. The target and the holdings are both in units, so the
-planner takes no price, NAV or valuation.
+writing (ADR 0053). It takes `position_set_uid`, `valuation_time` and an optional
+`policy` (`{"id", "version", "arguments"}`); without one,
+`proportional_attribution` runs with its defaults. The target and the holdings
+are both in units, so the planner takes no price, NAV or valuation.
 Do not expose repository context, raw account UID, raw holdings-set UID, raw
-source holdings, raw target demands, scan limits, or input-resolver callbacks
-as public planner arguments. Internal vector helpers may use already-resolved
-frames for tests, but examples and user workflows must use the canonical
-planner inputs.
+source holdings, raw target demands or scan limits as public planner arguments.
+Internal helpers such as `plan_from_inputs(...)` may use already-resolved inputs
+for tests, but examples and user workflows must use the canonical planner
+inputs.
+
+A plan has one line per owner and asset, where the owner is a virtual fund or
+the direct account sleeve: `target`, `assigned` and `delta = target - assigned`.
+A positive delta means units are missing; a negative one means more units than
+the target asks for. `account_deltas` gives each asset's total target minus what
+the account holds. The target is the full picture: an asset the account holds
+that no target names has a target of zero, so anything the account should keep
+outside its funds, cash included, is written as a direct target. A plan has no
+status and no deficits list; a shortfall is a positive account delta.
 
 `valuation_time` selects the holdings capture exactly; the `PositionSet` is used
 as passed and is in force from its own time on. To attribute a capture taken
@@ -222,15 +231,27 @@ An application that reaches ms-markets only through the Markets API writes and
 reads the target with `add_account_target_positions`, `account_target_positions`
 and `clear_account_target_positions`; an empty target clears it and leaves an
 empty snapshot in its history. A target that names a retired portfolio is refused
-(`MarketsConflictError`). The Markets API has no virtual-fund allocation route:
-the planner takes the caller's allocation policy, and its
-apply step writes no fund for a portfolio retired at or before the snapshot's
-time (ADR 0049). `holdings/by-fund/` reads what the apply step wrote.
+(`MarketsConflictError`). It allocates with
+`virtual_fund_allocation_policies`, `virtual_fund_allocation_policy`,
+`plan_account_virtual_funds` and `allocate_account_virtual_funds`. The allocate
+route plans again and writes in one transaction; it never accepts a plan from
+the client. It writes no fund for a portfolio retired at or before the
+snapshot's time (ADR 0049). `holdings/by-fund/` reads what was written.
 
-The default policy is `proportional_attribution`: virtual-fund claims consume
-the asset-level gross source capacity first, and the direct account sleeve is
-the residual. `strict_feasible` is a validation mode that fails when
-virtual-fund demand exceeds source capacity.
+`apply_account_virtual_fund_allocation_plan(plan)` writes the funds, one
+holdings set per fund and the holdings rows in one transaction, and returns
+what it did. An applied allocation is account history: the same plan again
+writes nothing (`already_applied`), and a different allocation of the same
+snapshot is refused (`allocation_exists`). A correction is a new holdings
+snapshot.
+
+The registry has one policy, `proportional_attribution`: every fund's claim on
+an asset is filled in the same proportion, the holding divided by the funds'
+total claims, capped at one; the direct account sleeve keeps the rest. Its one
+argument, `quantity_tolerance`, has a default. A shortfall is not refused:
+refusing it is the provider's decision, made by planning first and allocating
+only when no account delta is positive. Policies are described from the class
+that validates their arguments; never hand-write a policy's schema.
 
 The planner values nothing. Market data is needed only when a target is sized,
 and that belongs to the caller. Do not pass prices, a NAV or pricing state into
