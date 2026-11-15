@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .application_weights import ApplicationWeights, ApplicationWeightsConfig
 from .external_weights import ExternalWeights, ExternalWeightsConfig
 from .fixed_weights import AUIDWeight, FixedWeights, FixedWeightsConfig
 from .intraday_trend import IntradayTrend, IntradayTrendConfig
@@ -18,6 +19,8 @@ from .portfolio_replicator import (
 
 __all__ = [
     "AUIDWeight",
+    "ApplicationWeights",
+    "ApplicationWeightsConfig",
     "AssetMistMatch",
     "ETFReplicator",
     "ETFReplicatorConfig",

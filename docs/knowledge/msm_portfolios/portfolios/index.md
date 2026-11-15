@@ -590,6 +590,59 @@ The operator needs `data_viewer` on the tables read, write access to the tables
 written (a rollback writes the core tables); pause the provider's runs while a
 move or rollback runs.
 
+## Weights An Application Publishes
+
+`ApplicationWeights` (`msm_portfolios.contrib.signals`) is the signal for
+weights a provider receives rather than computes: chosen by a person, a model
+or another system. The provider binds it to its own `SignalWeightsTS` instance
+and calls `publish` whenever it has a new set.
+
+```python
+import datetime as dt
+
+from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
+
+signal_weights = ApplicationWeights.from_signal_configuration(
+    ApplicationWeightsConfig(provider="my-provider", key="model-7"),
+    output_table=ProviderSignalWeightsStorage,
+)
+signal_weights.publish(
+    {
+        dt.datetime(2026, 11, 13, 21, tzinfo=dt.UTC): {"asset_a": 0.6, "asset_b": 0.4},
+        dt.datetime(2026, 11, 20, 21, tzinfo=dt.UTC): {"asset_b": 0.5, "asset_c": 0.5},
+    },
+    description="Weights chosen by the model-7 committee.",
+)
+```
+
+The configuration names the stream and never the weights, so the signal uid
+does not change when the weights do. `provider` is part of it because signal
+metadata is one Markets registry: two providers that both chose `key="1"` get
+different signal uids. The class path is ms-markets', so the uid does not
+depend on where a provider's code lives.
+
+| Rule | Why |
+| --- | --- |
+| A weight is keyed by the asset's `unique_identifier`, exactly as given. | A provider names its assets its own way; no FIGI translation. |
+| An unknown asset identifier refuses the whole call (`LookupError`). | A typo must not become a missing position. |
+| One observation is the whole set. An asset the previous observation held and this one leaves out is written at `0`; an empty observation closes every held asset. | Otherwise forward fill keeps the old weight and the portfolio never leaves the asset. |
+| Several observations in one call are one write, applied in time order. | A portfolio can start with a history. |
+| Times must carry a timezone and are stored in UTC. | Naive times are refused. |
+| An observation at or before the signal's last stored time is refused (`ValueError`) and nothing is written. | The updaters keep only rows newer than their last stored row, and a portfolio that already rebalanced on an observation is not recomputed, so a restatement would never reach it. |
+| Weights are stored as given: no normalisation, negatives allowed; they must be finite numbers. | Whether weights sum to one, or may be short, is the provider's rule. |
+
+The signal has no dependencies, reads no price and values nothing. Its
+weights stand until the next observation (`maximum_forward_fill` is 36,500
+days), and `get_asset_list()` is every asset it has published. When the
+portfolio trades is the rebalance strategy's decision, from the latest
+observation at or before each event. The signal offers no HTTP route: a
+provider puts its own route, with its own authorisation, in front of
+`publish`.
+
+`FixedWeights` keeps weights in its configuration, so new weights are a new
+signal; `ExternalWeights` stays the signal for weights in a CSV artifact keyed
+by FIGI.
+
 ## Repair legacy midnight-indexed portfolio values
 
 Portfolio values written by the former daily resampling path may carry a UTC

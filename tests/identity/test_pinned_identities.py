@@ -52,6 +52,10 @@ from msm_portfolios.configuration import (
     compute_strategy_revision,
 )
 from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
+from msm_portfolios.contrib.signals.application_weights import (
+    ApplicationWeights,
+    ApplicationWeightsConfig,
+)
 from msm_portfolios.contrib.signals.fixed_weights import (
     AUIDWeight,
     FixedWeights,
@@ -225,6 +229,7 @@ PINNED_UPDATER_PATHS = (
     "msm.time_index.indices.values:IndexValuesUpdater",
     "msm.time_index.utils.stamped:StampedUpdater",
     "msm_portfolios.contrib.prices.updaters:InterpolatedPrices",
+    "msm_portfolios.contrib.signals.application_weights:ApplicationWeights",
     "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
     "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
     "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
@@ -270,6 +275,7 @@ PINNED_CONFIGURATION_PATHS = (
 PINNED_SIGNAL_UIDS = {
     "library_signal_weights": "bae957552a8ef090996db67ef64e846a",
     "library_fixed_weights": "2874b08647b5f015f339f08210f117ea",
+    "library_application_weights": "18737141b453a2a42ea24500673fdc29",
     "application_signal": "278f13bd9d683932451e5f4087fec5a7",
 }
 
@@ -384,6 +390,10 @@ SIGNALS: dict[str, Callable[[], SignalWeights]] = {
                 AUIDWeight(unique_identifier="ASSET_B", weight=0.4),
             ]
         ),
+    ),
+    "library_application_weights": lambda: _signal(
+        ApplicationWeights,
+        ApplicationWeightsConfig(provider="pinned-provider", key="pinned-key"),
     ),
     "application_signal": lambda: _signal(
         ApplicationSignal,
