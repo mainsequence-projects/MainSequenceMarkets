@@ -90,6 +90,8 @@ class MarketsMetaTableRow(BaseModel):
     __table__: ClassVar[type[MarketsBase]]
     __required_tables__: ClassVar[Sequence[type[MarketsBase]]]
     __upsert_keys__: ClassVar[Sequence[str]] = ()
+    __delete_refusal__: ClassVar[str | None] = None
+    """Why rows of this class are never deleted one by one; ``delete`` then refuses."""
 
     uid: uuid.UUID
 
@@ -174,8 +176,17 @@ class MarketsMetaTableRow(BaseModel):
 
     @classmethod
     def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
-        """Delete one row by UID through the active markets runtime."""
+        """Delete one row by UID through the active markets runtime.
 
+        A class that sets ``__delete_refusal__`` deletes nothing and raises
+        ``MarketsOperationUnsupported``, under the runtime and the remote backend.
+        """
+
+        refusal = delete_refusal(cls)
+        if refusal is not None:
+            from msm.api.remote import MarketsOperationUnsupported
+
+            raise MarketsOperationUnsupported(refusal)
         from msm.repositories.crud import delete_model
 
         return delete_model(cls._active_context(), model=cls.__table__, uid=uid)
@@ -499,6 +510,15 @@ def _warn_deprecated_create_schemas(row_model_name: str) -> None:
     )
 
 
+def delete_refusal(cls: type) -> str | None:
+    """The message ``cls.delete`` refuses with, or None when its rows can be deleted."""
+
+    reason = getattr(cls, "__delete_refusal__", None)
+    if not reason:
+        return None
+    return f"{cls.__name__}.delete is not offered: {reason}"
+
+
 def _install_base_dispatch() -> None:
     from msm.api.remote import install_remote_dispatch
 
@@ -513,5 +533,6 @@ MarketsRow = MarketsMetaTableRow
 __all__ = [
     "MarketsMetaTableRow",
     "MarketsRow",
+    "delete_refusal",
     "operation_result_rows",
 ]

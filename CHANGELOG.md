@@ -7,6 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.2] - 2026-11-15
+
+### Fixed
+
+- Account history can no longer be deleted one row at a time under the runtime backend
+  (#66, [ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
+  `AccountHoldingsSet`, `AccountTargetAllocation`, `PositionSet`, `VirtualFund` and
+  `VirtualFundHoldingsSet` `delete` now raises `MarketsOperationUnsupported` under both
+  backends and deletes nothing; before, it deleted the row locally and was refused only by a
+  hosted Markets API. The message says the rows are account history and that
+  `Account.delete` removes them with the account. Code or test doubles that deleted these
+  rows must stop: the account delete (ADR 0050) is the only way to remove them.
+- The row router's `501` for a resource without a delete no longer tells the caller to use
+  "service routes" that do not exist: it answers "`<Class>.delete` is not offered remotely."
+
 ## [3.4.1] - 2026-11-13
 
 ### Changed

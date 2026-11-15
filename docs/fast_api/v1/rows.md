@@ -55,7 +55,13 @@ A row class that defines its own `delete` runs it like any other operation:
 composites (`curve`, `pricing-market-data-set`, the binding resources). Any other
 table row class's `delete` runs the resource's service delete with its preflight
 checks and exists only for `asset`, `asset-category`, `calendar`, `index`,
-`portfolio` and `portfolio-group`.
+`portfolio` and `portfolio-group`; every other resource answers `501`
+"`<Class>.delete` is not offered remotely." The account-history resources
+(`account-holdings-set`, `account-target-allocation`, `position-set`,
+`virtual-fund`, `virtual-fund-holdings-set`) answer `501` with the text their
+row class raises under the runtime backend too: an account's history is kept
+for as long as the account exists, and only the account delete removes it
+([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md)).
 
 The resources include the `msm_portfolios.api` metadata rows
 (`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and

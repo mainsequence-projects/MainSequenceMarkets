@@ -19,6 +19,12 @@ from msm.models import (
     PositionSetTable,
 )
 
+ACCOUNT_HISTORY_DELETE_REFUSAL = (
+    "its rows are account history, kept for as long as the account exists; "
+    "Account.delete removes them together with the account (ADR 0049, ADR 0050)."
+)
+"""Why the account-history row classes refuse ``delete`` under every backend."""
+
 
 class AccountAllocationModel(MarketsMetaTableRow):
     """Typed reusable account allocation-model row."""
@@ -300,6 +306,7 @@ class AccountHoldingsSet(MarketsMetaTableRow):
         AccountHoldingsSetTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("account_uid", "time_index")
+    __delete_refusal__: ClassVar[str | None] = ACCOUNT_HISTORY_DELETE_REFUSAL
 
     account_uid: uuid.UUID
     time_index: dt.datetime
@@ -375,6 +382,7 @@ class AccountTargetAllocation(MarketsMetaTableRow):
         AccountTargetAllocationTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+    __delete_refusal__: ClassVar[str | None] = ACCOUNT_HISTORY_DELETE_REFUSAL
 
     unique_identifier: str
     account_uid: uuid.UUID
@@ -454,6 +462,7 @@ class PositionSet(MarketsMetaTableRow):
         "account_target_allocation_uid",
         "position_set_time",
     )
+    __delete_refusal__: ClassVar[str | None] = ACCOUNT_HISTORY_DELETE_REFUSAL
 
     account_target_allocation_uid: uuid.UUID
     position_set_time: dt.datetime

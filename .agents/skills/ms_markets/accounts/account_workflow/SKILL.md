@@ -109,7 +109,10 @@ Rules:
   publisher. It is not the allocation policy engine.
 - TimeIndexTableUpdaters do not fabricate bootstrap rows. Attach a real frame or implement a
   real source-specific `update()`.
-- Account history is never removed from an account that stays (ADR 0049). The only
+- Account history is never removed from an account that stays (ADR 0049).
+  `AccountHoldingsSet`, `AccountTargetAllocation`, `PositionSet`, `VirtualFund` and
+  `VirtualFundHoldingsSet` raise `MarketsOperationUnsupported` from `delete` under both
+  backends and delete nothing; a test double for them should refuse the same way. The only
   delete is the whole account: `Account.delete(uid)` / `Account.bulk_delete(uids=...)`
   or `DELETE /api/v1/account/{uid}/` remove the account with its orders, trades and
   their order events, order managers, virtual funds, targets and holdings in one

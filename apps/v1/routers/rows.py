@@ -12,7 +12,9 @@ generic query endpoint.
 Writes go through ``registry_write``, which records who made them. ``delete``
 runs the row class's own ``delete`` where the class defines one (``Account``
 and the composites), else the resource's service delete with its preflight
-checks, and is offered only where one of them exists.
+checks, and is offered only where one of them exists. The account-history rows
+refuse ``delete`` under every backend (``__delete_refusal__``, ADR 0049): only
+the account delete removes them.
 """
 
 from __future__ import annotations
@@ -168,12 +170,14 @@ def run_row_operation(
         return _error(404, f"Unknown row resource {resource!r}.", "LookupError")
 
     if operation == "delete" and not _owns_checked_delete(cls):
+        from msm.api.base import delete_refusal
+
+        refusal = delete_refusal(cls)
         delete = _service_deletes().get(resource)
-        if delete is None:
+        if refusal is not None or delete is None:
             return _error(
                 501,
-                f"{cls.__name__}.delete is not offered remotely; use the {resource} service "
-                "routes, which run its delete preflight.",
+                refusal or f"{cls.__name__}.delete is not offered remotely.",
                 "NotImplementedError",
             )
         uid = str(request.arguments.get("uid") or "")

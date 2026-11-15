@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from msm.api.accounts import ACCOUNT_HISTORY_DELETE_REFUSAL
 from msm.api.base import MarketsMetaTableRow
 from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm.models import AccountGroupTable, AccountHoldingsSetTable, AccountTable, PortfolioTable
@@ -34,6 +35,7 @@ class VirtualFund(MarketsMetaTableRow):
         VirtualFundTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+    __delete_refusal__: ClassVar[str | None] = ACCOUNT_HISTORY_DELETE_REFUSAL
 
     unique_identifier: str
     account_uid: uuid.UUID
@@ -157,6 +159,7 @@ class VirtualFundHoldingsSet(MarketsMetaTableRow):
         "virtual_fund_uid",
         "source_account_holdings_set_uid",
     )
+    __delete_refusal__: ClassVar[str | None] = ACCOUNT_HISTORY_DELETE_REFUSAL
 
     virtual_fund_uid: uuid.UUID
     source_account_holdings_set_uid: uuid.UUID

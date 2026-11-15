@@ -13,6 +13,7 @@ from msm.api.accounts import (
     Account,
     AccountGroup,
     AccountAllocationModel,
+    AccountHoldingsSet,
     AccountTargetAllocation,
     PositionSet,
     PositionSetUpsert,
@@ -27,6 +28,7 @@ from msm.api.calendars import Calendar, CalendarDate, CalendarEvent, CalendarSes
 from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
 from msm.api.portfolios import PortfolioGroup, PortfolioGroupMembership
+from msm.api.remote import MarketsOperationUnsupported
 from msm.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm.models import (
     AccountGroupTable,
@@ -223,3 +225,48 @@ def test_account_owns_group_relationship_only() -> None:
     assert "account_group_uid" in AccountTable.__table__.c
     assert "account_allocation_model_uid" not in AccountTable.__table__.c
     assert "account_allocation_model_uid" not in AccountGroupTable.__table__.c
+
+
+ACCOUNT_HISTORY_ROWS = (
+    AccountHoldingsSet,
+    AccountTargetAllocation,
+    PositionSet,
+    VirtualFund,
+    VirtualFundHoldingsSet,
+)
+
+
+@pytest.mark.parametrize("row_class", ACCOUNT_HISTORY_ROWS, ids=lambda cls: cls.__name__)
+def test_account_history_rows_refuse_delete_on_the_runtime_backend(monkeypatch, row_class) -> None:
+    deleted = []
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: deleted.append((model, uid)),
+    )
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        row_class.delete(uuid.uuid4())
+
+    assert str(refused.value) == (
+        f"{row_class.__name__}.delete is not offered: its rows are account history, kept for "
+        "as long as the account exists; Account.delete removes them together with the account "
+        "(ADR 0049, ADR 0050)."
+    )
+    assert deleted == []
+
+
+def test_other_rows_still_delete_on_the_runtime_backend(monkeypatch) -> None:
+    group_uid = uuid.uuid4()
+    context = object()
+    calls = []
+    monkeypatch.setattr(
+        "msm.bootstrap.resolve_runtime", lambda **_kwargs: SimpleNamespace(context=context)
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda active_context, *, model, uid: calls.append((active_context, model, uid))
+        or {"deleted_count": 1},
+    )
+
+    assert AccountGroup.delete(group_uid) == {"deleted_count": 1}
+    assert calls == [(context, AccountGroupTable, group_uid)]
