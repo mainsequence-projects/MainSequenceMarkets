@@ -116,9 +116,8 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "label": "Allocation Strategy",
             "description": (
                 "First-class strategy used to produce this virtual-fund allocation row. "
-                "Low-level explicit publications use 'explicit'; planner-applied rows "
-                "use the allocation policy mode, such as 'proportional_attribution' "
-                "or 'strict_feasible'."
+                "Low-level explicit publications use 'explicit'; rows written by an "
+                "allocation use the policy id, such as 'proportional_attribution'."
             ),
         },
     )

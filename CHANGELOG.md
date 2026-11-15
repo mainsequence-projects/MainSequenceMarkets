@@ -7,6 +7,103 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Projects that depend on ms-markets:
+[Upgrading To 3.6](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3-6/)
+lists what to change and in what order, and
+[Sizing Targets And Allocating](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/msm/accounts/sizing_and_allocation/)
+shows the whole flow, including a sizing rule for stocks, futures and options.
+
+### Added
+
+- The Markets API allocates an account's holdings to its virtual funds again, and values
+  nothing to do so
+  ([ADR 0053](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0053-virtual-fund-allocation-routes-and-described-policies/)).
+  Targets and holdings are both in units (ADR 0052), so a request carries no price, NAV or
+  valuation.
+  - **Routes and client methods:**
+    `GET /api/v1/account/virtual-fund-allocation-policies/`
+    (`MarketsClient.virtual_fund_allocation_policies`),
+    `GET /api/v1/account/virtual-fund-allocation-policies/{policy_id}/`
+    (`virtual_fund_allocation_policy`),
+    `POST /api/v1/account/{account_uid}/virtual-fund-allocations/plan/`
+    (`plan_account_virtual_funds`) and
+    `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+    (`allocate_account_virtual_funds`). The last path and client method, removed in 3.5.0,
+    come back with a new contract. The Command Center adapter lists the four operations.
+  - **Described policies:** a policy has an id, a version and an arguments class. Its
+    description is generated from that class as JSON Schema 2020-12, and the same class
+    validates a request's arguments. A request built against another version is refused.
+    The registry has one policy, `proportional_attribution`, with one argument,
+    `quantity_tolerance`.
+  - **One answer for every policy:** a plan has one line per owner and asset, where the owner
+    is a virtual fund or the direct account sleeve, with `target`, `assigned` and
+    `delta = target - assigned`. `account_deltas` gives each asset's total target minus what
+    the account holds. The target is the full picture: an asset the account holds that no
+    target names has a target of zero.
+  - **One transaction:** the allocation writes the virtual funds, one holdings set per fund
+    and the holdings rows together. The allocate route plans again from the same inputs and
+    never accepts a plan from the client; `plan_digest` refuses a plan that changed.
+  - **An applied allocation is account history:** the same plan again writes nothing, and a
+    different allocation of the same snapshot is refused.
+
+### Changed
+
+- **Breaking:** account targets are stored in units
+  ([ADR 0052](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0052-account-targets-in-units/)).
+  Every `TargetPositionsStorage` row is a positive `quantity` of one asset with a
+  `direction` (`1` long, `-1` short), like account holdings. A portfolio target is the
+  virtual fund's unit basket: one row per asset, so `asset_uid` is required on every row
+  and joins the storage index. The caller sizes a basket with its own prices and rules and
+  writes it; ms-markets records it and values nothing.
+  - **Migration 0024 deletes every existing `PositionSet` and its target rows.** They
+    hold shares of NAV and notional amounts, which cannot be turned into units without
+    prices. `AccountTargetAllocation` rows and applied virtual-fund holdings are kept.
+    Write each account's target again in units after upgrading.
+  - **Target writes and reads:** `POST /api/v1/account/{account_uid}/add-target-positions/`,
+    `MarketsClient.add_account_target_positions` and `build_target_positions_frame` take
+    `asset_uid`, `quantity` and `direction` on every row, and a portfolio row also takes
+    `portfolio_uid`. `GET /api/v1/account/{account_uid}/target-positions/` answers the same
+    fields. A row with a share of NAV, a notional amount, a zero or negative quantity, or
+    without an asset is refused.
+  - **`GET /api/v1/portfolio/{uid}/account-targets/`** answers `asset_count`, the number of
+    assets in the portfolio's unit basket, in place of the exposure fields.
+  - **The allocation planner reads units only.**
+    `plan_account_virtual_fund_allocations` takes `position_set_uid`, `valuation_time` and an
+    optional `policy` (ADR 0053). The plan has no NAV, valuation asset or notional fields.
+- **Breaking:** the Python allocation API follows the Markets API contract (ADR 0053).
+  - `AccountVirtualFundAllocationPlan` has `lines`, `account_deltas`, `funds`,
+    `apply_blockers` and `plan_digest`. It has no `status`, `residuals`, `deficits` or
+    `diagnostics`.
+  - `apply_account_virtual_fund_allocation_plan(plan)` writes in one transaction and returns
+    an `AccountVirtualFundAllocationResult`. It takes no updater.
+  - A target with no fund is planned, with every holding on the direct sleeve. A refusal
+    raises `AllocationError`, which carries a `code`.
+
+### Removed
+
+- **Breaking:** with unit targets (ADR 0052) these are gone:
+  - the `weight_notional_exposure`, `constant_notional_exposure` and
+    `single_asset_quantity` columns and wire fields;
+  - `expand_portfolio_target_positions` and `TARGET_POSITION_EXPOSURE_FIELDS`;
+  - from the allocation planner: the `valuation_asset_uid`, `valuation_resolver` and
+    `portfolio_target_expander` parameters, and `ValuationResolver`, `ValuationPolicy`,
+    `AllocationValuation`, `ValuationMetricValue`, `ValuationMetricLine`,
+    `ValuationMetricResult`, `TargetNotionalDemand` and `expand_portfolio_target_rows`.
+    `HoldingValuationInput` is now `AccountHoldingInput`, and `ValuationDiagnostic` is
+    `AllocationDiagnostic`;
+  - the `target_weight` and `weight_notional_exposure` branches of
+    `Account.pretty_print_positions`;
+  - the valuation-resolver skill. `accounts/target_sizing` replaces it.
+- **Breaking:** with described policies (ADR 0053) these are gone:
+  - `AllocationPolicy`, including the fields that nothing read, and `HoldingsSelectionPolicy`;
+  - the `strict_feasible` policy. It assigned nothing differently from
+    `proportional_attribution`; it only refused a shortfall. A caller that wants all or
+    nothing plans first and allocates only when no account delta is positive;
+  - the plan status and its three values;
+  - `TargetQuantityDemand`, `AccountHoldingInput`, `AllocationDiagnostic`,
+    `AccountVirtualHoldingLine`, `AccountAllocationResidual` and `AccountAllocationDeficit`;
+  - the `updater`, `run` and `data_node` parameters of the apply step.
+
 ## [3.5.0] - 2026-11-15
 
 ### Removed

@@ -430,16 +430,15 @@ is a `404`:
       "account_target_allocation_uid": "allocation-uid",
       "position_set_uid": "position-set-uid",
       "target_positions_date": "2026-11-09T15:00:00Z",
-      "weight_notional_exposure": null,
-      "constant_notional_exposure": "250000"
+      "asset_count": 2
     }
   ],
   "pageInfo": {"pageIndex": 0, "pageSize": 100, "totalItems": 1, "hasNextPage": false, "hasPreviousPage": false}
 }
 ```
 
-The exposure is the portfolio row's `weight_notional_exposure` or
-`constant_notional_exposure`; portfolio rows never use `single_asset_quantity`.
+`asset_count` is the number of assets in the portfolio's unit basket in that
+account's target (ADR 0052).
 `position_set_uid` identifies the snapshot read, so a caller that rewrites the
 account's target afterwards can tell whether it changed in between. The route
 returns the same accounts as the other account routes: per-account scoping

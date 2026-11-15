@@ -13,7 +13,14 @@ from msm.api.accounts import (
     AccountRegistrationRequest,
     AccountRegistrationResponse,
     AccountTargetPositionsSnapshotResponse,
+    AccountVirtualFundAllocateRequest,
+    AccountVirtualFundAllocationPlanRequest,
+    AccountVirtualFundAllocationPlanResponse,
+    AccountVirtualFundAllocationPolicyChoice,
+    AccountVirtualFundAllocationResponse,
     PortfolioAccountTarget,
+    VirtualFundAllocationPolicyDescription,
+    VirtualFundAllocationPolicySummary,
 )
 from msm.api.http import ResourceCollection
 from msm.api.portfolios import Portfolio
@@ -230,6 +237,10 @@ class MarketsClient:
     ) -> AccountTargetPositionsSnapshotResponse:
         """Write an account's whole target at ``target_positions_date`` (``addAccountTargetPositions``).
 
+        Every position is in units (ADR 0052): ``asset_uid``, a positive ``quantity``
+        and a ``direction``. Rows with the same ``portfolio_uid`` are that virtual
+        fund's unit basket, which the caller sizes with its own prices and rules.
+
         An empty ``positions`` list clears the target; see
         ``clear_account_target_positions``. A snapshot that already exists at
         that time raises ``ValueError`` unless ``overwrite`` is true.
@@ -267,6 +278,86 @@ class MarketsClient:
             positions=[],
             overwrite=overwrite,
         )
+
+    def virtual_fund_allocation_policies(self) -> list[VirtualFundAllocationPolicySummary]:
+        """Every virtual-fund allocation policy (``getVirtualFundAllocationPolicies``)."""
+
+        payload = self.request("GET", f"{API_PREFIX}/account/virtual-fund-allocation-policies/")
+        return [
+            VirtualFundAllocationPolicySummary.model_validate(item)
+            for item in payload.get("policies", [])
+        ]
+
+    def virtual_fund_allocation_policy(
+        self, policy_id: str
+    ) -> VirtualFundAllocationPolicyDescription:
+        """One policy and its arguments' JSON Schema (``getVirtualFundAllocationPolicy``)."""
+
+        payload = self.request(
+            "GET", f"{API_PREFIX}/account/virtual-fund-allocation-policies/{policy_id}/"
+        )
+        return VirtualFundAllocationPolicyDescription.model_validate(payload)
+
+    def plan_account_virtual_funds(
+        self,
+        account_uid: Any,
+        *,
+        position_set_uid: Any,
+        valuation_time: dt.datetime,
+        policy: AccountVirtualFundAllocationPolicyChoice | Mapping[str, Any] | None = None,
+    ) -> AccountVirtualFundAllocationPlanResponse:
+        """Plan the allocation of one holdings snapshot (``planAccountVirtualFunds``).
+
+        Nothing is written. The snapshot is the account's holdings set at exactly
+        ``valuation_time`` and the target is ``position_set_uid``; both are in units
+        (ADR 0052), so no price or valuation is sent. Each line of the plan has a
+        ``target``, what is ``assigned`` and ``delta = target - assigned``. Without
+        ``policy``, ``proportional_attribution`` runs with its defaults.
+        """
+
+        request = AccountVirtualFundAllocationPlanRequest(
+            position_set_uid=str(position_set_uid),
+            valuation_time=valuation_time,
+            policy=policy,
+        )
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/account/{account_uid}/virtual-fund-allocations/plan/",
+            json=request.model_dump(mode="json"),
+        )
+        return AccountVirtualFundAllocationPlanResponse.model_validate(payload)
+
+    def allocate_account_virtual_funds(
+        self,
+        account_uid: Any,
+        *,
+        position_set_uid: Any,
+        valuation_time: dt.datetime,
+        policy: AccountVirtualFundAllocationPolicyChoice | Mapping[str, Any] | None = None,
+        plan_digest: str | None = None,
+    ) -> AccountVirtualFundAllocationResponse:
+        """Plan again and write the allocation (``allocateAccountVirtualFunds``).
+
+        With ``plan_digest``, the write is refused (``MarketsConflictError``) when the
+        target or the holdings changed since that plan. A shortfall is not refused:
+        to write only a complete allocation, plan first and allocate only when no
+        ``account_deltas`` entry is positive. The same plan again writes nothing and
+        answers ``already_applied``; a different allocation of the same snapshot is
+        refused.
+        """
+
+        request = AccountVirtualFundAllocateRequest(
+            position_set_uid=str(position_set_uid),
+            valuation_time=valuation_time,
+            policy=policy,
+            plan_digest=plan_digest,
+        )
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/account/{account_uid}/virtual-fund-allocations/",
+            json=request.model_dump(mode="json"),
+        )
+        return AccountVirtualFundAllocationResponse.model_validate(payload)
 
     def portfolio_account_targets(
         self,

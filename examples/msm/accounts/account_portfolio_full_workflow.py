@@ -65,7 +65,8 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "TargetPositionsStorage",
 ]
 
-USD_ASSET_UID = "00000000-0000-0000-0000-000000000840"
+# The caller's own market data and sizing rules. ms-markets never sees them: it
+# records the unit targets they produce (ADR 0052).
 EXAMPLE_SPOT_PRICES = {
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 60_000.0,
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 2_000.0,
@@ -74,6 +75,54 @@ EXAMPLE_PORTFOLIO_WEIGHTS = {
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 0.50,
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 0.50,
 }
+EXAMPLE_DIRECT_BTC_MANDATE_SHARE = 0.60
+EXAMPLE_SLEEVE_MANDATE_SHARE = 0.40
+EXAMPLE_ACCOUNT_QUANTITIES = (
+    {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
+    {"btc_quantity": 5.0, "eth_quantity": 12.5, "eth_direction": -1},
+)
+
+
+def size_example_account_target(
+    *,
+    quantities: dict[str, float],
+    btc_asset_uid: Any,
+    eth_asset_uid: Any,
+    portfolio_uid: Any,
+) -> list[dict[str, Any]]:
+    """Size one account's target in units: the caller's sizing event.
+
+    The mandate is 60% of the account in BTC directly and 40% in the target sleeve.
+    The caller values the account with its own prices, turns each share into
+    units, and hands ms-markets the units. A provider would run this again when
+    the sleeve is resized or its portfolio rebalances.
+    """
+
+    btc_price = EXAMPLE_SPOT_PRICES[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER]
+    eth_price = EXAMPLE_SPOT_PRICES[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER]
+    nav = (
+        quantities["btc_quantity"] * btc_price
+        + quantities["eth_quantity"] * quantities["eth_direction"] * eth_price
+    )
+    sleeve_notional = EXAMPLE_SLEEVE_MANDATE_SHARE * nav
+    return example_account_target_positions(
+        direct_asset_uid=btc_asset_uid,
+        direct_quantity=EXAMPLE_DIRECT_BTC_MANDATE_SHARE * nav / btc_price,
+        portfolio_uid=portfolio_uid,
+        basket={
+            btc_asset_uid: sleeve_notional
+            * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER]
+            / btc_price,
+            eth_asset_uid: sleeve_notional
+            * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER]
+            / eth_price,
+        },
+        sizing={
+            "sized_by": EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
+            "sized_from_nav": nav,
+            "sleeve_mandate_share": EXAMPLE_SLEEVE_MANDATE_SHARE,
+        },
+    )
 
 
 def print_section(title: str) -> None:
@@ -86,22 +135,10 @@ def print_frame(name: str, frame: pd.DataFrame) -> None:
 
 
 def print_virtual_fund_allocation_frames(frames: dict[str, pd.DataFrame]) -> None:
-    for name in (
-        "account_virtual_holding_lines",
-        "virtual_fund_allocations",
-        "residuals",
-    ):
+    """Print a plan: one line per owner and asset, then each asset's account delta."""
+
+    for name in ("lines", "account_deltas"):
         print_frame(name, frames[name])
-
-    if not frames["deficits"].empty:
-        print_frame("deficits", frames["deficits"])
-
-    print("\ndiagnostics")
-    print(
-        frames["diagnostics"].to_string(index=False)
-        if not frames["diagnostics"].empty
-        else "No diagnostics."
-    )
 
 
 def run_account_portfolio_full_workflow(
@@ -316,7 +353,7 @@ def run_account_portfolio_full_workflow(
     )
     target_records: list[dict[str, Any]] = []
     target_position_frames: list[pd.DataFrame] = []
-    for account in target_accounts:
+    for account, quantities in zip(target_accounts, EXAMPLE_ACCOUNT_QUANTITIES, strict=True):
         target_allocation = AccountTargetAllocation.upsert(
             {
                 **EXAMPLE_ACCOUNT_TARGET_ALLOCATION,
@@ -351,8 +388,10 @@ def run_account_portfolio_full_workflow(
         target_positions_frame = build_target_positions_frame(
             target_positions_date=workflow_time,
             position_set_uid=position_set.uid,
-            positions=example_account_target_positions(
-                asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
+            positions=size_example_account_target(
+                quantities=quantities,
+                btc_asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
+                eth_asset_uid=assets_by_identifier[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER].uid,
                 portfolio_uid=target_sleeve_portfolio.uid,
             ),
         )
@@ -397,11 +436,7 @@ def run_account_portfolio_full_workflow(
 
     print("13. Building two-asset holdings rows for both accounts.")
     holdings_frames = []
-    account_quantities = (
-        {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
-        {"btc_quantity": 5.0, "eth_quantity": 12.5, "eth_direction": -1},
-    )
-    for account, quantities in zip(accounts, account_quantities, strict=True):
+    for account, quantities in zip(accounts, EXAMPLE_ACCOUNT_QUANTITIES, strict=True):
         holdings_set = AccountHoldingsSet.upsert(
             account_uid=account.uid,
             time_index=workflow_time,
@@ -489,12 +524,6 @@ def _run_virtual_fund_allocation_extension(
     apply_plan: bool,
 ) -> dict[str, Any]:
     from msm.services.accounts import (
-        AllocationPolicy,
-        AllocationValuation,
-        HoldingsSelectionPolicy,
-        TargetQuantityDemand,
-        ValuationMetricResult,
-        ValuationMetricValue,
         apply_account_virtual_fund_allocation_plan,
         plan_account_virtual_fund_allocations,
     )
@@ -504,91 +533,34 @@ def _run_virtual_fund_allocation_extension(
     position_set = target_record["position_set"]
     valuation_time = workflow_result["holdings_date"]
 
-    def spot_valuation_resolver(
-        requested_metrics,
-        source_holdings,
-        target_notional_demands,
-        *,
-        valuation_time: dt.datetime,
-        valuation_asset_uid: Any,
-        valuation_policy,
-    ) -> AllocationValuation:
-        del requested_metrics, valuation_policy
-        nav = sum(
-            holding.quantity * holding.direction * EXAMPLE_SPOT_PRICES[holding.asset_identifier]
-            for holding in source_holdings
-        )
-        target_quantity_demands = []
-        for demand in target_notional_demands:
-            asset_identifier = demand.asset_identifier
-            price = EXAMPLE_SPOT_PRICES[asset_identifier]
-            target_quantity_demands.append(
-                TargetQuantityDemand(
-                    target_row_key=demand.target_row_key,
-                    asset_uid=demand.asset_uid,
-                    asset_identifier=asset_identifier,
-                    requested_signed_quantity=demand.notional_value / price,
-                    direction=demand.direction,
-                    requested_notional=demand.notional_value,
-                    claim_type=demand.claim_type,
-                    claim_uid=demand.claim_uid,
-                    source_target_uid=demand.source_target_uid,
-                    target_type=demand.target_type,
-                    target_portfolio_uid=demand.target_portfolio_uid,
-                    virtual_fund_unique_identifier=demand.virtual_fund_unique_identifier,
-                    source_row=demand.source_row,
-                )
-            )
-        return AllocationValuation(
-            metrics={
-                "nav": ValuationMetricResult(
-                    metric="nav",
-                    total=ValuationMetricValue(
-                        value=nav,
-                        valuation_asset_uid=valuation_asset_uid,
-                        as_of=valuation_time,
-                        source="examples/msm/accounts/account_portfolio_full_workflow.py",
-                    ),
-                )
-            },
-            valuation_asset_uid=valuation_asset_uid,
-            target_quantity_demands=tuple(target_quantity_demands),
-        )
-
+    # The target and the holdings are both in units, so the plan needs no price.
+    # Without a policy, proportional_attribution runs with its default arguments.
     plan = plan_account_virtual_fund_allocations(
         position_set_uid=position_set.uid,
         valuation_time=valuation_time,
-        valuation_asset_uid=USD_ASSET_UID,
-        holdings_selection_policy=HoldingsSelectionPolicy(),
-        valuation_resolver=spot_valuation_resolver,
-        allocation_policy=AllocationPolicy(),
     )
 
     print("    Account virtual-fund allocation dry-run")
     print("      account_uid:", account.uid)
     print("      position_set_uid:", position_set.uid)
-    print("      account_nav:", plan.account_nav)
-    print("      status:", plan.status)
+    print("      policy:", plan.policy.id, plan.policy.version)
+    print("      plan_digest:", plan.plan_digest)
+    # Each line: what the owner should hold, what it gets, and delta = target - assigned.
     print_virtual_fund_allocation_frames(plan.to_frames())
 
-    applied_frame = None
+    result = None
     if apply_plan:
-        from msm.time_index.accounts import VirtualFundHoldings
-
-        print("2. Applying account virtual-fund allocation through VirtualFundHoldings.")
-        applied_frame = apply_account_virtual_fund_allocation_plan(
-            plan,
-            updater=VirtualFundHoldings(config=VirtualFundHoldings.default_config()),
-            run=True,
-        )
+        print("2. Applying the account virtual-fund allocation in one transaction.")
+        result = apply_account_virtual_fund_allocation_plan(plan)
+        print("    applied:", result.applied, "already_applied:", result.already_applied)
         print("    Applied virtual-fund holdings rows:")
-        print(applied_frame.reset_index().to_string(index=False))
+        print(result.to_frame().to_string(index=False))
 
     return {
         "account": account,
         "position_set": position_set,
         "plan": plan,
-        "applied_frame": applied_frame,
+        "result": result,
     }
 
 
@@ -629,8 +601,8 @@ def main() -> None:
         "--apply-virtual-fund-allocation",
         action="store_true",
         help=(
-            "Extend the workflow with virtual-fund allocation and publish the "
-            "resulting VirtualFundHoldings rows."
+            "Extend the workflow with virtual-fund allocation and write the "
+            "resulting virtual-fund holdings in one transaction."
         ),
     )
     args = parser.parse_args()
@@ -677,9 +649,9 @@ def main() -> None:
     print("Holdings date:", result["holdings_date"].isoformat())
     if result["virtual_fund_allocation_result"] is not None:
         allocation_result = result["virtual_fund_allocation_result"]
-        print("Virtual-fund allocation status:", allocation_result["plan"].status)
-        if allocation_result["applied_frame"] is not None:
-            print("Virtual-fund holdings rows:", len(allocation_result["applied_frame"]))
+        print("Virtual-fund allocation plan digest:", allocation_result["plan"].plan_digest)
+        if allocation_result["result"] is not None:
+            print("Virtual-fund holdings rows:", len(allocation_result["result"].rows))
 
 
 if __name__ == "__main__":

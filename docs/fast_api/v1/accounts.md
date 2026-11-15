@@ -176,15 +176,55 @@ direct account snapshots and virtual-fund-grouped views.
     computed `signed_quantity`, and `allocation` metadata parsed from
     `extra_details`
   - `allocation` contains `target_gap_signed_quantity`, `scale`,
-    `target_row_key`, and `position_set_uid` when those fields were persisted
-    by the virtual-fund allocation apply step
+    `target_row_key`, and `position_set_uid` when the row carries them. Rows
+    written since 3.6.0 carry `position_set_uid` only: a delta is computed from
+    the target and the holdings, never stored (ADR 0053)
   - `residuals` are derived as source account signed quantity minus total
     virtual-fund allocated signed quantity per asset
   - asset labels use latest `AssetSnapshotsStorage` rows; OpenFIGI and numeric
     asset IDs are not used
   - this read endpoint does not rerun or apply the allocation planner; it
-    shows what the planner's apply step wrote
-    ([ADR 0029](../../ADR/0029-account-holdings-virtual-fund-allocation-policy.md))
+    shows what an allocation wrote
+    ([ADR 0053](../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md))
+- `GET /api/v1/account/virtual-fund-allocation-policies/`
+  - operation `getVirtualFundAllocationPolicies`; answers every allocation
+    policy with its `id`, `version`, `title`, `description` and the `path` of
+    its description; holds no account data
+- `GET /api/v1/account/virtual-fund-allocation-policies/{policy_id}/`
+  - operation `getVirtualFundAllocationPolicy`; describes one policy: each
+    argument's JSON Schema 2020-12 and `arguments_schema` over all of them,
+    generated from the class that validates a request's `policy.arguments`
+  - an unknown id is a `404`
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/plan/`
+  - operation `planAccountVirtualFunds`; runs a policy and writes nothing
+  - request body contains `position_set_uid`, `valuation_time` and an optional
+    `policy` (`id`, `version`, `arguments`); without one,
+    `proportional_attribution` runs with its defaults
+  - the snapshot is the account's holdings set at exactly `valuation_time`;
+    targets and holdings are both in units, so the body carries no price, NAV
+    or valuation
+  - answers `funds`, `lines`, `account_deltas`, `apply_blockers` and
+    `plan_digest`; each line has an `owner` (`fund` or `direct`), a `target`,
+    what is `assigned` and `delta = target - assigned`
+  - a positive delta means units are missing, a negative one more units than
+    the target asks for; the target is the full picture, so an asset the
+    account holds that no target names has a target of zero
+  - a plan has no status and no deficits list: a shortfall is a positive
+    account delta
+- `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  - operation `allocateAccountVirtualFunds`; plans again from the same inputs
+    and writes the virtual funds, one holdings set per fund and the holdings
+    rows in one transaction; never accepts a plan from the client
+  - the body is the plan request plus an optional `plan_digest`; a recomputed
+    plan with another digest is a `409` `plan_changed`
+  - answers the plan with `applied`, `already_applied` and each fund's
+    `virtual_fund_uid` and `holdings_set_uid`
+  - a shortfall is not refused; an applied allocation is account history, so
+    the same plan again writes nothing and a different allocation of the same
+    snapshot is a `409` `allocation_exists`; a retired portfolio is a `409`
+    `portfolio_retired`
+  - errors are structured: `detail` has a `code`, a `message` and the `errors`
+    it is about
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
@@ -212,14 +252,17 @@ direct account snapshots and virtual-fund-grouped views.
     account-target-allocation row from the account uid; the frontend does not
     send `account_allocation_model_uid`, target-allocation uid, display name, or
     parent metadata
-  - each position uses `target_type`, `target_uid`, and exactly one concrete
-    target reference: `asset_uid` for asset rows or `portfolio_uid` for
-    portfolio rows
-  - each position must provide exactly one of `weight_notional_exposure`,
-    `constant_notional_exposure`, or `single_asset_quantity`
-  - `single_asset_quantity` is valid only for direct asset target rows;
-    portfolio target rows must use `weight_notional_exposure` or
-    `constant_notional_exposure`
+  - every position is in units (ADR 0052): `asset_uid`, a positive `quantity`
+    in the asset's own unit, and a `direction` (`1` long, `-1` short, default `1`)
+  - an asset row (`target_type="asset"`, `target_uid=asset_uid`) is a direct
+    target
+  - a portfolio row (`target_type="portfolio"`, `target_uid=portfolio_uid`,
+    plus `asset_uid`) is one asset of that virtual fund's unit basket; the rows
+    of one `portfolio_uid` are the whole basket
+  - the caller sizes each basket with its own prices and rules; the route values
+    nothing and accepts no share of NAV or notional amount
+  - `metadata_json` may record how a row was sized (scale factor, portfolio book
+    time, mandate share, source); it is stored and never read
   - `overwrite=false` rejects an existing position set at the same timestamp;
     `overwrite=true` replaces rows through one scoped MetaTable operation so the
     parent upserts, delete, and replacement insert share the same backend

@@ -201,7 +201,7 @@ client.add_account_target_positions(
     account_uid,
     target_positions_date=rebalanced_at,
     positions=[{"target_type": "portfolio", "target_uid": p, "portfolio_uid": p,
-                "weight_notional_exposure": 0.25}],
+                "asset_uid": asset_uid, "quantity": 1000, "direction": 1}],
 )
 target = client.account_target_positions(account_uid)
 client.clear_account_target_positions(account_uid, target_positions_date=closed_at)
@@ -209,9 +209,45 @@ client.clear_account_target_positions(account_uid, target_positions_date=closed_
 
 The target methods return `AccountTargetPositionsSnapshotResponse`. A clear
 writes an empty snapshot, so the history records it, and sets the account's
-target allocation inactive. The client has no virtual-fund allocation method:
-the allocation takes a valuation and a policy the caller supplies
-([ADR 0029](../../../ADR/0029-account-holdings-virtual-fund-allocation-policy.md)).
+target allocation inactive.
+
+[Sizing Targets And Allocating](../accounts/sizing_and_allocation.md) is the
+step-by-step guide for an application that sizes targets and allocates through
+this client.
+
+The allocation of an account's holdings to its virtual funds has typed methods
+too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md)).
+Targets and holdings are both in units, so no price or valuation is sent:
+
+```python
+(policy,) = client.virtual_fund_allocation_policies()
+description = client.virtual_fund_allocation_policy(policy.id)   # arguments as JSON Schema
+
+plan = client.plan_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+)
+for line in plan.lines:
+    print(line.owner, line.asset_identifier, line.target, line.assigned, line.delta)
+
+result = client.allocate_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+    plan_digest=plan.plan_digest,
+)
+```
+
+`plan_account_virtual_funds` writes nothing. Each line gives an owner's `target`,
+what it is `assigned` and `delta = target - assigned`; `plan.account_deltas`
+gives each asset's total target minus what the account holds.
+`allocate_account_virtual_funds` plans again and writes in one transaction. With
+`plan_digest` it raises `MarketsConflictError` when the target or the holdings
+changed since that plan. A shortfall is not refused: to write only a complete
+allocation, allocate only when no account delta is positive. The same plan again
+writes nothing and answers `already_applied`; a different allocation of the same
+snapshot raises `MarketsConflictError`.
 
 ## Portfolio Retirement
 

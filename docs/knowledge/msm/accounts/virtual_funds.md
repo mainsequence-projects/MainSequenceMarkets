@@ -32,6 +32,55 @@ VirtualFundHoldingsSetTable
 portfolio weights or run portfolio updaters, but it does not own virtual-fund
 identity or holdings storage.
 
+## Targets In Units
+
+A virtual fund's target is a unit basket (ADR 0052). It is stored in the
+account's target snapshot, as the `TargetPositionsStorage` rows of one portfolio:
+one row per asset, each a positive `quantity` in the asset's own unit with a
+`direction`.
+
+```text
+PositionSetTable
+  <- TargetPositionsStorage
+       target_type = "portfolio"
+       portfolio_uid -> PortfolioTable.uid      the virtual fund's portfolio
+       asset_uid     -> AssetTable.uid          one asset of the basket
+       quantity > 0, direction 1 / -1
+```
+
+Account holdings, fund targets and fund holdings are all in units, so the
+allocation needs no price. A share, a futures contract and an option contract
+are handled the same way.
+
+### Sizing a basket
+
+[Sizing Targets And Allocating](sizing_and_allocation.md) walks through every
+step with a sizing rule for stocks, futures and options.
+
+ms-markets is a record library: it stores the basket and derives nothing. The
+caller sizes it, with its own prices and rules, at a sizing event:
+
+- the fund is sized: money goes into or out of the sleeve, or its share of the
+  account changes;
+- the portfolio rebalances: its composition changes.
+
+A request such as "10,000 in this fund" or "40% of the account" belongs to the
+provider that takes it. The provider stores the request, turns it into units
+(multipliers, deltas, lot sizes, rounding, FX) and writes a new target. For a
+portfolio with a unit book (`PortfolioStateStorage`), the basket is the book
+scaled by one factor.
+
+A row's `metadata_json` may record how it was sized: the scale factor, the
+portfolio book time, the mandate share and a source note. ms-markets never
+reads it.
+
+| Step | Needs market data | Who supplies it |
+| --- | --- | --- |
+| Portfolio construction and rebalance | Yes | Provided to the portfolio engine |
+| Sizing a fund's basket | Yes | The caller, at the sizing event |
+| Allocating holdings to funds | No | |
+| Valuing a fund or the account | Yes | The caller, when it reports |
+
 ## Storage Shape
 
 `VirtualFundTable` stores the account-owned allocation view:
@@ -63,154 +112,176 @@ The row stores a positive `allocated_quantity`, a first-class
 with `direction = -1`, not a negative quantity.
 
 `allocation_strategy` records the strategy used to create the row. Low-level
-explicit publications use `explicit`; rows published from
-`apply_account_virtual_fund_allocation_plan(...)` use the allocation policy
-mode, such as `proportional_attribution` or `strict_feasible`.
+explicit publications use `explicit`; rows written by an allocation use the
+policy id, such as `proportional_attribution`.
 
 ## Planner Flow
 
-ADR 0029 defines the account holdings to virtual-fund allocation planner. The
-planner is a dry-run service: it computes a deterministic plan and performs no
-writes.
+ADR 0053 defines the allocation of an account's holdings to its virtual funds.
+The planner is a dry-run service: it computes a deterministic plan and performs
+no writes.
 
 Use the canonical account target snapshot path. Do not pass a raw account UID,
-raw holdings-set UID, raw source holdings, or raw target demand rows into the
-public planner.
+raw holdings-set UID, raw source holdings, or raw target rows into the public
+planner.
 
 ```python
-from msm.services.accounts import (
-    AllocationPolicy,
-    HoldingsSelectionPolicy,
-    plan_account_virtual_fund_allocations,
-)
+from msm.services.accounts import plan_account_virtual_fund_allocations
 
 plan = plan_account_virtual_fund_allocations(
     position_set_uid=position_set.uid,
     valuation_time=workflow_time,
-    valuation_asset_uid=usd_asset.uid,
-    holdings_selection_policy=HoldingsSelectionPolicy(),
-    valuation_resolver=valuation_resolver,
-    allocation_policy=AllocationPolicy(),
 )
 ```
 
-The resolver follows one deterministic path:
+Without a `policy`, `proportional_attribution` runs with its default arguments.
+To choose one, pass `policy={"id": ..., "version": ..., "arguments": {...}}`.
+
+The planner follows one deterministic path:
 
 ```text
 PositionSetTable.uid
   -> AccountTargetAllocationTable.uid
   -> AccountHoldingsSetTable(account_uid, valuation_time)
-  -> AccountHoldingsStorage rows
-  -> TargetPositionsStorage rows
+  -> AccountHoldingsStorage rows        units held
+  -> TargetPositionsStorage rows        unit targets and unit baskets
   -> AssetTable identity rows
-  -> portfolio-target expansion
-  -> valuation resolver
 ```
 
-The holdings set is the one captured at `valuation_time`: the capture is the
-valuation. The target is the `PositionSet` the caller passes, used as it is.
-A target is in force from its own `position_set_time` on, so a capture taken
-after the target was written is attributed against it: plan it with the later
-capture's `valuation_time` and the earlier `position_set_uid`. A `PositionSet`
-written after `valuation_time` is refused, since it cannot apply to holdings
-captured before it.
+It reads no price, NAV or portfolio weight.
 
-The Markets API has no allocation route. The valuation resolver and the
-allocation policy are the caller's inputs, and the Markets API holds neither:
-it has no prices for what an account holds. The route 3.1.0 added valued
-holdings at their target portfolios' weights prices and was removed in 3.5.0
-([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68)).
+The holdings set is the one captured at exactly `valuation_time`. The target is
+the `PositionSet` the caller passes, used as it is. A target is in force from
+its own `position_set_time` on, so a capture taken after the target was written
+is allocated against it: plan it with the later capture's `valuation_time` and
+the earlier `position_set_uid`. A `PositionSet` written after `valuation_time`
+is refused, since it cannot apply to holdings captured before it.
 
-Core `msm` owns the account and virtual-fund allocation logic. Portfolio
-weights still come from an explicit portfolio-target expander at the workflow
-boundary, so `msm` does not import `msm_portfolios`.
+Core `msm` owns the account and virtual-fund allocation logic, and it does not
+import `msm_portfolios`.
 
-## Allocation Policy
+## What A Plan Answers
 
-The default policy is `proportional_attribution`.
+Every policy answers the same shape, in units. There is one line per owner and
+asset, where the owner is a virtual fund or the direct account sleeve:
 
-For each asset, the planner allocates virtual-fund claims first, using a
-vectorized per-asset scale factor:
+| Field | Meaning |
+| --- | --- |
+| `target` | What the owner should hold of the asset |
+| `assigned` | What the owner gets |
+| `delta` | `target - assigned`: positive when units are missing, negative when there are more than the target asks for |
+
+Take an account that holds AAPL 1,100, MSFT 600, JNJ 750 and TSLA 1,100, with
+fund A's basket at AAPL 1,000 and MSFT 500, and fund B's at MSFT 300 and JNJ 750:
+
+| Owner | Asset | Target | Assigned | Delta |
+| --- | --- | --- | --- | --- |
+| Fund A | AAPL | 1,000 | 1,000 | 0 |
+| Fund A | MSFT | 500 | 375 | +125 |
+| Fund B | MSFT | 300 | 225 | +75 |
+| Fund B | JNJ | 750 | 750 | 0 |
+| Direct | AAPL | 0 | 100 | −100 |
+| Direct | TSLA | 0 | 1,100 | −1,100 |
+
+- Every unit the account holds appears once: for each asset, the `assigned` of
+  its lines adds up to the holding.
+- `account_deltas` has one row per asset: what is `held`, the total `target` and
+  their difference. Here AAPL −100, MSFT +200, JNJ 0 and TSLA −1,100. No policy
+  can change it; a policy only decides how a shortfall is spread between funds.
+- The target is the full picture. An asset the account holds that no target
+  names has a target of zero. Anything the account should keep outside its
+  funds, cash included, is written as a direct target.
+- A plan has no status and no deficits list. A shortfall is a positive account
+  delta.
+- A target with no fund is planned too: every holding goes to the direct sleeve.
+- Deltas are computed, never stored. ms-markets reports them; acting on them is
+  the provider's decision.
+
+## Allocation Policies
+
+Policies live in a registry. Each has an id, a version and an arguments class,
+and its description is generated from that class, which also validates a
+request's arguments. A change to an argument, a bound, a default or a behaviour
+bumps the version, and a request built against another version is refused.
+
+```python
+from msm.services.accounts import ALLOCATION_POLICIES, describe_allocation_policy
+
+for policy in ALLOCATION_POLICIES:
+    print(describe_allocation_policy(policy)["arguments_schema"])
+```
+
+The registry has one policy, `proportional_attribution`. For each asset:
 
 ```text
-source_capacity = abs(account signed holding)
-virtual_demand  = sum(abs(requested virtual-fund signed quantity))
-scale           = min(1, source_capacity / virtual_demand)
+capacity = abs(holding)
+claims   = sum(abs(each fund's claim))
+scale    = min(1, capacity / claims)
+fill     = claim * scale
+direct   = holding - sum(fills)
 ```
 
-Each virtual fund receives:
+Every fund's claim on an asset gets the same scale; no fund has priority. Each
+asset is handled on its own, so a fund short of one asset still gets all of
+another. Direct targets do not compete with the funds; they are only measured
+against what the funds leave.
 
-```text
-allocated_signed_quantity = requested_signed_quantity * scale
-```
+Its one argument, `quantity_tolerance`, has a default of `1e-9`: a fill at or
+below it is not written.
 
-The direct account sleeve is the balancing residual:
-
-```text
-direct_account_sleeve = signed_account_holding - sum(virtual_fund_allocations)
-```
-
-The direct target is diagnostic intent. It is not included in the virtual-fund
-fill denominator. This keeps opposite-signed direct targets from incorrectly
-reducing virtual-fund allocations.
-
-`strict_feasible` is a validation mode. If virtual-fund gross demand exceeds
-available source capacity for any asset, the plan is marked infeasible and
-must not be applied.
-
-## Valuation Resolver
-
-The planner does not own pricing, derivative valuation, FX conversion, or NAV
-calculation. A valuation resolver supplies valuation metrics and target
-quantity demand when the workflow starts from notional targets.
-
-The resolver is called with:
-
-```text
-requested_metrics = ("nav",)
-source_holdings
-target_notional_demands
-valuation_time
-valuation_asset_uid
-valuation_policy
-```
-
-`valuation_asset_uid` is an `AssetTable.uid`, not an ISO code or ticker. Any
-currency mapping or provider-specific logic belongs inside the resolver.
-
-The resolver returns totals and optional lines per asset, source row, or target
-row. For account virtual-fund allocation, `nav` is the required metric.
-
-For notional target rows, the resolver must also return
-`target_quantity_demands`. The planner uses those quantity demands for the
-vector allocation step and keeps the notional values for diagnostics.
+A shortfall is not refused. A provider that wants only a complete allocation
+plans first and allocates only when no account delta is positive.
 
 ## Apply Flow
 
-Apply only after inspecting a feasible or attributed plan:
-
 ```python
-from msm.time_index.accounts import VirtualFundHoldings
 from msm.services.accounts import apply_account_virtual_fund_allocation_plan
 
-node = VirtualFundHoldings(config=VirtualFundHoldings.default_config())
-frame = apply_account_virtual_fund_allocation_plan(
-    plan,
-    updater=node,
-    run=True,
-)
+result = apply_account_virtual_fund_allocation_plan(plan)
+result.applied          # True when this call wrote the allocation
+result.already_applied  # True when the same plan was already written
+result.funds            # each fund's virtual_fund_uid and holdings_set_uid
 ```
 
-The apply step may create or reuse `VirtualFundTable` rows, creates the
-holdings-set row, builds the `VirtualFundHoldingsStorage` frame, and optionally
-publishes it through the TimeIndexTableUpdater.
+The apply step writes the virtual funds, one holdings set per fund and the
+holdings rows in one transaction, so a holdings set never exists without its
+rows. It writes one row per fund fill above the tolerance: a positive
+`allocated_quantity`, a `direction`, and the policy id as `allocation_strategy`.
+`extra_details` records the policy version, the position set and the plan's
+digest.
 
-See
-`examples/msm/accounts/account_portfolio_full_workflow.py` for the complete
+An applied allocation is account history:
+
+- the same plan again writes nothing and answers `already_applied`;
+- a different allocation of the same snapshot is refused (`allocation_exists`);
+- a correction is a new holdings snapshot.
+
+No fund is written for a portfolio retired at or before the plan's time
+(ADR 0049). A plan that gives no fund any units has nothing to write and is
+refused (`nothing_to_apply`).
+
+## Markets API
+
+An application without grants on `mainsequence.markets` allocates through the
+Markets API, and sends no market data to do so:
+
+| Route | `MarketsClient` method |
+| --- | --- |
+| `GET /api/v1/account/virtual-fund-allocation-policies/` | `virtual_fund_allocation_policies()` |
+| `GET /api/v1/account/virtual-fund-allocation-policies/{policy_id}/` | `virtual_fund_allocation_policy(policy_id)` |
+| `POST /api/v1/account/{account_uid}/virtual-fund-allocations/plan/` | `plan_account_virtual_funds(...)` |
+| `POST /api/v1/account/{account_uid}/virtual-fund-allocations/` | `allocate_account_virtual_funds(...)` |
+
+The allocate route plans again from the same inputs and then writes. It never
+accepts a plan from the client. Pass a plan's `plan_digest` to be sure nothing
+changed since the caller saw it; a different recomputed plan answers 409
+`plan_changed`.
+
+See `examples/msm/accounts/account_portfolio_full_workflow.py` for the complete
 end-to-end account workflow. Run it with `--with-virtual-fund-allocation` to
 extend the account-plus-portfolio workflow with a dry-run allocation plan, or
-with `--apply-virtual-fund-allocation` to publish the resulting
-`VirtualFundHoldings` rows after the dry-run plan is printed. The focused
+with `--apply-virtual-fund-allocation` to write the allocation after the plan is
+printed. The focused
 `examples/msm/accounts/account_virtual_fund_allocation_example.py` script is a
 thin wrapper around that same full workflow extension.
 

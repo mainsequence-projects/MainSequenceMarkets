@@ -22,11 +22,18 @@ from apps.v1.schemas.accounts import (
     AccountDeleteResponse,
     AccountRegistrationRequest,
     AccountRegistrationResponse,
+    AccountVirtualFundAllocateRequest,
+    AccountVirtualFundAllocationPlanRequest,
+    AccountVirtualFundAllocationPlanResponse,
+    AccountVirtualFundAllocationResponse,
+    VirtualFundAllocationPolicyDescription,
+    VirtualFundAllocationPolicyList,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.accounts import (
     add_account_holdings,
     add_account_target_positions,
+    allocate_account_virtual_funds,
     bulk_delete_accounts,
     create_account,
     delete_account,
@@ -36,19 +43,25 @@ from apps.v1.services.accounts import (
     get_account_summary,
     get_account_target_positions,
     get_accounts_by_uids,
+    get_virtual_fund_allocation_policy,
     list_accounts,
+    list_virtual_fund_allocation_policies,
+    plan_account_virtual_funds,
     preflight_bulk_delete_accounts,
     register_account,
     search_account_target_allocation_targets,
     update_account,
 )
 from apps.v1.services.includes import SidecarReadError
+from msm.services.accounts.allocation_policies import AllocationError
 from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
+    ApiErrorWithInputsResponse,
     BulkActionExecutionRequest,
     ErrorResponse,
     ResourceCollection,
+    api_error_with_inputs,
     blocked_preflight_detail,
     explicit_uuid_selection,
     resource_collection_response,
@@ -161,6 +174,82 @@ def register_account_with_holdings(payload: AccountRegistrationRequest) -> Accou
             "AccountHoldingsSnapshotExistsError",
         }
         raise HTTPException(status_code=409 if conflict else 400, detail=str(exc)) from exc
+
+
+ALLOCATION_ERROR_RESPONSES = {
+    400: {
+        "model": ApiErrorWithInputsResponse,
+        "description": "The allocation cannot be planned or applied.",
+    },
+    404: {
+        "model": ApiErrorWithInputsResponse,
+        "description": (
+            "The account, its PositionSet, its holdings snapshot at valuation_time, or the "
+            "policy was not found."
+        ),
+    },
+    409: {
+        "model": ApiErrorWithInputsResponse,
+        "description": "The request conflicts with the registry or with what is stored.",
+    },
+}
+
+
+def _allocation_http_error(exc: Exception) -> HTTPException:
+    """Map the allocation services' refusals to their structured HTTP errors (ADR 0053)."""
+
+    if isinstance(exc, AllocationError):
+        return api_error_with_inputs(
+            status_code=exc.status_code,
+            code=exc.code,
+            message=exc.message,
+            errors=exc.errors,
+        )
+    if exc.__class__.__name__ == "PortfolioRetiredError":
+        return api_error_with_inputs(status_code=409, code="portfolio_retired", message=str(exc))
+    if isinstance(exc, LookupError):
+        return api_error_with_inputs(status_code=404, code="not_found", message=str(exc))
+    return api_error_with_inputs(status_code=400, code="bad_request", message=str(exc))
+
+
+@router.get(
+    "/virtual-fund-allocation-policies/",
+    response_model=VirtualFundAllocationPolicyList,
+    summary="List the virtual-fund allocation policies",
+    description=(
+        "Every policy that can allocate an account's holdings to its virtual funds: its id, "
+        "version, title, description and the path of its description (ADR 0053). It holds "
+        "no account data."
+    ),
+    operation_id="getVirtualFundAllocationPolicies",
+)
+def list_virtual_fund_allocation_policies_route() -> VirtualFundAllocationPolicyList:
+    return list_virtual_fund_allocation_policies()
+
+
+@router.get(
+    "/virtual-fund-allocation-policies/{policy_id}/",
+    response_model=VirtualFundAllocationPolicyDescription,
+    summary="Describe one virtual-fund allocation policy",
+    description=(
+        "One policy and its arguments. Each argument's JSON Schema 2020-12, and "
+        "`arguments_schema` over all of them, are generated from the class that validates a "
+        "request's `policy.arguments`, so the description cannot drift from what runs. A "
+        "change to an argument, a bound, a default or a behaviour bumps `version`."
+    ),
+    operation_id="getVirtualFundAllocationPolicy",
+    responses={404: {"model": ErrorResponse, "description": "No policy has this id."}},
+)
+def get_virtual_fund_allocation_policy_route(
+    policy_id: str,
+) -> VirtualFundAllocationPolicyDescription:
+    policy = get_virtual_fund_allocation_policy(policy_id=policy_id)
+    if policy is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No virtual-fund allocation policy has the id {policy_id!r}.",
+        )
+    return policy
 
 
 @router.get(
@@ -556,6 +645,64 @@ def get_account_holdings_by_fund_by_uid(
 
 
 @router.post(
+    "/{account_uid}/virtual-fund-allocations/plan/",
+    response_model=AccountVirtualFundAllocationPlanResponse,
+    summary="Plan the allocation of an account's holdings to its virtual funds",
+    description=(
+        "Run an allocation policy for one holdings snapshot against one target and answer the "
+        "plan. Nothing is written. The snapshot is the account's holdings set at exactly "
+        "`valuation_time`; the target is `position_set_uid`, which must not be later. Targets "
+        "and holdings are both in units (ADR 0052), so the request carries no price, NAV or "
+        "valuation. The plan has one line per owner and asset, where the owner is a virtual "
+        "fund or the direct account sleeve: `target`, `assigned` and `delta = target - "
+        "assigned`. A positive delta means units are missing; a negative one means more "
+        "units than the target asks for. `account_deltas` gives each asset's total target "
+        "minus what the account holds. The target is the full picture: an asset the account "
+        "holds that no target names has a target of zero."
+    ),
+    operation_id="planAccountVirtualFunds",
+    responses=ALLOCATION_ERROR_RESPONSES,
+)
+def plan_account_virtual_funds_by_uid(
+    account_uid: str,
+    payload: AccountVirtualFundAllocationPlanRequest,
+) -> AccountVirtualFundAllocationPlanResponse:
+    try:
+        return plan_account_virtual_funds(account_uid=account_uid, payload=payload)
+    except (LookupError, ValueError) as exc:
+        raise _allocation_http_error(exc) from exc
+
+
+@router.post(
+    "/{account_uid}/virtual-fund-allocations/",
+    response_model=AccountVirtualFundAllocationResponse,
+    summary="Allocate an account's holdings to its virtual funds",
+    description=(
+        "Plan again from the same inputs and write the allocation in one transaction: the "
+        "virtual funds, one holdings set per fund and the holdings rows. A plan is never "
+        "accepted from the client. With `plan_digest`, a recomputed plan with another digest "
+        "answers 409 `plan_changed` and nothing is written. A shortfall is not a refusal: the "
+        "allocation is written with its deltas, and a caller that wants all or nothing plans "
+        "first and allocates only when no account delta is positive. An applied allocation "
+        "is account history: the same plan again writes nothing and answers `already_applied`, "
+        "and a different allocation of the same snapshot answers 409 `allocation_exists`. A "
+        "fund whose portfolio was retired at or before the snapshot answers 409 "
+        "`portfolio_retired` (ADR 0049). `holdings/by-fund/` reads what was written."
+    ),
+    operation_id="allocateAccountVirtualFunds",
+    responses=ALLOCATION_ERROR_RESPONSES,
+)
+def allocate_account_virtual_funds_by_uid(
+    account_uid: str,
+    payload: AccountVirtualFundAllocateRequest,
+) -> AccountVirtualFundAllocationResponse:
+    try:
+        return allocate_account_virtual_funds(account_uid=account_uid, payload=payload)
+    except (LookupError, ValueError) as exc:
+        raise _allocation_http_error(exc) from exc
+
+
+@router.post(
     "/{account_uid}/add-holdings/",
     response_model=AccountHoldingsSnapshotResponse,
     summary="Add account holdings snapshot",
@@ -601,7 +748,11 @@ def add_account_holdings_by_uid(
     summary="Add account target positions snapshot",
     description=(
         "Create or replace one account target-position snapshot and return it using "
-        "the same response contract as the target-positions read endpoint. Parent "
+        "the same response contract as the target-positions read endpoint. Every row is "
+        "in units (ADR 0052): a positive quantity of one asset and a direction. A direct "
+        "target is one asset row; a virtual fund's target is its unit basket, one "
+        "portfolio row per asset. The caller sizes a basket with its own prices and "
+        "rules; nothing is valued here. Parent "
         "allocation rows are derived from the account uid in the path. A snapshot that "
         "names a retired portfolio is refused with 409, whatever its date (ADR 0049)."
     ),
@@ -648,7 +799,8 @@ def add_account_target_positions_by_uid(
     response_model=AccountTargetPositionsSnapshotResponse,
     summary="Get account target positions snapshot",
     description=(
-        "Return one account target-position snapshot. When the account exists but no "
+        "Return one account target-position snapshot, in units: one row per asset of each "
+        "direct target and of each virtual fund's basket. When the account exists but no "
         "target-position snapshot matches the request, the response is 200 with an "
         "empty positions list."
     ),

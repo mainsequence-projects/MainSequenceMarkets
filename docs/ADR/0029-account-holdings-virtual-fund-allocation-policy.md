@@ -1195,3 +1195,27 @@ their wire contracts and the built-in valuation
 ([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68)).
 The planner and its apply step are unchanged, and the apply step still writes no
 fund for a retired portfolio (ADR 0049 decision 4).
+
+## Amendment: 3.6.0
+
+Two ADRs replace parts of this one in 3.6.0.
+
+[ADR 0052](0052-account-targets-in-units.md) stores account targets in units. A virtual
+fund's target is a unit basket in the account's target snapshot, sized by the caller. The
+allocation therefore reads no price: this ADR's "NAV Calculation" and "Target Demand
+Expansion", and the valuation resolver in "Inputs", are removed.
+
+[ADR 0053](0053-virtual-fund-allocation-routes-and-described-policies.md) replaces
+"Allocation Policy Model", "Strict Feasible Policy", "Service Shape" and "Existing
+Virtual-Fund Allocations":
+
+- policies are a registry of described, versioned classes, with one policy,
+  `proportional_attribution`;
+- `strict_feasible` and the plan status are removed; refusing a shortfall is the
+  provider's decision;
+- a plan answers one line per owner and asset, with `target`, `assigned` and
+  `delta = target - assigned`;
+- the apply step writes in one transaction, and an applied allocation is not replaced;
+- the Markets API has plan and allocate routes again, which value nothing.
+
+The allocation formulas of "Proportional Attribution Policy" are unchanged.
