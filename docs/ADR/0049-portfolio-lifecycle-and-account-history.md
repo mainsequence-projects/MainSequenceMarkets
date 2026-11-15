@@ -280,3 +280,11 @@ any runtime call, and the row router answers `501` with it. Every other
 resource without a delete answers "`<Class>.delete` is not offered remotely."
 Repository and service deletes are unchanged: the account delete (ADR 0050)
 still removes the history with the account.
+
+### 2026-11-15: 3.5.0
+
+The Markets API allocation route is removed
+([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68),
+ADR 0029's 3.5.0 amendment). Decision 4's rule for virtual funds is now checked
+only in `apply_account_virtual_fund_allocation_plan`; the 3.2.0 note's check "in
+the Markets API route" went with the route.

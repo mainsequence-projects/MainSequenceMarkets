@@ -115,14 +115,11 @@ capture's `valuation_time` and the earlier `position_set_uid`. A `PositionSet`
 written after `valuation_time` is refused, since it cannot apply to holdings
 captured before it.
 
-An application without grants on `mainsequence.markets` runs the same planner
-through the Markets API: `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
-(`MarketsClient.allocate_account_virtual_funds`) takes the holdings snapshot,
-defaults the target to the one in force at the snapshot's time, values the
-account with ms-markets' own prices (the valuation asset at one, every other
-asset at its target portfolios' latest weights `price_current`) and, when
-applied, writes the funds' holdings to the core tables. See the
-[accounts routes](../../../fast_api/v1/accounts.md).
+The Markets API has no allocation route. The valuation resolver and the
+allocation policy are the caller's inputs, and the Markets API holds neither:
+it has no prices for what an account holds. The route 3.1.0 added valued
+holdings at their target portfolios' weights prices and was removed in 3.5.0
+([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68)).
 
 Core `msm` owns the account and virtual-fund allocation logic. Portfolio
 weights still come from an explicit portfolio-target expander at the workflow

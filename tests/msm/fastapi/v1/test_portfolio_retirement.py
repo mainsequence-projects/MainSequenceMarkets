@@ -539,46 +539,6 @@ def test_candidate_search_and_list_leave_retired_portfolios_out(offline_postgres
 # Virtual-fund allocation ----------------------------------------------------------------
 
 
-def test_applying_an_allocation_for_a_retired_portfolio_is_refused(monkeypatch) -> None:
-    from msm.services.accounts import holdings_set_allocation
-
-    portfolio_uid = str(uuid.uuid4())
-    plan = SimpleNamespace(account_uid=str(uuid.uuid4()), valuation_time=RETIRED_AT)
-    asked: dict[str, object] = {}
-
-    def retired(context, portfolio_uids, *, as_of=None):
-        asked.update(portfolio_uids=list(portfolio_uids), as_of=as_of)
-        return {portfolio_uid: RETIRED_AT}
-
-    monkeypatch.setattr("msm.services.portfolio_lifecycle.retired_portfolios", retired)
-
-    with pytest.raises(PortfolioRetiredError, match="virtual-fund allocation"):
-        holdings_set_allocation._refuse_retired_portfolios(
-            FakeContext(), plan, [{"target_portfolio_uid": portfolio_uid}]
-        )
-    assert asked == {"portfolio_uids": [portfolio_uid], "as_of": RETIRED_AT}
-
-
-def test_allocation_route_answers_409_for_a_retired_portfolio(monkeypatch) -> None:
-    portfolio_uid = str(uuid.uuid4())
-
-    def refused(*, account_uid, payload):
-        raise PortfolioRetiredError({portfolio_uid: RETIRED_AT}, action="The allocation")
-
-    monkeypatch.setattr("apps.v1.routers.accounts.allocate_account_virtual_funds", refused)
-
-    response = TestClient(app).post(
-        f"/api/v1/account/{uuid.uuid4()}/virtual-fund-allocations/",
-        json={
-            "holdings_set_uid": str(uuid.uuid4()),
-            "valuation_asset_uid": str(uuid.uuid4()),
-            "apply": True,
-        },
-    )
-
-    assert response.status_code == 409
-
-
 def test_sdk_allocation_apply_is_refused_for_a_retired_portfolio(monkeypatch) -> None:
     from msm.services.accounts import account_virtual_allocations
 
