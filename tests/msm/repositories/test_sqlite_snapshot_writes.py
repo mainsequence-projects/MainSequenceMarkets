@@ -318,16 +318,12 @@ def _write_target(sqlite_markets, account, positions, *, overwrite=False):
     )
 
 
-def _portfolio_position(engine, portfolio, quantity=1000.0, *, direction=1):
-    """One row of a fund's unit basket (ADR 0052), on a fresh asset."""
-
+def _portfolio_position(portfolio, exposure=1000.0):
     return {
         "target_type": "portfolio",
         "target_uid": portfolio,
         "portfolio_uid": portfolio,
-        "asset_uid": _asset(engine, f"basket-{uuid.uuid4().hex[:8]}"),
-        "quantity": quantity,
-        "direction": direction,
+        "constant_notional_exposure": exposure,
         "metadata_json": {"note": "sqlite"},
     }
 
@@ -342,23 +338,12 @@ def test_target_snapshot_writes_the_allocation_its_position_set_and_rows(sqlite_
         sqlite_markets,
         account,
         [
-            _portfolio_position(engine, portfolio),
-            _portfolio_position(engine, portfolio, 40.0, direction=-1),
-            {
-                "target_type": "asset",
-                "target_uid": asset,
-                "asset_uid": asset,
-                "quantity": 3.0,
-                "direction": 1,
-            },
+            _portfolio_position(portfolio),
+            {"target_type": "asset", "target_uid": asset, "asset_uid": asset, "single_asset_quantity": 3.0},
         ],
     )
 
-    assert sorted(row["target_type"] for row in result["rows"]) == [
-        "asset",
-        "portfolio",
-        "portfolio",
-    ]
+    assert sorted(row["target_type"] for row in result["rows"]) == ["asset", "portfolio"]
     (model,) = _rows(engine, "SELECT uid, allocation_model_name, metadata_json FROM ms_markets__accountallocationmodel")
     assert model["allocation_model_name"] == str(account)
     (allocation,) = _rows(
@@ -382,21 +367,15 @@ def test_target_snapshot_writes_the_allocation_its_position_set_and_rows(sqlite_
     assert position_set["position_set_time"] == STORED_WHEN
     stored = _rows(
         engine,
-        "SELECT target_type, portfolio_uid, asset_uid, quantity, direction, "
-        "position_set_uid, time_index, metadata_json "
-        "FROM ms_markets__targetpositionsts ORDER BY target_type, quantity DESC",
+        "SELECT target_type, portfolio_uid, asset_uid, constant_notional_exposure, "
+        "single_asset_quantity, position_set_uid, time_index, metadata_json "
+        "FROM ms_markets__targetpositionsts ORDER BY target_type",
     )
     assert [
-        (row["target_type"], row["portfolio_uid"], row["quantity"], row["direction"])
-        for row in stored
-    ] == [
-        ("asset", None, 3.0, 1),
-        ("portfolio", portfolio.hex, 1000.0, 1),
-        ("portfolio", portfolio.hex, 40.0, -1),
-    ]
-    assert stored[0]["asset_uid"] == asset.hex
-    # The fund's basket: one row per asset, each on its own asset.
-    assert len({row["asset_uid"] for row in stored}) == 3
+        (row["target_type"], row["asset_uid"], row["portfolio_uid"]) for row in stored
+    ] == [("asset", asset.hex, None), ("portfolio", None, portfolio.hex)]
+    assert stored[1]["constant_notional_exposure"] == 1000.0
+    assert stored[0]["single_asset_quantity"] == 3.0
     assert {row["position_set_uid"] for row in stored} == {position_set["uid"]}
     assert {row["time_index"] for row in stored} == {STORED_WHEN}
     assert json.loads(stored[1]["metadata_json"]) == {"note": "sqlite"}
@@ -408,18 +387,18 @@ def test_existing_target_snapshot_is_refused_without_overwrite_and_replaced_with
     engine = sqlite_markets.engine
     account = _account(engine)
     first, second = _portfolio(engine), _portfolio(engine)
-    _write_target(sqlite_markets, account, [_portfolio_position(engine, first)])
+    _write_target(sqlite_markets, account, [_portfolio_position(first)])
 
-    refused = _write_target(sqlite_markets, account, [_portfolio_position(engine, second)])
+    refused = _write_target(sqlite_markets, account, [_portfolio_position(second)])
 
     assert refused["rows"] == []
     assert _rows(engine, "SELECT portfolio_uid FROM ms_markets__targetpositionsts") == [
         {"portfolio_uid": first.hex}
     ]
 
-    replaced = _write_target(sqlite_markets, account, [_portfolio_position(engine, second, 50.0)], overwrite=True)
+    replaced = _write_target(sqlite_markets, account, [_portfolio_position(second, 50.0)], overwrite=True)
 
-    assert [row["quantity"] for row in replaced["rows"]] == [50.0]
+    assert [row["constant_notional_exposure"] for row in replaced["rows"]] == [50.0]
     assert _rows(engine, "SELECT portfolio_uid FROM ms_markets__targetpositionsts") == [
         {"portfolio_uid": second.hex}
     ]
@@ -433,7 +412,7 @@ def test_a_retired_portfolio_refuses_the_target_snapshot_and_nothing_is_written(
     live, retired = _portfolio(engine), _portfolio(engine, retired=True)
 
     result = _write_target(
-        sqlite_markets, account, [_portfolio_position(engine, live), _portfolio_position(engine, retired)]
+        sqlite_markets, account, [_portfolio_position(live), _portfolio_position(retired)]
     )
 
     assert result["rows"] == []
@@ -452,7 +431,7 @@ def test_clearing_the_target_writes_an_empty_position_set_and_deactivates_the_al
     engine = sqlite_markets.engine
     account = _account(engine)
     portfolio = _portfolio(engine)
-    _write_target(sqlite_markets, account, [_portfolio_position(engine, portfolio)])
+    _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
 
     later = WHEN + dt.timedelta(days=1)
     cleared = replace_account_target_positions_snapshot(
@@ -485,7 +464,7 @@ def test_clearing_over_an_existing_snapshot_is_refused_without_overwrite(sqlite_
     engine = sqlite_markets.engine
     account = _account(engine)
     portfolio = _portfolio(engine)
-    _write_target(sqlite_markets, account, [_portfolio_position(engine, portfolio)])
+    _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
 
     refused = _write_target(sqlite_markets, account, [])
 
@@ -678,7 +657,6 @@ def test_the_target_service_writes_reads_back_and_refuses_repeats_and_retired_po
     engine = sqlite_markets.engine
     account = _account(engine)
     live, retired = _portfolio(engine), _portfolio(engine, retired=True)
-    basket_asset = _asset(engine, "BASKET")
 
     def add(portfolio, when=WHEN):
         return add_account_target_positions_snapshot_response(
@@ -689,8 +667,7 @@ def test_the_target_service_writes_reads_back_and_refuses_repeats_and_retired_po
                 {
                     "target_type": "portfolio",
                     "portfolio_uid": str(portfolio),
-                    "asset_uid": str(basket_asset),
-                    "quantity": 100.0,
+                    "constant_notional_exposure": 100.0,
                 }
             ],
         )
@@ -705,3 +682,67 @@ def test_the_target_service_writes_reads_back_and_refuses_repeats_and_retired_po
         add(retired, WHEN + dt.timedelta(days=1))
     assert _count(engine, "ms_markets__positionset") == 1
     assert _count(engine, "ms_markets__targetpositionsts") == 1
+
+
+def test_writing_an_exposure_to_a_portfolio_creates_its_virtual_fund(sqlite_markets) -> None:
+    """A fund exists from the moment it is requested, and is created once (ADR 0054)."""
+
+    from msm.services import add_account_target_positions_snapshot_response
+    from msm.services.accounts.account_virtual_allocations import (
+        virtual_fund_unique_identifier_for_target,
+    )
+
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    asset = _asset(engine, "AAPL")
+    first, second = _portfolio(engine), _portfolio(engine)
+
+    def add(positions, when):
+        return add_account_target_positions_snapshot_response(
+            sqlite_markets.context,
+            account_uid=str(account),
+            target_positions_date=when,
+            positions=positions,
+        )
+
+    def exposure(portfolio, **value):
+        return {"target_type": "portfolio", "portfolio_uid": str(portfolio), **value}
+
+    add([exposure(first, weight_notional_exposure=0.4)], WHEN)
+    funds = _rows(
+        engine, "SELECT uid, unique_identifier, account_uid, target_portfolio_uid FROM ms_markets__virtualfund"
+    )
+    (allocation,) = _rows(engine, "SELECT uid FROM ms_markets__accounttargetallocation")
+
+    assert [(row["account_uid"], row["target_portfolio_uid"]) for row in funds] == [
+        (account.hex, first.hex)
+    ]
+    # The key is the one an allocation looks the fund up by.
+    assert funds[0]["unique_identifier"] == virtual_fund_unique_identifier_for_target(
+        account_uid=account,
+        target_portfolio_uid=first,
+        account_target_allocation_uid=allocation["uid"],
+    )
+    assert _count(engine, "ms_markets__virtualfundholdingsset") == 0
+
+    # A later target keeps the first fund and creates only the new one.
+    add(
+        [
+            exposure(first, weight_notional_exposure=0.3),
+            exposure(second, constant_notional_exposure=300_000.0),
+        ],
+        WHEN + dt.timedelta(days=1),
+    )
+    later = _rows(engine, "SELECT uid, target_portfolio_uid FROM ms_markets__virtualfund")
+    assert {row["target_portfolio_uid"]: row["uid"] for row in later} == {
+        first.hex: funds[0]["uid"],
+        second.hex: next(row["uid"] for row in later if row["target_portfolio_uid"] == second.hex),
+    }
+    assert len(later) == 2
+
+    # A target of direct assets requests no fund.
+    add(
+        [{"target_type": "asset", "asset_uid": str(asset), "single_asset_quantity": 10.0}],
+        WHEN + dt.timedelta(days=2),
+    )
+    assert _count(engine, "ms_markets__virtualfund") == 2

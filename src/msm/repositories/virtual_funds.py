@@ -21,6 +21,7 @@ from sqlalchemy import (
     func,
     insert,
     literal,
+    or_,
     select,
     update,
     values,
@@ -38,7 +39,10 @@ from msm.repositories.base import (
     resolve_markets_sql_target,
 )
 from msm.models import VirtualFundHoldingsSetTable, VirtualFundTable
-from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.virtual_funds.storage import (
+    AccountAllocationLinesStorage,
+    VirtualFundHoldingsStorage,
+)
 
 # Guard label of the SQLite statement list. It stops the whole write when the
 # snapshot is already allocated, or when a fund belongs to another account, as the
@@ -280,17 +284,225 @@ def search_virtual_funds_by_unique_identifiers(
 
 
 def _snapshot_is_allocated(account_uid: Any, source: Any) -> Any:
-    """True when one of the account's funds already holds a set for the snapshot."""
+    """True when the account's holdings snapshot already has an allocation.
+
+    An allocation leaves its lines, and a holdings set per fund. Either marks the
+    snapshot: an allocation written before the lines were recorded has only sets.
+    """
 
     existing_fund = VirtualFundTable.__table__.alias("existing_fund")
     existing_set = VirtualFundHoldingsSetTable.__table__.alias("existing_set")
-    return (
+    existing_line = AccountAllocationLinesStorage.__table__.alias("existing_line")
+    return or_(
         select(existing_set.c.uid)
         .join(existing_fund, existing_fund.c.uid == existing_set.c.virtual_fund_uid)
         .where(existing_fund.c.account_uid == account_uid)
         .where(existing_set.c.source_account_holdings_set_uid == source)
-        .exists()
+        .exists(),
+        select(existing_line.c.owner_uid)
+        .where(existing_line.c.account_uid == account_uid)
+        .where(existing_line.c.holdings_set_uid == source)
+        .exists(),
     )
+
+
+def build_search_account_allocation_lines_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: uuid.UUID | str,
+    source_account_holdings_set_uid: uuid.UUID | str | None = None,
+    time_index: dt.datetime | None = None,
+    limit: int = 5_000,
+) -> MetaTableCompiledSQLOperation:
+    """Select the lines of one allocation of an account's holdings.
+
+    The allocation is the one of ``source_account_holdings_set_uid``, or the one
+    at ``time_index``, or with neither the account's latest. One row per owner
+    and asset, with the fund's key and portfolio on a fund line.
+    """
+
+    lines = AccountAllocationLinesStorage
+    account = uuid.UUID(str(account_uid))
+    if source_account_holdings_set_uid is not None:
+        which = lines.holdings_set_uid == uuid.UUID(
+            str(source_account_holdings_set_uid)
+        )
+    elif time_index is not None:
+        which = lines.time_index == time_index
+    else:
+        latest = AccountAllocationLinesStorage.__table__.alias("latest_line")
+        which = (
+            lines.time_index
+            == select(func.max(latest.c.time_index))
+            .where(latest.c.account_uid == account)
+            .scalar_subquery()
+        )
+    statement = (
+        select(
+            lines.time_index,
+            lines.holdings_set_uid,
+            lines.owner_type,
+            lines.owner_uid,
+            lines.asset_identifier,
+            lines.account_uid,
+            lines.virtual_fund_uid,
+            lines.target_quantity,
+            lines.target_direction,
+            lines.assigned_quantity,
+            lines.assigned_direction,
+            lines.allocation_strategy,
+            lines.extra_details,
+            VirtualFundTable.unique_identifier.label("virtual_fund_unique_identifier"),
+            VirtualFundTable.target_portfolio_uid.label("target_portfolio_uid"),
+        )
+        .select_from(lines)
+        .outerjoin(VirtualFundTable, VirtualFundTable.uid == lines.virtual_fund_uid)
+        .where(lines.account_uid == account)
+        .where(which)
+        .order_by(lines.owner_type.desc(), lines.owner_uid, lines.asset_identifier)
+        .limit(limit)
+    )
+    return compile_markets_statement(statement, context=context, operation="select")
+
+
+def search_account_allocation_lines(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_search_account_allocation_lines_operation(context, **kwargs),
+        context=context,
+    )
+
+
+_FUND_INPUT_COLUMNS = (
+    ("unique_identifier", String),
+    ("target_portfolio_uid", Uuid),
+    ("virtual_fund_uid", Uuid),
+    ("holdings_set_uid", Uuid),
+)
+_HOLDING_INPUT_COLUMNS = (
+    ("fund_unique_identifier", String),
+    ("asset_identifier", String),
+    ("allocated_quantity", Float),
+    ("allocation_strategy", String),
+    ("direction", SmallInteger),
+    ("extra_details", None),
+)
+_LINE_INPUT_COLUMNS = (
+    ("owner_type", String),
+    ("fund_unique_identifier", String),
+    ("asset_identifier", String),
+    ("target_quantity", Float),
+    ("target_direction", SmallInteger),
+    ("assigned_quantity", Float),
+    ("assigned_direction", SmallInteger),
+    ("allocation_strategy", String),
+    ("extra_details", None),
+)
+_HOLDING_COLUMNS = [
+    "time_index",
+    "virtual_fund_uid",
+    "asset_identifier",
+    "virtual_fund_holdings_set_uid",
+    "source_account_holdings_set_uid",
+    "allocated_quantity",
+    "allocation_strategy",
+    "direction",
+    "extra_details",
+]
+_LINE_COLUMNS = [
+    "time_index",
+    "holdings_set_uid",
+    "owner_type",
+    "owner_uid",
+    "asset_identifier",
+    "account_uid",
+    "virtual_fund_uid",
+    "target_quantity",
+    "target_direction",
+    "assigned_quantity",
+    "assigned_direction",
+    "allocation_strategy",
+    "extra_details",
+]
+
+
+def _input_values(
+    name: str,
+    columns: Sequence[tuple[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    postgresql: bool,
+) -> Any:
+    """The rows of one write input as a ``VALUES`` CTE.
+
+    PostgreSQL needs each value cast to its column's type. SQLite binds without
+    casts: it casts ``DATETIME`` and ``JSON`` to numbers.
+    """
+
+    json_type = JSONB if postgresql else JSON
+
+    def type_of(kind: Any) -> Any:
+        if kind is None:
+            return json_type()
+        return Uuid(as_uuid=True) if kind is Uuid else kind()
+
+    def value(key: str, kind: Any, row: Mapping[str, Any], index: int) -> Any:
+        raw = row.get(key)
+        if kind is Uuid:
+            raw = uuid.UUID(str(raw))
+        elif kind is Float:
+            raw = float(raw)
+        elif kind is SmallInteger:
+            raw = int(raw)
+        elif kind is None:
+            raw = dict(raw or {})
+        elif raw is not None:
+            raw = str(raw)
+        parameter = bindparam(f"{name}_{key}_{index}", value=raw, type_=type_of(kind))
+        return cast(parameter, type_of(kind)) if postgresql else parameter
+
+    return (
+        values(*(column(key, type_of(kind)) for key, kind in columns), name=name)
+        .data(
+            [
+                tuple(value(key, kind, row, index) for key, kind in columns)
+                for index, row in enumerate(rows)
+            ]
+        )
+        .cte(name)
+    )
+
+
+def _allocation_inputs(
+    funds: Sequence[Mapping[str, Any]],
+    lines: Sequence[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Flatten the write's funds, their holdings rows and the lines into input rows."""
+
+    fund_rows = [
+        {
+            "unique_identifier": fund["unique_identifier"],
+            "target_portfolio_uid": fund["target_portfolio_uid"],
+            "virtual_fund_uid": fund["virtual_fund_uid"],
+            "holdings_set_uid": fund["holdings_set_uid"],
+        }
+        for fund in funds
+    ]
+    holding_rows = [
+        {
+            "fund_unique_identifier": fund["unique_identifier"],
+            "asset_identifier": holding["asset_identifier"],
+            "allocated_quantity": holding["allocated_quantity"],
+            "allocation_strategy": holding["allocation_strategy"],
+            "direction": holding.get("direction", 1),
+            "extra_details": holding.get("extra_details"),
+        }
+        for fund in funds
+        for holding in fund.get("holdings") or ()
+    ]
+    return fund_rows, holding_rows, [dict(line) for line in lines]
 
 
 def build_write_account_virtual_fund_allocation_operation(
@@ -300,33 +512,37 @@ def build_write_account_virtual_fund_allocation_operation(
     source_account_holdings_set_uid: uuid.UUID | str,
     allocation_time: dt.datetime,
     funds: Sequence[Mapping[str, Any]],
+    lines: Sequence[Mapping[str, Any]] = (),
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
-    """Write the virtual-fund allocation of one holdings snapshot atomically (ADR 0053).
+    """Write the allocation of one account holdings snapshot atomically (ADR 0054).
 
-    Each fund gives ``unique_identifier``, ``target_portfolio_uid``, a
-    ``virtual_fund_uid`` to use when the fund is new, a ``holdings_set_uid`` and
-    its ``holdings`` rows. The write upserts the funds, inserts one holdings set
-    per fund and inserts the holdings rows. It returns the inserted rows.
+    ``funds`` are the virtual funds of the account's target. Each gives
+    ``unique_identifier``, ``target_portfolio_uid``, a ``virtual_fund_uid`` to use
+    when the fund is new, a ``holdings_set_uid`` and its ``holdings`` rows: what
+    the fund was assigned, which may be nothing.
+
+    ``lines`` are the allocation's record: one per owner and asset, with the sized
+    target and the assigned units. A line names its fund by
+    ``fund_unique_identifier``; a direct line leaves it null.
+
+    The write upserts the funds, inserts one holdings set per fund, the holdings
+    rows and the lines. It returns the last rows it inserted: the lines, else the
+    holdings rows, else the holdings sets.
 
     An applied allocation is account history, so nothing is replaced. The write
-    does nothing, and returns no rows, when one of the account's funds already
-    holds a set for the snapshot, or when a fund belongs to another account.
+    does nothing, and returns no rows, when the snapshot already has an
+    allocation, or when a fund belongs to another account.
 
     On PostgreSQL this is one statement. SQLite accepts only ``SELECT`` inside
     ``WITH``, so there the same steps run as a statement list in one transaction
     (MetaTables ADR 0026).
     """
 
-    if not funds:
-        raise ValueError("A virtual-fund allocation write requires at least one fund.")
+    if not funds and not lines:
+        raise ValueError("An allocation write requires at least one fund or one line.")
     if allocation_time.tzinfo is None or allocation_time.utcoffset() is None:
         raise ValueError("allocation_time must be a timezone-aware UTC timestamp.")
-    for fund in funds:
-        if not fund.get("holdings"):
-            raise ValueError(
-                f"Virtual fund {fund['unique_identifier']!r} has no holdings to write."
-            )
 
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
     normalized_time = allocation_time.astimezone(dt.UTC)
@@ -337,6 +553,7 @@ def build_write_account_virtual_fund_allocation_operation(
                 source_account_holdings_set_uid=source_account_holdings_set_uid,
                 allocation_time=normalized_time,
                 funds=funds,
+                lines=lines,
             ),
             context=context,
             operation="upsert",
@@ -360,170 +577,150 @@ def build_write_account_virtual_fund_allocation_operation(
         bindparam("allocation_time", value=normalized_time, type_=DateTime(timezone=True)),
         DateTime(timezone=True),
     )
+    fund_rows, holding_rows, line_rows = _allocation_inputs(funds, lines)
+    not_allocated = ~_snapshot_is_allocated(account_uid_param, source_param)
 
-    fund_rows = []
-    holding_rows = []
-    for fund_index, fund in enumerate(funds):
-        unique_identifier = str(fund["unique_identifier"])
-        fund_rows.append(
+    # Each step is an INSERT. The last one that has rows is the statement; the
+    # earlier ones are data-modifying CTEs, which PostgreSQL runs to completion
+    # whether or not the statement reads them.
+    steps: list[Any] = []
+    ctes: list[Any] = []
+    upserted_funds = None
+    gate = not_allocated
+    if fund_rows:
+        fund_inputs = _input_values("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=True)
+        funds_insert = postgresql_insert(VirtualFundTable).from_select(
+            ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+            select(
+                fund_inputs.c.virtual_fund_uid,
+                fund_inputs.c.unique_identifier,
+                account_uid_param,
+                fund_inputs.c.target_portfolio_uid,
+            ).where(not_allocated),
+        )
+        upserted_funds = (
+            funds_insert.on_conflict_do_update(
+                index_elements=[VirtualFundTable.unique_identifier],
+                set_={"target_portfolio_uid": funds_insert.excluded.target_portfolio_uid},
+                where=VirtualFundTable.account_uid == funds_insert.excluded.account_uid,
+            )
+            .returning(VirtualFundTable.uid, VirtualFundTable.unique_identifier)
+            .cte("upserted_funds")
+        )
+        ctes += [fund_inputs, upserted_funds]
+        # Every fund must have been written; a fund of another account is not taken over.
+        gate = select(func.count()).select_from(upserted_funds).scalar_subquery() == literal(
+            len(fund_rows)
+        )
+        steps.append(
             (
-                bindparam(
-                    f"fund_unique_identifier_{fund_index}", value=unique_identifier, type_=String()
-                ),
-                _uuid_value(
-                    f"fund_target_portfolio_uid_{fund_index}", fund["target_portfolio_uid"]
-                ),
-                _uuid_value(f"fund_uid_{fund_index}", fund["virtual_fund_uid"]),
-                _uuid_value(f"fund_holdings_set_uid_{fund_index}", fund["holdings_set_uid"]),
-            )
-        )
-        for holding in fund["holdings"]:
-            index = len(holding_rows)
-            holding_rows.append(
-                (
-                    bindparam(f"holding_fund_{index}", value=unique_identifier, type_=String()),
-                    bindparam(
-                        f"holding_asset_identifier_{index}",
-                        value=str(holding["asset_identifier"]),
-                        type_=String(),
-                    ),
-                    cast(
-                        bindparam(
-                            f"holding_allocated_quantity_{index}",
-                            value=float(holding["allocated_quantity"]),
-                            type_=Float(),
-                        ),
-                        Float(),
-                    ),
-                    bindparam(
-                        f"holding_allocation_strategy_{index}",
-                        value=str(holding["allocation_strategy"]),
-                        type_=String(),
-                    ),
-                    cast(
-                        bindparam(
-                            f"holding_direction_{index}",
-                            value=int(holding.get("direction", 1)),
-                            type_=SmallInteger(),
-                        ),
-                        SmallInteger(),
-                    ),
-                    cast(
-                        bindparam(
-                            f"holding_extra_details_{index}",
-                            value=dict(holding.get("extra_details") or {}),
-                            type_=JSONB(),
-                        ),
-                        JSONB(),
-                    ),
+                "holdings_sets",
+                insert(VirtualFundHoldingsSetTable)
+                .from_select(
+                    ["uid", "virtual_fund_uid", "source_account_holdings_set_uid", "time_index"],
+                    select(
+                        fund_inputs.c.holdings_set_uid,
+                        upserted_funds.c.uid,
+                        source_param,
+                        time_param,
+                    )
+                    .select_from(
+                        fund_inputs.join(
+                            upserted_funds,
+                            upserted_funds.c.unique_identifier == fund_inputs.c.unique_identifier,
+                        )
+                    )
+                    .where(gate),
                 )
+                .returning(
+                    VirtualFundHoldingsSetTable.uid, VirtualFundHoldingsSetTable.virtual_fund_uid
+                ),
             )
-
-    fund_inputs = (
-        values(
-            column("unique_identifier", String()),
-            column("target_portfolio_uid", Uuid(as_uuid=True)),
-            column("virtual_fund_uid", Uuid(as_uuid=True)),
-            column("holdings_set_uid", Uuid(as_uuid=True)),
-            name="fund_inputs",
         )
-        .data(fund_rows)
-        .cte("fund_inputs")
-    )
-    holding_inputs = (
-        values(
-            column("fund_unique_identifier", String()),
-            column("asset_identifier", String()),
-            column("allocated_quantity", Float()),
-            column("allocation_strategy", String()),
-            column("direction", SmallInteger()),
-            column("extra_details", JSONB()),
-            name="holding_inputs",
+    if holding_rows:
+        holding_inputs = _input_values(
+            "holding_inputs", _HOLDING_INPUT_COLUMNS, holding_rows, postgresql=True
         )
-        .data(holding_rows)
-        .cte("holding_inputs")
-    )
-
-    funds_insert = postgresql_insert(VirtualFundTable).from_select(
-        ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
-        select(
-            fund_inputs.c.virtual_fund_uid,
-            fund_inputs.c.unique_identifier,
-            account_uid_param,
-            fund_inputs.c.target_portfolio_uid,
-        ).where(~_snapshot_is_allocated(account_uid_param, source_param)),
-    )
-    upserted_funds = (
-        funds_insert.on_conflict_do_update(
-            index_elements=[VirtualFundTable.unique_identifier],
-            set_={"target_portfolio_uid": funds_insert.excluded.target_portfolio_uid},
-            where=VirtualFundTable.account_uid == funds_insert.excluded.account_uid,
-        )
-        .returning(VirtualFundTable.uid, VirtualFundTable.unique_identifier)
-        .cte("upserted_funds")
-    )
-    # Every fund must have been written; a fund of another account is not taken over.
-    all_funds_written = select(func.count()).select_from(
-        upserted_funds
-    ).scalar_subquery() == literal(len(funds))
-    holdings_sets = (
-        insert(VirtualFundHoldingsSetTable)
-        .from_select(
-            ["uid", "virtual_fund_uid", "source_account_holdings_set_uid", "time_index"],
-            select(
-                fund_inputs.c.holdings_set_uid,
-                upserted_funds.c.uid,
-                source_param,
-                time_param,
-            )
-            .select_from(
-                fund_inputs.join(
-                    upserted_funds,
-                    upserted_funds.c.unique_identifier == fund_inputs.c.unique_identifier,
+        fund_set_uids = fund_inputs.alias("fund_set_uids")
+        ctes.append(holding_inputs)
+        steps.append(
+            (
+                "inserted_holdings",
+                insert(VirtualFundHoldingsStorage)
+                .from_select(
+                    _HOLDING_COLUMNS,
+                    select(
+                        time_param,
+                        upserted_funds.c.uid,
+                        holding_inputs.c.asset_identifier,
+                        fund_set_uids.c.holdings_set_uid,
+                        source_param,
+                        holding_inputs.c.allocated_quantity,
+                        holding_inputs.c.allocation_strategy,
+                        holding_inputs.c.direction,
+                        holding_inputs.c.extra_details,
+                    )
+                    .select_from(
+                        holding_inputs.join(
+                            upserted_funds,
+                            upserted_funds.c.unique_identifier
+                            == holding_inputs.c.fund_unique_identifier,
+                        ).join(
+                            fund_set_uids,
+                            fund_set_uids.c.unique_identifier
+                            == holding_inputs.c.fund_unique_identifier,
+                        )
+                    )
+                    .where(gate),
                 )
+                .returning(VirtualFundHoldingsStorage),
             )
-            .where(all_funds_written),
         )
-        .returning(VirtualFundHoldingsSetTable.uid, VirtualFundHoldingsSetTable.virtual_fund_uid)
-        .cte("holdings_sets")
-    )
-    statement = (
-        insert(VirtualFundHoldingsStorage)
-        .from_select(
-            [
-                "time_index",
-                "virtual_fund_uid",
-                "asset_identifier",
-                "virtual_fund_holdings_set_uid",
-                "source_account_holdings_set_uid",
-                "allocated_quantity",
-                "allocation_strategy",
-                "direction",
-                "extra_details",
-            ],
-            select(
-                time_param,
-                upserted_funds.c.uid,
-                holding_inputs.c.asset_identifier,
-                holdings_sets.c.uid,
-                source_param,
-                holding_inputs.c.allocated_quantity,
-                holding_inputs.c.allocation_strategy,
-                holding_inputs.c.direction,
-                holding_inputs.c.extra_details,
-            ).select_from(
-                holding_inputs.join(
-                    upserted_funds,
-                    upserted_funds.c.unique_identifier == holding_inputs.c.fund_unique_identifier,
-                ).join(holdings_sets, holdings_sets.c.virtual_fund_uid == upserted_funds.c.uid)
-            ),
+    if line_rows:
+        line_inputs = _input_values("line_inputs", _LINE_INPUT_COLUMNS, line_rows, postgresql=True)
+        ctes.append(line_inputs)
+        if upserted_funds is None:
+            line_source = line_inputs
+            fund_uid: Any = cast(literal(None), Uuid(as_uuid=True))
+        else:
+            line_source = line_inputs.outerjoin(
+                upserted_funds,
+                upserted_funds.c.unique_identifier == line_inputs.c.fund_unique_identifier,
+            )
+            fund_uid = upserted_funds.c.uid
+        steps.append(
+            (
+                "inserted_lines",
+                insert(AccountAllocationLinesStorage)
+                .from_select(
+                    _LINE_COLUMNS,
+                    select(
+                        time_param,
+                        source_param,
+                        line_inputs.c.owner_type,
+                        func.coalesce(fund_uid, account_uid_param),
+                        line_inputs.c.asset_identifier,
+                        account_uid_param,
+                        fund_uid,
+                        line_inputs.c.target_quantity,
+                        line_inputs.c.target_direction,
+                        line_inputs.c.assigned_quantity,
+                        line_inputs.c.assigned_direction,
+                        line_inputs.c.allocation_strategy,
+                        line_inputs.c.extra_details,
+                    )
+                    .select_from(line_source)
+                    .where(gate),
+                )
+                .returning(AccountAllocationLinesStorage),
+            )
         )
-        .returning(VirtualFundHoldingsStorage)
-        .add_cte(fund_inputs)
-        .add_cte(holding_inputs)
-        .add_cte(upserted_funds)
-        .add_cte(holdings_sets)
-    )
+
+    *earlier, (_, statement) = steps
+    for cte in ctes:
+        statement = statement.add_cte(cte)
+    for name, step in earlier:
+        statement = statement.add_cte(step.cte(name))
     return compile_markets_statement(
         statement,
         context=context,
@@ -539,14 +736,15 @@ def _virtual_fund_allocation_statement_list(
     source_account_holdings_set_uid: uuid.UUID | str,
     allocation_time: dt.datetime,
     funds: Sequence[Mapping[str, Any]],
+    lines: Sequence[Mapping[str, Any]] = (),
 ) -> list[GuardedStatement | Any]:
     """The allocation write as ordered statements for one transaction.
 
-    Upsert the funds, which the guard requires to be every one of them: it
-    writes none when the snapshot is already allocated, and it does not take
-    over a fund of another account. Then insert one holdings set per fund, and
-    the holdings rows. Later statements find funds and sets by key. Values bind
-    without casts: SQLite casts ``DATETIME`` and ``JSON`` to numbers.
+    The first statement is the guard: it writes nothing when the snapshot already
+    has an allocation, and with funds it requires every one of them to be
+    upserted, so a fund of another account is not taken over. Then one holdings
+    set per fund, the holdings rows and the lines. Later statements find funds
+    and sets by key. The last statement answers its rows.
     """
 
     account = uuid.UUID(str(account_uid))
@@ -561,178 +759,141 @@ def _virtual_fund_allocation_statement_list(
     def time_param() -> Any:
         return bindparam("allocation_time", value=allocation_time, type_=DateTime(timezone=True))
 
+    fund_rows, holding_rows, line_rows = _allocation_inputs(funds, lines)
+
     def fund_inputs() -> Any:
-        return (
-            values(
-                column("unique_identifier", String()),
-                column("target_portfolio_uid", Uuid(as_uuid=True)),
-                column("virtual_fund_uid", Uuid(as_uuid=True)),
-                column("holdings_set_uid", Uuid(as_uuid=True)),
-                name="fund_inputs",
+        return _input_values("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=False)
+
+    not_allocated = ~_snapshot_is_allocated(account_param(), source_param())
+    statements: list[GuardedStatement | Any] = []
+    if not fund_rows:
+        statements.append(
+            GuardedStatement(
+                select(literal(1)).where(not_allocated),
+                expect_rows=1,
+                label=ALLOCATION_WRITE_GUARD,
             )
-            .data(
-                [
-                    (
-                        bindparam(
-                            f"fund_unique_identifier_{index}",
-                            value=str(fund["unique_identifier"]),
-                            type_=String(),
-                        ),
-                        bindparam(
-                            f"fund_target_portfolio_uid_{index}",
-                            value=uuid.UUID(str(fund["target_portfolio_uid"])),
-                            type_=Uuid(as_uuid=True),
-                        ),
-                        bindparam(
-                            f"fund_uid_{index}",
-                            value=uuid.UUID(str(fund["virtual_fund_uid"])),
-                            type_=Uuid(as_uuid=True),
-                        ),
-                        bindparam(
-                            f"fund_holdings_set_uid_{index}",
-                            value=uuid.UUID(str(fund["holdings_set_uid"])),
-                            type_=Uuid(as_uuid=True),
+        )
+    else:
+        new_funds = fund_inputs()
+        funds_insert = sqlite_insert(VirtualFundTable).from_select(
+            ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+            select(
+                new_funds.c.virtual_fund_uid,
+                new_funds.c.unique_identifier,
+                account_param(),
+                new_funds.c.target_portfolio_uid,
+            )
+            .select_from(new_funds)
+            .where(not_allocated),
+        )
+        statements.append(
+            GuardedStatement(
+                funds_insert.on_conflict_do_update(
+                    index_elements=[VirtualFundTable.unique_identifier],
+                    set_={"target_portfolio_uid": funds_insert.excluded.target_portfolio_uid},
+                    where=VirtualFundTable.account_uid == funds_insert.excluded.account_uid,
+                ).returning(VirtualFundTable.uid),
+                expect_rows=len(fund_rows),
+                label=ALLOCATION_WRITE_GUARD,
+            )
+        )
+        set_rows = fund_inputs()
+        statements.append(
+            insert(VirtualFundHoldingsSetTable)
+            .from_select(
+                ["uid", "virtual_fund_uid", "source_account_holdings_set_uid", "time_index"],
+                select(
+                    set_rows.c.holdings_set_uid,
+                    VirtualFundTable.uid,
+                    source_param(),
+                    time_param(),
+                )
+                .select_from(
+                    set_rows.join(
+                        VirtualFundTable,
+                        VirtualFundTable.unique_identifier == set_rows.c.unique_identifier,
+                    )
+                )
+                .where(VirtualFundTable.account_uid == account_param()),
+            )
+            .returning(
+                VirtualFundHoldingsSetTable.uid, VirtualFundHoldingsSetTable.virtual_fund_uid
+            )
+        )
+    if holding_rows:
+        holding_inputs = _input_values(
+            "holding_inputs", _HOLDING_INPUT_COLUMNS, holding_rows, postgresql=False
+        )
+        statements.append(
+            insert(VirtualFundHoldingsStorage)
+            .from_select(
+                _HOLDING_COLUMNS,
+                select(
+                    time_param(),
+                    VirtualFundTable.uid,
+                    holding_inputs.c.asset_identifier,
+                    VirtualFundHoldingsSetTable.uid,
+                    source_param(),
+                    holding_inputs.c.allocated_quantity,
+                    holding_inputs.c.allocation_strategy,
+                    holding_inputs.c.direction,
+                    holding_inputs.c.extra_details,
+                )
+                .select_from(
+                    holding_inputs.join(
+                        VirtualFundTable,
+                        VirtualFundTable.unique_identifier
+                        == holding_inputs.c.fund_unique_identifier,
+                    ).join(
+                        VirtualFundHoldingsSetTable,
+                        and_(
+                            VirtualFundHoldingsSetTable.virtual_fund_uid == VirtualFundTable.uid,
+                            VirtualFundHoldingsSetTable.source_account_holdings_set_uid
+                            == source_param(),
                         ),
                     )
-                    for index, fund in enumerate(funds)
-                ]
-            )
-            .cte("fund_inputs")
-        )
-
-    fund_rows = fund_inputs()
-    funds_insert = sqlite_insert(VirtualFundTable).from_select(
-        ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
-        select(
-            fund_rows.c.virtual_fund_uid,
-            fund_rows.c.unique_identifier,
-            account_param(),
-            fund_rows.c.target_portfolio_uid,
-        )
-        .select_from(fund_rows)
-        .where(~_snapshot_is_allocated(account_param(), source_param())),
-    )
-    upsert_funds = GuardedStatement(
-        funds_insert.on_conflict_do_update(
-            index_elements=[VirtualFundTable.unique_identifier],
-            set_={"target_portfolio_uid": funds_insert.excluded.target_portfolio_uid},
-            where=VirtualFundTable.account_uid == funds_insert.excluded.account_uid,
-        ).returning(VirtualFundTable.uid),
-        expect_rows=len(funds),
-        label=ALLOCATION_WRITE_GUARD,
-    )
-
-    set_rows = fund_inputs()
-    insert_sets = insert(VirtualFundHoldingsSetTable).from_select(
-        ["uid", "virtual_fund_uid", "source_account_holdings_set_uid", "time_index"],
-        select(
-            set_rows.c.holdings_set_uid,
-            VirtualFundTable.uid,
-            source_param(),
-            time_param(),
-        )
-        .select_from(
-            set_rows.join(
-                VirtualFundTable, VirtualFundTable.unique_identifier == set_rows.c.unique_identifier
-            )
-        )
-        .where(VirtualFundTable.account_uid == account_param()),
-    )
-
-    holding_rows = []
-    for fund in funds:
-        for holding in fund["holdings"]:
-            index = len(holding_rows)
-            holding_rows.append(
-                (
-                    bindparam(
-                        f"holding_fund_{index}",
-                        value=str(fund["unique_identifier"]),
-                        type_=String(),
-                    ),
-                    bindparam(
-                        f"holding_asset_identifier_{index}",
-                        value=str(holding["asset_identifier"]),
-                        type_=String(),
-                    ),
-                    bindparam(
-                        f"holding_allocated_quantity_{index}",
-                        value=float(holding["allocated_quantity"]),
-                        type_=Float(),
-                    ),
-                    bindparam(
-                        f"holding_allocation_strategy_{index}",
-                        value=str(holding["allocation_strategy"]),
-                        type_=String(),
-                    ),
-                    bindparam(
-                        f"holding_direction_{index}",
-                        value=int(holding.get("direction", 1)),
-                        type_=SmallInteger(),
-                    ),
-                    bindparam(
-                        f"holding_extra_details_{index}",
-                        value=dict(holding.get("extra_details") or {}),
-                        type_=JSON(),
-                    ),
                 )
+                .where(VirtualFundTable.account_uid == account_param()),
             )
-    holding_inputs = (
-        values(
-            column("fund_unique_identifier", String()),
-            column("asset_identifier", String()),
-            column("allocated_quantity", Float()),
-            column("allocation_strategy", String()),
-            column("direction", SmallInteger()),
-            column("extra_details", JSON()),
-            name="holding_inputs",
+            .returning(VirtualFundHoldingsStorage)
         )
-        .data(holding_rows)
-        .cte("holding_inputs")
-    )
-    insert_rows = (
-        insert(VirtualFundHoldingsStorage)
-        .from_select(
-            [
-                "time_index",
-                "virtual_fund_uid",
-                "asset_identifier",
-                "virtual_fund_holdings_set_uid",
-                "source_account_holdings_set_uid",
-                "allocated_quantity",
-                "allocation_strategy",
-                "direction",
-                "extra_details",
-            ],
-            select(
-                time_param(),
-                VirtualFundTable.uid,
-                holding_inputs.c.asset_identifier,
-                VirtualFundHoldingsSetTable.uid,
-                source_param(),
-                holding_inputs.c.allocated_quantity,
-                holding_inputs.c.allocation_strategy,
-                holding_inputs.c.direction,
-                holding_inputs.c.extra_details,
-            )
-            .select_from(
-                holding_inputs.join(
-                    VirtualFundTable,
-                    VirtualFundTable.unique_identifier == holding_inputs.c.fund_unique_identifier,
-                ).join(
-                    VirtualFundHoldingsSetTable,
-                    and_(
-                        VirtualFundHoldingsSetTable.virtual_fund_uid == VirtualFundTable.uid,
-                        VirtualFundHoldingsSetTable.source_account_holdings_set_uid
-                        == source_param(),
-                    ),
-                )
-            )
-            .where(VirtualFundTable.account_uid == account_param()),
+    if line_rows:
+        line_inputs = _input_values(
+            "line_inputs", _LINE_INPUT_COLUMNS, line_rows, postgresql=False
         )
-        .returning(VirtualFundHoldingsStorage)
-    )
-    return [upsert_funds, insert_sets, insert_rows]
+        statements.append(
+            insert(AccountAllocationLinesStorage)
+            .from_select(
+                _LINE_COLUMNS,
+                select(
+                    time_param(),
+                    source_param(),
+                    line_inputs.c.owner_type,
+                    func.coalesce(VirtualFundTable.uid, account_param()),
+                    line_inputs.c.asset_identifier,
+                    account_param(),
+                    VirtualFundTable.uid,
+                    line_inputs.c.target_quantity,
+                    line_inputs.c.target_direction,
+                    line_inputs.c.assigned_quantity,
+                    line_inputs.c.assigned_direction,
+                    line_inputs.c.allocation_strategy,
+                    line_inputs.c.extra_details,
+                ).select_from(
+                    line_inputs.outerjoin(
+                        VirtualFundTable,
+                        and_(
+                            VirtualFundTable.unique_identifier
+                            == line_inputs.c.fund_unique_identifier,
+                            VirtualFundTable.account_uid == account_param(),
+                        ),
+                    )
+                ),
+            )
+            .returning(AccountAllocationLinesStorage)
+        )
+    return statements
 
 
 def write_account_virtual_fund_allocation(
@@ -746,18 +907,13 @@ def write_account_virtual_fund_allocation(
     )
 
 
-def _uuid_value(name: str, value: uuid.UUID | str) -> Any:
-    return cast(
-        bindparam(name, value=uuid.UUID(str(value)), type_=Uuid(as_uuid=True)),
-        Uuid(as_uuid=True),
-    )
-
-
 __all__ = [
     "ALLOCATION_WRITE_GUARD",
+    "build_search_account_allocation_lines_operation",
     "build_search_account_virtual_fund_allocation_operation",
     "build_search_virtual_funds_by_unique_identifiers_operation",
     "build_write_account_virtual_fund_allocation_operation",
+    "search_account_allocation_lines",
     "search_account_virtual_fund_allocation",
     "search_virtual_funds_by_unique_identifiers",
     "write_account_virtual_fund_allocation",

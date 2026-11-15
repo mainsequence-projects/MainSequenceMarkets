@@ -14,6 +14,7 @@ from msm.models import AssetTable, PortfolioTable, PositionSetTable, markets_sql
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.services.target_positions import (
     build_target_positions_frame,
+    expand_portfolio_target_positions,
     validate_target_position_payload,
 )
 from msm_portfolios.models import portfolio_sqlalchemy_models
@@ -54,22 +55,7 @@ def test_target_positions_storage_declares_target_index_names() -> None:
         "position_set_uid",
         "target_type",
         "target_uid",
-        "asset_uid",
     ]
-
-
-def test_target_positions_storage_stores_units_only() -> None:
-    columns = TargetPositionsStorage.__table__.columns
-
-    assert columns["quantity"].nullable is False
-    assert columns["direction"].nullable is False
-    assert columns["asset_uid"].nullable is False
-    assert columns["portfolio_uid"].nullable is True
-    assert not {
-        "weight_notional_exposure",
-        "constant_notional_exposure",
-        "single_asset_quantity",
-    } & set(columns.keys())
 
 
 def test_target_positions_storage_validates_target_type() -> None:
@@ -105,131 +91,94 @@ def test_target_positions_node_requires_real_frame() -> None:
         node.get_target_positions_frame()
 
 
-def test_target_positions_frame_accepts_asset_targets_and_fund_baskets() -> None:
+def test_target_positions_frame_accepts_asset_and_portfolio_targets() -> None:
     position_set_uid = uuid.uuid4()
-    direct_asset_uid = uuid.uuid4()
-    basket_asset_uids = [uuid.uuid4(), uuid.uuid4()]
+    asset_uid = uuid.uuid4()
     portfolio_uid = uuid.uuid4()
 
     frame = build_target_positions_frame(
         target_positions_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
         position_set_uid=position_set_uid,
         positions=[
-            {"asset_uid": direct_asset_uid, "quantity": "12"},
-            {"portfolio_uid": portfolio_uid, "asset_uid": basket_asset_uids[0], "quantity": 1000},
-            {
-                "portfolio_uid": portfolio_uid,
-                "asset_uid": basket_asset_uids[1],
-                "quantity": 40,
-                "direction": -1,
-            },
+            {"asset_uid": asset_uid, "weight_notional_exposure": "0.6"},
+            {"portfolio_uid": portfolio_uid, "weight_notional_exposure": "0.4"},
         ],
     )
 
     assert list(frame.index.names) == list(TargetPositionsStorage.__index_names__)
     flat = frame.reset_index()
     asset_row = flat[flat["target_type"] == TARGET_TYPE_ASSET].iloc[0]
-    basket = flat[flat["target_type"] == TARGET_TYPE_PORTFOLIO]
+    portfolio_row = flat[flat["target_type"] == TARGET_TYPE_PORTFOLIO].iloc[0]
     assert asset_row["position_set_uid"] == str(position_set_uid)
-    assert asset_row["asset_uid"] == str(direct_asset_uid)
-    assert asset_row["target_uid"] == str(direct_asset_uid)
-    assert asset_row["quantity"] == 12.0
-    assert asset_row["direction"] == 1
-    assert set(basket["portfolio_uid"]) == {str(portfolio_uid)}
-    assert set(basket["target_uid"]) == {str(portfolio_uid)}
-    assert set(basket["asset_uid"]) == {str(uid) for uid in basket_asset_uids}
-    short = basket[basket["asset_uid"] == str(basket_asset_uids[1])].iloc[0]
-    assert (short["quantity"], short["direction"]) == (40.0, -1)
-    assert str(flat["quantity"].dtype) == "float64"
-    assert str(flat["direction"].dtype) == "int16"
-
-
-def test_target_positions_frame_refuses_one_asset_twice_in_a_basket() -> None:
-    portfolio_uid = uuid.uuid4()
-    asset_uid = uuid.uuid4()
-
-    with pytest.raises(ValueError, match="duplicate rows"):
-        build_target_positions_frame(
-            target_positions_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
-            position_set_uid=uuid.uuid4(),
-            positions=[
-                {"portfolio_uid": portfolio_uid, "asset_uid": asset_uid, "quantity": 5},
-                {"portfolio_uid": portfolio_uid, "asset_uid": asset_uid, "quantity": 7},
-            ],
-        )
-
-
-def test_one_asset_can_be_a_direct_target_and_in_two_baskets() -> None:
-    asset_uid = uuid.uuid4()
-
-    frame = build_target_positions_frame(
-        target_positions_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
-        position_set_uid=uuid.uuid4(),
-        positions=[
-            {"asset_uid": asset_uid, "quantity": 1},
-            {"portfolio_uid": uuid.uuid4(), "asset_uid": asset_uid, "quantity": 500},
-            {"portfolio_uid": uuid.uuid4(), "asset_uid": asset_uid, "quantity": 300},
-        ],
-    )
-
-    assert len(frame) == 3
+    assert asset_row["asset_uid"] == str(asset_uid)
+    assert asset_row["target_uid"] == str(asset_uid)
+    assert portfolio_row["portfolio_uid"] == str(portfolio_uid)
+    assert portfolio_row["target_uid"] == str(portfolio_uid)
+    assert str(flat["weight_notional_exposure"].dtype) == "float64"
 
 
 def test_target_positions_reject_stale_asset_identifier() -> None:
     with pytest.raises(ValueError, match="not asset_identifier"):
-        validate_target_position_payload({"asset_identifier": "BTC", "quantity": 1})
-
-
-def test_target_positions_require_an_asset() -> None:
-    with pytest.raises(ValueError, match="must provide asset_uid"):
-        validate_target_position_payload({"portfolio_uid": uuid.uuid4(), "quantity": 1})
-
-
-@pytest.mark.parametrize("quantity", [None, 0, -5, "nan", "inf"])
-def test_target_positions_require_a_positive_quantity(quantity) -> None:
-    with pytest.raises(ValueError, match="quantity"):
-        validate_target_position_payload({"asset_uid": uuid.uuid4(), "quantity": quantity})
-
-
-@pytest.mark.parametrize("direction", [0, 2, -2, 0.5, "long"])
-def test_target_positions_require_a_known_direction(direction) -> None:
-    with pytest.raises(ValueError, match="direction must be 1 for long or -1 for short"):
         validate_target_position_payload(
-            {"asset_uid": uuid.uuid4(), "quantity": 1, "direction": direction}
+            {
+                "asset_identifier": "BTC",
+                "weight_notional_exposure": "0.25",
+            }
         )
 
 
-def test_target_positions_default_to_long() -> None:
-    payload = validate_target_position_payload({"asset_uid": uuid.uuid4(), "quantity": "2.5"})
-
-    assert (payload["quantity"], payload["direction"]) == (2.5, 1)
-
-
-@pytest.mark.parametrize(
-    "field_name",
-    ["weight_notional_exposure", "constant_notional_exposure", "single_asset_quantity"],
-)
-def test_target_positions_carry_no_value_exposure(field_name) -> None:
-    with pytest.raises(ValueError, match="must provide a quantity"):
-        validate_target_position_payload({"asset_uid": uuid.uuid4(), field_name: "0.25"})
-
-
-def test_target_type_must_match_the_row() -> None:
-    with pytest.raises(ValueError, match="target_type must be portfolio"):
+def test_target_positions_require_exactly_one_target_reference() -> None:
+    with pytest.raises(ValueError, match="exactly one of asset_uid or portfolio_uid"):
         validate_target_position_payload(
             {
                 "asset_uid": uuid.uuid4(),
                 "portfolio_uid": uuid.uuid4(),
-                "quantity": 1,
-                "target_type": "asset",
+                "weight_notional_exposure": "0.25",
             }
         )
-    with pytest.raises(ValueError, match="target_uid must match portfolio_uid"):
+
+
+def test_target_positions_require_exactly_one_exposure_shape() -> None:
+    with pytest.raises(ValueError, match="exactly one"):
         validate_target_position_payload(
             {
                 "asset_uid": uuid.uuid4(),
-                "portfolio_uid": uuid.uuid4(),
-                "quantity": 1,
-                "target_uid": uuid.uuid4(),
+                "weight_notional_exposure": "0.25",
+                "single_asset_quantity": "1",
             }
         )
+
+
+def test_portfolio_target_positions_reject_single_asset_quantity() -> None:
+    with pytest.raises(ValueError, match="cannot use single_asset_quantity"):
+        validate_target_position_payload(
+            {
+                "portfolio_uid": uuid.uuid4(),
+                "single_asset_quantity": "1",
+            }
+        )
+
+
+def test_portfolio_target_expansion_is_explicit() -> None:
+    position_set_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    frame = build_target_positions_frame(
+        target_positions_date=dt.datetime(2026, 5, 25, 10, tzinfo=dt.UTC),
+        position_set_uid=position_set_uid,
+        positions=[{"portfolio_uid": portfolio_uid, "weight_notional_exposure": "0.5"}],
+    )
+
+    with pytest.raises(ValueError, match="portfolio_weight_resolver"):
+        expand_portfolio_target_positions(frame)
+
+    expanded = expand_portfolio_target_positions(
+        frame,
+        portfolio_weight_resolver=lambda _portfolio_uid: [{"asset_uid": asset_uid, "weight": 0.25}],
+    )
+
+    row = expanded.iloc[0]
+    assert row["source_target_type"] == TARGET_TYPE_PORTFOLIO
+    assert row["portfolio_uid"] == str(portfolio_uid)
+    assert row["asset_uid"] == str(asset_uid)
+    assert row["weight_notional_exposure"] == 0.125

@@ -396,7 +396,8 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
         columns=(
             _column("account_uid", "Account", importance="primary"),
             _column("target_positions_date", "Target time", "datetime"),
-            _column("asset_count", "Basket assets", "number"),
+            _column("weight_notional_exposure", "Weight"),
+            _column("constant_notional_exposure", "Notional"),
             _column("account_target_allocation_uid", "Target allocation"),
             _column("position_set_uid", "Position set"),
         ),

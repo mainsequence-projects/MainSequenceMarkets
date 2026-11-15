@@ -52,8 +52,7 @@ def test_writes_the_target_without_building_paths(monkeypatch, client, account_u
                     "target_uid": asset_uid,
                     "asset_uid": asset_uid,
                     "unique_identifier": "ACME",
-                    "quantity": "25",
-                    "direction": 1,
+                    "weight_notional_exposure": "0.25",
                 }
             ],
         )
@@ -68,7 +67,7 @@ def test_writes_the_target_without_building_paths(monkeypatch, client, account_u
                 target_type="asset",
                 target_uid=asset_uid,
                 asset_uid=asset_uid,
-                quantity=25,
+                weight_notional_exposure=0.25,
             )
         ],
         overwrite=True,
@@ -84,49 +83,12 @@ def test_writes_the_target_without_building_paths(monkeypatch, client, account_u
 
 
 def test_validates_positions_before_sending(client, account_uid) -> None:
-    with pytest.raises(ValueError, match="quantity"):
+    with pytest.raises(ValueError, match="exactly one exposure field"):
         client.add_account_target_positions(
             account_uid,
             target_positions_date=TARGET_DATE,
             positions=[
                 {"target_type": "asset", "target_uid": "a", "asset_uid": "a"},
-            ],
-        )
-
-
-@pytest.mark.parametrize(
-    "position",
-    [
-        {"quantity": 0},
-        {"quantity": -5},
-        {"quantity": 5, "direction": 2},
-        {"weight_notional_exposure": 0.25},
-        {"quantity": 5, "portfolio_uid": "p"},
-    ],
-)
-def test_refuses_a_row_that_is_not_in_units(client, account_uid, position) -> None:
-    with pytest.raises(ValueError):
-        client.add_account_target_positions(
-            account_uid,
-            target_positions_date=TARGET_DATE,
-            positions=[
-                {"target_type": "asset", "target_uid": "a", "asset_uid": "a", **position},
-            ],
-        )
-
-
-def test_a_fund_basket_row_needs_its_asset(client, account_uid) -> None:
-    with pytest.raises(ValueError, match="asset_uid"):
-        client.add_account_target_positions(
-            account_uid,
-            target_positions_date=TARGET_DATE,
-            positions=[
-                {
-                    "target_type": "portfolio",
-                    "target_uid": "p",
-                    "portfolio_uid": "p",
-                    "quantity": 5,
-                },
             ],
         )
 

@@ -86,15 +86,12 @@ Rules:
   accounts.
 - `PositionSet` is a UTC timestamped target snapshot owned by one
   `AccountTargetAllocation`.
-- `TargetPositionsStorage` is owned by core `msm` and stores the target rows of a
-  `PositionSet` in units (ADR 0052). Every row is a positive `quantity` of one
-  asset (`asset_uid`, required) with a `direction`. A row with no `portfolio_uid`
-  is a direct target and `target_uid` is the `asset_uid`. The rows that share a
-  `portfolio_uid` are that virtual fund's unit basket and `target_uid` is the
-  `portfolio_uid`. There is no share of NAV and no notional amount on a row.
-- The caller sizes a basket at a sizing event with its own prices and rules, and
-  writes it. ms-markets records it and derives nothing. See
-  `.agents/skills/ms_markets/accounts/target_sizing/SKILL.md`.
+- `TargetPositionsStorage` is owned by core `msm` and stores actual target
+  exposure rows for a `PositionSet`. Each row uses exactly one concrete target
+  reference: `asset_uid` or `portfolio_uid`. `target_uid` must match the
+  selected concrete UID. Exactly one exposure field must be present per row:
+  `weight_notional_exposure`, `constant_notional_exposure`, or
+  `single_asset_quantity`.
 - `AccountHoldingsStorage` stores real holdings rows keyed by
   `(time_index, account_uid, asset_identifier)`.
 - Account holdings use positive `quantity` plus `direction` (`1` long, `-1`
@@ -203,10 +200,17 @@ contributed interpolation output table has already been migrated.
 ## Virtual-Fund Allocation Pattern
 
 Use `plan_account_virtual_fund_allocations(...)` to compute allocation before
-writing (ADR 0053). It takes `position_set_uid`, `valuation_time` and an optional
-`policy` (`{"id", "version", "arguments"}`); without one,
-`proportional_attribution` runs with its defaults. The target and the holdings
-are both in units, so the planner takes no price, NAV or valuation.
+writing (ADR 0053, ADR 0054). It takes `position_set_uid`, `valuation_time`,
+`sized_targets` and an optional `policy` (`{"id", "version", "arguments"}`);
+without one, `proportional_attribution` runs with its defaults.
+
+The account target states exposure: a portfolio row holds
+`weight_notional_exposure` (a share of NAV) or `constant_notional_exposure` (an
+amount), never units. Writing it creates the `VirtualFund`. The caller sizes each
+exposure into units with its own prices and passes them as `sized_targets`:
+`{"target_type", "target_uid", "positions": [{"asset_uid", "quantity",
+"direction"}]}`. The planner takes no price, NAV or valuation. See
+`.agents/skills/ms_markets/accounts/target_sizing/SKILL.md`.
 Do not expose repository context, raw account UID, raw holdings-set UID, raw
 source holdings, raw target demands or scan limits as public planner arguments.
 Internal helpers such as `plan_from_inputs(...)` may use already-resolved inputs
@@ -217,10 +221,8 @@ A plan has one line per owner and asset, where the owner is a virtual fund or
 the direct account sleeve: `target`, `assigned` and `delta = target - assigned`.
 A positive delta means units are missing; a negative one means more units than
 the target asks for. `account_deltas` gives each asset's total target minus what
-the account holds. The target is the full picture: an asset the account holds
-that no target names has a target of zero, so anything the account should keep
-outside its funds, cash included, is written as a direct target. A plan has no
-status and no deficits list; a shortfall is a positive account delta.
+the account holds. A plan has no status and no deficits list; a shortfall is a
+positive delta.
 
 `valuation_time` selects the holdings capture exactly; the `PositionSet` is used
 as passed and is in force from its own time on. To attribute a capture taken
@@ -238,9 +240,15 @@ route plans again and writes in one transaction; it never accepts a plan from
 the client. It writes no fund for a portfolio retired at or before the
 snapshot's time (ADR 0049). `holdings/by-fund/` reads what was written.
 
-`apply_account_virtual_fund_allocation_plan(plan)` writes the funds, one
-holdings set per fund and the holdings rows in one transaction, and returns
-what it did. An applied allocation is account history: the same plan again
+`apply_account_virtual_fund_allocation_plan(plan)` writes, in one transaction,
+one holdings set for every fund of the target, each fund's assigned holdings
+rows, and the allocation's lines in `AccountAllocationLinesStorage`. A line is
+one owner and one asset, where the owner is a fund or the account's direct part:
+it stores the sized target (`target_quantity`, `target_direction`) and the
+assigned units (`assigned_quantity`, `assigned_direction`), so the delta is read
+from it. A fund the account holds nothing of has its lines with nothing
+assigned. `account_virtual_fund_allocation(account_uid)` reads the lines of a
+sync back. An applied allocation is account history: the same plan again
 writes nothing (`already_applied`), and a different allocation of the same
 snapshot is refused (`allocation_exists`). A correction is a new holdings
 snapshot.
@@ -250,12 +258,8 @@ an asset is filled in the same proportion, the holding divided by the funds'
 total claims, capped at one; the direct account sleeve keeps the rest. Its one
 argument, `quantity_tolerance`, has a default. A shortfall is not refused:
 refusing it is the provider's decision, made by planning first and allocating
-only when no account delta is positive. Policies are described from the class
-that validates their arguments; never hand-write a policy's schema.
-
-The planner values nothing. Market data is needed only when a target is sized,
-and that belongs to the caller. Do not pass prices, a NAV or pricing state into
-the planner.
+only when no delta is positive. Policies are described from the class that
+validates their arguments; never hand-write a policy's schema.
 
 Use `virtual_fund_unique_identifier_for_target(...)` for deterministic
 VirtualFund business keys. The key must be based on account, target portfolio,
@@ -358,24 +362,13 @@ for account in accounts:
                     "target_type": "asset",
                     "target_uid": assets[0].uid,
                     "asset_uid": assets[0].uid,
-                    "quantity": 6.5,
-                    "direction": 1,
+                    "weight_notional_exposure": 0.6,
                 },
                 {
                     "target_type": "portfolio",
                     "target_uid": target_sleeve.uid,
                     "portfolio_uid": target_sleeve.uid,
-                    "asset_uid": assets[0].uid,
-                    "quantity": 2.0,
-                    "direction": 1,
-                },
-                {
-                    "target_type": "portfolio",
-                    "target_uid": target_sleeve.uid,
-                    "portfolio_uid": target_sleeve.uid,
-                    "asset_uid": assets[1].uid,
-                    "quantity": 65.0,
-                    "direction": 1,
+                    "weight_notional_exposure": 0.4,
                 }
             ],
         )

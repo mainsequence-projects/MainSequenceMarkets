@@ -65,8 +65,8 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "TargetPositionsStorage",
 ]
 
-# The caller's own market data and sizing rules. ms-markets never sees them: it
-# records the unit targets they produce (ADR 0052).
+# The caller's own market data. ms-markets never sees it: the account target
+# states exposure, and the caller sizes it into units for the allocation (ADR 0054).
 EXAMPLE_SPOT_PRICES = {
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 60_000.0,
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 2_000.0,
@@ -75,8 +75,6 @@ EXAMPLE_PORTFOLIO_WEIGHTS = {
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER: 0.50,
     EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER: 0.50,
 }
-EXAMPLE_DIRECT_BTC_MANDATE_SHARE = 0.60
-EXAMPLE_SLEEVE_MANDATE_SHARE = 0.40
 EXAMPLE_ACCOUNT_QUANTITIES = (
     {"btc_quantity": 10.0, "eth_quantity": 25.0, "eth_direction": 1},
     {"btc_quantity": 5.0, "eth_quantity": 12.5, "eth_direction": -1},
@@ -90,12 +88,11 @@ def size_example_account_target(
     eth_asset_uid: Any,
     portfolio_uid: Any,
 ) -> list[dict[str, Any]]:
-    """Size one account's target in units: the caller's sizing event.
+    """Size the example account's exposure into units: the caller's work at a sync.
 
-    The mandate is 60% of the account in BTC directly and 40% in the target sleeve.
-    The caller values the account with its own prices, turns each share into
-    units, and hands ms-markets the units. A provider would run this again when
-    the sleeve is resized or its portfolio rebalances.
+    The target asks for 60% of the account's NAV in BTC directly and 40% in the
+    target sleeve. The caller values the account with its own prices, spreads the
+    sleeve over its portfolio's weights, and hands ms-markets the units.
     """
 
     btc_price = EXAMPLE_SPOT_PRICES[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER]
@@ -104,25 +101,36 @@ def size_example_account_target(
         quantities["btc_quantity"] * btc_price
         + quantities["eth_quantity"] * quantities["eth_direction"] * eth_price
     )
-    sleeve_notional = EXAMPLE_SLEEVE_MANDATE_SHARE * nav
-    return example_account_target_positions(
-        direct_asset_uid=btc_asset_uid,
-        direct_quantity=EXAMPLE_DIRECT_BTC_MANDATE_SHARE * nav / btc_price,
-        portfolio_uid=portfolio_uid,
-        basket={
-            btc_asset_uid: sleeve_notional
-            * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER]
-            / btc_price,
-            eth_asset_uid: sleeve_notional
-            * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER]
-            / eth_price,
+    sleeve_notional = 0.4 * nav
+    return [
+        {
+            "target_type": "asset",
+            "target_uid": str(btc_asset_uid),
+            "positions": [
+                {"asset_uid": str(btc_asset_uid), "quantity": 0.6 * nav / btc_price, "direction": 1}
+            ],
         },
-        sizing={
-            "sized_by": EXAMPLE_ACCOUNT_WORKFLOW_SOURCE,
-            "sized_from_nav": nav,
-            "sleeve_mandate_share": EXAMPLE_SLEEVE_MANDATE_SHARE,
+        {
+            "target_type": "portfolio",
+            "target_uid": str(portfolio_uid),
+            "positions": [
+                {
+                    "asset_uid": str(btc_asset_uid),
+                    "quantity": sleeve_notional
+                    * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER]
+                    / btc_price,
+                    "direction": 1,
+                },
+                {
+                    "asset_uid": str(eth_asset_uid),
+                    "quantity": sleeve_notional
+                    * EXAMPLE_PORTFOLIO_WEIGHTS[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER]
+                    / eth_price,
+                    "direction": 1,
+                },
+            ],
         },
-    )
+    ]
 
 
 def print_section(title: str) -> None:
@@ -353,7 +361,7 @@ def run_account_portfolio_full_workflow(
     )
     target_records: list[dict[str, Any]] = []
     target_position_frames: list[pd.DataFrame] = []
-    for account, quantities in zip(target_accounts, EXAMPLE_ACCOUNT_QUANTITIES, strict=True):
+    for account in target_accounts:
         target_allocation = AccountTargetAllocation.upsert(
             {
                 **EXAMPLE_ACCOUNT_TARGET_ALLOCATION,
@@ -388,10 +396,8 @@ def run_account_portfolio_full_workflow(
         target_positions_frame = build_target_positions_frame(
             target_positions_date=workflow_time,
             position_set_uid=position_set.uid,
-            positions=size_example_account_target(
-                quantities=quantities,
-                btc_asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
-                eth_asset_uid=assets_by_identifier[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER].uid,
+            positions=example_account_target_positions(
+                asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
                 portfolio_uid=target_sleeve_portfolio.uid,
             ),
         )
@@ -533,11 +539,21 @@ def _run_virtual_fund_allocation_extension(
     position_set = target_record["position_set"]
     valuation_time = workflow_result["holdings_date"]
 
-    # The target and the holdings are both in units, so the plan needs no price.
+    # The target states exposure. The caller sizes it into units with its own
+    # prices and sends the units; the plan itself needs no price.
     # Without a policy, proportional_attribution runs with its default arguments.
+    assets_by_identifier = {
+        asset.unique_identifier: asset for asset in workflow_result["assets"]
+    }
     plan = plan_account_virtual_fund_allocations(
         position_set_uid=position_set.uid,
         valuation_time=valuation_time,
+        sized_targets=size_example_account_target(
+            quantities=EXAMPLE_ACCOUNT_QUANTITIES[0],
+            btc_asset_uid=assets_by_identifier[EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER].uid,
+            eth_asset_uid=assets_by_identifier[EXAMPLE_ETH_ASSET_UNIQUE_IDENTIFIER].uid,
+            portfolio_uid=workflow_result["target_sleeve_portfolio"].uid,
+        ),
     )
 
     print("    Account virtual-fund allocation dry-run")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Mapping
 from typing import Any
 
 from examples.msm.assets.utils import (
@@ -95,41 +94,23 @@ def example_account_holdings_positions(
 
 def example_account_target_positions(
     *,
-    direct_asset_uid: Any,
-    direct_quantity: float,
+    asset_uid: Any,
     portfolio_uid: Any,
-    basket: Mapping[Any, float],
-    sizing: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return one account target in units (ADR 0052).
-
-    One asset row is the direct target. The portfolio rows are the target sleeve's
-    unit basket, one row per asset. ``sizing`` records how the caller sized the
-    rows; ms-markets stores it and never reads it.
-    """
-
-    metadata = {"portfolio_role": "satellite_sleeve", **dict(sizing or {})}
     return [
         {
             "target_type": TARGET_TYPE_ASSET,
-            "target_uid": direct_asset_uid,
-            "asset_uid": direct_asset_uid,
-            "quantity": direct_quantity,
-            "direction": 1,
-            "metadata_json": dict(sizing or {}),
+            "target_uid": asset_uid,
+            "asset_uid": asset_uid,
+            "weight_notional_exposure": 0.6,
         },
-        *(
-            {
-                "target_type": TARGET_TYPE_PORTFOLIO,
-                "target_uid": portfolio_uid,
-                "portfolio_uid": portfolio_uid,
-                "asset_uid": asset_uid,
-                "quantity": quantity,
-                "direction": 1,
-                "metadata_json": metadata,
-            }
-            for asset_uid, quantity in basket.items()
-        ),
+        {
+            "target_type": TARGET_TYPE_PORTFOLIO,
+            "target_uid": portfolio_uid,
+            "portfolio_uid": portfolio_uid,
+            "weight_notional_exposure": 0.4,
+            "metadata_json": {"portfolio_role": "satellite_sleeve"},
+        },
     ]
 
 

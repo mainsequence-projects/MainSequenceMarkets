@@ -1,4 +1,4 @@
-"""Revision 0024 stores account targets in units (ADR 0052)."""
+"""Revision 0024 stored account targets in units (ADR 0052, superseded by ADR 0054)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import importlib
 import sqlalchemy as sa
 from alembic import command
 
-from msm.time_index.accounts.storage import TargetPositionsStorage
 from tests.msm.maintenance.test_legacy_schema_migration import _config, _seed_every_table
 
 REVISION = importlib.import_module(
@@ -64,31 +63,10 @@ def test_0024_deletes_the_target_history_and_stores_units(tmp_path) -> None:
         assert _unique_index_columns(connection) == [REVISION.GRAIN]
 
 
-def test_0024_matches_the_storage_model(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'targets-model.sqlite'}")
-    model = TargetPositionsStorage.__table__
-    with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
-        inspector = sa.inspect(connection)
-
-        assert set(_columns(connection)) == {column.name for column in model.columns}
-        assert {
-            constraint["name"] for constraint in inspector.get_check_constraints(REVISION.TABLE)
-        } == {
-            constraint.name
-            for constraint in model.constraints
-            if isinstance(constraint, sa.CheckConstraint)
-        }
-        assert {index["name"] for index in inspector.get_indexes(REVISION.TABLE)} == {
-            index.name for index in model.indexes
-        }
-        assert REVISION.GRAIN == list(TargetPositionsStorage.__index_names__)
-
-
 def test_0024_refuses_a_zero_quantity_and_an_unknown_direction(tmp_path) -> None:
     engine = sa.create_engine(f"sqlite:///{tmp_path / 'targets-checks.sqlite'}")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
+        command.upgrade(_config(connection), "0024")
         checks = {
             constraint["sqltext"]
             for constraint in sa.inspect(connection).get_check_constraints(REVISION.TABLE)

@@ -13,8 +13,8 @@ reference records.
 - This page covers account registry rows, holdings, target allocations,
   target-position storage, and the normal account workflow.
 - [Account Virtual Funds](virtual_funds.md) covers derived virtual-fund
-  allocation views over real account holdings, including target sizing, the
-  planner, and the apply flow.
+  allocation views over real account holdings: the exposure, the sized target,
+  the planner, and the apply flow.
 - [Sizing Targets And Allocating](sizing_and_allocation.md) is the step-by-step
   guide for a library or application that uses ms-markets: what your code sizes
   with its own prices and rules, and what ms-markets records and assigns.
@@ -77,7 +77,6 @@ account = Account.upsert(
 )
 
 btc_asset = Asset.upsert(unique_identifier="BTC-USD", asset_type="crypto")
-eth_asset = Asset.upsert(unique_identifier="ETH-USD", asset_type="crypto")
 calendar = Calendar.create_from_pandas_calendar(
     source_identifier="24/7",
     unique_identifier="ACCOUNT_CRYPTO_24_7",
@@ -112,24 +111,13 @@ target_positions = build_target_positions_frame(
             "target_type": "asset",
             "target_uid": btc_asset.uid,
             "asset_uid": btc_asset.uid,
-            "quantity": 6.5,
-            "direction": 1,
+            "weight_notional_exposure": 0.6,
         },
         {
             "target_type": "portfolio",
             "target_uid": portfolio_sleeve.uid,
             "portfolio_uid": portfolio_sleeve.uid,
-            "asset_uid": btc_asset.uid,
-            "quantity": 2.0,
-            "direction": 1,
-        },
-        {
-            "target_type": "portfolio",
-            "target_uid": portfolio_sleeve.uid,
-            "portfolio_uid": portfolio_sleeve.uid,
-            "asset_uid": eth_asset.uid,
-            "quantity": 65.0,
-            "direction": 1,
+            "weight_notional_exposure": 0.4,
         },
     ],
 )
@@ -278,11 +266,12 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | position_set_uid              |
 | target_type asset/portfolio   |
 | target_uid                    |
-| asset_uid FK, required        |
+| asset_uid nullable FK         |
 | portfolio_uid nullable FK     |
-| quantity > 0                  |
-| direction 1 / -1              |
-| metadata_json                 |
+| weight_notional_exposure      |
+| constant_notional_exposure    |
+| single_asset_quantity         |
+| exactly one exposure required |
 +------------+------------------+
              |                  |
              | asset_uid FK     | portfolio_uid FK
@@ -393,13 +382,18 @@ MetaTable fields on `AccountHoldingsStorage`.
 Virtual-fund allocation holdings are derived views over real account holdings.
 They are not canonical custody and are not produced by portfolio construction.
 
-The account allocation planner starts from a `PositionSet`, resolves the source
-`AccountHoldingsSet`, reads each virtual fund's unit basket from the target
-rows, and returns a dry-run allocation plan. The targets and the holdings are
-both in units (ADR 0052), so the planner values nothing. Only a separate apply step writes `VirtualFundTable`,
-`VirtualFundHoldingsSetTable`, and `VirtualFundHoldingsStorage` rows.
+An account's exposure to a portfolio is a share of NAV or an amount, written as
+a portfolio row of the target. Writing it creates the `VirtualFund`. ms-markets
+reads no price, so the caller sizes each exposure into units and sends them with
+the allocation (ADR 0054).
 
-See [Virtual Funds](virtual_funds.md) for target sizing, the allocation policy
+The account allocation planner starts from a `PositionSet`, resolves the source
+`AccountHoldingsSet`, matches the exposures with the caller's sized targets, and
+returns a dry-run allocation plan. Only a separate apply step writes
+`VirtualFundHoldingsSetTable` and `VirtualFundHoldingsStorage` rows, which store
+each fund's sized target next to what it was assigned.
+
+See [Virtual Funds](virtual_funds.md) for the storage, the allocation policy
 and the apply flow.
 
 ## End-To-End Flow

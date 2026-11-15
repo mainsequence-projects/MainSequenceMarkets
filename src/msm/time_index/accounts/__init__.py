@@ -501,6 +501,11 @@ def __getattr__(name: str) -> Any:
 
         globals()[name] = VirtualFundHoldings
         return VirtualFundHoldings
+    if name == "AccountAllocationLinesStorage":
+        from msm.time_index.accounts.virtual_funds.storage import AccountAllocationLinesStorage
+
+        globals()[name] = AccountAllocationLinesStorage
+        return AccountAllocationLinesStorage
     if name == "VirtualFundHoldingsStorage":
         from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 
@@ -514,6 +519,7 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
+    "AccountAllocationLinesStorage",
     "AccountHoldings",
     "HoldingsUpdater",
     "HoldingsUpdaterConfiguration",

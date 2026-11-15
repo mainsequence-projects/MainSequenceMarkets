@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by [ADR 0054](0054-account-exposure-and-sized-fund-targets.md), proposed on
+2026-11-15: the allocation takes the sized target units in its request and stores them with
+the result.
+
 Proposed (2026-11-15). No issue has been filed for it yet. The decisions marked (owner)
 were made by the owner on 2026-11-15. Implemented on `development` for 3.6.0; see
 "Implementation Notes".

@@ -1,16 +1,15 @@
 ---
 name: mainsequence-markets-account-target-sizing
-description: Use this skill when a library or application that uses ms-markets sizes account targets or virtual-fund unit baskets, allocates holdings to virtual funds, or upgrades to ms-markets 3.6.
+description: Use this skill when a library or application that uses ms-markets writes an account's exposure to portfolios, sizes it into units at a sync, allocates holdings to virtual funds, reads fund deltas, or upgrades to ms-markets 3.7.
 ---
 
-# Account Target Sizing
+# Account Exposure, Sizing And Allocation
 
-Use this skill when a workflow has to turn a request such as "40% of the account in
-this portfolio" or "10,000 in this fund" into an ms-markets account target.
+Use this skill when a workflow has to record "40% of the account in this portfolio" or
+"300,000 in this portfolio", turn it into units at a sync, and keep each virtual fund's
+target, holdings and delta.
 
-Account targets are stored in units (ADR 0052). ms-markets is a record library: it
-stores the units and derives nothing. Prices, and the rules that turn a price into a
-position size, belong to the caller.
+ms-markets is a record library. It reads no price and computes no NAV (ADR 0054).
 
 ## Owning Context
 
@@ -18,100 +17,93 @@ Read with:
 
 1. `.agents/skills/ms_markets/accounts/account_workflow/SKILL.md`
 2. `docs/knowledge/msm/accounts/sizing_and_allocation.md`: the step-by-step guide
-3. `docs/upgrading-to-3-6.md`: what changes for existing code and data
-4. `docs/ADR/0052-account-targets-in-units.md`
+3. `docs/upgrading-to-3-7.md`: what changes for existing code and data
+4. `docs/ADR/0054-account-exposure-and-sized-fund-targets.md`
 5. `docs/ADR/0053-virtual-fund-allocation-routes-and-described-policies.md`
+
+## The Three Things
+
+| What | Where | Unit | Who writes it |
+| --- | --- | --- | --- |
+| The exposure the account wants to a portfolio | `TargetPositionsStorage`, one row per portfolio | A share of NAV or an amount | The user, through the project |
+| The sized target of each owner per asset | `AccountAllocationLinesStorage.target_quantity` | Units | The project, at a sync |
+| What each owner was assigned | `AccountAllocationLinesStorage.assigned_quantity`; `VirtualFundHoldingsStorage` for a fund | Units | ms-markets, at a sync |
+
+A portfolio has weights, not units. Never write units as an account's target to a
+portfolio, and never ask ms-markets to turn a share or an amount into units.
 
 ## Who Does What
 
-| Step | Who | Needs market data |
+| Step | Who | Needs prices |
 | --- | --- | --- |
-| Take the request (a share, an amount, a risk budget) and keep it | The project | No |
-| Size it into units, at a sizing event | The project | Yes |
-| Record the target, the holdings and the fund holdings | ms-markets | No |
-| Assign holdings to funds | ms-markets | No |
-| Act on the deltas; value and report | The project | Yes |
+| State the exposure | The user, through the project | No |
+| Record the exposure and create the fund | ms-markets | No |
+| Publish the account's holdings | The project | No |
+| Size each exposure into units | The project | Yes |
+| Assign holdings to funds; record target and assigned units per owner | ms-markets | No |
+| Read the deltas and trade them | The project | Yes |
 
-Do not add pricing, a NAV calculation or a sizing rule to ms-markets, and do not ask
-ms-markets to convert a share or an amount into units. That code belongs in the project
-that owns the prices.
-
-## What A Target Row Is
-
-Every `TargetPositionsStorage` row is a positive `quantity` of one asset, in the
-asset's own unit, with a `direction` (`1` long, `-1` short):
-
-- shares for a stock, contracts for a future or an option, units for a currency;
-- an asset row (`target_type="asset"`) is a direct target;
-- the portfolio rows of one `portfolio_uid` are that virtual fund's unit basket,
-  one row per asset.
-
-There is no share of NAV and no notional amount on a row.
-
-## The Sizing Event
-
-A basket only needs to change when:
-
-- the fund is sized: money goes into or out of the sleeve, or its share of the
-  account changes;
-- the portfolio rebalances: its composition changes.
-
-At each event the caller:
-
-1. keeps the request (a share, an amount, a risk budget) in its own tables;
-2. values what it needs with its own market data;
-3. turns the request into units with its own rules: contract multipliers, deltas,
-   lot sizes, rounding to whole contracts, FX;
-4. writes a new target snapshot in units.
-
-Between events nothing is repriced, so a price change alone never changes a fund's
-basket.
-
-For a portfolio that has a unit book (`PortfolioStateStorage`), the basket is the
-book scaled by one factor: the fund's size divided by the portfolio's size.
-
-## Writing The Target
+## Writing The Exposure
 
 ```python
 from msm.client import MarketsClient
 
 client = MarketsClient.from_environment()
-client.add_account_target_positions(
+target = client.add_account_target_positions(
     account_uid,
-    target_positions_date=sized_at,
+    target_positions_date=target_time,
     positions=[
-        # A direct target: 12 contracts of one future, short.
-        {
-            "target_type": "asset",
-            "target_uid": future_uid,
-            "asset_uid": future_uid,
-            "quantity": 12,
-            "direction": -1,
-        },
-        # One virtual fund's unit basket: one row per asset.
-        {
-            "target_type": "portfolio",
-            "target_uid": portfolio_uid,
-            "portfolio_uid": portfolio_uid,
-            "asset_uid": stock_uid,
-            "quantity": 1000,
-            "metadata_json": {"scale_factor": 0.25, "mandate_share": 0.4},
-        },
-        {
-            "target_type": "portfolio",
-            "target_uid": portfolio_uid,
-            "portfolio_uid": portfolio_uid,
-            "asset_uid": option_uid,
-            "quantity": 40,
-        },
+        {"target_type": "portfolio", "portfolio_uid": portfolio_a_uid, "weight_notional_exposure": 0.40},
+        {"target_type": "portfolio", "portfolio_uid": portfolio_b_uid, "constant_notional_exposure": 300_000},
     ],
 )
 ```
 
-In-process code builds the same rows with `build_target_positions_frame(...)`.
+- One row per portfolio, with exactly one of `weight_notional_exposure` and
+  `constant_notional_exposure`.
+- Writing it creates the `VirtualFund` of that account and portfolio if it does not exist.
+- An asset row is a direct target: a share, an amount, or `single_asset_quantity` in units.
+- In-process code builds the same rows with `build_target_positions_frame(...)`.
 
-`metadata_json` may record how a row was sized: the scale factor, the portfolio book
-time, the mandate share and a source note. ms-markets stores it and never reads it.
+## The Sync
+
+A sync is one holdings snapshot of the account at time `T`, allocated to its funds:
+
+1. publish the holdings at `T`;
+2. size every exposure of the target into units, with the project's prices at `T`;
+3. plan, then allocate, passing the units as `sized_targets`.
+
+```python
+sized_targets = [
+    {
+        "target_type": "portfolio",
+        "target_uid": portfolio_a_uid,
+        "positions": [
+            {"asset_uid": aapl_uid, "quantity": 1_200, "direction": 1},
+            {"asset_uid": msft_uid, "quantity": 400, "direction": 1},
+        ],
+    },
+]
+plan = client.plan_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+    sized_targets=sized_targets,
+)
+result = client.allocate_account_virtual_funds(
+    account_uid,
+    position_set_uid=target.position_set_uid,
+    valuation_time=holdings_time,
+    sized_targets=sized_targets,
+    plan_digest=plan.plan_digest,
+)
+```
+
+- Every portfolio exposure must be sized, and every asset exposure stated as a share or an
+  amount. An asset row stated as `single_asset_quantity` is not sized.
+- An empty `positions` list is a target sized to nothing.
+- A mismatch answers 400 `invalid_sized_targets` and lists every problem.
+- A `quantity` is positive; `direction` is `1` or `-1`.
 
 ## A Sizing Rule
 
@@ -121,93 +113,65 @@ The project owns this function. It is an example, not an ms-markets API:
 import math
 
 
-def size_basket(fund_notional: float, legs: list[dict]) -> list[dict]:
-    rows = []
+def size_fund(fund_notional: float, legs: list[dict]) -> list[dict]:
+    positions = []
     for leg in legs:
-        exposure = fund_notional * leg["share"]
-        raw_units = exposure / (leg["price"] * leg["multiplier"])
+        raw_units = fund_notional * leg["weight"] / (leg["price"] * leg["multiplier"])
         units = math.floor(raw_units / leg["lot"] + 0.5) * leg["lot"]
         if units == 0:
             continue
-        rows.append(
+        positions.append(
             {
                 "asset_uid": leg["asset_uid"],
                 "quantity": abs(units),
                 "direction": 1 if units > 0 else -1,
-                "metadata_json": {"raw_units": raw_units, "share": leg["share"]},
             }
         )
-    return rows
+    return positions
 ```
 
 - A stock: units are the notional divided by the price.
-- A future: it has no market value to weigh, so the share is an exposure; the multiplier
-  and the rounding to whole contracts are the project's rule.
-- An option: whether the share means premium or delta-adjusted exposure is the project's
-  model. ms-markets receives contracts and a side.
+- A future: the weight is an exposure; the multiplier and the rounding to whole contracts
+  are the project's rule.
+- An option: whether the weight means premium or delta-adjusted exposure is the project's
+  model.
 
-## After Sizing: Plan And Allocate
+## What The Sync Stores
 
-```python
-plan = client.plan_account_virtual_funds(
-    account_uid,
-    position_set_uid=target.position_set_uid,
-    valuation_time=holdings_time,
-)
-result = client.allocate_account_virtual_funds(
-    account_uid,
-    position_set_uid=target.position_set_uid,
-    valuation_time=holdings_time,
-    plan_digest=plan.plan_digest,
-)
-```
+- The allocation's lines in `AccountAllocationLinesStorage`: one row per sync, owner and
+  asset, with `target_quantity`, `target_direction`, `assigned_quantity` and
+  `assigned_direction`. The owner is a fund (`owner_type="fund"`) or the account itself
+  (`owner_type="direct"`) for a direct asset target and for what no fund takes.
+- One `VirtualFundHoldingsSet` per fund of the target, pointing at the account holdings
+  snapshot of `T`, and one `VirtualFundHoldingsStorage` row per asset the fund was assigned.
+- A fund the account holds nothing of has its lines with nothing assigned.
+- The delta is read from a line: target minus assigned. Read a sync's lines with
+  `client.account_virtual_fund_allocation(account_uid)`; without `valuation_time` it is the
+  latest sync.
 
-- A plan writes nothing and takes no price. Each line has an owner (a fund or the direct
-  sleeve), a `target`, what is `assigned` and `delta = target - assigned`.
-- `plan.account_deltas` is each asset's total target minus what the account holds: what
-  the account would trade to be on target. Trading it is the project's decision.
-- The target is the full picture. Write a direct target for what the account keeps outside
-  its funds, cash included; otherwise its delta says to reduce it.
-- A shortfall is not refused. For all or nothing, allocate only when no account delta is
-  positive. That check belongs to the project.
-- An allocation is history. The same plan again writes nothing; a different allocation of
+## Rules
+
+- State exposure in the account target; send units only in `sized_targets`.
+- Never send a price or a NAV to ms-markets.
+- Size at every sync with that sync's prices; a stored target is valid for that sync only.
+- An allocation is history: the same plan again writes nothing, a different allocation of
   the same snapshot is refused. Correct it with a new holdings snapshot.
+- A shortfall is not refused. For all or nothing, allocate only when no delta is positive.
 - Read the policies with `virtual_fund_allocation_policies()` and send the version you
   read. Never hand-write a policy's schema.
+- Do not expect ms-markets to check that a sizing matches its portfolio's weights.
 
-## Upgrading A Project To 3.6
+## Upgrading A Project To 3.7
 
-1. Save each account's request in the project's own tables. Migration 0024 deletes every
-   existing target.
+1. Keep each account's exposure: revision 0024 deleted targets on deployments that ran 3.6,
+   and revision 0025 deletes any portfolio target written in units.
 2. Write the sizing step.
-3. Send `asset_uid`, `quantity` and `direction` on every target row.
-4. Replace the planner's valuation resolver, `AllocationPolicy` and updater arguments.
-5. Replace any strict mode with a check on the account deltas.
-6. Upgrade, then size and write every account's target again.
+3. Write targets as exposure rows.
+4. Pass `sized_targets` to the plan and allocate calls.
+5. Upgrade, write every account's exposure again, then sync.
 
 Search for what is left:
 
 ```bash
-grep -rnE "weight_notional_exposure|constant_notional_exposure|single_asset_quantity|valuation_resolver|AllocationPolicy|HoldingsSelectionPolicy|strict_feasible|expand_portfolio_target|plan\.status" src tests
+grep -rnE "valuation_resolver|AllocationPolicy\(|HoldingsSelectionPolicy|strict_feasible|plan\.status|nothing_to_apply|target_gap_signed_quantity|asset_count" src tests
 ```
-
-## Rules
-
-- Never send a share of NAV, a notional amount or a price to ms-markets.
-- Never write a zero or negative `quantity`; use `direction` for the side, and leave
-  out an asset that is no longer in a basket.
-- Give every row its `asset_uid`. A portfolio row without one is refused.
-- One asset appears at most once per basket. The same asset may be a direct target
-  and sit in several baskets.
-- Do not expect ms-markets to check that a basket matches its portfolio. Record the
-  sizing inputs in `metadata_json` if they must be traceable.
-- Write a new snapshot to resize; do not edit rows of an existing one.
-
-## Where Market Data Is Needed
-
-| Step | Needs market data | Who supplies it |
-| --- | --- | --- |
-| Portfolio construction and rebalance | Yes | Provided to the portfolio engine |
-| Sizing a fund's basket | Yes | The caller, at the sizing event |
-| Allocating holdings to funds | No | |
-| Valuing a fund or the account | Yes | The caller, when it reports |

@@ -18,8 +18,6 @@ from msm.services.portfolio_lifecycle import (
 RETIRED_AT = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
 TARGET_TIME = dt.datetime(2026, 11, 9, 15, 0, tzinfo=dt.UTC)
 
-BASKET_ASSET_UID = "00000000-0000-0000-0000-0000000000b5"
-
 
 class FakeContext:
     data_source_uid = None
@@ -59,7 +57,8 @@ def test_account_targets_route_pages_the_service_result(monkeypatch) -> None:
                     "account_target_allocation_uid": str(uuid.uuid4()),
                     "position_set_uid": str(uuid.uuid4()),
                     "target_positions_date": TARGET_TIME,
-                    "asset_count": 2,
+                    "weight_notional_exposure": None,
+                    "constant_notional_exposure": "250000",
                 }
             ],
         }
@@ -75,7 +74,7 @@ def test_account_targets_route_pages_the_service_result(monkeypatch) -> None:
     assert captured == {"uid": portfolio_uid, "limit": 1, "offset": 1}
     payload = response.json()
     assert [item["account_uid"] for item in payload["items"]] == [account_uid]
-    assert payload["items"][0]["asset_count"] == 2
+    assert payload["items"][0]["constant_notional_exposure"] == "250000"
     assert payload["pageInfo"]["totalItems"] == 3
     assert payload["pageInfo"]["hasNextPage"] is True
 
@@ -159,9 +158,7 @@ def test_target_write_naming_a_retired_portfolio_answers_409(monkeypatch) -> Non
                     "target_type": "portfolio",
                     "target_uid": portfolio_uid,
                     "portfolio_uid": portfolio_uid,
-                    "asset_uid": BASKET_ASSET_UID,
-                    "quantity": 1.0,
-                    "direction": 1,
+                    "weight_notional_exposure": 1.0,
                 }
             ],
         },
@@ -328,6 +325,9 @@ def test_a_refused_target_write_reports_the_retired_portfolio(monkeypatch) -> No
         lambda context, uid: {"row": {"uid": account_uid, "account_name": "Some account"}},
     )
     monkeypatch.setattr(
+        services, "_account_target_allocation_uid", lambda context, account_uid: None
+    )
+    monkeypatch.setattr(
         "msm.repositories.accounts.replace_account_target_positions_snapshot",
         lambda context, **kwargs: {"rows": []},
     )
@@ -348,9 +348,7 @@ def test_a_refused_target_write_reports_the_retired_portfolio(monkeypatch) -> No
                     "target_type": "portfolio",
                     "target_uid": portfolio_uid,
                     "portfolio_uid": portfolio_uid,
-                    "asset_uid": BASKET_ASSET_UID,
-                    "quantity": 1.0,
-                    "direction": 1,
+                    "weight_notional_exposure": 1.0,
                 }
             ],
         )
@@ -365,7 +363,8 @@ def test_list_portfolio_account_targets_maps_rows(monkeypatch) -> None:
         "account_target_allocation_uid": uuid.uuid4(),
         "position_set_uid": uuid.uuid4(),
         "target_positions_date": TARGET_TIME,
-        "asset_count": 2,
+        "weight_notional_exposure": 0.25,
+        "constant_notional_exposure": None,
     }
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -395,7 +394,8 @@ def test_list_portfolio_account_targets_maps_rows(monkeypatch) -> None:
             "account_target_allocation_uid": str(row["account_target_allocation_uid"]),
             "position_set_uid": str(row["position_set_uid"]),
             "target_positions_date": TARGET_TIME,
-            "asset_count": 2,
+            "weight_notional_exposure": "0.25",
+            "constant_notional_exposure": None,
         }
     ]
 
@@ -501,9 +501,7 @@ def test_target_write_locks_named_portfolios_and_writes_nothing_if_one_is_retire
                 "target_type": "portfolio",
                 "target_uid": str(portfolio_uid),
                 "portfolio_uid": str(portfolio_uid),
-                "asset_uid": BASKET_ASSET_UID,
-                "quantity": 1.0,
-                "direction": 1,
+                "weight_notional_exposure": 1.0,
             }
         ]
     ).statement.sql
@@ -513,8 +511,7 @@ def test_target_write_locks_named_portfolios_and_writes_nothing_if_one_is_retire
                 "target_type": "asset",
                 "target_uid": str(asset_uid),
                 "asset_uid": str(asset_uid),
-                "quantity": 1.0,
-                "direction": 1,
+                "weight_notional_exposure": 1.0,
             }
         ]
     ).statement.sql
@@ -582,9 +579,7 @@ def test_sdk_target_frame_naming_a_retired_portfolio_is_refused(monkeypatch) -> 
                     "target_type": "portfolio",
                     "target_uid": portfolio_uid,
                     "portfolio_uid": portfolio_uid,
-                    "asset_uid": BASKET_ASSET_UID,
-                    "quantity": 1.0,
-                    "direction": 1,
+                    "weight_notional_exposure": 1.0,
                 }
             ],
         )

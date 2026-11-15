@@ -7,11 +7,65 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+3.7.0 withdraws the unit account targets of 3.6.0
+([ADR 0054](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0054-account-exposure-and-sized-fund-targets/)).
 Projects that depend on ms-markets:
-[Upgrading To 3.6](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3-6/)
-lists what to change and in what order, and
+[Upgrading To 3.7](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3-7/)
+lists what to change, coming from 3.5 or from 3.6, and
 [Sizing Targets And Allocating](https://mainsequence-projects.github.io/MainSequenceMarkets/knowledge/msm/accounts/sizing_and_allocation/)
-shows the whole flow, including a sizing rule for stocks, futures and options.
+shows the whole flow with an example.
+
+### Added
+
+- **A virtual fund is created when its exposure is written.** A target that names a
+  portfolio creates the `VirtualFund` of that account and portfolio, in the same transaction
+  as the target rows, if it does not exist
+  ([issue 71](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/71)).
+- **The sync records its lines: target and assigned units for every owner.** A new table,
+  `AccountAllocationLinesStorage`, has one row per sync, owner and asset. The owner is a
+  virtual fund, or the account itself for a direct asset target and for what no fund takes,
+  so a delta is kept for funds and direct targets alike.
+  `GET /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  (`getAccountVirtualFundAllocation`, `MarketsClient.account_virtual_fund_allocation`) reads
+  the lines of one sync, the latest by default, with `target`, `assigned` and `delta`.
+- **`sized_targets` on the plan and allocate calls** (`planAccountVirtualFunds`,
+  `allocateAccountVirtualFunds`, their `MarketsClient` methods and
+  `plan_account_virtual_fund_allocations`): each exposure of the `PositionSet` in units,
+  sized by the caller with its own prices. A mismatch with the target answers 400
+  `invalid_sized_targets` and lists every problem. `plan_digest` covers the sized targets.
+
+### Changed
+
+- **Breaking:** an account's exposure to a portfolio is a share of NAV or an amount again.
+  `TargetPositionsStorage` returns to its shape before 3.6.0: a portfolio row holds
+  `weight_notional_exposure` or `constant_notional_exposure` and no `asset_uid`; an asset
+  row holds one of those or `single_asset_quantity`. The target routes,
+  `MarketsClient.add_account_target_positions`, `build_target_positions_frame`,
+  `expand_portfolio_target_positions` and the exposure fields of
+  `GET /api/v1/portfolio/{uid}/account-targets/` are back as they were in 3.5.
+  - **Revision 0025** restores the columns and creates `AccountAllocationLinesStorage`. It turns an asset target written in units under
+    3.6 into `single_asset_quantity`, and **deletes a `PositionSet` that has a portfolio
+    row in units**, with its rows: units per asset cannot be turned back into a share or an
+    amount. Targets deleted by revision 0024 are not restored.
+- **Breaking:** an allocation takes the fund targets from `sized_targets`, not from the
+  account target, and always writes. Every fund of the target gets its holdings set and its
+  lines; a fund the account holds nothing of has its lines with nothing assigned. A target
+  with no fund is recorded too.
+- The allocation plan is built in one pass over its inputs. On 100,000 target rows it takes
+  about a tenth of the time it took in 3.6.0.
+
+### Removed
+
+- **Breaking:** the unit columns `quantity` and `direction` of `TargetPositionsStorage`,
+  the required `asset_uid` on portfolio target rows, and `asset_count` on
+  `GET /api/v1/portfolio/{uid}/account-targets/`, all added in 3.6.0.
+- **Breaking:** the `nothing_to_apply` refusal. An allocation that assigns no units is a
+  valid allocation of that snapshot.
+
+## [3.6.0] - 2026-11-15
+
+Superseded in part by ADR 0054 (see Unreleased): the unit account targets described below
+are withdrawn.
 
 ### Added
 

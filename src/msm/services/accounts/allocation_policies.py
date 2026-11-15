@@ -74,27 +74,31 @@ def proportional_attribution(
     dropped, and its units stay direct. The result can always be applied.
     """
 
-    assets: list[AssetId] = list(holdings)
-    for _fund, asset in targets:
-        if asset not in holdings and asset not in assets:
-            assets.append(asset)
-
-    gross: dict[AssetId, float] = {asset: 0.0 for asset in assets}
+    # One pass per input, whatever the number of funds and assets: the claims per
+    # asset, the fills, then the direct sleeve.
+    gross: dict[AssetId, float] = {}
     for (_fund, asset), claim in targets.items():
-        gross[asset] += abs(float(claim))
+        gross[asset] = gross.get(asset, 0.0) + abs(float(claim))
+
+    scale = {
+        asset: min(1.0, abs(float(holdings.get(asset, 0.0))) / total) if total > 0 else 0.0
+        for asset, total in gross.items()
+    }
 
     fills: dict[tuple[FundId, AssetId], float] = {}
-    taken: dict[AssetId, float] = {asset: 0.0 for asset in assets}
-    for (fund, asset), claim in targets.items():
-        capacity = abs(float(holdings.get(asset, 0.0)))
-        scale = min(1.0, capacity / gross[asset]) if gross[asset] > 0 else 0.0
-        fill = float(claim) * scale
+    taken: dict[AssetId, float] = dict.fromkeys(gross, 0.0)
+    for key, claim in targets.items():
+        asset = key[1]
+        fill = float(claim) * scale[asset]
         if abs(fill) <= quantity_tolerance:
             fill = 0.0
-        fills[(fund, asset)] = fill
+        fills[key] = fill
         taken[asset] += fill
 
-    direct = {asset: float(holdings.get(asset, 0.0)) - taken[asset] for asset in assets}
+    direct = {asset: float(held) - taken.get(asset, 0.0) for asset, held in holdings.items()}
+    for asset, quantity in taken.items():
+        if asset not in direct:
+            direct[asset] = -quantity
     return Allocation(fills=fills, direct=direct)
 
 

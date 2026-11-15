@@ -93,7 +93,10 @@ def _markets_time_index_storage_models() -> list[type]:
     """
 
     from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-    from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+    from msm.time_index.accounts.virtual_funds.storage import (
+        AccountAllocationLinesStorage,
+        VirtualFundHoldingsStorage,
+    )
     from msm.time_index.assets.storage import AssetSnapshotsStorage
     from msm.time_index.execution.storage import (
         OrderEventsStorage,
@@ -107,6 +110,7 @@ def _markets_time_index_storage_models() -> list[type]:
         IndexValuesStorage,
         AccountHoldingsStorage,
         VirtualFundHoldingsStorage,
+        AccountAllocationLinesStorage,
         TargetPositionsStorage,
         OrdersStorage,
         OrderEventsStorage,

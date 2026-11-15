@@ -25,6 +25,7 @@ from apps.v1.schemas.accounts import (
     AccountVirtualFundAllocateRequest,
     AccountVirtualFundAllocationPlanRequest,
     AccountVirtualFundAllocationPlanResponse,
+    AccountVirtualFundAllocationRecordResponse,
     AccountVirtualFundAllocationResponse,
     VirtualFundAllocationPolicyDescription,
     VirtualFundAllocationPolicyList,
@@ -38,6 +39,7 @@ from apps.v1.services.accounts import (
     create_account,
     delete_account,
     get_account_holdings,
+    get_account_virtual_fund_allocation,
     get_account_holdings_by_fund,
     get_account,
     get_account_summary,
@@ -644,6 +646,50 @@ def get_account_holdings_by_fund_by_uid(
     return snapshot
 
 
+@router.get(
+    "/{account_uid}/virtual-fund-allocations/",
+    response_model=AccountVirtualFundAllocationRecordResponse,
+    summary="Get the stored lines of an account's allocation",
+    description=(
+        "Return the record of one allocation of the account's holdings: one line per owner "
+        "and asset, with the sized `target`, what was `assigned` and `delta = target - "
+        "assigned`, in signed units. The owner is a virtual fund, or `direct` for what the "
+        "account holds outside its funds. There is one allocation per holdings snapshot. "
+        "Without `valuation_time` the account's latest allocation is answered. An account "
+        "with no allocation at that time answers 200 with no line."
+    ),
+    operation_id="getAccountVirtualFundAllocation",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested account uid was not found.",
+        }
+    },
+)
+def get_account_virtual_fund_allocation_by_uid(
+    account_uid: str,
+    valuation_time: Annotated[
+        dt.datetime | None,
+        Query(
+            description=(
+                "Exact time of the allocated holdings snapshot. Use ISO 8601. Omit it for "
+                "the latest allocation."
+            ),
+        ),
+    ] = None,
+) -> AccountVirtualFundAllocationRecordResponse:
+    try:
+        record = get_account_virtual_fund_allocation(
+            account_uid=account_uid,
+            valuation_time=valuation_time,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return record
+
+
 @router.post(
     "/{account_uid}/virtual-fund-allocations/plan/",
     response_model=AccountVirtualFundAllocationPlanResponse,
@@ -651,14 +697,14 @@ def get_account_holdings_by_fund_by_uid(
     description=(
         "Run an allocation policy for one holdings snapshot against one target and answer the "
         "plan. Nothing is written. The snapshot is the account's holdings set at exactly "
-        "`valuation_time`; the target is `position_set_uid`, which must not be later. Targets "
-        "and holdings are both in units (ADR 0052), so the request carries no price, NAV or "
-        "valuation. The plan has one line per owner and asset, where the owner is a virtual "
-        "fund or the direct account sleeve: `target`, `assigned` and `delta = target - "
-        "assigned`. A positive delta means units are missing; a negative one means more "
-        "units than the target asks for. `account_deltas` gives each asset's total target "
-        "minus what the account holds. The target is the full picture: an asset the account "
-        "holds that no target names has a target of zero."
+        "`valuation_time`; the target is `position_set_uid`, which must not be later. The "
+        "target states exposure, as a share of NAV or an amount; `sized_targets` gives each "
+        "exposure in units, sized by the caller with its own prices (ADR 0054). The request "
+        "carries no price, NAV or valuation. The plan has one line per owner and asset, "
+        "where the owner is a virtual fund or the direct account sleeve: `target`, "
+        "`assigned` and `delta = target - assigned`. A positive delta means units are "
+        "missing; a negative one means more units than the target asks for. "
+        "`account_deltas` gives each asset's total target minus what the account holds."
     ),
     operation_id="planAccountVirtualFunds",
     responses=ALLOCATION_ERROR_RESPONSES,
@@ -679,15 +725,17 @@ def plan_account_virtual_funds_by_uid(
     summary="Allocate an account's holdings to its virtual funds",
     description=(
         "Plan again from the same inputs and write the allocation in one transaction: the "
-        "virtual funds, one holdings set per fund and the holdings rows. A plan is never "
-        "accepted from the client. With `plan_digest`, a recomputed plan with another digest "
-        "answers 409 `plan_changed` and nothing is written. A shortfall is not a refusal: the "
-        "allocation is written with its deltas, and a caller that wants all or nothing plans "
-        "first and allocates only when no account delta is positive. An applied allocation "
-        "is account history: the same plan again writes nothing and answers `already_applied`, "
-        "and a different allocation of the same snapshot answers 409 `allocation_exists`. A "
-        "fund whose portfolio was retired at or before the snapshot answers 409 "
-        "`portfolio_retired` (ADR 0049). `holdings/by-fund/` reads what was written."
+        "virtual funds, one holdings set per fund, what each fund was assigned, and the "
+        "allocation's lines. A line records an owner's sized target and what it was "
+        "assigned, for every fund and for what the account holds outside its funds, so the "
+        "delta of the sync is kept (ADR 0054). A plan is never accepted from the client. "
+        "With `plan_digest`, which covers the sized targets, a recomputed plan with another "
+        "digest answers 409 `plan_changed` and nothing is written. A shortfall is not a "
+        "refusal. An applied allocation is account history: the same plan again writes "
+        "nothing and answers `already_applied`, and a different allocation of the same "
+        "snapshot answers 409 `allocation_exists`. A fund whose portfolio was retired at or "
+        "before the snapshot answers 409 `portfolio_retired` (ADR 0049). The `GET` of this "
+        "path reads the lines back."
     ),
     operation_id="allocateAccountVirtualFunds",
     responses=ALLOCATION_ERROR_RESPONSES,
@@ -748,11 +796,7 @@ def add_account_holdings_by_uid(
     summary="Add account target positions snapshot",
     description=(
         "Create or replace one account target-position snapshot and return it using "
-        "the same response contract as the target-positions read endpoint. Every row is "
-        "in units (ADR 0052): a positive quantity of one asset and a direction. A direct "
-        "target is one asset row; a virtual fund's target is its unit basket, one "
-        "portfolio row per asset. The caller sizes a basket with its own prices and "
-        "rules; nothing is valued here. Parent "
+        "the same response contract as the target-positions read endpoint. Parent "
         "allocation rows are derived from the account uid in the path. A snapshot that "
         "names a retired portfolio is refused with 409, whatever its date (ADR 0049)."
     ),
@@ -799,8 +843,7 @@ def add_account_target_positions_by_uid(
     response_model=AccountTargetPositionsSnapshotResponse,
     summary="Get account target positions snapshot",
     description=(
-        "Return one account target-position snapshot, in units: one row per asset of each "
-        "direct target and of each virtual fund's basket. When the account exists but no "
+        "Return one account target-position snapshot. When the account exists but no "
         "target-position snapshot matches the request, the response is 200 with an "
         "empty positions list."
     ),

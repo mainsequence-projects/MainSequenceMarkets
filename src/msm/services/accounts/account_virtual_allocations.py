@@ -9,6 +9,7 @@ owner should hold (``target``), what it gets (``assigned``) and the difference
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 import json
 import uuid
@@ -133,11 +134,16 @@ def plan_account_virtual_fund_allocations(
     *,
     position_set_uid: uuid.UUID | str,
     valuation_time: dt.datetime,
+    sized_targets: Sequence[Mapping[str, Any]] = (),
     policy: AllocationPolicyChoice | Mapping[str, Any] | None = None,
 ) -> AccountVirtualFundAllocationPlan:
     """Plan the allocation of one holdings snapshot against one PositionSet.
 
     The snapshot is the account's holdings set at exactly ``valuation_time``.
+    The PositionSet states the account's exposure; ``sized_targets`` gives each
+    exposure in units, sized by the caller with its own prices (ADR 0054): one
+    entry per target, ``{"target_type", "target_uid", "positions"}``, each
+    position a positive ``quantity`` of an ``asset_uid`` with a ``direction``.
     ``policy`` names a policy of the registry, its version and its arguments; it
     defaults to ``proportional_attribution`` at its current version. Nothing is
     written.
@@ -147,6 +153,7 @@ def plan_account_virtual_fund_allocations(
         _allocation_context(),
         position_set_uid=position_set_uid,
         valuation_time=valuation_time,
+        sized_targets=sized_targets,
         policy=policy,
     )
 
@@ -156,6 +163,7 @@ def plan_account_virtual_fund_allocations_in_context(
     *,
     position_set_uid: uuid.UUID | str,
     valuation_time: dt.datetime,
+    sized_targets: Sequence[Mapping[str, Any]] = (),
     policy: AllocationPolicyChoice | Mapping[str, Any] | None = None,
     account_uid: uuid.UUID | str | None = None,
 ) -> AccountVirtualFundAllocationPlan:
@@ -170,6 +178,7 @@ def plan_account_virtual_fund_allocations_in_context(
         context,
         position_set_uid=position_set_uid,
         valuation_time=normalized_time,
+        sized_targets=sized_targets,
         account_uid=account_uid,
     )
     plan = plan_from_inputs(
@@ -215,8 +224,13 @@ def plan_from_inputs(
             )
         )
 
+    fund_target_by_asset: dict[str, float] = {}
+    for (_, target_asset), target in inputs.fund_targets.items():
+        fund_target_by_asset[target_asset] = fund_target_by_asset.get(target_asset, 0.0) + float(
+            target
+        )
     assets = sorted(
-        {*inputs.holdings, *inputs.direct_targets, *(asset for _, asset in inputs.fund_targets)},
+        {*inputs.holdings, *inputs.direct_targets, *fund_target_by_asset},
         key=lambda asset_uid: inputs.asset_identifiers[asset_uid],
     )
     account_deltas: list[AccountAssetDelta] = []
@@ -235,11 +249,7 @@ def plan_from_inputs(
                     delta=direct_target - direct_assigned,
                 )
             )
-        total_target = direct_target + sum(
-            float(target)
-            for (_, target_asset), target in inputs.fund_targets.items()
-            if target_asset == asset_uid
-        )
+        total_target = direct_target + fund_target_by_asset.get(asset_uid, 0.0)
         account_deltas.append(
             AccountAssetDelta(
                 asset_uid=asset_uid,
@@ -255,7 +265,7 @@ def plan_from_inputs(
             virtual_fund_unique_identifier=inputs.fund_unique_identifiers[portfolio_uid],
             target_portfolio_uid=portfolio_uid,
         )
-        for portfolio_uid in sorted({portfolio_uid for portfolio_uid, _ in inputs.fund_targets})
+        for portfolio_uid in sorted(inputs.fund_unique_identifiers)
     )
     plan = AccountVirtualFundAllocationPlan(
         account_uid=str(inputs.account_uid),
@@ -282,16 +292,19 @@ def apply_account_virtual_fund_allocation_plan_in_context(
     context: Any,
     plan: AccountVirtualFundAllocationPlan,
 ) -> AccountVirtualFundAllocationResult:
-    """Write the plan's funds, holdings sets and holdings rows atomically.
+    """Write the plan's funds, holdings sets, holdings rows and lines atomically.
 
-    An applied allocation is account history: applying the same plan again
-    writes nothing and answers ``already_applied``, and a different allocation
-    of the same snapshot is refused (``allocation_exists``). No fund is written
-    for a portfolio retired at or before the plan's time (ADR 0049).
+    The lines are the allocation's record: target and assigned units for every
+    owner and asset, fund or direct (ADR 0054). An applied allocation is account
+    history: applying the same plan again writes nothing and answers
+    ``already_applied``, and a different allocation of the same snapshot is
+    refused (``allocation_exists``). No fund is written for a portfolio retired
+    at or before the plan's time (ADR 0049).
     """
 
     from msm.api.base import operation_result_rows
     from msm.repositories.virtual_funds import (
+        search_account_allocation_lines,
         search_account_virtual_fund_allocation,
         search_virtual_funds_by_unique_identifiers,
         write_account_virtual_fund_allocation,
@@ -299,42 +312,55 @@ def apply_account_virtual_fund_allocation_plan_in_context(
     from msm.services.portfolio_lifecycle import PortfolioRetiredError, retired_portfolios
 
     funds = virtual_fund_holdings_from_plan(plan)
-    retired = retired_portfolios(
-        context,
-        (fund["target_portfolio_uid"] for fund in funds),
-        as_of=plan.valuation_time,
-    )
-    if retired:
-        raise PortfolioRetiredError(
-            retired,
-            action=(
-                f"The virtual-fund allocation of account {plan.account_uid} at "
-                f"{plan.valuation_time.isoformat()}"
-            ),
+    lines = allocation_lines_from_plan(plan)
+    if not funds and not lines:
+        # No target and nothing held: there is nothing to record.
+        return AccountVirtualFundAllocationResult(
+            plan=plan, applied=False, already_applied=False, funds=()
         )
-
-    def existing_allocation() -> list[dict[str, Any]]:
-        return operation_result_rows(
-            search_account_virtual_fund_allocation(
-                context,
-                account_uid=plan.account_uid,
-                source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
+    if funds:
+        retired = retired_portfolios(
+            context,
+            (fund["target_portfolio_uid"] for fund in funds),
+            as_of=plan.valuation_time,
+        )
+        if retired:
+            raise PortfolioRetiredError(
+                retired,
+                action=(
+                    f"The virtual-fund allocation of account {plan.account_uid} at "
+                    f"{plan.valuation_time.isoformat()}"
+                ),
             )
-        )
 
-    existing = existing_allocation()
-    if existing:
-        return _already_applied_or_refused(plan, existing)
-
-    known_funds = {
-        str(row["unique_identifier"]): row
-        for row in operation_result_rows(
-            search_virtual_funds_by_unique_identifiers(
-                context,
-                unique_identifiers=[fund["unique_identifier"] for fund in funds],
-            )
-        )
+    snapshot = {
+        "account_uid": plan.account_uid,
+        "source_account_holdings_set_uid": plan.source_account_holdings_set_uid,
     }
+
+    def existing_allocation() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            operation_result_rows(search_account_virtual_fund_allocation(context, **snapshot)),
+            operation_result_rows(search_account_allocation_lines(context, **snapshot)),
+        )
+
+    existing_funds, existing_lines = existing_allocation()
+    if existing_funds or existing_lines:
+        return _already_applied_or_refused(plan, existing_funds, existing_lines)
+
+    known_funds = (
+        {
+            str(row["unique_identifier"]): row
+            for row in operation_result_rows(
+                search_virtual_funds_by_unique_identifiers(
+                    context,
+                    unique_identifiers=[fund["unique_identifier"] for fund in funds],
+                )
+            )
+        }
+        if funds
+        else {}
+    )
     for unique_identifier, row in known_funds.items():
         if not _same_uid(row.get("account_uid"), plan.account_uid):
             raise AllocationError(
@@ -364,17 +390,17 @@ def apply_account_virtual_fund_allocation_plan_in_context(
     rows = operation_result_rows(
         write_account_virtual_fund_allocation(
             context,
-            account_uid=plan.account_uid,
-            source_account_holdings_set_uid=plan.source_account_holdings_set_uid,
+            **snapshot,
             allocation_time=plan.valuation_time,
             funds=fund_writes,
+            lines=lines,
         )
     )
     if not rows:
         # Another writer allocated the snapshot between the read and the write.
-        existing = existing_allocation()
-        if existing:
-            return _already_applied_or_refused(plan, existing)
+        existing_funds, existing_lines = existing_allocation()
+        if existing_funds or existing_lines:
+            return _already_applied_or_refused(plan, existing_funds, existing_lines)
         raise AllocationError(
             "allocation_exists",
             "The allocation was not written: one of its virtual funds belongs to another "
@@ -395,7 +421,8 @@ def apply_account_virtual_fund_allocation_plan_in_context(
             )
             for fund in fund_writes
         ),
-        rows=tuple(dict(row) for row in rows),
+        # The write answers the lines it recorded; with none, it has no row to show.
+        rows=tuple(dict(row) for row in rows) if lines else (),
     )
 
 
@@ -405,26 +432,29 @@ def allocate_account_virtual_funds_in_context(
     account_uid: uuid.UUID | str,
     position_set_uid: uuid.UUID | str,
     valuation_time: dt.datetime,
+    sized_targets: Sequence[Mapping[str, Any]] = (),
     policy: AllocationPolicyChoice | Mapping[str, Any] | None = None,
     plan_digest: str | None = None,
 ) -> AccountVirtualFundAllocationResult:
     """Plan again from the same inputs, then apply.
 
     With ``plan_digest``, a recomputed plan with another digest is refused
-    (``plan_changed``) and nothing is written.
+    (``plan_changed``) and nothing is written. The digest covers the sized
+    targets, so other targets than the plan's are a changed plan.
     """
 
     plan = plan_account_virtual_fund_allocations_in_context(
         context,
         position_set_uid=position_set_uid,
         valuation_time=valuation_time,
+        sized_targets=sized_targets,
         policy=policy,
         account_uid=account_uid,
     )
     if plan_digest not in (None, "") and plan_digest != plan.plan_digest:
         raise AllocationError(
             "plan_changed",
-            "The target or the holdings changed since the plan was made; plan again.",
+            "The target, its sizing or the holdings changed since the plan was made; plan again.",
             status_code=409,
         )
     return apply_account_virtual_fund_allocation_plan_in_context(context, plan)
@@ -458,49 +488,153 @@ def allocation_response(result: AccountVirtualFundAllocationResult) -> dict[str,
     }
 
 
+def get_account_allocation_record_in_context(
+    context: Any,
+    *,
+    account_uid: uuid.UUID | str,
+    valuation_time: dt.datetime | None = None,
+) -> dict[str, Any]:
+    """Return the stored lines of one allocation of an account's holdings (ADR 0054).
+
+    The allocation is the one at ``valuation_time``, or the account's latest. Each
+    line gives an owner's ``target``, what it was ``assigned`` and
+    ``delta = target - assigned``, in signed units. An account with no allocation
+    at that time answers no line.
+    """
+
+    from msm.api.base import operation_result_rows
+    from msm.repositories.virtual_funds import search_account_allocation_lines
+
+    rows = operation_result_rows(
+        search_account_allocation_lines(
+            context,
+            account_uid=account_uid,
+            time_index=(
+                _utc_timestamp(valuation_time, field_name="valuation_time")
+                if valuation_time is not None
+                else None
+            ),
+        )
+    )
+    record: dict[str, Any] = {
+        "account_uid": _uid(account_uid),
+        "holdings_set_uid": None,
+        "valuation_time": None,
+        "position_set_uid": None,
+        "policy": None,
+        "plan_digest": None,
+        "lines": [],
+    }
+    if not rows:
+        return record
+    details = _mapping(rows[0].get("extra_details"))
+    record.update(
+        holdings_set_uid=_uid(rows[0]["holdings_set_uid"]),
+        valuation_time=pd.to_datetime(rows[0]["time_index"], utc=True).to_pydatetime(),
+        position_set_uid=details.get("position_set_uid"),
+        policy=(
+            {"id": str(rows[0]["allocation_strategy"]), "version": details.get("policy_version")}
+        ),
+        plan_digest=details.get("plan_digest"),
+    )
+    for row in rows:
+        target = float(row["target_quantity"]) * int(row["target_direction"])
+        assigned = float(row["assigned_quantity"]) * int(row["assigned_direction"])
+        is_fund = not _is_missing(row.get("virtual_fund_uid"))
+        record["lines"].append(
+            {
+                "owner": str(row["owner_type"]),
+                "asset_identifier": str(row["asset_identifier"]),
+                "target": target,
+                "assigned": assigned,
+                "delta": target - assigned,
+                "virtual_fund_uid": _uid(row["virtual_fund_uid"]) if is_fund else None,
+                "virtual_fund_unique_identifier": (
+                    str(row["virtual_fund_unique_identifier"]) if is_fund else None
+                ),
+                "target_portfolio_uid": _uid(row["target_portfolio_uid"]) if is_fund else None,
+            }
+        )
+    return record
+
+
 def virtual_fund_holdings_from_plan(
     plan: AccountVirtualFundAllocationPlan,
 ) -> list[dict[str, Any]]:
     """Return the virtual funds an applied plan writes, each with its holdings rows.
 
-    One entry per fund with a fill above the policy's quantity tolerance:
-    ``unique_identifier``, ``target_portfolio_uid`` and ``holdings`` (the
-    ``VirtualFundHoldingsStorage`` values of each allocated asset).
+    One entry per fund of the target: ``unique_identifier``,
+    ``target_portfolio_uid`` and ``holdings``, the ``VirtualFundHoldingsStorage``
+    values of each asset the fund was assigned above the policy's quantity
+    tolerance. A fund the account holds nothing of has no holdings row; it still
+    gets its holdings set, and its target is in the allocation's lines.
     """
 
     tolerance = plan.policy.quantity_tolerance
-    funds: dict[str, dict[str, Any]] = {}
+    funds: dict[str, dict[str, Any]] = {
+        fund.virtual_fund_unique_identifier: {
+            "unique_identifier": fund.virtual_fund_unique_identifier,
+            "target_portfolio_uid": fund.target_portfolio_uid,
+            "holdings": [],
+        }
+        for fund in plan.funds
+    }
     for line in plan.fund_lines:
         if abs(line.assigned) <= tolerance:
             continue
-        fund = funds.setdefault(
-            str(line.virtual_fund_unique_identifier),
-            {
-                "unique_identifier": str(line.virtual_fund_unique_identifier),
-                "target_portfolio_uid": str(line.target_portfolio_uid),
-                "holdings": [],
-            },
-        )
-        fund["holdings"].append(
+        funds[str(line.virtual_fund_unique_identifier)]["holdings"].append(
             {
                 ASSET_IDENTIFIER_DIMENSION: line.asset_identifier,
                 "allocated_quantity": abs(line.assigned),
                 "allocation_strategy": plan.policy.id,
                 "direction": 1 if line.assigned > 0 else -1,
-                "extra_details": {
-                    "source": "account_virtual_allocation_plan",
-                    "policy_version": plan.policy.version,
-                    "position_set_uid": plan.position_set_uid,
-                    "plan_digest": plan.plan_digest,
-                },
+                "extra_details": _allocation_details(plan),
             }
         )
-    if not funds:
-        raise AllocationError(
-            "nothing_to_apply",
-            "The plan gives no virtual fund any units, so there is nothing to write.",
-        )
     return [funds[unique_identifier] for unique_identifier in sorted(funds)]
+
+
+def allocation_lines_from_plan(plan: AccountVirtualFundAllocationPlan) -> list[dict[str, Any]]:
+    """Return the lines an applied plan records: one per owner and asset (ADR 0054).
+
+    The ``AccountAllocationLinesStorage`` values of every line of the plan, for a
+    virtual fund or for the account's direct part: the sized target and the
+    assigned units, each a non-negative quantity with a direction. The delta,
+    target minus assigned, is read from the two. A fund line names its fund by
+    ``fund_unique_identifier``; a direct line leaves it null.
+    """
+
+    tolerance = plan.policy.quantity_tolerance
+    lines: list[dict[str, Any]] = []
+    for line in plan.lines:
+        assigned = line.assigned if abs(line.assigned) > tolerance else 0.0
+        if assigned == 0.0 and line.target == 0.0:
+            continue
+        # A side is the sign of its own quantity; a zero takes the other one's side.
+        target_direction = _side(line.target) or _side(assigned)
+        lines.append(
+            {
+                "owner_type": line.owner,
+                "fund_unique_identifier": line.virtual_fund_unique_identifier,
+                ASSET_IDENTIFIER_DIMENSION: line.asset_identifier,
+                "target_quantity": abs(line.target),
+                "target_direction": target_direction,
+                "assigned_quantity": abs(assigned),
+                "assigned_direction": _side(assigned) or target_direction,
+                "allocation_strategy": plan.policy.id,
+                "extra_details": _allocation_details(plan),
+            }
+        )
+    return lines
+
+
+def _allocation_details(plan: AccountVirtualFundAllocationPlan) -> dict[str, Any]:
+    return {
+        "source": "account_virtual_allocation_plan",
+        "policy_version": plan.policy.version,
+        "position_set_uid": plan.position_set_uid,
+        "plan_digest": plan.plan_digest,
+    }
 
 
 def virtual_fund_unique_identifier_for_target(
@@ -513,9 +647,9 @@ def virtual_fund_unique_identifier_for_target(
 
     key = (
         "msm.account_virtual_fund:"
-        f"account={account_uid}:"
-        f"portfolio={target_portfolio_uid}:"
-        f"target_allocation={account_target_allocation_uid}"
+        f"account={_uid(account_uid)}:"
+        f"portfolio={_uid(target_portfolio_uid)}:"
+        f"target_allocation={_uid(account_target_allocation_uid)}"
     )
     return f"account-virtual-fund-{uuid.uuid5(uuid.NAMESPACE_URL, key)}"
 
@@ -531,12 +665,15 @@ def build_account_virtual_fund_allocation_inputs(
     valuation_time: dt.datetime,
     asset_uid_by_identifier: Mapping[str, uuid.UUID | str],
     asset_identifier_by_uid: Mapping[uuid.UUID | str, str],
+    fund_portfolio_uids: Sequence[uuid.UUID | str] = (),
 ) -> AccountVirtualFundAllocationInputs:
-    """Build planner inputs from already-loaded account and target rows.
+    """Build planner inputs from already-loaded holdings and sized target rows.
 
-    Every row is a positive quantity of one asset with a direction (ADR 0052).
-    An asset target row is a direct target; the portfolio rows of one portfolio
-    are that virtual fund's unit basket.
+    ``target_positions`` are targets in units: every row is a positive quantity
+    of one asset with a direction. An asset row is a direct target; the
+    portfolio rows of one portfolio are that virtual fund's sized target.
+    ``fund_portfolio_uids`` names every fund of the account's target, so a fund
+    sized to nothing is still a fund of the plan.
     """
 
     normalized_time = _utc_timestamp(valuation_time, field_name="valuation_time")
@@ -588,13 +725,23 @@ def build_account_virtual_fund_allocation_inputs(
                 f"Portfolio {portfolio_uid} names asset {asset_uid} twice in its basket."
             )
         fund_targets[(portfolio_uid, asset_uid)] = signed
-        fund_unique_identifiers.setdefault(
-            portfolio_uid,
-            virtual_fund_unique_identifier_for_target(
+        if portfolio_uid not in fund_unique_identifiers:
+            fund_unique_identifiers[portfolio_uid] = virtual_fund_unique_identifier_for_target(
                 account_uid=account_uid,
                 target_portfolio_uid=portfolio_uid,
                 account_target_allocation_uid=account_target_allocation_uid,
-            ),
+            )
+
+    for raw_portfolio_uid in fund_portfolio_uids:
+        portfolio_uid = _uid(raw_portfolio_uid)
+        if portfolio_uid in fund_unique_identifiers:
+            continue
+        if account_target_allocation_uid in (None, ""):
+            raise ValueError("Portfolio target rows require account_target_allocation_uid.")
+        fund_unique_identifiers[portfolio_uid] = virtual_fund_unique_identifier_for_target(
+            account_uid=account_uid,
+            target_portfolio_uid=portfolio_uid,
+            account_target_allocation_uid=account_target_allocation_uid,
         )
 
     return AccountVirtualFundAllocationInputs(
@@ -613,9 +760,14 @@ def resolve_account_virtual_fund_allocation_inputs(
     *,
     position_set_uid: uuid.UUID | str,
     valuation_time: dt.datetime,
+    sized_targets: Sequence[Mapping[str, Any]] = (),
     account_uid: uuid.UUID | str | None = None,
 ) -> AccountVirtualFundAllocationInputs:
-    """Resolve planner inputs through the account MetaTable relationship graph."""
+    """Resolve planner inputs through the account MetaTable relationship graph.
+
+    The PositionSet's rows state the exposure; ``sized_targets`` gives them in
+    units. Every exposure that is not already in units must be sized.
+    """
 
     from msm.api.base import operation_result_rows
     from msm.models.accounts import (
@@ -709,11 +861,12 @@ def resolve_account_virtual_fund_allocation_inputs(
         for row in account_holding_rows
         if row.get(ASSET_IDENTIFIER_DIMENSION) not in (None, "")
     }
-    asset_uids = {
-        str(row.get("asset_uid"))
-        for row in target_position_rows
-        if row.get("asset_uid") not in (None, "")
-    }
+    sized_rows, fund_portfolio_uids = sized_target_rows(
+        target_position_rows,
+        sized_targets,
+        position_set_uid=position_set_uid,
+    )
+    asset_uids = {str(row["asset_uid"]) for row in sized_rows}
     asset_rows: list[dict[str, Any]] = []
     if asset_identifiers:
         asset_rows.extend(
@@ -739,9 +892,8 @@ def resolve_account_virtual_fund_allocation_inputs(
         )
     asset_uid_by_identifier, asset_identifier_by_uid = _asset_identity_maps(asset_rows)
     missing_identifiers = sorted(asset_identifiers - set(asset_uid_by_identifier))
-    missing_uids = sorted(
-        uid for uid in asset_uids if not any(_same_uid(uid, known) for known in asset_identifier_by_uid)
-    )
+    known_uids = {_uid(known) for known in asset_identifier_by_uid}
+    missing_uids = sorted(uid for uid in asset_uids if _uid(uid) not in known_uids)
     if missing_identifiers or missing_uids:
         raise ValueError(
             "Could not resolve AssetTable identity for allocation inputs. "
@@ -754,11 +906,149 @@ def resolve_account_virtual_fund_allocation_inputs(
         position_set_uid=position_set_uid,
         source_account_holdings_set_uid=holdings_set_uid,
         account_holdings=account_holding_rows,
-        target_positions=target_position_rows,
+        target_positions=sized_rows,
         valuation_time=normalized_time,
         asset_uid_by_identifier=asset_uid_by_identifier,
         asset_identifier_by_uid=asset_identifier_by_uid,
+        fund_portfolio_uids=fund_portfolio_uids,
     )
+
+
+def sized_target_rows(
+    exposure_rows: Sequence[Mapping[str, Any]],
+    sized_targets: Sequence[Mapping[str, Any]],
+    *,
+    position_set_uid: uuid.UUID | str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Match a PositionSet's exposure rows with the caller's sizing of them.
+
+    Returns the targets in units, one row per target and asset, and the uid of
+    every portfolio of the PositionSet. An exposure row stated as
+    ``single_asset_quantity`` is already in units. Every other row must have one
+    entry in ``sized_targets``: ``{"target_type", "target_uid", "positions"}``.
+    A portfolio sized with no position is a fund sized to nothing.
+
+    Raises ``AllocationError`` ``invalid_sized_targets`` and lists every problem:
+    a target the PositionSet does not name, a target sized twice, an asset
+    target that is already in units or is sized in another asset, an asset
+    named twice in one sizing, and an exposure that is not sized.
+    """
+
+    unit_rows: list[dict[str, Any]] = []
+    portfolio_uids: list[str] = []
+    unsized_assets: set[str] = set()
+    for row in exposure_rows:
+        target_type = _required_string(row.get("target_type"), "target_type")
+        if target_type == TARGET_TYPE_PORTFOLIO:
+            portfolio_uids.append(_uid(_required_string(row.get("portfolio_uid"), "portfolio_uid")))
+            continue
+        if target_type != TARGET_TYPE_ASSET:
+            raise ValueError("target_type must be asset or portfolio.")
+        asset_uid = _uid(_required_string(row.get("asset_uid"), "asset_uid"))
+        units = _optional_float(row.get("single_asset_quantity"))
+        if units is None:
+            unsized_assets.add(asset_uid)
+        elif units != 0.0:
+            unit_rows.append(
+                {
+                    "target_type": TARGET_TYPE_ASSET,
+                    "asset_uid": asset_uid,
+                    "quantity": abs(units),
+                    "direction": 1 if units > 0 else -1,
+                }
+            )
+
+    portfolios = set(portfolio_uids)
+    errors: list[dict[str, str]] = []
+    sized: set[tuple[str, str]] = set()
+    for index, entry in enumerate(sized_targets):
+        location = f"sized_targets.{index}"
+        target_type = str(entry.get("target_type") or TARGET_TYPE_PORTFOLIO)
+        target_uid = _uid(_required_string(entry.get("target_uid"), f"{location}.target_uid"))
+        key = (target_type, target_uid)
+        if key in sized:
+            errors.append({"input": location, "message": "The target is sized twice."})
+            continue
+        sized.add(key)
+        if target_type == TARGET_TYPE_PORTFOLIO:
+            known = target_uid in portfolios
+        elif target_type == TARGET_TYPE_ASSET:
+            known = target_uid in unsized_assets
+        else:
+            errors.append(
+                {"input": location, "message": "target_type must be asset or portfolio."}
+            )
+            continue
+        if not known:
+            errors.append(
+                {
+                    "input": location,
+                    "message": (
+                        f"PositionSet {position_set_uid!s} has no {target_type} exposure to "
+                        f"{target_uid} that needs sizing."
+                    ),
+                }
+            )
+            continue
+        seen_assets: set[str] = set()
+        for position_index, position in enumerate(entry.get("positions") or ()):
+            position_location = f"{location}.positions.{position_index}"
+            asset_uid = _uid(
+                _required_string(position.get("asset_uid"), f"{position_location}.asset_uid")
+            )
+            if asset_uid in seen_assets:
+                errors.append(
+                    {"input": position_location, "message": "The asset is named twice."}
+                )
+                continue
+            seen_assets.add(asset_uid)
+            if target_type == TARGET_TYPE_ASSET and asset_uid != target_uid:
+                errors.append(
+                    {
+                        "input": position_location,
+                        "message": "An asset target is sized in its own asset.",
+                    }
+                )
+                continue
+            quantity = _optional_float(position.get("quantity"))
+            if quantity is None or quantity <= 0:
+                errors.append(
+                    {"input": position_location, "message": "quantity must be positive."}
+                )
+                continue
+            unit_rows.append(
+                {
+                    "target_type": target_type,
+                    "asset_uid": asset_uid,
+                    "portfolio_uid": target_uid if target_type == TARGET_TYPE_PORTFOLIO else None,
+                    "quantity": quantity,
+                    "direction": _direction(position.get("direction", 1)),
+                }
+            )
+
+    for portfolio_uid in sorted(portfolios):
+        if (TARGET_TYPE_PORTFOLIO, portfolio_uid) not in sized:
+            errors.append(
+                {
+                    "input": "sized_targets",
+                    "message": f"The exposure to portfolio {portfolio_uid} is not sized.",
+                }
+            )
+    for asset_uid in sorted(unsized_assets):
+        if (TARGET_TYPE_ASSET, asset_uid) not in sized:
+            errors.append(
+                {
+                    "input": "sized_targets",
+                    "message": f"The exposure to asset {asset_uid} is not sized.",
+                }
+            )
+    if errors:
+        raise AllocationError(
+            "invalid_sized_targets",
+            "The sized targets do not match the account's target.",
+            errors=errors,
+        )
+    return unit_rows, sorted(portfolios)
 
 
 def _allocation_context() -> Any:
@@ -775,7 +1065,10 @@ def _allocation_context() -> Any:
     )
     from msm.models.assets import AssetTable
     from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-    from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+    from msm.time_index.accounts.virtual_funds.storage import (
+        AccountAllocationLinesStorage,
+        VirtualFundHoldingsStorage,
+    )
 
     return resolve_runtime(
         models=[
@@ -789,6 +1082,7 @@ def _allocation_context() -> Any:
             VirtualFundTable,
             VirtualFundHoldingsSetTable,
             VirtualFundHoldingsStorage,
+            AccountAllocationLinesStorage,
         ],
         row_model_name="Account virtual-fund allocation",
     ).context
@@ -818,10 +1112,29 @@ def _with_apply_blockers(
 
 def _already_applied_or_refused(
     plan: AccountVirtualFundAllocationPlan,
-    existing: Sequence[Mapping[str, Any]],
+    existing_funds: Sequence[Mapping[str, Any]],
+    existing_lines: Sequence[Mapping[str, Any]],
 ) -> AccountVirtualFundAllocationResult:
-    digests = {str(_mapping(row.get("extra_details")).get("plan_digest") or "") for row in existing}
-    if digests != {plan.plan_digest}:
+    """Answer ``already_applied`` for the same allocation, refuse another one.
+
+    The plan digest is stored on the allocation's lines. An allocation written
+    before the lines were recorded has it on its fund holdings rows. An
+    allocation with neither wrote only holdings sets: it is the same allocation
+    when the plan records nothing either, for the same funds.
+    """
+
+    digest_rows = existing_lines or [
+        row for row in existing_funds if not _is_missing(row.get("asset_identifier"))
+    ]
+    if digest_rows:
+        same_allocation = {
+            str(_mapping(row.get("extra_details")).get("plan_digest") or "") for row in digest_rows
+        } == {plan.plan_digest}
+    else:
+        same_allocation = not allocation_lines_from_plan(plan) and {
+            fund.virtual_fund_unique_identifier for fund in plan.funds
+        } == {str(row["unique_identifier"]) for row in existing_funds}
+    if not same_allocation:
         raise AllocationError(
             "allocation_exists",
             f"The holdings snapshot of account {plan.account_uid} at "
@@ -830,7 +1143,7 @@ def _already_applied_or_refused(
             status_code=409,
         )
     funds: dict[str, AllocationFund] = {}
-    for row in existing:
+    for row in existing_funds:
         funds[str(row["unique_identifier"])] = AllocationFund(
             virtual_fund_unique_identifier=str(row["unique_identifier"]),
             target_portfolio_uid=str(uuid.UUID(str(row["target_portfolio_uid"]))),
@@ -843,6 +1156,14 @@ def _already_applied_or_refused(
         already_applied=True,
         funds=tuple(funds[unique_identifier] for unique_identifier in sorted(funds)),
     )
+
+
+def _side(quantity: float) -> Literal[1, -1] | None:
+    if quantity > 0:
+        return 1
+    if quantity < 0:
+        return -1
+    return None
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -945,23 +1266,27 @@ def _position_set_target_rows(
     capture cannot apply to it.
     """
 
-    expected_uid = str(position_set_uid)
+    expected_uid = _uid(position_set_uid)
     selected: list[dict[str, Any]] = []
-    snapshot_times: set[dt.datetime] = set()
+    raw_times: set[Any] = set()
     for row in rows:
         row_uid = row.get("position_set_uid")
-        if not _is_missing(row_uid) and not _same_uid(row_uid, expected_uid):
+        if not _is_missing(row_uid) and _uid(row_uid) != expected_uid:
             raise ValueError(
                 f"Target row belongs to position_set_uid={row_uid!s}, not {expected_uid}."
             )
-        if not _is_missing(row.get("time_index")):
-            snapshot_times.add(pd.to_datetime(row["time_index"], utc=True).to_pydatetime())
+        raw_time = row.get("time_index")
+        if not _is_missing(raw_time):
+            raw_times.add(raw_time)
+        selected.append(dict(row))
+    # A snapshot has one time, so parse each distinct value once, not once per row.
+    snapshot_times = {pd.to_datetime(raw, utc=True).to_pydatetime() for raw in raw_times}
+    for snapshot_time in sorted(snapshot_times):
         _require_target_in_force(
-            row.get("time_index"),
+            snapshot_time,
             position_set_uid=expected_uid,
             valuation_time=valuation_time,
         )
-        selected.append(dict(row))
     if len(snapshot_times) > 1:
         raise ValueError(
             f"Target rows for position_set_uid={expected_uid} span {len(snapshot_times)} "
@@ -1005,10 +1330,16 @@ def _deterministic_holdings_set_uid(
 def _uid(value: Any) -> str:
     """A uid as dashed text, whatever form the backend returned it in."""
 
+    return _uid_text(str(value))
+
+
+@functools.lru_cache(maxsize=65_536)
+def _uid_text(text: str) -> str:
+    # The same few uids repeat on every row of a snapshot, so each is parsed once.
     try:
-        return str(uuid.UUID(str(value)))
+        return str(uuid.UUID(text))
     except ValueError:
-        return str(value)
+        return text
 
 
 def _same_uid(left: Any, right: Any) -> bool:
@@ -1046,8 +1377,12 @@ def _optional_float(value: Any) -> float | None:
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
-    if isinstance(value, str) and value == "":
-        return True
+    if isinstance(value, str):
+        return value == ""
+    if isinstance(value, int):
+        return False
+    if isinstance(value, float):
+        return value != value
     if isinstance(value, Mapping | Sequence) and not isinstance(value, str | bytes):
         return False
     try:
@@ -1067,14 +1402,17 @@ __all__ = [
     "AllocationFund",
     "AllocationLine",
     "allocate_account_virtual_funds_in_context",
+    "allocation_lines_from_plan",
     "allocation_response",
     "apply_account_virtual_fund_allocation_plan",
     "apply_account_virtual_fund_allocation_plan_in_context",
     "build_account_virtual_fund_allocation_inputs",
+    "get_account_allocation_record_in_context",
     "plan_account_virtual_fund_allocations",
     "plan_account_virtual_fund_allocations_in_context",
     "plan_from_inputs",
     "plan_response",
+    "sized_target_rows",
     "virtual_fund_holdings_from_plan",
     "virtual_fund_unique_identifier_for_target",
 ]

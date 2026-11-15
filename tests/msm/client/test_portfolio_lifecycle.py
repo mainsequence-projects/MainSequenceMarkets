@@ -47,7 +47,7 @@ def test_reads_the_accounts_targeting_a_portfolio(monkeypatch, client) -> None:
                     "account_target_allocation_uid": str(uuid.uuid4()),
                     "position_set_uid": str(uuid.uuid4()),
                     "target_positions_date": RETIRED_AT,
-                    "asset_count": 3,
+                    "weight_notional_exposure": "0.5",
                 }
             ],
         }
@@ -59,7 +59,7 @@ def test_reads_the_accounts_targeting_a_portfolio(monkeypatch, client) -> None:
     assert received == {"uid": portfolio_uid, "limit": 50, "offset": 0}
     assert isinstance(page.items[0], PortfolioAccountTarget)
     assert page.items[0].account_uid == account_uid
-    assert page.items[0].asset_count == 3
+    assert page.items[0].weight_notional_exposure == "0.5"
     assert page.page_info.total_items == 1
 
 

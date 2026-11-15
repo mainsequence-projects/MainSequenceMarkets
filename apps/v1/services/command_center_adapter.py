@@ -80,6 +80,7 @@ READ_OPERATION_IDS = frozenset(
         "getVirtualFundAllocationPolicies",
         "getVirtualFundAllocationPolicy",
         "planAccountVirtualFunds",
+        "getAccountVirtualFundAllocation",
         "getAccountTargetPositions",
         "listPortfolioAccountTargets",
         "listIndexes",

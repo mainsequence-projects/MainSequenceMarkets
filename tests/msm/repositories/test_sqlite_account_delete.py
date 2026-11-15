@@ -123,6 +123,23 @@ def _virtual_fund(engine, account, source, portfolio, unique_identifier: str) ->
         allocation_strategy="explicit",
         direction=1,
     )
+    # The allocation's lines: what the fund was assigned against its sized target.
+    _insert(
+        engine,
+        "ms_markets__accountallocationlinests",
+        time_index=WHEN,
+        holdings_set_uid=source.hex,
+        owner_type="fund",
+        owner_uid=fund.hex,
+        asset_identifier="AAA",
+        account_uid=account.hex,
+        virtual_fund_uid=fund.hex,
+        target_quantity=2.0,
+        target_direction=1,
+        assigned_quantity=1.0,
+        assigned_direction=1,
+        allocation_strategy="proportional_attribution",
+    )
 
 
 def _history(sqlite_markets, account: uuid.UUID) -> dict[str, str]:
@@ -132,7 +149,7 @@ def _history(sqlite_markets, account: uuid.UUID) -> dict[str, str]:
     identifier = _identifier(engine, account)
     portfolio = _portfolio(engine)
     written = _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
-    _write_target(sqlite_markets, account, [_portfolio_position(engine, portfolio)])
+    _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
     source = uuid.UUID(str(written["rows"][0]["holdings_set_uid"]))
     _virtual_fund(engine, account, source, portfolio, f"fund-{identifier}")
     manager = _order_manager(engine, account)

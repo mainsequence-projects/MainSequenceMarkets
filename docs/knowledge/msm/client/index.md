@@ -201,7 +201,7 @@ client.add_account_target_positions(
     account_uid,
     target_positions_date=rebalanced_at,
     positions=[{"target_type": "portfolio", "target_uid": p, "portfolio_uid": p,
-                "asset_uid": asset_uid, "quantity": 1000, "direction": 1}],
+                "weight_notional_exposure": 0.25}],
 )
 target = client.account_target_positions(account_uid)
 client.clear_account_target_positions(account_uid, target_positions_date=closed_at)
@@ -216,17 +216,27 @@ step-by-step guide for an application that sizes targets and allocates through
 this client.
 
 The allocation of an account's holdings to its virtual funds has typed methods
-too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md)).
-Targets and holdings are both in units, so no price or valuation is sent:
+too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md),
+[ADR 0054](../../../ADR/0054-account-exposure-and-sized-fund-targets.md)). The
+target states exposure, as a share of NAV or an amount. The caller sizes it into
+units with its own prices and sends the units; no price or valuation is sent:
 
 ```python
 (policy,) = client.virtual_fund_allocation_policies()
 description = client.virtual_fund_allocation_policy(policy.id)   # arguments as JSON Schema
 
+sized_targets = [
+    {
+        "target_type": "portfolio",
+        "target_uid": portfolio_uid,
+        "positions": [{"asset_uid": asset_uid, "quantity": 1_200, "direction": 1}],
+    }
+]
 plan = client.plan_account_virtual_funds(
     account_uid,
     position_set_uid=target.position_set_uid,
     valuation_time=holdings_time,
+    sized_targets=sized_targets,
 )
 for line in plan.lines:
     print(line.owner, line.asset_identifier, line.target, line.assigned, line.delta)
@@ -235,6 +245,7 @@ result = client.allocate_account_virtual_funds(
     account_uid,
     position_set_uid=target.position_set_uid,
     valuation_time=holdings_time,
+    sized_targets=sized_targets,
     plan_digest=plan.plan_digest,
 )
 ```
@@ -242,10 +253,14 @@ result = client.allocate_account_virtual_funds(
 `plan_account_virtual_funds` writes nothing. Each line gives an owner's `target`,
 what it is `assigned` and `delta = target - assigned`; `plan.account_deltas`
 gives each asset's total target minus what the account holds.
-`allocate_account_virtual_funds` plans again and writes in one transaction. With
-`plan_digest` it raises `MarketsConflictError` when the target or the holdings
-changed since that plan. A shortfall is not refused: to write only a complete
-allocation, allocate only when no account delta is positive. The same plan again
+`allocate_account_virtual_funds` plans again and writes in one transaction: every
+fund of the target gets its holdings set, and the allocation's lines record the
+sized target and the assigned units of every owner, fund or direct.
+`account_virtual_fund_allocation(account_uid)` reads those lines back with each
+`delta`, for the latest sync or for the one at `valuation_time`. With `plan_digest` it raises `MarketsConflictError`
+when the target, its sizing or the holdings changed since that plan. A shortfall
+is not refused: to write only a complete allocation, allocate only when no delta
+is positive. The same plan again
 writes nothing and answers `already_applied`; a different allocation of the same
 snapshot raises `MarketsConflictError`.
 
