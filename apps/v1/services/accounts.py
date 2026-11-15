@@ -24,6 +24,7 @@ from apps.v1.schemas.accounts import (
     AccountVirtualFundAllocateRequest,
     AccountVirtualFundAllocationPlanRequest,
     AccountVirtualFundAllocationPlanResponse,
+    AccountVirtualFundAllocationRecordResponse,
     AccountVirtualFundAllocationResponse,
     VirtualFundAllocationPolicyDescription,
     VirtualFundAllocationPolicyList,
@@ -229,6 +230,7 @@ def plan_account_virtual_funds(
         account_uid=account_uid,
         position_set_uid=payload.position_set_uid,
         valuation_time=payload.valuation_time,
+        sized_targets=[target.model_dump() for target in payload.sized_targets],
         policy=payload.policy.model_dump() if payload.policy is not None else None,
     )
     return AccountVirtualFundAllocationPlanResponse.model_validate(plan_response(plan))
@@ -253,10 +255,34 @@ def allocate_account_virtual_funds(
         account_uid=account_uid,
         position_set_uid=payload.position_set_uid,
         valuation_time=payload.valuation_time,
+        sized_targets=[target.model_dump() for target in payload.sized_targets],
         policy=payload.policy.model_dump() if payload.policy is not None else None,
         plan_digest=payload.plan_digest,
     )
     return AccountVirtualFundAllocationResponse.model_validate(allocation_response(result))
+
+
+def get_account_virtual_fund_allocation(
+    *,
+    account_uid: str,
+    valuation_time: dt.datetime | None = None,
+) -> AccountVirtualFundAllocationRecordResponse | None:
+    """The stored lines of one allocation, with each owner's delta; ``None`` for no account."""
+
+    from msm.services.accounts.account_virtual_allocations import (
+        get_account_allocation_record_in_context,
+    )
+
+    runtime = _get_virtual_fund_allocation_runtime()
+    if not _operation_result_rows(_get_account_by_uid(runtime.context, uid=account_uid)):
+        return None
+    return AccountVirtualFundAllocationRecordResponse.model_validate(
+        get_account_allocation_record_in_context(
+            runtime.context,
+            account_uid=account_uid,
+            valuation_time=valuation_time,
+        )
+    )
 
 
 @registry_write("account", "add:account-holdings")
@@ -392,6 +418,7 @@ def _get_delete_runtime():
             "VirtualFund",
             "VirtualFundHoldingsSet",
             "VirtualFundHoldingsStorage",
+            "AccountAllocationLinesStorage",
             "OrderManager",
             "OrdersStorage",
             "TradesStorage",
@@ -475,6 +502,7 @@ def _get_virtual_fund_allocation_runtime():
             "VirtualFund",
             "VirtualFundHoldingsSet",
             "VirtualFundHoldingsStorage",
+            "AccountAllocationLinesStorage",
         ],
         row_model_name="POST /api/v1/account/{account_uid}/virtual-fund-allocations/",
     )
@@ -491,6 +519,7 @@ def _get_target_positions_runtime():
             "PositionSet",
             "Portfolio",
             "TargetPositionsStorage",
+            "VirtualFund",
             "Asset",
             "AssetSnapshotsStorage",
         ],

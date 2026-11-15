@@ -17,6 +17,7 @@ from msm.api.accounts import (
     AccountVirtualFundAllocationPlanRequest,
     AccountVirtualFundAllocationPlanResponse,
     AccountVirtualFundAllocationPolicyChoice,
+    AccountVirtualFundAllocationRecordResponse,
     AccountVirtualFundAllocationResponse,
     PortfolioAccountTarget,
     VirtualFundAllocationPolicyDescription,
@@ -237,10 +238,6 @@ class MarketsClient:
     ) -> AccountTargetPositionsSnapshotResponse:
         """Write an account's whole target at ``target_positions_date`` (``addAccountTargetPositions``).
 
-        Every position is in units (ADR 0052): ``asset_uid``, a positive ``quantity``
-        and a ``direction``. Rows with the same ``portfolio_uid`` are that virtual
-        fund's unit basket, which the caller sizes with its own prices and rules.
-
         An empty ``positions`` list clears the target; see
         ``clear_account_target_positions``. A snapshot that already exists at
         that time raises ``ValueError`` unless ``overwrite`` is true.
@@ -304,20 +301,24 @@ class MarketsClient:
         *,
         position_set_uid: Any,
         valuation_time: dt.datetime,
+        sized_targets: Sequence[Mapping[str, Any]] = (),
         policy: AccountVirtualFundAllocationPolicyChoice | Mapping[str, Any] | None = None,
     ) -> AccountVirtualFundAllocationPlanResponse:
         """Plan the allocation of one holdings snapshot (``planAccountVirtualFunds``).
 
         Nothing is written. The snapshot is the account's holdings set at exactly
-        ``valuation_time`` and the target is ``position_set_uid``; both are in units
-        (ADR 0052), so no price or valuation is sent. Each line of the plan has a
-        ``target``, what is ``assigned`` and ``delta = target - assigned``. Without
-        ``policy``, ``proportional_attribution`` runs with its defaults.
+        ``valuation_time``. ``position_set_uid`` states the account's exposure, as a
+        share of NAV or an amount; ``sized_targets`` gives each exposure in units,
+        sized by the caller with its own prices (ADR 0054). No price is sent. Each
+        line of the plan has a ``target``, what is ``assigned`` and
+        ``delta = target - assigned``. Without ``policy``,
+        ``proportional_attribution`` runs with its defaults.
         """
 
         request = AccountVirtualFundAllocationPlanRequest(
             position_set_uid=str(position_set_uid),
             valuation_time=valuation_time,
+            sized_targets=[dict(target) for target in sized_targets],
             policy=policy,
         )
         payload = self.request(
@@ -333,22 +334,24 @@ class MarketsClient:
         *,
         position_set_uid: Any,
         valuation_time: dt.datetime,
+        sized_targets: Sequence[Mapping[str, Any]] = (),
         policy: AccountVirtualFundAllocationPolicyChoice | Mapping[str, Any] | None = None,
         plan_digest: str | None = None,
     ) -> AccountVirtualFundAllocationResponse:
         """Plan again and write the allocation (``allocateAccountVirtualFunds``).
 
         With ``plan_digest``, the write is refused (``MarketsConflictError``) when the
-        target or the holdings changed since that plan. A shortfall is not refused:
-        to write only a complete allocation, plan first and allocate only when no
-        ``account_deltas`` entry is positive. The same plan again writes nothing and
-        answers ``already_applied``; a different allocation of the same snapshot is
-        refused.
+        target, its sizing or the holdings changed since that plan. Every fund of the
+        target gets its holdings set, and each row stores the sized target next to
+        what was assigned, so the delta is read from it. A shortfall is not refused.
+        The same plan again writes nothing and answers ``already_applied``; a
+        different allocation of the same snapshot is refused.
         """
 
         request = AccountVirtualFundAllocateRequest(
             position_set_uid=str(position_set_uid),
             valuation_time=valuation_time,
+            sized_targets=[dict(target) for target in sized_targets],
             policy=policy,
             plan_digest=plan_digest,
         )
@@ -358,6 +361,31 @@ class MarketsClient:
             json=request.model_dump(mode="json"),
         )
         return AccountVirtualFundAllocationResponse.model_validate(payload)
+
+    def account_virtual_fund_allocation(
+        self,
+        account_uid: Any,
+        *,
+        valuation_time: dt.datetime | None = None,
+    ) -> AccountVirtualFundAllocationRecordResponse:
+        """The stored lines of one allocation (``getAccountVirtualFundAllocation``).
+
+        One line per owner and asset: the sized ``target``, what was ``assigned``
+        and ``delta = target - assigned``. The owner is a virtual fund, or
+        ``direct`` for what the account holds outside its funds. Without
+        ``valuation_time`` it is the account's latest allocation. An account with
+        no allocation at that time answers no line.
+        """
+
+        params: list[tuple[str, Any]] = []
+        if valuation_time is not None:
+            params.append(("valuation_time", valuation_time.isoformat()))
+        payload = self.request(
+            "GET",
+            f"{API_PREFIX}/account/{account_uid}/virtual-fund-allocations/",
+            params=params,
+        )
+        return AccountVirtualFundAllocationRecordResponse.model_validate(payload)
 
     def portfolio_account_targets(
         self,

@@ -2,6 +2,9 @@
 
 ## Status
 
+Superseded by [ADR 0054](0054-account-exposure-and-sized-fund-targets.md), proposed on
+2026-11-15: an account's exposure to a portfolio is a share of NAV or an amount, not units.
+
 Proposed (2026-11-15). No issue has been filed for it yet. The decisions marked (owner)
 were made by the owner on 2026-11-15. Implemented on `development` for 3.6.0, except the
 examples listed under "Implementation Notes".

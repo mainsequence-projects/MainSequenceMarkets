@@ -158,6 +158,7 @@ _EXPORTS = {
     "search_portfolios": ".portfolios",
     "search_portfolio_group_memberships": ".portfolios",
     "search_portfolio_groups": ".portfolios",
+    "expand_portfolio_target_positions": ".target_positions",
     "update_account": ".accounts",
     "update_account_group": ".reference_data",
     "update_asset": ".assets",

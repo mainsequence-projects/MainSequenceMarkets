@@ -1,4 +1,4 @@
-"""The allocation planner on unit targets, and its policy registry (ADR 0053)."""
+"""The allocation planner on sized targets, and its policy registry (ADR 0053, ADR 0054)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from jsonschema import Draft202012Validator
 from msm.services.accounts.account_virtual_allocations import (
     build_account_virtual_fund_allocation_inputs,
     plan_from_inputs,
+    allocation_lines_from_plan,
     plan_response,
+    sized_target_rows,
     virtual_fund_holdings_from_plan,
     virtual_fund_unique_identifier_for_target,
 )
@@ -401,9 +403,7 @@ def test_a_target_with_no_fund_puts_every_holding_on_the_direct_sleeve() -> None
     assert {
         line.asset_identifier: (line.target, line.assigned, line.delta) for line in plan.direct_lines
     } == {"X": (100, 100, 0), "Y": (0, -5, 5)}
-    with pytest.raises(AllocationError) as nothing:
-        virtual_fund_holdings_from_plan(plan)
-    assert nothing.value.code == "nothing_to_apply"
+    assert virtual_fund_holdings_from_plan(plan) == []
 
 
 def test_the_digest_follows_the_request_and_the_lines() -> None:
@@ -427,7 +427,7 @@ def test_the_digest_follows_the_request_and_the_lines() -> None:
     assert other_time.plan_digest != plan.plan_digest
 
 
-def test_the_written_rows_are_the_fund_fills_and_carry_no_delta() -> None:
+def test_the_fund_holdings_rows_are_what_each_fund_was_assigned() -> None:
     plan = _reference_plan()
 
     funds = virtual_fund_holdings_from_plan(plan)
@@ -448,6 +448,7 @@ def test_the_written_rows_are_the_fund_fills_and_carry_no_delta() -> None:
     )
     for row in rows.values():
         assert row["direction"] == 1
+        assert "target_quantity" not in row
         assert row["allocation_strategy"] == "proportional_attribution"
         assert set(row["extra_details"]) == {
             "source",
@@ -467,6 +468,148 @@ def test_a_short_fill_is_written_as_a_positive_quantity_with_a_short_direction()
     assert (holding["allocated_quantity"], holding["direction"]) == (5, -1)
     (direct_line,) = plan.direct_lines
     assert direct_line.assigned == 15
+
+
+def test_the_lines_record_target_and_assigned_for_every_owner() -> None:
+    plan = _reference_plan()
+
+    lines = allocation_lines_from_plan(plan)
+
+    assert {
+        (
+            line["owner_type"],
+            line["fund_unique_identifier"],
+            line["asset_identifier"],
+        ): (line["target_quantity"], line["assigned_quantity"])
+        for line in lines
+    } == pytest.approx(
+        {
+            ("fund", _fund_key(FUND_A), "AAPL"): (1_000, 1_000),
+            ("fund", _fund_key(FUND_A), "MSFT"): (500, 375),
+            ("fund", _fund_key(FUND_B), "MSFT"): (300, 225),
+            ("fund", _fund_key(FUND_B), "JNJ"): (750, 750),
+            ("direct", None, "AAPL"): (0, 100),
+            ("direct", None, "TSLA"): (0, 1_100),
+        }
+    )
+    for line in lines:
+        assert (line["target_direction"], line["assigned_direction"]) == (1, 1)
+        assert line["allocation_strategy"] == "proportional_attribution"
+        assert line["extra_details"]["plan_digest"] == plan.plan_digest
+
+
+def test_a_target_the_account_holds_nothing_of_is_a_line_with_nothing_assigned() -> None:
+    inputs = _inputs(holdings=[("Y", 10, 1)], targets=[_fund_row("A", "X", 5, direction=-1)])
+    plan = plan_from_inputs(inputs, position_set_uid=POSITION_SET_UID, valuation_time=VALUATION_TIME)
+
+    # The fund holds nothing, so it has no holdings row.
+    assert [fund["holdings"] for fund in virtual_fund_holdings_from_plan(plan)] == [[]]
+    fund_line, direct_line = sorted(
+        allocation_lines_from_plan(plan), key=lambda line: line["owner_type"], reverse=True
+    )
+    assert (fund_line["target_quantity"], fund_line["target_direction"]) == (5, -1)
+    # Nothing is assigned; the line takes its target's side.
+    assert (fund_line["assigned_quantity"], fund_line["assigned_direction"]) == (0, -1)
+    assert (direct_line["asset_identifier"], direct_line["assigned_quantity"]) == ("Y", 10)
+
+
+def _fund_key(portfolio_uid) -> str:
+    return virtual_fund_unique_identifier_for_target(
+        account_uid=ACCOUNT_UID,
+        target_portfolio_uid=portfolio_uid,
+        account_target_allocation_uid=TARGET_ALLOCATION_UID,
+    )
+
+
+def test_a_fund_sized_to_nothing_is_a_fund_of_the_plan_with_no_row() -> None:
+    inputs = _inputs(holdings=[("X", 10, 1)], targets=[], fund_portfolio_uids=[FUND_A])
+    plan = plan_from_inputs(inputs, position_set_uid=POSITION_SET_UID, valuation_time=VALUATION_TIME)
+
+    assert [fund.target_portfolio_uid for fund in plan.funds] == [str(FUND_A)]
+    assert [fund["holdings"] for fund in virtual_fund_holdings_from_plan(plan)] == [[]]
+
+
+# Sizing the exposure --------------------------------------------------------------------
+
+
+def _exposure(target_type, uid, **exposure):
+    key = "portfolio_uid" if target_type == "portfolio" else "asset_uid"
+    return {"target_type": target_type, "target_uid": str(uid), key: str(uid), **exposure}
+
+
+def _sizing(target_type, uid, positions):
+    return {
+        "target_type": target_type,
+        "target_uid": str(uid),
+        "positions": [
+            {"asset_uid": str(ASSETS[asset]), "quantity": quantity, "direction": direction}
+            for asset, quantity, direction in positions
+        ],
+    }
+
+
+def test_sizing_gives_every_exposure_of_the_target_in_units() -> None:
+    rows, portfolios = sized_target_rows(
+        [
+            _exposure("portfolio", FUND_A, weight_notional_exposure=0.4),
+            _exposure("portfolio", FUND_B, constant_notional_exposure=300_000.0),
+            _exposure("asset", ASSETS["TSLA"], single_asset_quantity=-40.0),
+            _exposure("asset", ASSETS["X"], weight_notional_exposure=0.05),
+        ],
+        [
+            _sizing("portfolio", FUND_A, [("AAPL", 1_200, 1), ("MSFT", 400, 1)]),
+            _sizing("portfolio", FUND_B, []),
+            _sizing("asset", ASSETS["X"], [("X", 7, 1)]),
+        ],
+        position_set_uid=POSITION_SET_UID,
+    )
+
+    assert portfolios == sorted([str(FUND_A), str(FUND_B)])
+    assert sorted(
+        (row["target_type"], row.get("portfolio_uid"), row["asset_uid"], row["quantity"], row["direction"])
+        for row in rows
+    ) == sorted(
+        [
+            # An asset target stated in units needs no sizing.
+            ("asset", None, str(ASSETS["TSLA"]), 40.0, -1),
+            ("asset", None, str(ASSETS["X"]), 7, 1),
+            ("portfolio", str(FUND_A), str(ASSETS["AAPL"]), 1_200, 1),
+            ("portfolio", str(FUND_A), str(ASSETS["MSFT"]), 400, 1),
+        ]
+    )
+
+
+def test_sizing_lists_every_mismatch_with_the_target() -> None:
+    with pytest.raises(AllocationError) as invalid:
+        sized_target_rows(
+            [
+                _exposure("portfolio", FUND_A, weight_notional_exposure=0.4),
+                _exposure("portfolio", FUND_B, weight_notional_exposure=0.2),
+                _exposure("asset", ASSETS["TSLA"], single_asset_quantity=10.0),
+                _exposure("asset", ASSETS["X"], constant_notional_exposure=500.0),
+            ],
+            [
+                _sizing("portfolio", FUND_A, [("AAPL", 3, 1), ("AAPL", 4, 1), ("MSFT", 0, 1)]),
+                _sizing("portfolio", FUND_A, []),
+                _sizing("asset", ASSETS["TSLA"], [("TSLA", 1, 1)]),
+                _sizing("asset", ASSETS["X"], [("Y", 1, 1)]),
+            ],
+            position_set_uid=POSITION_SET_UID,
+        )
+
+    assert (invalid.value.code, invalid.value.status_code) == ("invalid_sized_targets", 400)
+    assert [(error["input"], error["message"]) for error in invalid.value.errors] == [
+        ("sized_targets.0.positions.1", "The asset is named twice."),
+        ("sized_targets.0.positions.2", "quantity must be positive."),
+        ("sized_targets.1", "The target is sized twice."),
+        (
+            "sized_targets.2",
+            f"PositionSet {POSITION_SET_UID} has no asset exposure to {ASSETS['TSLA']} that "
+            "needs sizing.",
+        ),
+        ("sized_targets.3.positions.0", "An asset target is sized in its own asset."),
+        ("sized_targets", f"The exposure to portfolio {FUND_B} is not sized."),
+    ]
 
 
 def test_deterministic_virtual_fund_unique_identifier_is_stable() -> None:
@@ -525,6 +668,7 @@ def _inputs(
     targets,
     holdings=(("AAPL", 10, 1), ("MSFT", 20, -1)),
     account_target_allocation_uid=TARGET_ALLOCATION_UID,
+    fund_portfolio_uids=(),
 ):
     return build_account_virtual_fund_allocation_inputs(
         account_uid=ACCOUNT_UID,
@@ -539,4 +683,5 @@ def _inputs(
         valuation_time=VALUATION_TIME,
         asset_uid_by_identifier=ASSETS,
         asset_identifier_by_uid={uid: name for name, uid in ASSETS.items()},
+        fund_portfolio_uids=fund_portfolio_uids,
     )

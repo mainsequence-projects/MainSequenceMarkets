@@ -27,7 +27,10 @@ from msm.models import (
     VirtualFundTable,
 )
 from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
-from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
+from msm.time_index.accounts.virtual_funds.storage import (
+    AccountAllocationLinesStorage,
+    VirtualFundHoldingsStorage,
+)
 from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 
 from .base import (
@@ -61,6 +64,7 @@ ACCOUNT_DELETE_TABLES: tuple[AccountDeleteTable, ...] = (
     AccountDeleteTable("trades", TradesStorage),
     AccountDeleteTable("orders", OrdersStorage),
     AccountDeleteTable("order_managers", OrderManagerTable),
+    AccountDeleteTable("allocation_lines", AccountAllocationLinesStorage),
     AccountDeleteTable("virtual_fund_holdings", VirtualFundHoldingsStorage),
     AccountDeleteTable("virtual_fund_holdings_sets", VirtualFundHoldingsSetTable),
     AccountDeleteTable("virtual_funds", VirtualFundTable),
@@ -146,6 +150,8 @@ def _row_filters(scope: _AccountScope) -> dict[str, Callable[[], Any]]:
         "trades": lambda: TradesStorage.account_identifier == scope.account_identifier(),
         "orders": lambda: OrdersStorage.account_identifier == scope.account_identifier(),
         "order_managers": lambda: OrderManagerTable.target_account_uid == scope.account_uid(),
+        "allocation_lines": lambda: AccountAllocationLinesStorage.account_uid
+        == scope.account_uid(),
         "virtual_fund_holdings": lambda: VirtualFundHoldingsStorage.virtual_fund_uid.in_(
             scope.virtual_fund_uids()
         ),

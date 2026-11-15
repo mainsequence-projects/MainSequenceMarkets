@@ -110,7 +110,6 @@ position_set = PositionSet.upsert(
     position_set_time="2026-05-25T00:00:00Z",
 )
 btc_asset = Asset.upsert(unique_identifier="BTC", asset_type="crypto")
-eth_asset = Asset.upsert(unique_identifier="ETH", asset_type="crypto")
 portfolio_sleeve = Portfolio.upsert(
     unique_identifier="account-main-sleeve",
     calendar_uid=calendar.uid,
@@ -120,9 +119,8 @@ targets = build_target_positions_frame(
     target_positions_date="2026-05-25T00:00:00Z",
     position_set_uid=position_set.uid,
     positions=[
-        {"asset_uid": btc_asset.uid, "quantity": 6.5},
-        {"portfolio_uid": portfolio_sleeve.uid, "asset_uid": btc_asset.uid, "quantity": 2.0},
-        {"portfolio_uid": portfolio_sleeve.uid, "asset_uid": eth_asset.uid, "quantity": 65.0},
+        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
+        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
     ],
 )
 ```
@@ -138,7 +136,8 @@ actual table provisioning and writes remain generic TDAG/TimeIndexTableUpdater b
 ## Virtual-fund allocation
 
 Virtual-fund allocation is a separate policy workflow. Start from the
-`PositionSet.uid`, pass `valuation_time` and, optionally, a `policy`,
+`PositionSet.uid`, pass `valuation_time`, the `sized_targets` (each exposure of
+the target in units, sized with your own prices) and, optionally, a `policy`,
 inspect the dry-run `AccountVirtualFundAllocationPlan`, and only then call
 `apply_account_virtual_fund_allocation_plan(plan)`. Each line of the plan gives
 an owner's `target`, what it is `assigned`, and `delta = target - assigned`. The full account workflow

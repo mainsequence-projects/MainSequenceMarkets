@@ -163,10 +163,19 @@ def test_plan_passes_the_request_and_answers_the_plan(monkeypatch, client, accou
     monkeypatch.setattr("apps.v1.routers.accounts.plan_account_virtual_funds", fake_plan)
     position_set_uid = uuid.uuid4()
 
+    portfolio_uid, asset_uid = str(uuid.uuid4()), str(uuid.uuid4())
+
     plan = client.plan_account_virtual_funds(
         account_uid,
         position_set_uid=position_set_uid,
         valuation_time=VALUATION_TIME,
+        sized_targets=[
+            {
+                "target_type": "portfolio",
+                "target_uid": portfolio_uid,
+                "positions": [{"asset_uid": asset_uid, "quantity": 500.0, "direction": -1}],
+            }
+        ],
     )
 
     assert isinstance(plan, AccountVirtualFundAllocationPlanResponse)
@@ -175,6 +184,14 @@ def test_plan_passes_the_request_and_answers_the_plan(monkeypatch, client, accou
     assert payload.position_set_uid == str(position_set_uid)
     assert payload.valuation_time == VALUATION_TIME
     assert payload.policy is None
+    # The caller's sizing of the exposure travels with the request, in units.
+    assert [target.model_dump() for target in payload.sized_targets] == [
+        {
+            "target_type": "portfolio",
+            "target_uid": portfolio_uid,
+            "positions": [{"asset_uid": asset_uid, "quantity": 500.0, "direction": -1}],
+        }
+    ]
     fund_line, direct_line = plan.lines
     assert (fund_line.owner, fund_line.target, fund_line.assigned, fund_line.delta) == (
         "fund",
@@ -345,9 +362,15 @@ def test_allocate_refusals_are_conflicts(monkeypatch, http, client, account_uid,
         )
 
 
-def test_allocate_with_nothing_to_write_is_a_bad_request(monkeypatch, http, account_uid) -> None:
+def test_sized_targets_that_do_not_match_the_target_are_a_bad_request(
+    monkeypatch, http, account_uid
+) -> None:
     def refuse(**kwargs):
-        raise AllocationError("nothing_to_apply", "No fund gets any units.")
+        raise AllocationError(
+            "invalid_sized_targets",
+            "The sized targets do not match the account's target.",
+            errors=[{"input": "sized_targets", "message": "The exposure is not sized."}],
+        )
 
     monkeypatch.setattr("apps.v1.routers.accounts.allocate_account_virtual_funds", refuse)
 
@@ -357,7 +380,33 @@ def test_allocate_with_nothing_to_write_is_a_bad_request(monkeypatch, http, acco
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "nothing_to_apply"
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_sized_targets"
+    assert detail["errors"] == [{"input": "sized_targets", "message": "The exposure is not sized."}]
+
+
+@pytest.mark.parametrize(
+    "position",
+    [
+        {"asset_uid": "a", "quantity": 0},
+        {"asset_uid": "a", "quantity": -1},
+        {"asset_uid": "a", "quantity": 1, "direction": 0},
+        {"asset_uid": "a", "quantity": 1, "price": 10.0},
+    ],
+)
+def test_a_sized_position_is_a_positive_quantity_with_a_side_and_no_price(
+    http, account_uid, position
+) -> None:
+    response = http.post(
+        f"/api/v1/account/{account_uid}/virtual-fund-allocations/plan/",
+        json={
+            "position_set_uid": "p",
+            "valuation_time": "2026-11-14T21:00:00Z",
+            "sized_targets": [{"target_uid": "t", "positions": [position]}],
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_allocate_does_not_accept_a_plan_from_the_client(http, account_uid) -> None:
@@ -371,3 +420,57 @@ def test_allocate_does_not_accept_a_plan_from_the_client(http, account_uid) -> N
     )
 
     assert response.status_code == 422
+
+
+def test_the_stored_allocation_is_read_through_the_route_and_the_client(
+    monkeypatch, http, client, account_uid
+) -> None:
+    received: dict[str, object] = {}
+    record = {
+        "account_uid": str(account_uid),
+        "holdings_set_uid": str(uuid.uuid4()),
+        "valuation_time": VALUATION_TIME.isoformat(),
+        "position_set_uid": str(uuid.uuid4()),
+        "policy": {"id": "proportional_attribution", "version": "1.0.0"},
+        "plan_digest": "sha256:" + "1" * 64,
+        "lines": [
+            {
+                "owner": "fund",
+                "asset_identifier": "MSFT",
+                "target": 400.0,
+                "assigned": 309.68,
+                "delta": 90.32,
+                "virtual_fund_uid": str(uuid.uuid4()),
+                "virtual_fund_unique_identifier": "account-virtual-fund-a",
+                "target_portfolio_uid": str(uuid.uuid4()),
+            },
+            {"owner": "direct", "asset_identifier": "TSLA", "target": 200.0, "assigned": 1640.0, "delta": -1440.0},
+        ],
+    }
+
+    def fake_get(*, account_uid, valuation_time):
+        received.update(account_uid=account_uid, valuation_time=valuation_time)
+        return record if account_uid != "missing" else None
+
+    monkeypatch.setattr("apps.v1.routers.accounts.get_account_virtual_fund_allocation", fake_get)
+
+    stored = client.account_virtual_fund_allocation(account_uid, valuation_time=VALUATION_TIME)
+
+    assert received == {"account_uid": str(account_uid), "valuation_time": VALUATION_TIME}
+    fund_line, direct_line = stored.lines
+    assert (fund_line.owner, fund_line.target, fund_line.assigned, fund_line.delta) == (
+        "fund",
+        400.0,
+        309.68,
+        90.32,
+    )
+    assert (direct_line.owner, direct_line.virtual_fund_uid, direct_line.delta) == (
+        "direct",
+        None,
+        -1440.0,
+    )
+    assert stored.policy.id == "proportional_attribution"
+
+    client.account_virtual_fund_allocation(account_uid)
+    assert received["valuation_time"] is None
+    assert http.get("/api/v1/account/missing/virtual-fund-allocations/").status_code == 404

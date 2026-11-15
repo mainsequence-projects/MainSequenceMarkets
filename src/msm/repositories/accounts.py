@@ -49,6 +49,7 @@ from msm.models import (
     AssetTable,
     PortfolioTable,
     PositionSetTable,
+    VirtualFundTable,
 )
 
 from .base import (
@@ -618,10 +619,9 @@ def current_portfolio_target_rows_select(*, portfolio_uid: Any):
     target was cleared, has no row. The scan starts from the ``portfolio_uid``
     index of ``TargetPositionsStorage``.
 
-    ``portfolio_uid`` is a value or a SQL expression. Each result row is one
-    account: ``account_uid``, ``account_target_allocation_uid``,
-    ``position_set_uid``, ``target_positions_date`` and ``asset_count``, the
-    number of assets in the portfolio's unit basket in that target (ADR 0052).
+    ``portfolio_uid`` is a value or a SQL expression. Each result row carries
+    ``account_uid``, ``account_target_allocation_uid``, ``position_set_uid``,
+    ``target_positions_date`` and the row's exposure columns.
     """
 
     later_position_set = aliased(PositionSetTable, name="later_position_set")
@@ -650,7 +650,10 @@ def current_portfolio_target_rows_select(*, portfolio_uid: Any):
             AccountTargetAllocationTable.uid.label("account_target_allocation_uid"),
             PositionSetTable.uid.label("position_set_uid"),
             PositionSetTable.position_set_time.label("target_positions_date"),
-            func.count().label("asset_count"),
+            TargetPositionsStorage.weight_notional_exposure.label("weight_notional_exposure"),
+            TargetPositionsStorage.constant_notional_exposure.label(
+                "constant_notional_exposure"
+            ),
         )
         .select_from(TargetPositionsStorage)
         .join(PositionSetTable, PositionSetTable.uid == TargetPositionsStorage.position_set_uid)
@@ -663,12 +666,6 @@ def current_portfolio_target_rows_select(*, portfolio_uid: Any):
         .where(TargetPositionsStorage.time_index == PositionSetTable.position_set_time)
         .where(AccountTargetAllocationTable.is_active.is_(True))
         .where(~later_snapshot.exists())
-        .group_by(
-            AccountTargetAllocationTable.account_uid,
-            AccountTargetAllocationTable.uid,
-            PositionSetTable.uid,
-            PositionSetTable.position_set_time,
-        )
     )
 
 
@@ -1083,9 +1080,17 @@ def build_replace_account_target_positions_snapshot_operation(
     target_positions_date: dt.datetime | str,
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool = False,
+    virtual_funds: Sequence[Mapping[str, Any]] = (),
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
     """Write one account target-position snapshot atomically.
+
+    ``virtual_funds`` are the funds the target requests, one per portfolio it
+    names: ``unique_identifier``, ``target_portfolio_uid`` and a
+    ``virtual_fund_uid`` to use when the fund is new. A fund that does not exist
+    is created with the snapshot (ADR 0053); an existing one is left as it is.
+    Their keys were built from ``account_target_allocation_uid``, so none is
+    created when the account's stored target allocation has another uid.
 
     On PostgreSQL this is one statement. SQLite accepts only `SELECT` inside
     `WITH`, so there the same steps run as a statement list in one transaction
@@ -1126,6 +1131,7 @@ def build_replace_account_target_positions_snapshot_operation(
                 target_positions_date=normalized_target_positions_date,
                 positions=positions,
                 overwrite=overwrite,
+                virtual_funds=virtual_funds,
             ),
             context=context,
             operation="upsert",
@@ -1382,7 +1388,11 @@ def build_replace_account_target_positions_snapshot_operation(
                 cast(
                     bindparam(
                         f"asset_uid_{index}",
-                        value=uuid.UUID(str(position["asset_uid"])),
+                        value=(
+                            uuid.UUID(str(position["asset_uid"]))
+                            if position.get("asset_uid") not in (None, "")
+                            else None
+                        ),
                         type_=Uuid(as_uuid=True),
                     ),
                     Uuid(as_uuid=True),
@@ -1401,19 +1411,27 @@ def build_replace_account_target_positions_snapshot_operation(
                 ),
                 cast(
                     bindparam(
-                        f"quantity_{index}",
-                        value=float(position["quantity"]),
+                        f"weight_notional_exposure_{index}",
+                        value=_python_scalar(position.get("weight_notional_exposure")),
                         type_=Float(),
                     ),
                     Float(),
                 ),
                 cast(
                     bindparam(
-                        f"direction_{index}",
-                        value=int(position["direction"]),
-                        type_=SmallInteger(),
+                        f"constant_notional_exposure_{index}",
+                        value=_python_scalar(position.get("constant_notional_exposure")),
+                        type_=Float(),
                     ),
-                    SmallInteger(),
+                    Float(),
+                ),
+                cast(
+                    bindparam(
+                        f"single_asset_quantity_{index}",
+                        value=_python_scalar(position.get("single_asset_quantity")),
+                        type_=Float(),
+                    ),
+                    Float(),
                 ),
                 cast(
                     bindparam(
@@ -1432,8 +1450,9 @@ def build_replace_account_target_positions_snapshot_operation(
             column("target_uid", Uuid(as_uuid=True)),
             column("asset_uid", Uuid(as_uuid=True)),
             column("portfolio_uid", Uuid(as_uuid=True)),
-            column("quantity", Float()),
-            column("direction", SmallInteger()),
+            column("weight_notional_exposure", Float()),
+            column("constant_notional_exposure", Float()),
+            column("single_asset_quantity", Float()),
             column("metadata_json", JSONB()),
             name="input_rows",
         )
@@ -1460,8 +1479,9 @@ def build_replace_account_target_positions_snapshot_operation(
                 "target_uid",
                 "asset_uid",
                 "portfolio_uid",
-                "quantity",
-                "direction",
+                "weight_notional_exposure",
+                "constant_notional_exposure",
+                "single_asset_quantity",
                 "metadata_json",
             ],
             select(
@@ -1471,8 +1491,9 @@ def build_replace_account_target_positions_snapshot_operation(
                 input_rows.c.target_uid,
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
-                input_rows.c.quantity,
-                input_rows.c.direction,
+                input_rows.c.weight_notional_exposure,
+                input_rows.c.constant_notional_exposure,
+                input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows.join(position_set, true()).join(deleted_gate, true())),
         )
@@ -1483,6 +1504,78 @@ def build_replace_account_target_positions_snapshot_operation(
         .add_cte(deleted)
         .add_cte(deleted_gate)
     )
+    if virtual_funds:
+        fund_inputs = (
+            values(
+                column("unique_identifier", String()),
+                column("virtual_fund_uid", Uuid(as_uuid=True)),
+                column("target_portfolio_uid", Uuid(as_uuid=True)),
+                name="fund_inputs",
+            )
+            .data(
+                [
+                    (
+                        bindparam(
+                            f"fund_unique_identifier_{index}",
+                            value=str(fund["unique_identifier"]),
+                            type_=String(),
+                        ),
+                        cast(
+                            bindparam(
+                                f"fund_uid_{index}",
+                                value=uuid.UUID(str(fund["virtual_fund_uid"])),
+                                type_=Uuid(as_uuid=True),
+                            ),
+                            Uuid(as_uuid=True),
+                        ),
+                        cast(
+                            bindparam(
+                                f"fund_target_portfolio_uid_{index}",
+                                value=uuid.UUID(str(fund["target_portfolio_uid"])),
+                                type_=Uuid(as_uuid=True),
+                            ),
+                            Uuid(as_uuid=True),
+                        ),
+                    )
+                    for index, fund in enumerate(virtual_funds)
+                ]
+            )
+            .cte("fund_inputs")
+        )
+        # The funds are created only when the snapshot write went through
+        # (``position_set`` returned its row) and the keys match the stored
+        # target allocation. PostgreSQL runs a data-modifying CTE to completion
+        # whether or not the main statement reads it.
+        created_virtual_funds = (
+            postgresql_insert(VirtualFundTable)
+            .from_select(
+                ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+                select(
+                    fund_inputs.c.virtual_fund_uid,
+                    fund_inputs.c.unique_identifier,
+                    cast(account_uid_param, Uuid(as_uuid=True)),
+                    fund_inputs.c.target_portfolio_uid,
+                )
+                .select_from(
+                    fund_inputs.join(position_set, true()).join(account_target_allocation, true())
+                )
+                .where(
+                    account_target_allocation.c.uid
+                    == cast(
+                        bindparam(
+                            "fund_account_target_allocation_uid",
+                            value=uuid.UUID(str(account_target_allocation_uid)),
+                            type_=Uuid(as_uuid=True),
+                        ),
+                        Uuid(as_uuid=True),
+                    )
+                ),
+            )
+            .on_conflict_do_nothing(index_elements=[VirtualFundTable.unique_identifier])
+            .returning(VirtualFundTable.uid)
+            .cte("created_virtual_funds")
+        )
+        statement = statement.add_cte(fund_inputs).add_cte(created_virtual_funds)
     return compile_markets_statement(
         statement,
         context=context,
@@ -1502,6 +1595,7 @@ def _target_positions_snapshot_statement_list(
     target_positions_date: dt.datetime,
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool,
+    virtual_funds: Sequence[Mapping[str, Any]] = (),
 ) -> list[GuardedStatement | Any]:
     """The target-position snapshot write as ordered statements for one transaction.
 
@@ -1513,7 +1607,8 @@ def _target_positions_snapshot_statement_list(
        `is_active` changes only when the snapshot write goes through.
     3. Upsert the `PositionSet`, refused by the `position_set` guard when it
        exists and `overwrite` is false.
-    4. With `overwrite`, delete the snapshot's earlier rows; then insert the new
+    4. With `overwrite`, delete the snapshot's earlier rows; create the virtual
+       funds the target requests that do not exist yet; then insert the new
        rows. A clear inserts none and returns the `PositionSet` uid instead.
 
     Later statements find what earlier ones wrote by key. Values bind without
@@ -1697,8 +1792,9 @@ def _target_positions_snapshot_statement_list(
             column("target_uid", Uuid(as_uuid=True)),
             column("asset_uid", Uuid(as_uuid=True)),
             column("portfolio_uid", Uuid(as_uuid=True)),
-            column("quantity", Float()),
-            column("direction", SmallInteger()),
+            column("weight_notional_exposure", Float()),
+            column("constant_notional_exposure", Float()),
+            column("single_asset_quantity", Float()),
             column("metadata_json", JSON()),
             name="input_rows",
         )
@@ -1715,7 +1811,7 @@ def _target_positions_snapshot_statement_list(
                     ),
                     bindparam(
                         f"asset_uid_{index}",
-                        value=uuid.UUID(str(position["asset_uid"])),
+                        value=_optional_uuid(position.get("asset_uid")),
                         type_=Uuid(as_uuid=True),
                     ),
                     bindparam(
@@ -1724,14 +1820,19 @@ def _target_positions_snapshot_statement_list(
                         type_=Uuid(as_uuid=True),
                     ),
                     bindparam(
-                        f"quantity_{index}",
-                        value=float(position["quantity"]),
+                        f"weight_notional_exposure_{index}",
+                        value=_python_scalar(position.get("weight_notional_exposure")),
                         type_=Float(),
                     ),
                     bindparam(
-                        f"direction_{index}",
-                        value=int(position["direction"]),
-                        type_=SmallInteger(),
+                        f"constant_notional_exposure_{index}",
+                        value=_python_scalar(position.get("constant_notional_exposure")),
+                        type_=Float(),
+                    ),
+                    bindparam(
+                        f"single_asset_quantity_{index}",
+                        value=_python_scalar(position.get("single_asset_quantity")),
+                        type_=Float(),
                     ),
                     bindparam(
                         f"metadata_json_{index}",
@@ -1754,8 +1855,9 @@ def _target_positions_snapshot_statement_list(
                 "target_uid",
                 "asset_uid",
                 "portfolio_uid",
-                "quantity",
-                "direction",
+                "weight_notional_exposure",
+                "constant_notional_exposure",
+                "single_asset_quantity",
                 "metadata_json",
             ],
             select(
@@ -1765,14 +1867,72 @@ def _target_positions_snapshot_statement_list(
                 input_rows.c.target_uid,
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
-                input_rows.c.quantity,
-                input_rows.c.direction,
+                input_rows.c.weight_notional_exposure,
+                input_rows.c.constant_notional_exposure,
+                input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows),
         )
         .returning(TargetPositionsStorage)
     )
-    return [*statements, upsert_position_set, remove_rows, insert_rows]
+    create_funds: list[Any] = []
+    if virtual_funds:
+        fund_inputs = (
+            values(
+                column("unique_identifier", String()),
+                column("virtual_fund_uid", Uuid(as_uuid=True)),
+                column("target_portfolio_uid", Uuid(as_uuid=True)),
+                name="fund_inputs",
+            )
+            .data(
+                [
+                    (
+                        bindparam(
+                            f"fund_unique_identifier_{index}",
+                            value=str(fund["unique_identifier"]),
+                            type_=String(),
+                        ),
+                        bindparam(
+                            f"fund_uid_{index}",
+                            value=uuid.UUID(str(fund["virtual_fund_uid"])),
+                            type_=Uuid(as_uuid=True),
+                        ),
+                        bindparam(
+                            f"fund_target_portfolio_uid_{index}",
+                            value=uuid.UUID(str(fund["target_portfolio_uid"])),
+                            type_=Uuid(as_uuid=True),
+                        ),
+                    )
+                    for index, fund in enumerate(virtual_funds)
+                ]
+            )
+            .cte("fund_inputs")
+        )
+        # The keys were built from the caller's target allocation uid, so no fund
+        # is created when the stored allocation has another one.
+        create_funds.append(
+            sqlite_insert(VirtualFundTable)
+            .from_select(
+                ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+                select(
+                    fund_inputs.c.virtual_fund_uid,
+                    fund_inputs.c.unique_identifier,
+                    account_uid_param(),
+                    fund_inputs.c.target_portfolio_uid,
+                )
+                .select_from(fund_inputs)
+                .where(
+                    allocation_lookup()
+                    == bindparam(
+                        "fund_account_target_allocation_uid",
+                        value=uuid.UUID(str(account_target_allocation_uid)),
+                        type_=Uuid(as_uuid=True),
+                    )
+                ),
+            )
+            .on_conflict_do_nothing(index_elements=[VirtualFundTable.unique_identifier])
+        )
+    return [*statements, upsert_position_set, remove_rows, *create_funds, insert_rows]
 
 
 def replace_account_target_positions_snapshot(

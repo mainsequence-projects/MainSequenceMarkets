@@ -26,7 +26,7 @@ nav:
   - Getting Started: getting-started.md
   - Core Concepts: concepts.md
   - Upgrading To 3.0: upgrading-to-3.md
-  - Upgrading To 3.6: upgrading-to-3-6.md
+  - Upgrading To 3.7: upgrading-to-3-7.md
   - Tutorial:
       - Overview: tutorial/index.md
       - Assets And Categories: tutorial/01-assets.md
@@ -135,6 +135,7 @@ nav:
       - Account Registration In One Transaction: ADR/0051-account-registration-in-one-transaction.md
       - Account Targets In Units: ADR/0052-account-targets-in-units.md
       - Virtual-Fund Allocation Routes And Described Policies: ADR/0053-virtual-fund-allocation-routes-and-described-policies.md
+      - Account Exposure To Portfolios And Sized Fund Targets At The Sync: ADR/0054-account-exposure-and-sized-fund-targets.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md

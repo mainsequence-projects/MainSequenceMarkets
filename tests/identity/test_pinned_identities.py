@@ -76,6 +76,7 @@ from msm_portfolios.rebalance_strategy import (
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
 
 PINNED_TABLE_NAMES = {
+    "AccountAllocationLinesStorage": "ms_markets__accountallocationlinests",
     "AccountAllocationModelTable": "ms_markets__accountallocationmodel",
     "AccountGroupTable": "ms_markets__accountgroup",
     "AccountHoldingsSetTable": "ms_markets__accountholdingsset",
@@ -141,6 +142,7 @@ PINNED_TABLE_NAMES = {
 }
 
 PINNED_METATABLE_IDENTIFIERS = {
+    "AccountAllocationLinesStorage": "AccountAllocationLinesTS",
     "AccountAllocationModelTable": "AccountAllocationModel",
     "AccountGroupTable": "AccountGroup",
     "AccountHoldingsSetTable": "AccountHoldingsSet",

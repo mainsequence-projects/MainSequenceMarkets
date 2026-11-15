@@ -79,11 +79,10 @@ Rules:
 - Asset target rows use `target_type="asset"`, `target_uid=asset_uid`, and
   `portfolio_uid=None`.
 - Portfolio target rows use `target_type="portfolio"`, `target_uid=portfolio_uid`,
-  and the `asset_uid` of one asset of the virtual fund's unit basket. The rows of
-  one portfolio are the whole basket.
-- Every row is in units (ADR 0052): a positive `quantity` in the asset's own unit
-  and a `direction` (`1` long, `-1` short). There is no share of NAV and no
-  notional amount on a target row.
+  and `asset_uid=None`.
+- Exactly one exposure column must be present:
+  `weight_notional_exposure`, `constant_notional_exposure`, or
+  `single_asset_quantity`.
 
 ## Retiring A Portfolio
 
@@ -389,14 +388,12 @@ portfolio_sleeve = Portfolio.upsert(
     calendar_uid=calendar.uid,
 )
 
-# btc_asset and eth_asset are existing Asset rows; the caller sized these units.
 frame = build_target_positions_frame(
     target_positions_date=position_set.position_set_time,
     position_set_uid=position_set.uid,
     positions=[
-        {"asset_uid": btc_asset.uid, "quantity": 6.5},
-        {"portfolio_uid": portfolio_sleeve.uid, "asset_uid": btc_asset.uid, "quantity": 2.0},
-        {"portfolio_uid": portfolio_sleeve.uid, "asset_uid": eth_asset.uid, "quantity": 65.0},
+        {"asset_uid": btc_asset.uid, "weight_notional_exposure": 0.6},
+        {"portfolio_uid": portfolio_sleeve.uid, "weight_notional_exposure": 0.4},
     ],
 )
 
@@ -407,17 +404,29 @@ if error_on_last_update:
     raise RuntimeError("TargetPositions update failed.")
 ```
 
-A portfolio target is the virtual fund's unit basket. It is not custody, and
-ms-markets never expands or resizes it.
+Portfolio target rows store mandate intent. They are not custody holdings and
+they are not expanded automatically.
 
-## Sizing Pattern
+## Expansion Pattern
 
-The caller turns a portfolio into units at a sizing event: when the fund is
-sized, or when the portfolio rebalances. It uses its own prices and rules
-(multipliers, deltas, lot sizes, rounding, FX) and writes a new target. For a
-portfolio with a unit book (`PortfolioStateStorage`), the basket is the book
-scaled by one factor. See
-`.agents/skills/ms_markets/accounts/target_sizing/SKILL.md`.
+Use `expand_portfolio_target_positions(...)` only when a downstream workflow
+explicitly needs asset-level exposure:
+
+```python
+from msm.services import expand_portfolio_target_positions
+
+expanded = expand_portfolio_target_positions(
+    frame,
+    portfolio_weight_resolver=lambda portfolio_uid: [
+        {"asset_uid": btc_asset.uid, "weight": 0.25},
+        {"asset_uid": eth_asset.uid, "weight": 0.75},
+    ],
+)
+```
+
+The resolver boundary is intentional. It forces the caller to choose the
+portfolio composition source and valuation time instead of hiding that policy in
+the account target-position table.
 
 ## Validation
 
