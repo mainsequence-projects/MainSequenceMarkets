@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.4.2] - 2026-11-15
+
 ### Fixed
 
 - Account history can no longer be deleted one row at a time under the runtime backend
