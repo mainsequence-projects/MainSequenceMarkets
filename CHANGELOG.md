@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-11-15
+
 ### Removed
 
 - **Breaking:** the Markets API no longer allocates an account's holdings to its virtual
