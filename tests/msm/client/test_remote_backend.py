@@ -83,6 +83,44 @@ def test_payload_models_keep_exclude_unset_semantics(monkeypatch, remote) -> Non
     assert seen == {"unique_identifier": "ACME"}
 
 
+@pytest.mark.parametrize("as_payload", [False, True], ids=["kwargs", "payload"])
+def test_write_values_reach_the_runtime_typed_by_the_row_fields(
+    monkeypatch, remote, as_payload
+) -> None:
+    """JSON strings of datetime and uuid fields become datetimes and uuids again.
+
+    SQLite's ``DateTime`` refuses an ISO string, so a remote write must not hand
+    one to the statement (issue #73).
+    """
+
+    from msm.api.execution import OrderManager
+
+    seen: dict[str, Any] = {}
+
+    def upsert_model(context, *, model, values, conflict_columns):
+        seen.update(values)
+        return _row(**values)
+
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", upsert_model)
+    now = dt.datetime(2026, 11, 15, 14, 30, tzinfo=dt.UTC)
+    account_uid = uuid.uuid4()
+    values = {
+        "unique_identifier": "PROBE_BATCH",
+        "target_account_uid": account_uid,
+        "target_time": now,
+        "order_received_time": now,
+        "status": "submitted",
+        "metadata_json": {"note": "2026-11-15T14:30:00+00:00"},
+    }
+
+    batch = OrderManager.create_batch(values) if as_payload else OrderManager.create_batch(**values)
+
+    assert seen == values
+    assert isinstance(seen["target_time"], dt.datetime)
+    assert isinstance(seen["target_account_uid"], uuid.UUID)
+    assert batch.target_time == now
+
+
 def test_get_by_uid_returns_the_row_or_none(monkeypatch, remote) -> None:
     uid = uuid.uuid4()
     rows = {str(uid): {"uid": str(uid), "unique_identifier": "ACME", "asset_type": "equity"}}

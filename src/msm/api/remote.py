@@ -312,8 +312,9 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
     """Prepare a remote operation's JSON arguments for the runtime method.
 
     Values of parameters annotated with a simple type (uuid, datetime, int ...)
-    are validated against that annotation; payloads stay mappings, which each
-    method validates itself. ``filter`` and ``count`` keyword values, including
+    are validated against that annotation; payloads and ``**kwargs`` values stay
+    JSON, which each method validates itself (the base row writes type them
+    against the row's fields). ``filter`` and ``count`` keyword values, including
     ``__in`` items and ``__gte``/``__gt``/``__lte``/``__lt`` bounds, are validated
     against the row model's field of the same name.
     """
@@ -330,19 +331,21 @@ def decode_arguments(cls: type, operation: str, arguments: Mapping[str, Any]) ->
             if name.endswith("__in") and isinstance(value, list):
                 base = name.removesuffix("__in")
                 if base in fields:
-                    value = [_validate_simple(fields[base].annotation, item) for item in value]
+                    value = [validate_simple_value(fields[base].annotation, item) for item in value]
             elif lookup is not None and field_name in fields and value is not None:
-                value = _validate_simple(fields[field_name].annotation, value)
+                value = validate_simple_value(fields[field_name].annotation, value)
             elif not name.endswith("_contains") and name in fields and value is not None:
-                value = _validate_simple(fields[name].annotation, value)
+                value = validate_simple_value(fields[name].annotation, value)
             decoded[name] = value
             continue
         annotation = hints.get(name)
-        decoded[name] = _validate_simple(annotation, value) if annotation is not None else value
+        decoded[name] = (
+            validate_simple_value(annotation, value) if annotation is not None else value
+        )
     return decoded
 
 
-def _validate_simple(annotation: Any, value: Any) -> Any:
+def validate_simple_value(annotation: Any, value: Any) -> Any:
     """Validate ``value`` against ``annotation`` when it only names plain types.
 
     Payload parameters (Pydantic models, mappings) are left as JSON for the

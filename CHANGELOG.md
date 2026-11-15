@@ -7,6 +7,19 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-11-15
+
+### Fixed
+
+- **Remote row writes with a datetime value work on SQLite.** `create`, `upsert`, `update`
+  and `upsert_many` type each string value against the row field of the same name
+  (datetime, date, uuid, decimal ...) before the statement is built, so keyword values and
+  payload mappings that arrive as JSON strings, such as `OrderManager.create_batch(...)`
+  through the Markets API, no longer answer 400 on a SQLite runtime
+  ([issue 73](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/73)).
+
+## [3.7.0] - 2026-11-15
+
 3.7.0 withdraws the unit account targets of 3.6.0
 ([ADR 0054](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0054-account-exposure-and-sized-fund-targets/)).
 Projects that depend on ms-markets:

@@ -423,6 +423,24 @@ def _row_values(
             from msm._deprecated_imports import warn_renamed
 
             warn_renamed(f"{row.__name__}.{previous}", f"{row.__name__}.{current}")
+    return _typed_field_values(row, values)
+
+
+def _typed_field_values(row: type[BaseModel], values: dict[str, Any]) -> dict[str, Any]:
+    """Type string values of the row's simple fields (datetime, date, uuid, decimal ...).
+
+    A remote call carries those values as JSON strings, and not every database
+    turns a string into the column's type (SQLite's ``DateTime`` refuses one), so
+    each string is validated against the row field of the same name. A string
+    that does not validate is written as given.
+    """
+
+    from msm.api.remote import validate_simple_value
+
+    fields = getattr(row, "model_fields", {})
+    for name, value in values.items():
+        if isinstance(value, str) and name in fields:
+            values[name] = validate_simple_value(fields[name].annotation, value)
     return values
 
 
