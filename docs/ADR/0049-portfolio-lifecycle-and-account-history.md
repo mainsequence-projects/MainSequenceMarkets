@@ -263,3 +263,20 @@ steps are now `0024` to `0026`, and ADR 0048 and the 3.x upgrade guide say so.
   `include_retired` boolean filter, the portfolio list shows `retired_at`, and
   `GET /api/v1/portfolio/{uid}/account-targets/discovery/` describes the new
   collection.
+
+### 2026-11-15: 3.4.2
+
+Decision 1 held for the Markets API routes but not for the row classes
+([issue #66](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/66)).
+`AccountHoldingsSet`, `AccountTargetAllocation`, `PositionSet`, `VirtualFund`
+and `VirtualFundHoldingsSet` inherited `MarketsMetaTableRow.delete`, which
+deleted one row under the runtime backend, while the remote row router refused
+it with a `501` that named service routes that do not exist. Code that removed
+history passed locally and failed only against a hosted Markets API.
+
+The five classes now set `__delete_refusal__`. `delete` raises
+`MarketsOperationUnsupported` with the same text under both backends, before
+any runtime call, and the row router answers `501` with it. Every other
+resource without a delete answers "`<Class>.delete` is not offered remotely."
+Repository and service deletes are unchanged: the account delete (ADR 0050)
+still removes the history with the account.

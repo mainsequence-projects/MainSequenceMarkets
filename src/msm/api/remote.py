@@ -98,7 +98,11 @@ class MarketsConflictError(ValueError):
 
 
 class MarketsOperationUnsupported(MarketsApiError, NotImplementedError):
-    """The Markets API does not offer this operation remotely (HTTP 501)."""
+    """The operation is not offered: the Markets API answers HTTP 501.
+
+    The runtime backend raises it too, for a delete no backend offers
+    (``MarketsMetaTableRow.__delete_refusal__``).
+    """
 
 
 _remote_backend: RemoteBackend | None = None

@@ -71,7 +71,11 @@ workload the platform admits to the Markets API may write; a refused operation
 A table row class's remote `delete` runs the resource's service delete, with
 its preflight checks, and exists only for `asset`, `asset-category`,
 `calendar`, `index`, `portfolio` and `portfolio-group`; other table row classes
-raise `MarketsOperationUnsupported`. Composites that implement `delete`
+raise `MarketsOperationUnsupported`. The account-history rows
+(`AccountHoldingsSet`, `AccountTargetAllocation`, `PositionSet`, `VirtualFund`,
+`VirtualFundHoldingsSet`) raise it under the runtime backend too, and delete
+nothing: an account's history goes only with the account, through
+`Account.delete` (ADR 0049, ADR 0050). Composites that implement `delete`
 themselves, such as `Curve` and the pricing market-data bindings, delete
 remotely as they do under the runtime backend.
 

@@ -484,7 +484,8 @@ application still installs `ms-markets`. Deviations and refinements:
   Environment; a consumer's workflow grants `reader` on that repository's
   branch, as the Markets API does for MetaTables.
 - Remote `delete` runs the resource's service delete with its preflight
-  checks, and exists only where one exists.
+  checks, and exists only where one exists. Since 3.4.2 the account-history
+  rows refuse `delete` under the runtime backend as well (ADR 0049).
 - Registry writes through these routes run through `registry_write`, like the
   service routes.
 

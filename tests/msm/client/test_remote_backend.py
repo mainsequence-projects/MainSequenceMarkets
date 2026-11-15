@@ -206,11 +206,46 @@ def test_delete_uses_the_service_delete(monkeypatch, remote) -> None:
 
 
 def test_delete_without_a_service_route_is_not_offered(remote) -> None:
+    from msm.api.accounts import AccountGroup
     from msm.api.remote import MarketsOperationUnsupported
-    from msm.api.virtual_funds import VirtualFund
 
-    with pytest.raises(MarketsOperationUnsupported, match="not offered remotely"):
-        VirtualFund.delete(uuid.uuid4())
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        AccountGroup.delete(uuid.uuid4())
+
+    assert str(refused.value) == "AccountGroup.delete is not offered remotely."
+
+
+@pytest.mark.parametrize(
+    "row_class_name",
+    [
+        "accounts.AccountHoldingsSet",
+        "accounts.AccountTargetAllocation",
+        "accounts.PositionSet",
+        "virtual_funds.VirtualFund",
+        "virtual_funds.VirtualFundHoldingsSet",
+    ],
+)
+def test_account_history_rows_refuse_delete_as_the_runtime_does(
+    monkeypatch, remote, row_class_name
+) -> None:
+    import importlib
+
+    from msm.api.base import delete_refusal
+    from msm.api.remote import MarketsOperationUnsupported
+
+    module_name, class_name = row_class_name.split(".")
+    row_class = getattr(importlib.import_module(f"msm.api.{module_name}"), class_name)
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: remote.calls.append(("delete", {"uid": uid})),
+    )
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        row_class.delete(uuid.uuid4())
+
+    assert str(refused.value) == delete_refusal(row_class)
+    assert "account history" in str(refused.value)
+    assert remote.calls == []
 
 
 def test_account_delete_runs_the_cascading_delete_remotely(monkeypatch, remote) -> None:
