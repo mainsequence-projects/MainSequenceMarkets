@@ -32,12 +32,10 @@ from tests.msm.repositories.test_sqlite_snapshot_writes import (
     _account,
     _asset,
     _count,
-    _fund,
     _insert,
     _portfolio,
     _portfolio_position,
     _rows,
-    _write_funds,
     _write_holdings,
     _write_target,
     make_sqlite_markets,
@@ -92,6 +90,41 @@ def _order_event(engine, order_identifier: str, *, event_time: dt.datetime = WHE
     _insert(engine, "ms_markets__ordereventsts", event_time=event_time, order_identifier=order_identifier)
 
 
+def _virtual_fund(engine, account, source, portfolio, unique_identifier: str) -> None:
+    """One virtual fund allocated from ``source``: its row, its holdings set and one holding."""
+
+    fund = uuid.uuid4()
+    holdings_set = uuid.uuid4()
+    _insert(
+        engine,
+        "ms_markets__virtualfund",
+        uid=fund.hex,
+        unique_identifier=unique_identifier,
+        account_uid=account.hex,
+        target_portfolio_uid=portfolio.hex,
+    )
+    _insert(
+        engine,
+        "ms_markets__virtualfundholdingsset",
+        uid=holdings_set.hex,
+        virtual_fund_uid=fund.hex,
+        source_account_holdings_set_uid=source.hex,
+        time_index=WHEN,
+    )
+    _insert(
+        engine,
+        "ms_markets__virtualfundholdingsts",
+        time_index=WHEN,
+        virtual_fund_uid=fund.hex,
+        asset_identifier="AAA",
+        virtual_fund_holdings_set_uid=holdings_set.hex,
+        source_account_holdings_set_uid=source.hex,
+        allocated_quantity=1.0,
+        allocation_strategy="explicit",
+        direction=1,
+    )
+
+
 def _history(sqlite_markets, account: uuid.UUID) -> dict[str, str]:
     """Give the account one row in every table its delete reaches."""
 
@@ -101,7 +134,7 @@ def _history(sqlite_markets, account: uuid.UUID) -> dict[str, str]:
     written = _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
     _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
     source = uuid.UUID(str(written["rows"][0]["holdings_set_uid"]))
-    _write_funds(sqlite_markets, account, source, [_fund(f"fund-{identifier}", portfolio, ("AAA", 1.0))])
+    _virtual_fund(engine, account, source, portfolio, f"fund-{identifier}")
     manager = _order_manager(engine, account)
     order = f"order-{uuid.uuid4().hex[:8]}"
     _order(engine, identifier, order_identifier=order, manager=manager)

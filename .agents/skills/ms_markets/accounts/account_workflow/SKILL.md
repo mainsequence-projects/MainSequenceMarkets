@@ -214,19 +214,14 @@ as passed and is in force from its own time on. To attribute a capture taken
 after the target was written, pass the capture's time and the earlier
 `position_set_uid`. A `PositionSet` written after `valuation_time` is refused.
 
-An application that reaches ms-markets only through the Markets API does not run
-the planner itself. It calls `MarketsClient.allocate_account_virtual_funds(account_uid,
-holdings_set_uid=..., valuation_asset_uid=..., apply=True)`
-(`POST /api/v1/account/{account_uid}/virtual-fund-allocations/`), which plans
-against the target in force at the snapshot's time, values the account with
-ms-markets' prices (the valuation asset at one, other assets at their target
-portfolios' latest weights `price_current`) and writes the funds' holdings to the
-core tables, where `holdings/by-fund/` reads them. It writes and reads the target
-with `add_account_target_positions`, `account_target_positions` and
-`clear_account_target_positions`; an empty target clears it and leaves an empty
-snapshot in its history. A target that names a retired portfolio is refused
-(`MarketsConflictError`), and so is applying an allocation for a portfolio
-retired at or before the snapshot's time (ADR 0049).
+An application that reaches ms-markets only through the Markets API writes and
+reads the target with `add_account_target_positions`, `account_target_positions`
+and `clear_account_target_positions`; an empty target clears it and leaves an
+empty snapshot in its history. A target that names a retired portfolio is refused
+(`MarketsConflictError`). The Markets API has no virtual-fund allocation route:
+the planner takes the caller's valuation resolver and allocation policy, and its
+apply step writes no fund for a portfolio retired at or before the snapshot's
+time (ADR 0049). `holdings/by-fund/` reads what the apply step wrote.
 
 The default policy is `proportional_attribution`: virtual-fund claims consume
 the asset-level gross source capacity first, and the direct account sleeve is

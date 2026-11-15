@@ -13,9 +13,6 @@ from msm.api.accounts import (
     AccountRegistrationRequest,
     AccountRegistrationResponse,
     AccountTargetPositionsSnapshotResponse,
-    AccountVirtualFundAllocationPolicy,
-    AccountVirtualFundAllocationRequest,
-    AccountVirtualFundAllocationResponse,
     PortfolioAccountTarget,
 )
 from msm.api.http import ResourceCollection
@@ -270,36 +267,6 @@ class MarketsClient:
             positions=[],
             overwrite=overwrite,
         )
-
-    def allocate_account_virtual_funds(
-        self,
-        account_uid: Any,
-        *,
-        holdings_set_uid: Any,
-        valuation_asset_uid: Any,
-        position_set_uid: Any | None = None,
-        allocation_policy: AccountVirtualFundAllocationPolicy | Mapping[str, Any] | None = None,
-        apply: bool = False,
-    ) -> AccountVirtualFundAllocationResponse:
-        """Allocate one holdings snapshot to the account's virtual funds (``allocateAccountVirtualFunds``).
-
-        The Markets API values the snapshot itself and, with ``apply``, writes the
-        funds' holdings to the core tables; a dry run (the default) writes nothing.
-        """
-
-        request = AccountVirtualFundAllocationRequest(
-            holdings_set_uid=str(holdings_set_uid),
-            valuation_asset_uid=str(valuation_asset_uid),
-            position_set_uid=None if position_set_uid is None else str(position_set_uid),
-            allocation_policy=allocation_policy or AccountVirtualFundAllocationPolicy(),
-            apply=apply,
-        )
-        payload = self.request(
-            "POST",
-            f"{API_PREFIX}/account/{account_uid}/virtual-fund-allocations/",
-            json=request.model_dump(mode="json"),
-        )
-        return AccountVirtualFundAllocationResponse.model_validate(payload)
 
     def portfolio_account_targets(
         self,

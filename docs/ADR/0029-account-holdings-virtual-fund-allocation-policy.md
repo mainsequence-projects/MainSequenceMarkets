@@ -1179,3 +1179,19 @@ not from arbitrary hardcoded example payloads.
 - Do not allocate residual holdings without an explicit policy.
 - Do not make portfolio construction create virtual funds.
 - Do not make virtual funds canonical custody.
+
+## Amendment: 3.5.0
+
+3.1.0 added `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+(`MarketsClient.allocate_account_virtual_funds`) so an application without grants
+on `mainsequence.markets` could allocate a holdings snapshot
+([#46](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/46)).
+It supplied the valuation and the policy itself: every non-cash holding at the
+`price_current` of its latest target-portfolio weights row, and a default
+`proportional_attribution` policy. That contradicts this ADR, where the valuation
+and the allocation policy are inputs, and it refused any account that held an
+asset outside its target portfolios. 3.5.0 removes the route, the client method,
+their wire contracts and the built-in valuation
+([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68)).
+The planner and its apply step are unchanged, and the apply step still writes no
+fund for a retired portfolio (ADR 0049 decision 4).

@@ -7,6 +7,31 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-11-15
+
+### Removed
+
+- **Breaking:** the Markets API no longer allocates an account's holdings to its virtual
+  funds (#68,
+  [ADR 0029](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0029-account-holdings-virtual-fund-allocation-policy/)
+  amendment). `POST /api/v1/account/{account_uid}/virtual-fund-allocations/`
+  (`allocateAccountVirtualFunds`), `MarketsClient.allocate_account_virtual_funds`, the
+  `AccountVirtualFundAllocation*` wire contracts in `msm.api.accounts`,
+  `msm.services.accounts.allocate_account_holdings_set`, `account_allocation_policy` and
+  the repository write `replace_account_virtual_fund_holdings` are gone. The route
+  supplied the valuation (each holding at its target portfolios' weights `price_current`)
+  and the policy itself, while ADR 0029 makes both the caller's inputs, and it refused any
+  account holding an asset outside its target portfolios. A client that calls the route
+  gets `404`, and the client method no longer exists. An application without grants on
+  `mainsequence.markets` has no way to allocate through the Markets API.
+  - Kept: the planner and its apply step (`plan_account_virtual_fund_allocations`,
+    `apply_account_virtual_fund_allocation_plan`), which still write no fund for a retired
+    portfolio (ADR 0049), the virtual-fund tables and their reads, including
+    `GET /api/v1/account/{account_uid}/holdings/by-fund/`.
+  - The Command Center adapter no longer lists `allocateAccountVirtualFunds`. The account
+    routes guide, the virtual-funds and client pages, the account workflow skill and ADR
+    0049 drop the route.
+
 ## [3.4.2] - 2026-11-15
 
 ### Fixed
