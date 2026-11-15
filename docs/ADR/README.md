@@ -50,6 +50,8 @@ Recommended sections:
 - [0049. Portfolio Lifecycle And Account History](0049-portfolio-lifecycle-and-account-history.md)
 - [0050. Account Deletion](0050-account-deletion.md)
 - [0051. Account Registration In One Transaction](0051-account-registration-in-one-transaction.md)
+- [0052. Virtual-Fund Allocation Routes And Described Policies](0052-virtual-fund-allocation-routes-and-described-policies.md)
+- [0053. Account Targets In Units](0053-account-targets-in-units.md)
 
 ## Command Center Decisions
 

@@ -131,6 +131,8 @@ nav:
       - Portfolio Lifecycle And Account History: ADR/0049-portfolio-lifecycle-and-account-history.md
       - Account Deletion: ADR/0050-account-deletion.md
       - Account Registration In One Transaction: ADR/0051-account-registration-in-one-transaction.md
+      - Virtual-Fund Allocation Routes And Described Policies: ADR/0052-virtual-fund-allocation-routes-and-described-policies.md
+      - Account Targets In Units: ADR/0053-account-targets-in-units.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
