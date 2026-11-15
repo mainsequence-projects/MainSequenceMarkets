@@ -32,6 +32,52 @@ VirtualFundHoldingsSetTable
 portfolio weights or run portfolio updaters, but it does not own virtual-fund
 identity or holdings storage.
 
+## Targets In Units
+
+A virtual fund's target is a unit basket (ADR 0052). It is stored in the
+account's target snapshot, as the `TargetPositionsStorage` rows of one portfolio:
+one row per asset, each a positive `quantity` in the asset's own unit with a
+`direction`.
+
+```text
+PositionSetTable
+  <- TargetPositionsStorage
+       target_type = "portfolio"
+       portfolio_uid -> PortfolioTable.uid      the virtual fund's portfolio
+       asset_uid     -> AssetTable.uid          one asset of the basket
+       quantity > 0, direction 1 / -1
+```
+
+Account holdings, fund targets and fund holdings are all in units, so the
+allocation needs no price. A share, a futures contract and an option contract
+are handled the same way.
+
+### Sizing a basket
+
+ms-markets is a record library: it stores the basket and derives nothing. The
+caller sizes it, with its own prices and rules, at a sizing event:
+
+- the fund is sized: money goes into or out of the sleeve, or its share of the
+  account changes;
+- the portfolio rebalances: its composition changes.
+
+A request such as "10,000 in this fund" or "40% of the account" belongs to the
+provider that takes it. The provider stores the request, turns it into units
+(multipliers, deltas, lot sizes, rounding, FX) and writes a new target. For a
+portfolio with a unit book (`PortfolioStateStorage`), the basket is the book
+scaled by one factor.
+
+A row's `metadata_json` may record how it was sized: the scale factor, the
+portfolio book time, the mandate share and a source note. ms-markets never
+reads it.
+
+| Step | Needs market data | Who supplies it |
+| --- | --- | --- |
+| Portfolio construction and rebalance | Yes | Provided to the portfolio engine |
+| Sizing a fund's basket | Yes | The caller, at the sizing event |
+| Allocating holdings to funds | No | |
+| Valuing a fund or the account | Yes | The caller, when it reports |
+
 ## Storage Shape
 
 `VirtualFundTable` stores the account-owned allocation view:
@@ -87,25 +133,23 @@ from msm.services.accounts import (
 plan = plan_account_virtual_fund_allocations(
     position_set_uid=position_set.uid,
     valuation_time=workflow_time,
-    valuation_asset_uid=usd_asset.uid,
     holdings_selection_policy=HoldingsSelectionPolicy(),
-    valuation_resolver=valuation_resolver,
     allocation_policy=AllocationPolicy(),
 )
 ```
 
-The resolver follows one deterministic path:
+The planner follows one deterministic path:
 
 ```text
 PositionSetTable.uid
   -> AccountTargetAllocationTable.uid
   -> AccountHoldingsSetTable(account_uid, valuation_time)
-  -> AccountHoldingsStorage rows
-  -> TargetPositionsStorage rows
+  -> AccountHoldingsStorage rows        units held
+  -> TargetPositionsStorage rows        unit targets and unit baskets
   -> AssetTable identity rows
-  -> portfolio-target expansion
-  -> valuation resolver
 ```
+
+It reads no price, NAV or portfolio weight.
 
 The holdings set is the one captured at `valuation_time`: the capture is the
 valuation. The target is the `PositionSet` the caller passes, used as it is.
@@ -115,15 +159,12 @@ capture's `valuation_time` and the earlier `position_set_uid`. A `PositionSet`
 written after `valuation_time` is refused, since it cannot apply to holdings
 captured before it.
 
-The Markets API has no allocation route. The valuation resolver and the
-allocation policy are the caller's inputs, and the Markets API holds neither:
-it has no prices for what an account holds. The route 3.1.0 added valued
-holdings at their target portfolios' weights prices and was removed in 3.5.0
+The Markets API has no allocation route. The route 3.1.0 added valued holdings
+at their target portfolios' weights prices and was removed in 3.5.0
 ([#68](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/68)).
 
-Core `msm` owns the account and virtual-fund allocation logic. Portfolio
-weights still come from an explicit portfolio-target expander at the workflow
-boundary, so `msm` does not import `msm_portfolios`.
+Core `msm` owns the account and virtual-fund allocation logic, and it does not
+import `msm_portfolios`.
 
 ## Allocation Policy
 
@@ -157,33 +198,6 @@ reducing virtual-fund allocations.
 `strict_feasible` is a validation mode. If virtual-fund gross demand exceeds
 available source capacity for any asset, the plan is marked infeasible and
 must not be applied.
-
-## Valuation Resolver
-
-The planner does not own pricing, derivative valuation, FX conversion, or NAV
-calculation. A valuation resolver supplies valuation metrics and target
-quantity demand when the workflow starts from notional targets.
-
-The resolver is called with:
-
-```text
-requested_metrics = ("nav",)
-source_holdings
-target_notional_demands
-valuation_time
-valuation_asset_uid
-valuation_policy
-```
-
-`valuation_asset_uid` is an `AssetTable.uid`, not an ISO code or ticker. Any
-currency mapping or provider-specific logic belongs inside the resolver.
-
-The resolver returns totals and optional lines per asset, source row, or target
-row. For account virtual-fund allocation, `nav` is the required metric.
-
-For notional target rows, the resolver must also return
-`target_quantity_demands`. The planner uses those quantity demands for the
-vector allocation step and keeps the notional values for diagnostics.
 
 ## Apply Flow
 

@@ -7,6 +7,48 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** account targets are stored in units
+  ([ADR 0052](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0052-account-targets-in-units/)).
+  Every `TargetPositionsStorage` row is a positive `quantity` of one asset with a
+  `direction` (`1` long, `-1` short), like account holdings. A portfolio target is the
+  virtual fund's unit basket: one row per asset, so `asset_uid` is required on every row
+  and joins the storage index. The caller sizes a basket with its own prices and rules and
+  writes it; ms-markets records it and values nothing.
+  - **Migration 0024 deletes every existing `PositionSet` and its target rows.** They
+    hold shares of NAV and notional amounts, which cannot be turned into units without
+    prices. `AccountTargetAllocation` rows and applied virtual-fund holdings are kept.
+    Write each account's target again in units after upgrading.
+  - **Target writes and reads:** `POST /api/v1/account/{account_uid}/add-target-positions/`,
+    `MarketsClient.add_account_target_positions` and `build_target_positions_frame` take
+    `asset_uid`, `quantity` and `direction` on every row, and a portfolio row also takes
+    `portfolio_uid`. `GET /api/v1/account/{account_uid}/target-positions/` answers the same
+    fields. A row with a share of NAV, a notional amount, a zero or negative quantity, or
+    without an asset is refused.
+  - **`GET /api/v1/portfolio/{uid}/account-targets/`** answers `asset_count`, the number of
+    assets in the portfolio's unit basket, in place of the exposure fields.
+  - **The allocation planner reads units only.**
+    `plan_account_virtual_fund_allocations` takes `position_set_uid`, `valuation_time`,
+    `holdings_selection_policy` and `allocation_policy`. The plan has no NAV, valuation
+    asset or notional fields.
+
+### Removed
+
+- **Breaking:** with unit targets (ADR 0052) these are gone:
+  - the `weight_notional_exposure`, `constant_notional_exposure` and
+    `single_asset_quantity` columns and wire fields;
+  - `expand_portfolio_target_positions` and `TARGET_POSITION_EXPOSURE_FIELDS`;
+  - from the allocation planner: the `valuation_asset_uid`, `valuation_resolver` and
+    `portfolio_target_expander` parameters, and `ValuationResolver`, `ValuationPolicy`,
+    `AllocationValuation`, `ValuationMetricValue`, `ValuationMetricLine`,
+    `ValuationMetricResult`, `TargetNotionalDemand` and `expand_portfolio_target_rows`.
+    `HoldingValuationInput` is now `AccountHoldingInput`, and `ValuationDiagnostic` is
+    `AllocationDiagnostic`;
+  - the `target_weight` and `weight_notional_exposure` branches of
+    `Account.pretty_print_positions`;
+  - the valuation-resolver skill. `accounts/target_sizing` replaces it.
+
 ## [3.5.0] - 2026-11-15
 
 ### Removed

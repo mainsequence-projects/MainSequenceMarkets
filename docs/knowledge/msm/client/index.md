@@ -201,7 +201,7 @@ client.add_account_target_positions(
     account_uid,
     target_positions_date=rebalanced_at,
     positions=[{"target_type": "portfolio", "target_uid": p, "portfolio_uid": p,
-                "weight_notional_exposure": 0.25}],
+                "asset_uid": asset_uid, "quantity": 1000, "direction": 1}],
 )
 target = client.account_target_positions(account_uid)
 client.clear_account_target_positions(account_uid, target_positions_date=closed_at)

@@ -230,6 +230,10 @@ class MarketsClient:
     ) -> AccountTargetPositionsSnapshotResponse:
         """Write an account's whole target at ``target_positions_date`` (``addAccountTargetPositions``).
 
+        Every position is in units (ADR 0052): ``asset_uid``, a positive ``quantity``
+        and a ``direction``. Rows with the same ``portfolio_uid`` are that virtual
+        fund's unit basket, which the caller sizes with its own prices and rules.
+
         An empty ``positions`` list clears the target; see
         ``clear_account_target_positions``. A snapshot that already exists at
         that time raises ``ValueError`` unless ``overwrite`` is true.

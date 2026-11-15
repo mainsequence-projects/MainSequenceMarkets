@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID, uuid4
@@ -30,14 +30,8 @@ from msm.services.accounts import (
 from msm.services.assets import asset_reference_details_by_uids
 from msm.services.portfolios import search_portfolios
 
-TARGET_POSITION_EXPOSURE_FIELDS = (
-    "weight_notional_exposure",
-    "constant_notional_exposure",
-    "single_asset_quantity",
-)
-
 DEFAULT_TARGET_POSITION_SCAN_LIMIT = 500
-PortfolioWeightResolver = Callable[[str], Sequence[Mapping[str, Any]] | pd.DataFrame]
+TARGET_POSITION_DIRECTIONS = (1, -1)
 
 
 class AccountTargetPositionsSnapshotExistsError(ValueError):
@@ -45,39 +39,29 @@ class AccountTargetPositionsSnapshotExistsError(ValueError):
 
 
 def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one target row in units (ADR 0052).
+
+    Every row is a positive ``quantity`` of one asset with a ``direction``. A row
+    with a ``portfolio_uid`` belongs to that virtual fund's unit basket; a row
+    without one targets the asset directly.
+    """
+
     payload = dict(position)
     if "asset_identifier" in payload:
-        raise ValueError("Target positions use asset_uid or portfolio_uid, not asset_identifier.")
-
-    provided_fields = [
-        field_name
-        for field_name in TARGET_POSITION_EXPOSURE_FIELDS
-        if not _is_missing(payload.get(field_name))
-    ]
-    if len(provided_fields) != 1:
-        raise ValueError(
-            "Each target position must provide exactly one of "
-            "`weight_notional_exposure`, `constant_notional_exposure`, "
-            "or `single_asset_quantity`."
-        )
+        raise ValueError("Target positions use asset_uid, not asset_identifier.")
 
     asset_uid = _optional_uuid_string(payload.get("asset_uid"), field_name="asset_uid")
+    if asset_uid is None:
+        raise ValueError("Each target position must provide asset_uid.")
     portfolio_uid = _optional_uuid_string(payload.get("portfolio_uid"), field_name="portfolio_uid")
-    if (asset_uid is None) == (portfolio_uid is None):
-        raise ValueError(
-            "Each target position must provide exactly one of asset_uid or portfolio_uid."
-        )
 
-    target_type = TARGET_TYPE_ASSET if asset_uid is not None else TARGET_TYPE_PORTFOLIO
-    if target_type == TARGET_TYPE_PORTFOLIO and not _is_missing(
-        payload.get("single_asset_quantity")
-    ):
-        raise ValueError("Portfolio target positions cannot use single_asset_quantity.")
-
-    target_uid = asset_uid or portfolio_uid
+    target_type = TARGET_TYPE_ASSET if portfolio_uid is None else TARGET_TYPE_PORTFOLIO
+    target_uid = asset_uid if portfolio_uid is None else portfolio_uid
     declared_target_type = payload.get("target_type")
     if declared_target_type not in (None, "") and str(declared_target_type) != target_type:
-        raise ValueError("target_type must match the concrete target UID field.")
+        raise ValueError(
+            "target_type must be portfolio when portfolio_uid is given, and asset otherwise."
+        )
 
     declared_target_uid = payload.get("target_uid")
     if declared_target_uid not in (None, ""):
@@ -86,12 +70,17 @@ def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, A
             field_name="target_uid",
         )
         if normalized_declared_target_uid != target_uid:
-            raise ValueError("target_uid must match asset_uid or portfolio_uid.")
+            raise ValueError(
+                "target_uid must match portfolio_uid for a portfolio row and asset_uid "
+                "for an asset row."
+            )
 
     payload["target_type"] = target_type
     payload["target_uid"] = target_uid
     payload["asset_uid"] = asset_uid
     payload["portfolio_uid"] = portfolio_uid
+    payload["quantity"] = _positive_quantity(payload.get("quantity"))
+    payload["direction"] = _direction(payload.get("direction"))
     payload["metadata_json"] = _mapping_or_empty(payload.get("metadata_json"))
     return payload
 
@@ -120,9 +109,8 @@ def build_target_positions_frame(
                 "target_uid": payload["target_uid"],
                 "asset_uid": payload["asset_uid"],
                 "portfolio_uid": payload["portfolio_uid"],
-                "weight_notional_exposure": payload.get("weight_notional_exposure"),
-                "constant_notional_exposure": payload.get("constant_notional_exposure"),
-                "single_asset_quantity": payload.get("single_asset_quantity"),
+                "quantity": payload["quantity"],
+                "direction": payload["direction"],
                 "metadata_json": payload.get("metadata_json") or {},
             }
         )
@@ -169,6 +157,8 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
                 values,
                 nullable=column_nullable_map[column_name],
             )
+        elif dtype == dc.INT16:
+            flat[column_name] = values.map(_direction).astype("int16")
         elif dtype == dc.JSONB:
             flat[column_name] = values.map(_normalize_jsonb)
         else:
@@ -183,51 +173,6 @@ def validate_target_positions_frame(data_frame: pd.DataFrame) -> pd.DataFrame:
             f"Target positions frame contains duplicate rows for index names {index_names}."
         )
     return frame
-
-
-def expand_portfolio_target_positions(
-    target_positions: pd.DataFrame | Sequence[Mapping[str, Any]],
-    *,
-    portfolio_weight_resolver: PortfolioWeightResolver | None = None,
-) -> pd.DataFrame:
-    frame = validate_target_positions_frame(_target_positions_to_frame(target_positions))
-    flat = frame.reset_index()
-    rows: list[dict[str, Any]] = []
-    for row in flat.to_dict("records"):
-        if row["target_type"] == TARGET_TYPE_ASSET:
-            rows.append(
-                {
-                    **_exposure_columns(row),
-                    "source_target_type": TARGET_TYPE_ASSET,
-                    "source_target_uid": row["target_uid"],
-                    "asset_uid": row["asset_uid"],
-                    "portfolio_uid": None,
-                    "portfolio_weight": None,
-                }
-            )
-            continue
-
-        if portfolio_weight_resolver is None:
-            raise ValueError(
-                "Portfolio target expansion requires an explicit portfolio_weight_resolver."
-            )
-        for weight_row in _portfolio_weight_rows(
-            portfolio_weight_resolver(str(row["portfolio_uid"]))
-        ):
-            rows.append(
-                {
-                    **_expanded_exposure_columns(row, weight_row),
-                    "source_target_type": TARGET_TYPE_PORTFOLIO,
-                    "source_target_uid": row["target_uid"],
-                    "asset_uid": _required_uuid_string(
-                        weight_row.get("asset_uid"),
-                        field_name="asset_uid",
-                    ),
-                    "portfolio_uid": row["portfolio_uid"],
-                    "portfolio_weight": float(weight_row.get("weight") or 0.0),
-                }
-            )
-    return pd.DataFrame(rows)
 
 
 def get_account_target_positions_snapshot_response(
@@ -436,10 +381,7 @@ def _build_portfolio_account_target_row(row: Mapping[str, Any]) -> dict[str, Any
             row.get("target_positions_date"),
             field_name="target_positions_date",
         ),
-        "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
-        "constant_notional_exposure": _number_string_or_none(
-            row.get("constant_notional_exposure")
-        ),
+        "asset_count": _int_or_zero(row.get("asset_count")),
     }
 
 
@@ -490,52 +432,6 @@ def search_account_target_allocation_candidates(
         if row.get("row_kind") == "data":
             candidates.append(_build_account_target_allocation_candidate(row))
     return {"count": count, "results": candidates}
-
-
-def _target_positions_to_frame(
-    target_positions: pd.DataFrame | Sequence[Mapping[str, Any]],
-) -> pd.DataFrame:
-    if isinstance(target_positions, pd.DataFrame):
-        return target_positions
-    return pd.DataFrame([dict(row) for row in target_positions])
-
-
-def _portfolio_weight_rows(
-    value: Sequence[Mapping[str, Any]] | pd.DataFrame,
-) -> list[dict[str, Any]]:
-    frame = value.reset_index() if isinstance(value, pd.DataFrame) else pd.DataFrame(value)
-    required = {"asset_uid", "weight"}
-    missing = [column for column in sorted(required) if column not in frame.columns]
-    if missing:
-        raise ValueError(
-            "Portfolio weight rows are missing required columns: " + ", ".join(missing)
-        )
-    return [dict(row) for row in frame.to_dict("records")]
-
-
-def _exposure_columns(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "weight_notional_exposure": row.get("weight_notional_exposure"),
-        "constant_notional_exposure": row.get("constant_notional_exposure"),
-        "single_asset_quantity": row.get("single_asset_quantity"),
-    }
-
-
-def _expanded_exposure_columns(
-    target_row: Mapping[str, Any],
-    weight_row: Mapping[str, Any],
-) -> dict[str, Any]:
-    portfolio_weight = float(weight_row.get("weight") or 0.0)
-    exposure = _exposure_columns(target_row)
-    if exposure["weight_notional_exposure"] is not None:
-        exposure["weight_notional_exposure"] = (
-            float(exposure["weight_notional_exposure"]) * portfolio_weight
-        )
-    if exposure["constant_notional_exposure"] is not None:
-        exposure["constant_notional_exposure"] = (
-            float(exposure["constant_notional_exposure"]) * portfolio_weight
-        )
-    return exposure
 
 
 def _search_active_account_target_allocation_rows(
@@ -668,8 +564,12 @@ def _build_account_target_positions_snapshot(
     }
 
 
-def _target_position_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
-    return (str(row.get("target_type", "")), str(row.get("target_uid", "")))
+def _target_position_sort_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(row.get("target_type", "")),
+        str(row.get("target_uid", "")),
+        str(row.get("asset_uid", "")),
+    )
 
 
 def _build_account_target_position_row(
@@ -692,9 +592,8 @@ def _build_account_target_position_row(
             asset_reference=asset_reference,
             portfolio_reference=portfolio_reference,
         ),
-        "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
-        "constant_notional_exposure": _number_string_or_none(row.get("constant_notional_exposure")),
-        "single_asset_quantity": _number_string_or_none(row.get("single_asset_quantity")),
+        "quantity": _number_string_or_none(row.get("quantity")),
+        "direction": _direction(row.get("direction")),
         "asset": asset_reference if include_asset_detail else None,
         "portfolio": portfolio_reference,
     }
@@ -847,9 +746,8 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
             "target_uid",
             "asset_uid",
             "portfolio_uid",
-            "weight_notional_exposure",
-            "constant_notional_exposure",
-            "single_asset_quantity",
+            "quantity",
+            "direction",
             "metadata_json",
         )
         if hasattr(position, key)
@@ -861,14 +759,13 @@ def _target_positions_frame_operation_rows(frame: pd.DataFrame) -> list[dict[str
         {
             "target_type": _required_string(row.get("target_type")),
             "target_uid": _required_uuid_string(row.get("target_uid"), field_name="target_uid"),
-            "asset_uid": _optional_uuid_string(row.get("asset_uid"), field_name="asset_uid"),
+            "asset_uid": _required_uuid_string(row.get("asset_uid"), field_name="asset_uid"),
             "portfolio_uid": _optional_uuid_string(
                 row.get("portfolio_uid"),
                 field_name="portfolio_uid",
             ),
-            "weight_notional_exposure": _none_if_missing(row.get("weight_notional_exposure")),
-            "constant_notional_exposure": _none_if_missing(row.get("constant_notional_exposure")),
-            "single_asset_quantity": _none_if_missing(row.get("single_asset_quantity")),
+            "quantity": _positive_quantity(row.get("quantity")),
+            "direction": _direction(row.get("direction")),
             "metadata_json": _mapping_or_empty(row.get("metadata_json")),
         }
         for row in frame.reset_index().to_dict("records")
@@ -912,6 +809,32 @@ def _normalize_optional_float64(value: Any, *, nullable: bool) -> float | None:
         return float(Decimal(str(value)))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"Invalid numeric target-position value {value!r}.") from exc
+
+
+def _positive_quantity(value: Any) -> float:
+    if _is_missing(value):
+        raise ValueError("Each target position must provide a quantity.")
+    try:
+        quantity = float(Decimal(str(value)))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"Invalid target-position quantity {value!r}.") from exc
+    if not math.isfinite(quantity) or quantity <= 0:
+        raise ValueError(
+            "A target-position quantity must be greater than zero; direction gives the side."
+        )
+    return quantity
+
+
+def _direction(value: Any) -> int:
+    if _is_missing(value):
+        return 1
+    try:
+        direction = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("direction must be 1 for long or -1 for short.") from exc
+    if direction not in TARGET_POSITION_DIRECTIONS or float(value) != direction:
+        raise ValueError("direction must be 1 for long or -1 for short.")
+    return direction
 
 
 def _normalize_jsonb(value: Any) -> dict[str, Any] | None:
@@ -997,10 +920,6 @@ def _int_or_zero(value: Any) -> int:
     return int(value)
 
 
-def _none_if_missing(value: Any) -> Any:
-    return None if _is_missing(value) else value
-
-
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
@@ -1012,11 +931,9 @@ def _is_missing(value: Any) -> bool:
 
 __all__ = [
     "AccountTargetPositionsSnapshotExistsError",
-    "TARGET_POSITION_EXPOSURE_FIELDS",
     "add_account_target_positions_snapshot_response",
     "build_target_positions_frame",
     "list_portfolio_account_targets_response",
-    "expand_portfolio_target_positions",
     "get_account_target_positions_snapshot_response",
     "search_account_target_allocation_candidates",
     "validate_target_position_payload",

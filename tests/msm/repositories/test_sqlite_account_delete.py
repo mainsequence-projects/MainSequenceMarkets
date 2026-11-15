@@ -132,7 +132,7 @@ def _history(sqlite_markets, account: uuid.UUID) -> dict[str, str]:
     identifier = _identifier(engine, account)
     portfolio = _portfolio(engine)
     written = _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
-    _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
+    _write_target(sqlite_markets, account, [_portfolio_position(engine, portfolio)])
     source = uuid.UUID(str(written["rows"][0]["holdings_set_uid"]))
     _virtual_fund(engine, account, source, portfolio, f"fund-{identifier}")
     manager = _order_manager(engine, account)

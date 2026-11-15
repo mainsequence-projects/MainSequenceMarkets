@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.base import MarketsMetaTableRow, PayloadWithRenamedFields, pre_3_0_field
 from msm.api.remote import RemoteRowOperations
@@ -571,18 +571,9 @@ def _position_extra_details(position: Any) -> dict[str, Any]:
 
 
 def _position_type_and_value(position: Any) -> tuple[str, Any]:
-    for column_name, position_type in (
-        ("quantity", "quantity"),
-        ("target_weight", "target_weight"),
-        ("weight_notional_exposure", "weight_notional_exposure"),
-    ):
-        if column_name in position and not _is_missing(position.get(column_name)):
-            if column_name == "quantity":
-                return position_type, _signed_quantity_value(position)
-            return position_type, position.get(column_name)
-    raise ValueError(
-        "Holdings positions require one of quantity, target_weight, or weight_notional_exposure."
-    )
+    if "quantity" in position and not _is_missing(position.get("quantity")):
+        return "quantity", _signed_quantity_value(position)
+    raise ValueError("Holdings positions require a quantity column.")
 
 
 def _signed_quantity_value(position: Any) -> Any:
@@ -751,16 +742,21 @@ class AccountTargetPositionPortfolioReference(BaseModel):
 
 
 class AccountTargetPositionRow(BaseModel):
+    """One target row in units (ADR 0052): a positive quantity of one asset and its side.
+
+    A ``portfolio`` row is one asset of that virtual fund's unit basket; the rows that
+    share a ``portfolio_uid`` are the whole basket.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
     target_type: Literal["asset", "portfolio"]
     target_uid: str
-    asset_uid: str | None = None
+    asset_uid: str
     portfolio_uid: str | None = None
     unique_identifier: str
-    weight_notional_exposure: str | None = None
-    constant_notional_exposure: str | None = None
-    single_asset_quantity: str | None = None
+    quantity: str
+    direction: Literal[1, -1] = 1
     asset: AccountTargetPositionAssetReference | None = None
     portfolio: AccountTargetPositionPortfolioReference | None = None
 
@@ -777,9 +773,8 @@ class AccountTargetPositionsSnapshotResponse(BaseModel):
 class PortfolioAccountTarget(BaseModel):
     """One account whose current target names a portfolio (``listPortfolioAccountTargets``).
 
-    The exposure is the portfolio row's ``weight_notional_exposure`` or
-    ``constant_notional_exposure``; portfolio rows never use ``single_asset_quantity``.
-    ``position_set_uid`` identifies the snapshot read, so a caller can tell that
+    ``asset_count`` is the number of assets in the portfolio's unit basket in that
+    target (ADR 0052). ``position_set_uid`` identifies the snapshot read, so a caller can tell that
     the account's target changed before a later write.
     """
 
@@ -789,51 +784,51 @@ class PortfolioAccountTarget(BaseModel):
     account_target_allocation_uid: str
     position_set_uid: str
     target_positions_date: dt.datetime
-    weight_notional_exposure: str | None = None
-    constant_notional_exposure: str | None = None
+    asset_count: int = 0
 
 
 class _AccountAddTargetPositionBaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_uid: str = Field(min_length=1)
-    weight_notional_exposure: str | int | float | None = None
-    constant_notional_exposure: str | int | float | None = None
-    single_asset_quantity: str | int | float | None = None
-    metadata_json: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _validate_single_exposure(self):
-        provided_fields = [
-            field_name
-            for field_name in (
-                "weight_notional_exposure",
-                "constant_notional_exposure",
-                "single_asset_quantity",
-            )
-            if getattr(self, field_name) is not None
-        ]
-        if len(provided_fields) != 1:
-            raise ValueError("Each target position must provide exactly one exposure field.")
-        return self
+    asset_uid: str = Field(
+        min_length=1,
+        description="`Asset.uid` of the asset this row is a quantity of.",
+    )
+    quantity: float = Field(
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Positive target quantity in the asset's own unit: shares, contracts, bonds or "
+            "units of a currency. `direction` gives the side."
+        ),
+    )
+    direction: Literal[1, -1] = Field(default=1, description="1 for long, -1 for short.")
+    metadata_json: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Information only: how the row was sized, such as the scale factor, the "
+            "portfolio book time, the mandate share and a source note."
+        ),
+    )
 
 
 class AccountAddAssetTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
+    """A direct target: a quantity of one asset."""
+
     target_type: Literal["asset"]
-    asset_uid: str = Field(min_length=1)
     portfolio_uid: None = None
 
 
 class AccountAddPortfolioTargetPositionRequest(_AccountAddTargetPositionBaseRequest):
-    target_type: Literal["portfolio"]
-    asset_uid: None = None
-    portfolio_uid: str = Field(min_length=1)
+    """One asset of a virtual fund's unit basket.
 
-    @model_validator(mode="after")
-    def _reject_portfolio_units(self):
-        if self.single_asset_quantity is not None:
-            raise ValueError("Portfolio target positions cannot use single_asset_quantity.")
-        return self
+    The rows of a snapshot that share a ``portfolio_uid`` are that fund's whole basket.
+    The caller sizes it with its own prices and rules; ms-markets records it.
+    """
+
+    target_type: Literal["portfolio"]
+    portfolio_uid: str = Field(min_length=1)
 
 
 AccountAddTargetPositionRequest = Annotated[
@@ -851,7 +846,8 @@ class AccountAddTargetPositionsRequest(BaseModel):
     overwrite: bool
     positions: list[AccountAddTargetPositionRequest] = Field(
         description=(
-            "The whole target at target_positions_date. An empty list clears the "
+            "The whole target at target_positions_date, in units: one row per asset of "
+            "each direct target and of each virtual fund's basket. An empty list clears the "
             "account's target: it writes an empty snapshot and sets the account's target "
             "allocation inactive."
         ),

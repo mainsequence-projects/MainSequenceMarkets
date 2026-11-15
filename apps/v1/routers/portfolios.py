@@ -677,7 +677,8 @@ def remove_portfolio_weights(
         "account's active target allocations, as GET /api/v1/account/{account_uid}/"
         "target-positions/ reads it; an account that named the portfolio only in an earlier "
         "snapshot, or whose target was cleared, is not returned. Each item gives the account, "
-        "its target allocation, the snapshot's PositionSet uid and time, and the exposure."
+        "its target allocation, the snapshot's PositionSet uid and time, and the number of "
+        "assets in the portfolio's unit basket."
     ),
     operation_id="listPortfolioAccountTargets",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},

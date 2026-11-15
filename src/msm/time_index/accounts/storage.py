@@ -149,15 +149,15 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 
 class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
-    """Account target allocation rows keyed by position set and target object."""
+    """Account target rows in units, keyed by position set, target and asset."""
 
     __metatable_identifier__ = "TargetPositionsTS"
     __metatable_description__ = (
-        "Timestamped account target-allocation storage keyed by "
-        "(time_index, position_set_uid, target_type, target_uid). Each row is "
-        "one target exposure in a PositionSetTable snapshot and references "
-        "exactly one concrete target: either a direct AssetTable row or a "
-        "core PortfolioTable row."
+        "Timestamped account target storage in units, keyed by "
+        "(time_index, position_set_uid, target_type, target_uid, asset_uid). "
+        "Each row is a positive quantity of one asset with a direction, in a "
+        "PositionSetTable snapshot. An asset row targets the asset directly. "
+        "The portfolio rows of one portfolio are that virtual fund's unit basket."
     )
     __table_args__ = (
         CheckConstraint(
@@ -166,24 +166,16 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         ),
         CheckConstraint(
             "("
-            f"target_type = '{TARGET_TYPE_ASSET}' AND asset_uid IS NOT NULL "
+            f"target_type = '{TARGET_TYPE_ASSET}' "
             "AND portfolio_uid IS NULL AND target_uid = asset_uid"
             ") OR ("
             f"target_type = '{TARGET_TYPE_PORTFOLIO}' AND portfolio_uid IS NOT NULL "
-            "AND asset_uid IS NULL AND target_uid = portfolio_uid"
+            "AND target_uid = portfolio_uid"
             ")",
             name="ck_target_positions_target_reference",
         ),
-        CheckConstraint(
-            "("
-            "CASE WHEN weight_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
-            ") + ("
-            "CASE WHEN constant_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
-            ") + ("
-            "CASE WHEN single_asset_quantity IS NOT NULL THEN 1 ELSE 0 END"
-            ") = 1",
-            name="ck_target_positions_single_exposure",
-        ),
+        CheckConstraint("quantity > 0", name="ck_target_positions_quantity_positive"),
+        CheckConstraint("direction IN (1, -1)", name="ck_target_positions_direction"),
         Index(None, "asset_uid"),
         Index(None, "portfolio_uid"),
         Index(None, "position_set_uid", "target_type", "target_uid"),
@@ -194,6 +186,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "position_set_uid",
         "target_type",
         "target_uid",
+        "asset_uid",
     ]
 
     time_index: Mapped[datetime.datetime] = mapped_column(
@@ -201,7 +194,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Time Index",
-            "description": "UTC timestamp for the target-allocation exposure snapshot.",
+            "description": "UTC timestamp for the account target snapshot.",
         },
     )
     position_set_uid: Mapped[uuid.UUID] = mapped_column(
@@ -214,8 +207,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Position Set UID",
             "description": (
-                "PositionSetTable.uid for the account target-allocation snapshot "
-                "that owns this exposure row."
+                "PositionSetTable.uid for the account target snapshot that owns this row."
             ),
         },
     )
@@ -224,7 +216,7 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=False,
         info={
             "label": "Target Type",
-            "description": "Target object kind for this exposure row: asset or portfolio.",
+            "description": "Target kind for this row: asset or portfolio.",
         },
     )
     target_uid: Mapped[uuid.UUID] = mapped_column(
@@ -238,17 +230,18 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    asset_uid: Mapped[uuid.UUID | None] = mapped_column(
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
             f"{AssetTable.__table__.fullname}.uid",
             ondelete="RESTRICT",
         ),
-        nullable=True,
+        nullable=False,
         info={
             "label": "Asset UID",
             "description": (
-                "AssetTable.uid when target_type is asset. Null for portfolio target rows."
+                "AssetTable.uid of the asset this row is a quantity of. For a portfolio "
+                "row, an asset of that virtual fund's unit basket."
             ),
         },
     )
@@ -267,28 +260,21 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             ),
         },
     )
-    weight_notional_exposure: Mapped[float | None] = mapped_column(
+    quantity: Mapped[float] = mapped_column(
         Float,
-        nullable=True,
+        nullable=False,
         info={
-            "label": "Weight Notional Exposure",
-            "description": "Target exposure as a notional portfolio weight when this exposure mode is used.",
+            "label": "Quantity",
+            "description": "Positive target quantity in the asset's own unit.",
         },
     )
-    constant_notional_exposure: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
+    direction: Mapped[int] = mapped_column(
+        SmallInteger,
+        default=1,
+        nullable=False,
         info={
-            "label": "Constant Notional Exposure",
-            "description": "Target exposure as an absolute notional amount when this exposure mode is used.",
-        },
-    )
-    single_asset_quantity: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Single Asset Quantity",
-            "description": "Target exposure as a direct quantity when this exposure mode is used.",
+            "label": "Direction",
+            "description": "Target side: 1 for long, -1 for short.",
         },
     )
     metadata_json: Mapped[dict | None] = mapped_column(
@@ -296,7 +282,10 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Metadata",
-            "description": "JSONB payload for target-allocation source, notes, or downstream routing hints.",
+            "description": (
+                "Information only: how the row was sized, such as the scale factor, the "
+                "portfolio book time, the mandate share and a source note."
+            ),
         },
     )
 

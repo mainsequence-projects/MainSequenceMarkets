@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 
 from apps.v1.main import app
 
+BASKET_ASSET_UID = "00000000-0000-0000-0000-0000000000b5"
+
 
 def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
     account_uid = uuid.uuid4()
@@ -292,7 +294,7 @@ def test_search_account_target_allocation_targets_returns_candidates(monkeypatch
                 {
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
-                    "asset_uid": None,
+                    "asset_uid": BASKET_ASSET_UID,
                     "portfolio_uid": str(portfolio_uid),
                     "identifier": "example-sleeve",
                     "display_label": "example-sleeve",
@@ -814,9 +816,8 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "asset_uid": str(asset_uid),
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
-                    "weight_notional_exposure": "0.55",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "0.55",
+                    "direction": 1,
                     "asset": {
                         "uid": str(asset_uid),
                         "unique_identifier": "btc_spot",
@@ -830,12 +831,11 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                 {
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
-                    "asset_uid": None,
+                    "asset_uid": BASKET_ASSET_UID,
                     "portfolio_uid": str(portfolio_uid),
                     "unique_identifier": "example-sleeve",
-                    "weight_notional_exposure": "0.45",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "0.45",
+                    "direction": 1,
                     "asset": None,
                     "portfolio": {
                         "uid": str(portfolio_uid),
@@ -948,21 +948,19 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "asset_uid": str(asset_uid),
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
-                    "weight_notional_exposure": "0.6",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "0.6",
+                    "direction": 1,
                     "asset": None,
                     "portfolio": None,
                 },
                 {
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
-                    "asset_uid": None,
+                    "asset_uid": BASKET_ASSET_UID,
                     "portfolio_uid": str(portfolio_uid),
                     "unique_identifier": "example-sleeve",
-                    "weight_notional_exposure": "0.4",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "0.4",
+                    "direction": 1,
                     "asset": None,
                     "portfolio": None,
                 },
@@ -985,14 +983,15 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "target_type": "asset",
                     "target_uid": str(asset_uid),
                     "asset_uid": str(asset_uid),
-                    "weight_notional_exposure": "0.60",
+                    "quantity": "0.60",
                     "metadata_json": {},
                 },
                 {
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
                     "portfolio_uid": str(portfolio_uid),
-                    "weight_notional_exposure": "0.40",
+                    "asset_uid": BASKET_ASSET_UID,
+                    "quantity": "0.40",
                     "metadata_json": {"portfolio_role": "satellite_sleeve"},
                 },
             ],
@@ -1016,9 +1015,8 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
     assert captured["positions"] == [
         {
             "target_uid": str(asset_uid),
-            "weight_notional_exposure": "0.60",
-            "constant_notional_exposure": None,
-            "single_asset_quantity": None,
+            "quantity": 0.6,
+            "direction": 1,
             "metadata_json": {},
             "target_type": "asset",
             "asset_uid": str(asset_uid),
@@ -1026,12 +1024,11 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
         },
         {
             "target_uid": str(portfolio_uid),
-            "weight_notional_exposure": "0.40",
-            "constant_notional_exposure": None,
-            "single_asset_quantity": None,
+            "quantity": 0.4,
+            "direction": 1,
             "metadata_json": {"portfolio_role": "satellite_sleeve"},
             "target_type": "portfolio",
-            "asset_uid": None,
+            "asset_uid": BASKET_ASSET_UID,
             "portfolio_uid": str(portfolio_uid),
         },
     ]
@@ -1053,7 +1050,18 @@ def test_add_account_target_positions_rejects_parent_fields() -> None:
     assert "account_allocation_model_uid" in response.text
 
 
-def test_add_account_target_positions_rejects_portfolio_units() -> None:
+@pytest.mark.parametrize(
+    "exposure",
+    [
+        {"single_asset_quantity": "1"},
+        {"weight_notional_exposure": "0.4"},
+        {"constant_notional_exposure": "1000"},
+        {"quantity": 0},
+        {"quantity": -3},
+        {"quantity": 5, "direction": 0},
+    ],
+)
+def test_add_account_target_positions_accepts_units_only(exposure) -> None:
     portfolio_uid = uuid.uuid4()
 
     client = TestClient(app)
@@ -1067,14 +1075,37 @@ def test_add_account_target_positions_rejects_portfolio_units() -> None:
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
                     "portfolio_uid": str(portfolio_uid),
-                    "single_asset_quantity": "1",
+                    "asset_uid": BASKET_ASSET_UID,
+                    **exposure,
                 }
             ],
         },
     )
 
     assert response.status_code == 422
-    assert "cannot use single_asset_quantity" in response.text
+
+
+def test_add_account_target_positions_refuses_a_basket_row_without_an_asset() -> None:
+    portfolio_uid = uuid.uuid4()
+
+    response = TestClient(app).post(
+        f"/api/v1/account/{uuid.uuid4()}/add-target-positions/",
+        json={
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "portfolio_uid": str(portfolio_uid),
+                    "quantity": 5,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "asset_uid" in response.text
 
 
 def test_add_account_target_positions_returns_404_when_account_missing(monkeypatch) -> None:
@@ -1094,7 +1125,7 @@ def test_add_account_target_positions_returns_404_when_account_missing(monkeypat
                     "target_type": "asset",
                     "target_uid": str(uuid.uuid4()),
                     "asset_uid": str(uuid.uuid4()),
-                    "weight_notional_exposure": "1.0",
+                    "quantity": "1.0",
                 }
             ],
         },
@@ -1129,7 +1160,7 @@ def test_add_account_target_positions_returns_409_when_snapshot_exists(monkeypat
                     "target_type": "asset",
                     "target_uid": str(target_uid),
                     "asset_uid": str(target_uid),
-                    "weight_notional_exposure": "1.0",
+                    "quantity": "1.0",
                 }
             ],
         },
@@ -1312,9 +1343,8 @@ def test_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
                     "asset_uid": "asset-target-uid",
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
-                    "weight_notional_exposure": "0.55",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "0.55",
+                    "direction": 1,
                     "asset": None,
                     "portfolio": None,
                 }
@@ -1363,9 +1393,8 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
                     "asset_uid": str(target_uid),
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
-                    "weight_notional_exposure": "1.0",
-                    "constant_notional_exposure": None,
-                    "single_asset_quantity": None,
+                    "quantity": "1.0",
+                    "direction": 1,
                     "asset": None,
                     "portfolio": None,
                 }
@@ -1389,7 +1418,7 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
                     "target_type": "asset",
                     "target_uid": str(target_uid),
                     "asset_uid": str(target_uid),
-                    "weight_notional_exposure": "1.0",
+                    "quantity": "1.0",
                 }
             ],
         }
@@ -1411,9 +1440,8 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
     assert captured["positions"] == [
         {
             "target_uid": str(target_uid),
-            "weight_notional_exposure": "1.0",
-            "constant_notional_exposure": None,
-            "single_asset_quantity": None,
+            "quantity": 1.0,
+            "direction": 1,
             "metadata_json": {},
             "target_type": "asset",
             "asset_uid": str(target_uid),
@@ -2131,7 +2159,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
                     "row_kind": "data",
                     "target_type": "portfolio",
                     "target_uid": str(portfolio_uid),
-                    "asset_uid": None,
+                    "asset_uid": BASKET_ASSET_UID,
                     "portfolio_uid": str(portfolio_uid),
                     "identifier": "example-sleeve",
                     "display_label": "example-sleeve",
@@ -2186,7 +2214,7 @@ def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch)
             {
                 "target_type": "portfolio",
                 "target_uid": str(portfolio_uid),
-                "asset_uid": None,
+                "asset_uid": BASKET_ASSET_UID,
                 "portfolio_uid": str(portfolio_uid),
                 "identifier": "example-sleeve",
                 "display_label": "example-sleeve",
@@ -2276,9 +2304,8 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
                 "target_uid": str(asset_uid),
                 "asset_uid": str(asset_uid),
                 "portfolio_uid": None,
-                "weight_notional_exposure": 0.55,
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
+                "quantity": 0.55,
+                "direction": 1,
                 "metadata_json": {},
             },
             {
@@ -2286,11 +2313,10 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
                 "position_set_uid": position_set_uid,
                 "target_type": "portfolio",
                 "target_uid": str(portfolio_uid),
-                "asset_uid": None,
+                "asset_uid": BASKET_ASSET_UID,
                 "portfolio_uid": str(portfolio_uid),
-                "weight_notional_exposure": 0.45,
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
+                "quantity": 0.45,
+                "direction": 1,
                 "metadata_json": {},
             },
         ],
@@ -2337,9 +2363,8 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
                 "asset_uid": str(asset_uid),
                 "portfolio_uid": None,
                 "unique_identifier": "btc_spot",
-                "weight_notional_exposure": "0.55",
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
+                "quantity": "0.55",
+                "direction": 1,
                 "asset": {
                     "uid": str(asset_uid),
                     "unique_identifier": "btc_spot",
@@ -2353,12 +2378,11 @@ def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
             {
                 "target_type": "portfolio",
                 "target_uid": str(portfolio_uid),
-                "asset_uid": None,
+                "asset_uid": BASKET_ASSET_UID,
                 "portfolio_uid": str(portfolio_uid),
                 "unique_identifier": "example-sleeve",
-                "weight_notional_exposure": "0.45",
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
+                "quantity": "0.45",
+                "direction": 1,
                 "asset": None,
                 "portfolio": {
                     "uid": str(portfolio_uid),
@@ -2478,7 +2502,7 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
                 "target_type": "asset",
                 "target_uid": str(asset_uid),
                 "asset_uid": str(asset_uid),
-                "weight_notional_exposure": "1.0",
+                "quantity": "1.0",
             }
         ],
     )
@@ -2498,9 +2522,8 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
             "target_uid": str(asset_uid),
             "asset_uid": str(asset_uid),
             "portfolio_uid": None,
-            "weight_notional_exposure": 1.0,
-            "constant_notional_exposure": None,
-            "single_asset_quantity": None,
+            "quantity": 1.0,
+            "direction": 1,
             "metadata_json": {},
         }
     ]
@@ -2561,7 +2584,7 @@ def test_core_add_account_target_positions_raises_conflict_when_snapshot_exists(
                     "target_type": "asset",
                     "target_uid": str(asset_uid),
                     "asset_uid": str(asset_uid),
-                    "weight_notional_exposure": "1.0",
+                    "quantity": "1.0",
                 }
             ],
         )
@@ -2595,9 +2618,8 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
                 "target_uid": str(asset_uid),
                 "asset_uid": str(asset_uid),
                 "portfolio_uid": None,
-                "weight_notional_exposure": "1.0",
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
+                "quantity": "1.0",
+                "direction": 1,
                 "metadata_json": {"source": "test"},
             }
         ],
@@ -2628,7 +2650,11 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
     assert operation.statement.parameters["target_uid_0"] == asset_uid
     assert operation.statement.parameters["asset_uid_0"] == asset_uid
     assert operation.statement.parameters["portfolio_uid_0"] is None
-    assert operation.statement.parameters["weight_notional_exposure_0"] == "1.0"
+    assert operation.statement.parameters["quantity_0"] == 1.0
+    assert operation.statement.parameters["direction_0"] == 1
+    assert not [
+        name for name in operation.statement.parameters if "notional" in name or "single" in name
+    ]
     assert operation.statement.parameters["metadata_json_0"] == {"source": "test"}
     assert operation.statement.parameter_types == {
         "target_positions_date": "timestamp with time zone",

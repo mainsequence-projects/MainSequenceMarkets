@@ -1,10 +1,10 @@
-# 0053. Account Targets In Units
+# 0052. Account Targets In Units
 
 ## Status
 
-Proposed (2026-11-15). This is a draft for the owner's review; nothing in it is implemented,
-and no issue has been filed for it yet. The decisions marked (owner) were made by the owner
-on 2026-11-15.
+Proposed (2026-11-15). No issue has been filed for it yet. The decisions marked (owner)
+were made by the owner on 2026-11-15. Implemented on `development` for 3.6.0, except the
+examples listed under "Implementation Notes".
 
 - It amends [ADR 0027](0027-account-target-position-portfolio-exposure.md): a portfolio
   target stores its constituents in units, and the value exposure columns are removed (see
@@ -12,8 +12,8 @@ on 2026-11-15.
 - It amends [ADR 0029](0029-account-holdings-virtual-fund-allocation-policy.md): the
   allocation reads unit targets, so its NAV calculation, target demand expansion and
   valuation resolver are removed (see "Amendment To ADR 0029").
-- [ADR 0052](0052-virtual-fund-allocation-routes-and-described-policies.md), also a draft,
-  is written on top of this ADR (see "Effect On ADR 0052").
+- [ADR 0053](0053-virtual-fund-allocation-routes-and-described-policies.md), also a draft,
+  is written on top of this ADR (see "Effect On ADR 0053").
 
 ## Context
 
@@ -255,9 +255,9 @@ ADR 0029's "NAV Calculation" and "Target Demand Expansion", and the valuation re
 "Inputs", are removed by decision 7. Its allocation formulas are unchanged, and they were
 already written in quantities.
 
-## Effect On ADR 0052
+## Effect On ADR 0053
 
-ADR 0052 is written on top of this ADR. Because every target is in units:
+ADR 0053 is written on top of this ADR. Because every target is in units:
 
 - its plan request is the position set, the valuation time and the policy, and the caller
   sends no market data;
@@ -303,20 +303,48 @@ It needs historical prices and sizing rules that ms-markets does not have.
 
 ## Implementation Plan
 
-- [ ] Migration, shipped by ms-markets: delete the position sets and their rows, then change
+- [x] Migration, shipped by ms-markets: delete the position sets and their rows, then change
       `TargetPositionsStorage` to decision 3. PostgreSQL and SQLite.
-- [ ] Storage contract, frame validation and the snapshot write for unit rows, with a fund's
+- [x] Storage contract, frame validation and the snapshot write for unit rows, with a fund's
       basket written in the same transaction as its position set.
-- [ ] Wire contracts, the `add-target-positions` and `target-positions` routes, the
+- [x] Wire contracts, the `add-target-positions` and `target-positions` routes, the
       portfolio's `account-targets` route, discovery columns, and the `MarketsClient` methods.
-- [ ] Removal of everything in decision 8.
-- [ ] Implementation of ADR 0052 on unit targets.
-- [ ] Tests: storage contract, SQLite snapshot writes, routes, the migration, and the
+- [x] Removal of everything in decision 8.
+- [ ] Implementation of ADR 0053 on unit targets.
+- [x] Tests: storage contract, SQLite snapshot writes, routes, the migration, and the
       allocation examples, all with network access blocked.
-- [ ] Documentation: the accounts and virtual-funds knowledge pages, the account and
+- [x] Documentation: the accounts and virtual-funds knowledge pages, the account and
       portfolio route guides, the client page, tutorial 03, the account and portfolio
       workflow skills, and the changelog.
 - [ ] Examples: the full account workflow with two funds of two assets that share one asset,
       one account asset in no fund, and a visible sizing event; and a second example that
       sizes a basket holding futures and options, with the multiplier and the rounding to
       whole contracts done by the caller.
+
+## Implementation Notes
+
+### 2026-11-15: 3.6.0
+
+- **Migration 0024** deletes the position sets and their rows, then alters
+  `ms_markets__targetpositionsts` in place: it drops the three exposure columns and the
+  single-exposure check, adds `quantity` and `direction`, makes `asset_uid` required, and
+  replaces the grain index with one that includes `asset_uid`. It was run on SQLite only.
+  It has not been run on PostgreSQL or on a TimescaleDB hypertable.
+- **Writes.** The snapshot write (one statement on PostgreSQL, one statement list on SQLite)
+  writes `quantity` and `direction`. The SQLite path is tested end to end on the migrated
+  schema; the PostgreSQL statement is checked as compiled SQL only.
+- **Wire contracts.** A target row request carries `asset_uid`, `quantity` and `direction`;
+  a portfolio row also carries `portfolio_uid`. `listPortfolioAccountTargets` answers one
+  item per account with `asset_count`.
+- **Planner.** It reads unit targets. Decision 8's removals are done, and
+  `HoldingValuationInput` and `ValuationDiagnostic` became `AccountHoldingInput` and
+  `AllocationDiagnostic`. The policy model, the plan statuses and the apply step are
+  unchanged; ADR 0053 changes them.
+- **Docs.** The accounts and virtual-funds knowledge pages, the account and portfolio route
+  guides, the client page, tutorial 03 and the account and portfolio workflow skills
+  describe unit targets. The valuation-resolver skill is replaced by
+  `accounts/target_sizing`.
+- **Examples.** The full account workflow sizes its targets in a visible sizing step and
+  plans without any valuation. It still has one target sleeve. Not done yet: the two-fund
+  reference case, and the example that sizes a basket holding futures and options. The
+  full workflow needs a backend and was not run; its sizing step was run on its own.

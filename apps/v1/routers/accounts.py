@@ -601,7 +601,11 @@ def add_account_holdings_by_uid(
     summary="Add account target positions snapshot",
     description=(
         "Create or replace one account target-position snapshot and return it using "
-        "the same response contract as the target-positions read endpoint. Parent "
+        "the same response contract as the target-positions read endpoint. Every row is "
+        "in units (ADR 0052): a positive quantity of one asset and a direction. A direct "
+        "target is one asset row; a virtual fund's target is its unit basket, one "
+        "portfolio row per asset. The caller sizes a basket with its own prices and "
+        "rules; nothing is valued here. Parent "
         "allocation rows are derived from the account uid in the path. A snapshot that "
         "names a retired portfolio is refused with 409, whatever its date (ADR 0049)."
     ),
@@ -648,7 +652,8 @@ def add_account_target_positions_by_uid(
     response_model=AccountTargetPositionsSnapshotResponse,
     summary="Get account target positions snapshot",
     description=(
-        "Return one account target-position snapshot. When the account exists but no "
+        "Return one account target-position snapshot, in units: one row per asset of each "
+        "direct target and of each virtual fund's basket. When the account exists but no "
         "target-position snapshot matches the request, the response is 200 with an "
         "empty positions list."
     ),

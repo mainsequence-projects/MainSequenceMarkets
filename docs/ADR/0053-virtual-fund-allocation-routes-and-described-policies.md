@@ -1,11 +1,11 @@
-# 0052. Virtual-Fund Allocation Routes And Described Policies
+# 0053. Virtual-Fund Allocation Routes And Described Policies
 
 ## Status
 
 Proposed (2026-11-15). This is a draft for the owner's review; nothing in it is implemented,
 and no issue has been filed for it yet.
 
-- It is written on top of [ADR 0053](0053-account-targets-in-units.md): every account target
+- It is written on top of [ADR 0052](0052-account-targets-in-units.md): every account target
   is in units, so an allocation needs no price, NAV or valuation from anyone.
 - It amends [ADR 0029](0029-account-holdings-virtual-fund-allocation-policy.md): the policy
   model, the plan statuses, the holdings selection policy and the apply step (see "Amendment
@@ -36,7 +36,7 @@ has no way to allocate through the Markets API.
 [#46](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/46)) valued the
 account itself: the valuation asset at one, and every other asset at the `price_current` of
 its target portfolios' latest weights row. It refused any account that held an asset outside
-its target portfolios, and it chose the policy itself. With unit targets (ADR 0053) there is
+its target portfolios, and it chose the policy itself. With unit targets (ADR 0052) there is
 nothing left to value, so the route can come back without any of that.
 
 ### The policy describes options that never run
@@ -85,7 +85,7 @@ semantics (see "Rejected Alternatives").
 
 ### 1. An allocation reads units only
 
-An allocation takes two records, both in units (ADR 0053):
+An allocation takes two records, both in units (ADR 0052):
 
 - the account's holdings at the snapshot (`AccountHoldingsStorage`);
 - each fund's unit basket in the position set (`TargetPositionsStorage` rows of one
@@ -318,7 +318,7 @@ instead of a free-text `ValueError`.
 
 ### 10. What is removed
 
-This is a breaking change, so nothing is kept for compatibility. Beyond what ADR 0053
+This is a breaking change, so nothing is kept for compatibility. Beyond what ADR 0052
 removes (the valuation resolver, the NAV, the portfolio-target expander and the notional
 fields), this ADR removes:
 
@@ -476,7 +476,7 @@ But Long Target"), and both decide what version 1.0.0 means:
 
 ## Amendment To ADR 0029
 
-This ADR replaces these parts of ADR 0029. ADR 0053 separately removes its NAV calculation,
+This ADR replaces these parts of ADR 0029. ADR 0052 separately removes its NAV calculation,
 target demand expansion and valuation resolver.
 
 | ADR 0029 section | Replaced by |
@@ -554,7 +554,7 @@ from records it reads itself.
 
 ## Implementation Plan
 
-This ADR is implemented after ADR 0053.
+This ADR is implemented after ADR 0052.
 
 - [ ] Policy registry, `Arguments` classes and schema generation, with tests that every
       argument has a self-contained JSON Schema 2020-12 with a title and a description.
