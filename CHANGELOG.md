@@ -7,6 +7,20 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-15
+
+### Added
+
+- **`ApplicationWeights`: a signal whose weights an application publishes.** A provider
+  binds it to its own `SignalWeightsTS` instance with
+  `ApplicationWeightsConfig(provider=..., key=...)` and calls
+  `publish({time: {asset unique_identifier: weight}})`. The signal uid depends only on the
+  provider and key, so it does not change when the weights do. Each observation is the
+  whole set (an asset the previous one held is written at `0`), several observations are
+  one write, unknown assets and naive times are refused, and an observation at or before
+  the last stored time is refused instead of being dropped without a word
+  ([issue 75](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/75)).
+
 ## [3.7.1] - 2026-11-15
 
 ### Fixed

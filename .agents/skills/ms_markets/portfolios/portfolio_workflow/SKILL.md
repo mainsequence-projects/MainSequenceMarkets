@@ -319,6 +319,10 @@ Contributed signal rules:
 
 - `FixedWeightsConfig` must not require asset/price configuration for portfolio
   core behavior.
+- Weights a provider receives (not computes) use `ApplicationWeights` bound to the
+  provider's `SignalWeightsTS` instance; do not write a provider signal class for
+  them. Its identity is `ApplicationWeightsConfig(provider, key)`, never the weights;
+  `publish` refuses unknown assets and observations at or before the last stored time.
 - External weights and market-cap signals must receive their asset universe or
   market-data dependencies explicitly.
 - ETF replication must expose both basket and ETF price sources explicitly.
