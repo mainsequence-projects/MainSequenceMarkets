@@ -158,6 +158,7 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0022_identity_named_uid_columns.py", "0023_portfolio_retired_at.py",
         "0024_account_targets_in_units.py",
         "0025_account_exposure_and_fund_targets.py",
+        "0026_weights_series_lookup_indexes.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -199,6 +200,11 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert exposure.revision == "0025"
     assert exposure.down_revision == "0024"
+    lookup_indexes = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0026_weights_series_lookup_indexes"
+    )
+    assert lookup_indexes.revision == "0026"
+    assert lookup_indexes.down_revision == "0025"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

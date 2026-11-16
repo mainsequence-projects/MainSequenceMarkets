@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 from typing import ClassVar
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
@@ -23,6 +23,9 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier). Stores raw signal allocation weights for signaled "
         "assets before portfolio execution."
     )
+    # The unique index leads with time, so it cannot find one signal's rows or its
+    # last time without walking other signals' rows. This one can (issue 77).
+    __table_args__ = (Index(None, "signal_uid", "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", "signal_uid", ASSET_IDENTIFIER_DIMENSION]
 

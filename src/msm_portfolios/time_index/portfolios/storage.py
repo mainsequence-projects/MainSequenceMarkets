@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -36,6 +37,9 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "portfolio_identifier, and asset_identifier. Stores "
         "executed asset allocation weights and supporting price/volume facts."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows or
+    # its last time without walking other portfolios' rows. This one can (issue 77).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",

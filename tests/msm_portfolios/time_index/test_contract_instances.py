@@ -241,6 +241,23 @@ def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
     assert ProviderBase.metadata.tables[AssetTable.__table__.name] is not AssetTable.__table__
 
 
+def test_instances_carry_the_series_lookup_index_of_their_contract() -> None:
+    signals = configured_signal_weights_storage(instance_key="series_index", namespace="ns-a")
+    weights = configured_portfolio_weights_storage(instance_key="series_index", namespace="ns-a")
+
+    def lookup(table) -> list[list[str]]:
+        return [
+            [column.name for column in index.columns]
+            for index in table.indexes
+            if not index.unique
+        ]
+
+    assert lookup(signals.__table__) == [["signal_uid", "time_index"]]
+    assert lookup(weights.__table__) == [["portfolio_identifier", "time_index"]]
+    assert all(len(index.name) <= 63 for index in signals.__table__.indexes)
+    assert all(len(index.name) <= 63 for index in weights.__table__.indexes)
+
+
 def test_contract_columns_allow_provider_extras_but_not_missing_columns() -> None:
     required = PORTFOLIO_STORAGE_CONTRACTS["PortfoliosTS"].column_names
 
