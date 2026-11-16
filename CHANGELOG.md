@@ -7,6 +7,23 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.8.1] - 2026-11-16
+
+### Added
+
+- **A series-leading index on the signal and portfolio weights contracts.**
+  `SignalWeightsStorage` gains `(signal_uid, time_index)` and `PortfolioWeightsStorage`
+  gains `(portfolio_identifier, time_index)`, next to the unique time-leading index. A
+  read of one signal or portfolio no longer walks the other series, and the last time of
+  a series that stopped publishing is found without walking every later row. Measured on
+  5,000,000 rows: one series' history read 39,901 pages instead of 82,000, and the last
+  time of a stopped series 143 pages instead of 565,693, for 5% more index storage.
+  Revision 0026 adds the indexes to the Markets-owned tables. Instances built with
+  `configured_signal_weights_storage` and `configured_portfolio_weights_storage` declare
+  the same index; **a provider adds it to its existing instances in a revision of its
+  own**. The last-row-per-asset read still reads the whole history of the series it asks
+  for ([issue 77](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/77)).
+
 ## [3.8.0] - 2026-11-15
 
 ### Added

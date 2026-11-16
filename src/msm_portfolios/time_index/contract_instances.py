@@ -89,6 +89,15 @@ class PortfolioStorageContract:
     def index_names(self) -> tuple[str, ...]:
         return tuple(str(name) for name in self.core_storage.__index_names__)
 
+    @property
+    def lookup_indexes(self) -> tuple[tuple[str, ...], ...]:
+        """Columns of each non-unique index the core declares; every instance gets them."""
+        return tuple(
+            tuple(column.name for column in index.columns)
+            for index in sorted(self.core_storage.__table__.indexes, key=lambda item: item.name)
+            if not index.unique
+        )
+
 
 PORTFOLIO_STORAGE_CONTRACTS: Mapping[str, PortfolioStorageContract] = {
     PORTFOLIOS_CONTRACT: PortfolioStorageContract(
@@ -455,6 +464,11 @@ def _copy_contract_table(
         *(table.c[column_name] for column_name in definition.index_names),
         unique=True,
     )
+    for column_names in definition.lookup_indexes:
+        Index(
+            schema_index_name(table_name, column_names, unique=False),
+            *(table.c[column_name] for column_name in column_names),
+        )
     return table
 
 

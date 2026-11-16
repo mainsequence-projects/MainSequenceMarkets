@@ -109,7 +109,11 @@ Portfolios answer these questions:
   weights, signal weights, storage initialization, and identity helpers.
 - `msm_portfolios.time_index.contract_instances`: factories that build a
   provider-owned instance of the `PortfoliosTS`, `PortfolioWeightsTS` and
-  `SignalWeightsTS` contracts (ADR 0047).
+  `SignalWeightsTS` contracts (ADR 0047). An instance has the indexes of its
+  contract: the unique time-leading one, and for the two weights contracts a
+  second one that leads with the series, `(signal_uid, time_index)` or
+  `(portfolio_identifier, time_index)`. The provider's own migration creates
+  them.
 - `msm_portfolios.services.portfolio_datasets`: the Markets catalog of which
   instance holds each portfolio's datasets, with register, reconcile and list
   services.
