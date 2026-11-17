@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-11-17
+
 ### Changed
 
 - **Requires MetaTables 0.1.66 or later, where a table can be in several namespaces.**
