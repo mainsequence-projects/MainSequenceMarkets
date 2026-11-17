@@ -1,5 +1,9 @@
 # ADR 0018: Table search by meaning and columns
 
+> Amendment (2026-11-16): [ADR 0028](0028-tables-in-several-namespaces.md) lets a table be in
+> several namespaces. Its document lists the name and description of each in the one
+> `# Namespace` section, and the `namespace` filter matches a table that is in the namespace.
+
 Date: 2026-10-04
 
 Status: Accepted.

@@ -1,5 +1,9 @@
 # ADR 0002: Application administration and table ownership
 
+> Amendment (2026-11-16): [ADR 0028](0028-tables-in-several-namespaces.md) lets a table be in
+> several namespaces. Inheritance stays live and comes from every namespace the table is in;
+> a table is added to and removed from namespaces instead of moved.
+
 > Amendment (2026-10-20): In Local mode the operator, the SDK identity running the local
 > API, is the Organization admin of that runtime whatever their platform flag. A local
 > SQLite runtime, its catalog and its credentials belong to that one person, so admin

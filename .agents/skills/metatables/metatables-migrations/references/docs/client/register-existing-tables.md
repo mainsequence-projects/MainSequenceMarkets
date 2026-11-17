@@ -38,7 +38,10 @@ result = MetaTable.import_from_data_source(
 With `strict=False`, valid relations can be committed and failures are reported
 individually. Inspect `committed`, `ok`, `relations`, `warnings`, and `counts`.
 Repeated imports reuse physical identities; refreshing preserves UIDs, grants,
-labels, namespace, descriptions, and ownership. Imports create relational
+labels, namespaces, descriptions, and ownership. `namespace` applies only to relations
+the import creates: importing a table again never changes the namespaces it is in, and
+its outcome lists the ones it left out in `namespaces_not_applied`. Add an imported
+table to another namespace with `MetaTable.add_to_namespace()`. Imports create relational
 MetaTables, including when the inherited method is called on TimeIndexMetaTable.
 
 Use exact physical names, including case and spaces. A view is recorded as

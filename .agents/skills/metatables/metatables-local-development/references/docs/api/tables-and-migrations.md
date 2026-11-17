@@ -9,6 +9,23 @@ revealing hidden related tables. Supported metadata PATCH fields update catalog
 state; label replacement is separate from currently unavailable add/remove-label
 actions.
 
+A table document carries `namespaces`: every namespace the table is in, each as
+`{uid, name, source}` ([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)).
+`source` is `declared` when the application's code put the table there, or `manual`
+when a person added it. The `namespace`, `namespace__in`, `namespace__contains`,
+`namespace_uid` and `namespace_uid__in` filters match a table that is in such a
+namespace; `namespace__isnull=true` matches a table in none. Other documents that name
+a table's namespaces return the list of names: the access map, the impact pre-flight,
+the cascade delete result, run graphs, the schema graph and the update pipeline.
+
+`POST /meta-tables/{uid}/namespaces/changes/` with `{"add": [...], "remove": [...]}`
+adds the table to existing namespaces and removes it from others in one request, and
+returns its `namespaces`. Adding needs `tables.update` on the table and `tables.create`
+on the namespace; removing needs `tables.create` on the namespace. A refusal answers
+403 with `table_access_required` or `namespace_access_required`. Removing the last
+namespace of a table that has no direct `owner` answers 409 with `last_namespace`.
+`PATCH` does not accept a namespace.
+
 Contract validation is independent of physical execution. Existing-resource
 validation requires visibility. Introspection requires appropriate access and a
 capable current DataSource; it reflects columns, indexes, constraints, and physical
@@ -24,8 +41,8 @@ at most 100) results, each with the normal table projection, a fused `score` and
 the `matched_columns` whose name or logical name contains a query word.
 
 Each table has one search document built only from its own metadata: identifier,
-physical name, description, labels, time index and cadence, namespace and its
-description, and every column's name, type, logical name, label and description.
+physical name, description, labels, time index and cadence, every namespace it is in
+with its description, and every column's name, type, logical name, label and description.
 It never names another table. The document is rewritten in every catalog
 transaction that changes that metadata, so keyword ranking (BM25 over split and
 stemmed words) is never stale. The API embeds documents in the background with the
@@ -140,6 +157,16 @@ before accepting a binding.
 `finalize-managed` reconciles requested provider-scoped rows with physical state.
 The response reports each table separately; failures may coexist with successes.
 Only successful reconciliation makes a reserved binding active.
+
+A registration or reservation carries `namespaces`, the list of names the new table is
+created in. The caller needs `tables.create` on each; a missing namespace is created.
+Registering an existing table again never changes its namespaces: `register` answers
+with `registration.namespaces_not_applied`, the declared names the table is not in.
+An application's migration changes them at finalization instead:
+`authored_metadata[uid].namespaces` is the list the code declares, and the API adds the
+missing `declared` memberships and removes the `declared` ones no longer listed. It
+does so only when the request names the table's migration provider; otherwise that
+table fails with `provider_required`.
 
 ## SQL execution
 

@@ -38,6 +38,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/meta-tables/{table_uid}/impact/` | Get Impact | 200 |
 | POST | `/meta-tables/{table_uid}/introspect/` | Introspect Meta Table | 200 |
 | POST | `/meta-tables/{table_uid}/migration-connection/` | Migration Connection | 200 |
+| POST | `/meta-tables/{table_uid}/namespaces/changes/` | Change Meta Table Namespaces | 200 |
 | POST | `/meta-tables/{table_uid}/read/` | Read Rows | 200 |
 | GET | `/meta-tables/{table_uid}/schema-graph` | Get Schema Graph | 200 |
 | GET | `/meta-tables/{table_uid}/search-document/` | Get Table Search Document | 200 |
@@ -104,6 +105,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/time-index-meta-tables/{table_uid}/impact/` | Time Index Get Impact | 200 |
 | POST | `/time-index-meta-tables/{table_uid}/introspect/` | Time Index Introspect Meta Table | 200 |
 | POST | `/time-index-meta-tables/{table_uid}/migration-connection/` | Time Index Migration Connection | 200 |
+| POST | `/time-index-meta-tables/{table_uid}/namespaces/changes/` | Time Index Change Meta Table Namespaces | 200 |
 | GET | `/time-index-meta-tables/{table_uid}/schema-graph` | Time Index Get Schema Graph | 200 |
 | GET | `/time-index-meta-tables/{table_uid}/search-document/` | Time Index Get Table Search Document | 200 |
 | GET | `/time-index-meta-tables/{table_uid}/updates` | List Table Updates | 200 |

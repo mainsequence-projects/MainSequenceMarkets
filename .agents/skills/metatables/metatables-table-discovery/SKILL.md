@@ -80,7 +80,7 @@ These rules apply to every `PlatformManagedMetaTable`,
 | Table description | `__metatable_description__` |
 | Labels | `__metatable_labels__` |
 | Identifier | `__metatable_identifier__` |
-| Namespace | `__metatable_namespace__` |
+| Namespaces | `__metatable_namespace__`, `__metatable_namespaces__` |
 | Column label, description, logical name | `mapped_column(..., info={"label": ..., "description": ..., "logical_name": ...})` |
 | Time index and cadence | `__time_index_name__`, `__index_names__`, `__cadence__` |
 
@@ -155,6 +155,10 @@ key, the time index and the identity dimensions.
 - `__metatable_namespace__` is the owning application or source, not a SQL schema.
   Its description (one or two sentences about the application or source) is
   written once by someone with `editor` on the namespace; do not repeat it in table descriptions.
+- A table can be in further namespaces, listed in `__metatable_namespaces__`; search
+  reads the name and description of each. The `namespace` filter matches a table that
+  is in that namespace, and `table.namespace_names` lists them all. See the
+  [migrations skill](../metatables-migrations/SKILL.md#namespaces-of-a-table).
 
 ### Time-index tables, in addition
 

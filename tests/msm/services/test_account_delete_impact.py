@@ -7,12 +7,12 @@ from msm.services import account_delete_impact
 from msm.services.table_impact import DeleteRowsImpact
 
 
-def _node(node_id, *, namespace="mainsequence.markets", node_type="meta_table", effects=()):
+def _node(node_id, *, namespaces=("mainsequence.markets",), node_type="meta_table", effects=()):
     return {
         "id": node_id,
         "type": node_type,
         "identifier": None if node_type == "hidden" else node_id,
-        "namespace": namespace,
+        "namespaces": list(namespaces),
         "effects": list(effects),
     }
 
@@ -27,9 +27,9 @@ def _impact() -> TableImpact:
                 _node("Account", effects=["delete"]),
                 _node("AccountHoldingsSet", effects=["delete"]),
                 _node("Orders"),
-                _node("provider.AccountSidecar", namespace="provider", effects=["delete"]),
-                _node("provider.Orders", namespace="provider"),
-                _node("hidden-1", namespace=None, node_type="hidden", effects=["delete"]),
+                _node("provider.AccountSidecar", namespaces=("provider",), effects=["delete"]),
+                _node("provider.Orders", namespaces=("provider",)),
+                _node("hidden-1", namespaces=(), node_type="hidden", effects=["delete"]),
             ],
             "edges": [
                 {"source": "AccountHoldingsSet", "target": "Account", "kind": "foreign_key",
@@ -62,6 +62,32 @@ def test_only_tables_outside_markets_are_reported(monkeypatch) -> None:
     assert any("provider.AccountSidecar: its rows" in warning and "CASCADE" in warning for warning in impact.warnings)
     assert any("provider.Orders: its rows" in warning and "RESTRICT" in warning for warning in impact.warnings)
     assert not any(warning.startswith("Orders:") for warning in impact.warnings)
+
+
+def test_a_table_also_in_another_namespace_is_still_a_markets_table(monkeypatch) -> None:
+    impact = TableImpact.model_validate(
+        {
+            "root_uid": "account",
+            "action": "delete_rows",
+            "allowed": True,
+            "nodes": [
+                _node("Account", effects=["delete"]),
+                _node(
+                    "AccountHoldingsSet",
+                    namespaces=("mainsequence.markets", "shared-with-research"),
+                    effects=["delete"],
+                ),
+            ],
+            "edges": [],
+            "blockers": [],
+        }
+    )
+    monkeypatch.setattr(
+        "msm.services.table_impact.delete_rows_impact",
+        lambda model: DeleteRowsImpact(impact=impact, warnings=[]),
+    )
+
+    assert account_delete_impact().other_namespace_cascades == []
 
 
 def test_an_unavailable_impact_reports_nothing_outside_markets(monkeypatch) -> None:
