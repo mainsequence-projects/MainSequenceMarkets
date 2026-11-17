@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-11-17
+
 ### Added
 
 - **One call links many assets to their trading calendar.**
