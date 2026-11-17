@@ -3,7 +3,7 @@
 ## Status
 
 Accepted (2026-11-17). The decisions marked (owner) were made by the owner on 2026-11-17.
-Implemented on `development`; see "Decisions Taken During Implementation" and
+Implemented on `development` for 4.0.0; see "Decisions Taken During Implementation" and
 "Implementation Notes".
 
 - It supersedes the storage model of
@@ -493,7 +493,7 @@ These were not in the accepted text. Each is a choice the code had to make.
 
 ## Implementation Notes
 
-### 2026-11-17: `development`
+### 2026-11-17: 4.0.0
 
 - Models: `CalendarSessionRuleTable`, `CalendarExceptionTable`; `CalendarTable.valid_from`
   and `valid_to` nullable. Revision `0027_calendar_rules_and_exceptions`.
