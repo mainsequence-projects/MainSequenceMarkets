@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-17
+
 This release changes how calendars are stored
 ([ADR 0055](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0055-calendars-as-rules-and-exceptions/)). It removes three tables,
 their row classes and sixteen routes, and changes the arguments of
