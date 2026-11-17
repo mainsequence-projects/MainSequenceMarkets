@@ -49,6 +49,27 @@ resources:
         - repository: MetaTables
           policy: reader
 
+  # ADR 0055: writes stored calendars again from the library version in this
+  # image. A person runs it; it is in no execution step, has no schedule, and
+  # the Markets API never does this by itself. Its workload User needs
+  # `data_writer` on `mainsequence.markets` (docs/releasing.md).
+  - key: resync-calendars
+    kind: job
+    spec:
+      name: ms-markets calendar re-sync
+      execution_path: jobs/resync_calendars.py
+      cpu_request: "1"
+      memory_request: "1"
+      max_runtime_seconds: 1800
+      spot: false
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+    access:
+      branches:
+        - repository: MetaTables
+          policy: reader
+
 execution:
   steps:
     image:

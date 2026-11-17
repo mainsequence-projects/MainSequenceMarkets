@@ -16,7 +16,7 @@ core `msm` account allocation.
 Install portfolio workflows with the `ms-markets[portfolios]` extra. That extra
 owns portfolio-only runtime helpers such as `joblib`, `scikit-learn`, and `tqdm`; the
 core `ms-markets` install does not require them. `pandas-market-calendars` is a core
-dependency, because core calendar materialization imports it.
+dependency, because the core calendar adapter imports it.
 
 ## Areas
 

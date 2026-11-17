@@ -2,13 +2,14 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import pandas_market_calendars as mcal
 import pytz
+from pydantic import Field
 
 from msm_portfolios.time_index import SignalWeights
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
 )
+from msm_portfolios.services.calendars import resolve_rebalance_calendar
 from msm_portfolios.utils import TIMEDELTA
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
@@ -16,7 +17,15 @@ from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 class IntradayTrendConfig(PortfolioConfigBaseModel):
     price_source_instance: TimeIndexTableUpdater | TimeIndexTableRef
     asset_symbols_by_exchange: dict[str, list[str]]
-    calendar: str
+    calendar_identifier: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Stored Calendar.unique_identifier whose sessions bound the signal's "
+            "intraday time grid."
+        ),
+        examples=["XNYS"],
+    )
     source_frequency: str = "1d"
 
 
@@ -32,8 +41,8 @@ class IntradayTrend(SignalWeights):
         return self.intraday_trend_config.source_frequency
 
     @property
-    def calendar(self) -> str:
-        return self.intraday_trend_config.calendar
+    def calendar_identifier(self) -> str:
+        return self.intraday_trend_config.calendar_identifier
 
     @property
     def price_source(self):
@@ -85,8 +94,7 @@ class IntradayTrend(SignalWeights):
         )
 
         # align signal weight updates with market schedule for each day
-        calendar_dates = mcal.get_calendar(self.calendar)
-        market_schedule = calendar_dates.schedule(
+        market_schedule = resolve_rebalance_calendar(self.calendar_identifier).schedule(
             start_date=prices_start_date, end_date=top_date_limit
         )
         signal_weights_index = pd.DatetimeIndex(

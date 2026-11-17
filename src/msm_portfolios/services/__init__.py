@@ -4,8 +4,7 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "AlwaysOpenCalendarSchedule": ".calendars",
-    "PandasMarketCalendarSchedule": ".calendars",
+    "AssetCalendarMissingError": ".calendars",
     "PersistedCalendarSchedule": ".calendars",
     "PortfolioDatasetReconciliationResult": ".portfolio_datasets",
     "PortfolioDatasetRegistration": ".portfolio_datasets",
@@ -55,7 +54,7 @@ _EXPORTS = {
     "search_rebalance_strategy_metadata": ".market_metadata",
     "search_signal_metadata": ".market_metadata",
     "signal_weights": ".portfolio_reads",
-    "resolve_legacy_rebalance_calendar": ".calendars",
+    "resolve_asset_schedules": ".calendars",
     "resolve_rebalance_calendar": ".calendars",
     "update_portfolio_metadata": ".market_metadata",
     "update_rebalance_strategy_metadata": ".market_metadata",

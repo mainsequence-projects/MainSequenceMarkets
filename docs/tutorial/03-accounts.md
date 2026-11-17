@@ -18,7 +18,14 @@ from msm.api.portfolios import Portfolio
 from msm.api.virtual_funds import VirtualFund
 
 msm.start_engine(
-    models=["Account", "Calendar", "CalendarDate", "CalendarSession", "Portfolio", "VirtualFund"]
+    models=[
+        "Account",
+        "Calendar",
+        "CalendarSessionRule",
+        "CalendarException",
+        "Portfolio",
+        "VirtualFund",
+    ]
 )
 
 account = Account.upsert(
@@ -26,12 +33,9 @@ account = Account.upsert(
     account_name="Main Account",
 )
 calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="CRYPTO_24_7",
+    "24/7",
+    "CRYPTO_24_7",
     display_name="Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
 )
 portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",

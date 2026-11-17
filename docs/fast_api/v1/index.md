@@ -39,8 +39,9 @@ This API is intentionally thin:
   categories, including the Command Center monitor frame.
 - [Index Routes](indexes.md): route group for index registry reads,
   delete-impact preflight, and index delete.
-- [Calendar Routes](calendars.md): route group for calendar identity CRUD,
-  summary, and date, session, and event maintenance.
+- [Calendar Routes](calendars.md): route group for calendar identity CRUD and
+  summary, session rule and exception maintenance, and computed date and
+  session windows.
 - [Pricing Market Data Routes](pricing_market_data.md): route group for
   pricing market-data set and concept binding management.
 - [Fixed Income Pricer Routes](fixed_income_pricer.md): route group for
@@ -65,14 +66,49 @@ This API is intentionally thin:
   collection, discovery, preflight, observable-operation, and error helpers for
   provider adapters.
 
+## Upstream Errors
+
+Every row a route reads or writes goes through the MetaTables API. When that API,
+or another Main Sequence API this deployment calls, refuses or fails a call and
+the route does not handle it, the route answers:
+
+| Status | Meaning |
+|---|---|
+| 502 | The upstream API refused the call (it answered 4xx). The same request will be refused again. |
+| 503 | The upstream API failed or could not be reached (5xx, `429`, no answer, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
+
+```json
+{
+  "detail": "The upstream API answered 422: body.statement.sql: String should have at most 1000000 characters",
+  "error_type": "UpstreamApiError",
+  "upstream_status": 422
+}
+```
+
+`detail` is the reason the upstream API gave: its `detail` text, its `code` and
+`detail` for a database error with the number of the failing statement, or the
+place and message of each validation error. It never carries the request the
+Markets API sent, the values a validation error echoes back, or the user and
+password of a URL, and it is cut at 1,000 characters. `upstream_status` is the
+status the upstream API answered with, or `null` when it did not answer.
+
+Before this, such a failure was a `500` with no body
+([issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84)).
+The handler is installed once for the application, in `apps/v1/upstream_errors.py`.
+It answers only what a route lets through. Seven routes catch every exception
+themselves and keep answering `409` with the error text: creating and updating
+an index, saving, activating and retiring an index formula, and creating and
+updating an account.
+
 ## Design Decisions (ADRs)
 
 These FastAPI v1 decisions live in the single
 [ADR tree](../../ADR/README.md):
 
 - [Calendar CRUD And Summary Route](../../ADR/fast_api/v1/0001-calendar-crud-route.md):
-  route group for calendar identity CRUD, summary, and bounded date, session,
-  and event maintenance.
+  route group for calendar identity CRUD and summary. Its date, session and
+  event routes are amended by
+  [ADR 0055](../../ADR/0055-calendars-as-rules-and-exceptions.md).
 - [Command Center Adapter Discovery](../../ADR/fast_api/v1/0002-command-center-adapter-discovery.md):
   additive Adapter from API discovery contract for Command Center without
   breaking existing `/api/v1` clients.

@@ -87,6 +87,7 @@ PINNED_TABLE_NAMES = {
     "AccountHoldingsStorage": "ms_markets__accountholdingsts",
     "AccountTable": "ms_markets__account",
     "AccountTargetAllocationTable": "ms_markets__accounttargetallocation",
+    "AssetCalendarTable": "ms_markets__assetcalendar",
     "AssetCategoryMembershipTable": "ms_markets__assetcategorymembership",
     "AssetCategoryTable": "ms_markets__assetcategory",
     "AssetCurrentPricingDetailsTable": "ms_markets__assetcurrentpricingdetails",
@@ -95,9 +96,8 @@ PINNED_TABLE_NAMES = {
     "AssetTable": "ms_markets__asset",
     "AssetTypeTable": "ms_markets__assettype",
     "BondAssetDetailsTable": "ms_markets__bondassetdetails",
-    "CalendarDateTable": "ms_markets__calendardate",
-    "CalendarEventTable": "ms_markets__calendarevent",
-    "CalendarSessionTable": "ms_markets__calendarsession",
+    "CalendarExceptionTable": "ms_markets__calendarexception",
+    "CalendarSessionRuleTable": "ms_markets__calendarsessionrule",
     "CalendarTable": "ms_markets__calendar",
     "CurrencySpotAssetDetailsTable": "ms_markets__currencyspotassetdetails",
     "CurveBuildingDetailsTable": "ms_markets__curvebuildingdetails",
@@ -153,6 +153,7 @@ PINNED_METATABLE_IDENTIFIERS = {
     "AccountHoldingsStorage": "AccountHoldingsTS",
     "AccountTable": "Account",
     "AccountTargetAllocationTable": "AccountTargetAllocation",
+    "AssetCalendarTable": "AssetCalendar",
     "AssetCategoryMembershipTable": "AssetCategoryMembership",
     "AssetCategoryTable": "AssetCategory",
     "AssetCurrentPricingDetailsTable": "AssetCurrentPricingDetails",
@@ -161,9 +162,8 @@ PINNED_METATABLE_IDENTIFIERS = {
     "AssetTable": "Asset",
     "AssetTypeTable": "AssetType",
     "BondAssetDetailsTable": "BondAssetDetails",
-    "CalendarDateTable": "CalendarDate",
-    "CalendarEventTable": "CalendarEvent",
-    "CalendarSessionTable": "CalendarSession",
+    "CalendarExceptionTable": "CalendarException",
+    "CalendarSessionRuleTable": "CalendarSessionRule",
     "CalendarTable": "Calendar",
     "CurrencySpotAssetDetailsTable": "CurrencySpotAssetDetails",
     "CurveBuildingDetailsTable": "CurveBuildingDetails",
@@ -297,7 +297,7 @@ PINNED_PRE_RENAME_UPDATE_HASHES = {
 }
 
 PINNED_NESTED_SIGNAL_UIDS = {
-    "intraday_trend_on_interpolated_prices": "1df893e892fe2788729ca2b73ade357c",
+    "intraday_trend_on_interpolated_prices": "c94254b4ab5f0cf1a5faa0c0751c6737",
 }
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
@@ -497,7 +497,7 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
         IntradayTrendConfig(
             price_source_instance=updaters["interpolated_prices"],
             asset_symbols_by_exchange={"XNAS": ["ASSET_A", "ASSET_B"]},
-            calendar="XNAS",
+            calendar_identifier="XNAS",
         ),
     ),
 }

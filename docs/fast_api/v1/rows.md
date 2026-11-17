@@ -63,6 +63,15 @@ row class raises under the runtime backend too: an account's history is kept
 for as long as the account exists, and only the account delete removes it
 ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md)).
 
+The calendar resources are `calendar`, `calendar-session-rule` and
+`calendar-exception`
+([ADR 0055](../../ADR/0055-calendars-as-rules-and-exceptions.md)).
+`Calendar.sessions`, `Calendar.dates` and `Calendar.is_business_day` compute
+their answer from the calendar's rules and exceptions. A date outside the
+calendar's `valid_from` to `valid_to` range answers `400` with `error_type`
+`CalendarRangeError`. A `calendar-exception` written here is stored with
+`source="user"`.
+
 The resources include the `msm_portfolios.api` metadata rows
 (`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and
 the `msm_pricing.api` composites (`curve`, `curve-building-details`,
@@ -77,3 +86,14 @@ the `msm_pricing.api` composites (`curve`, `curve-building-details`,
 | 404 | Unknown resource or operation, or the row was not found | `LookupError` |
 | 409 | The operation conflicted with existing rows | the conflict class name |
 | 501 | The operation is not offered remotely | `NotImplementedError` |
+| 502 | An API this deployment calls, normally MetaTables, refused the call | `UpstreamApiError` |
+| 503 | That API failed or could not be reached; the operation may be tried again | `UpstreamApiError` |
+
+The `502` and `503` answers are the same on every route of the API, not only on
+these; see [Upstream errors](index.md#upstream-errors). `msm.client` raises
+`MarketsUpstreamError` for them.
+
+`upsert_many` takes a list of any length. A long list is written in several
+statements, each its own transaction, so a failure part of the way leaves the
+earlier rows written; sending the same list again finishes the write
+([Bulk upserts of any length](../../knowledge/msm/repositories/index.md#bulk-upserts-of-any-length)).

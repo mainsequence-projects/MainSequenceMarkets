@@ -43,11 +43,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from metatables import (
-    MetaTableCompiledSQLDialect,
-    MetaTableCompiledSQLOperation,
-    MetaTableOperationLimits,
-)
+from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
 from msm.models import AccountHoldingsSetTable, AccountTable, AssetTable, AssetTypeTable
 from msm.time_index.accounts.storage import AccountHoldingsStorage
@@ -71,6 +67,7 @@ from .base import (
     execute_markets_write,
     resolve_markets_sql_target,
     values_parameter,
+    with_max_rows,
 )
 
 ACCOUNT_COLUMNS: tuple[str, ...] = tuple(column.name for column in AccountTable.__table__.columns)
@@ -318,20 +315,6 @@ def register_account(
     )
 
 
-def with_max_rows(context: MarketsRepositoryContext, max_rows: int) -> MarketsRepositoryContext:
-    """``context`` whose operations return at least ``max_rows`` rows."""
-
-    limits = MetaTableOperationLimits.model_validate(context.limits or {})
-    if limits.max_rows >= max_rows:
-        return context
-    return MarketsRepositoryContext(
-        limits=limits.model_copy(update={"max_rows": max_rows}),
-        data_source_uid=context.data_source_uid,
-        timeout=context.timeout,
-        namespace=context.namespace,
-    )
-
-
 def _insert_snapshots(
     snapshots: Sequence[SnapshotRow],
     *,
@@ -532,5 +515,4 @@ __all__ = [
     "build_register_account_operation",
     "read_account_registration_state",
     "register_account",
-    "with_max_rows",
 ]

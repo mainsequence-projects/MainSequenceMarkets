@@ -9,9 +9,13 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from msm.api.base import MarketsMetaTableRow
-from msm.models import CalendarDateTable, CalendarSessionTable, CalendarTable
+from msm.models import CalendarExceptionTable, CalendarSessionRuleTable, CalendarTable
 
 from ._validation import normalize_upper_token, validate_payload
+from .computed import ComputedCalendarDate, ComputedCalendarSession
+
+CALENDAR_DEFINITION_TABLES = [CalendarTable, CalendarSessionRuleTable, CalendarExceptionTable]
+"""Tables a calendar's dates and sessions are computed from."""
 
 
 class CalendarType(str, Enum):
@@ -37,8 +41,8 @@ class Calendar(MarketsMetaTableRow):
     timezone: str = "UTC"
     source: str | None = None
     source_identifier: str | None = None
-    valid_from: dt.date
-    valid_to: dt.date
+    valid_from: dt.date | None = None
+    valid_to: dt.date | None = None
     metadata_json: dict[str, Any] | None = None
 
     @field_validator("calendar_type", mode="before")
@@ -76,57 +80,125 @@ class Calendar(MarketsMetaTableRow):
     @classmethod
     def create_from_pandas_calendar(
         cls,
-        *,
         source_identifier: str,
-        unique_identifier: str,
-        display_name: str,
-        valid_from: dt.date | dt.datetime | str,
-        valid_to: dt.date | dt.datetime | str,
-        calendar_type: CalendarType | str = CalendarType.TRADING,
+        unique_identifier: str | None = None,
+        *,
+        display_name: str | None = None,
+        calendar_type: CalendarType | str | None = None,
         timezone: str | None = None,
-        session_label: str = "regular",
+        session_label: str | None = None,
+        valid_from: dt.date | dt.datetime | str | None = None,
         metadata_json: dict[str, Any] | None = None,
-        materialize: bool = True,
     ) -> Calendar:
-        """Upsert a calendar and materialize rows from pandas-market-calendars."""
+        """Create a calendar from pandas-market-calendars, or write an existing one again.
+
+        ``source_identifier`` is the library's calendar and ``unique_identifier``
+        the name of the stored one, which defaults to the library's name:
+        ``create_from_pandas_calendar("NYSE", "CustomNYSE")`` stores NYSE as
+        ``CustomNYSE``. Several stored calendars can come from one library calendar.
+
+        The header, the session rules and the exceptions are written in one
+        transaction, to the last date the library can answer for, so nothing has
+        to be extended as time passes. ``valid_from`` defaults to 1990-01-01.
+
+        Calling it again on a stored calendar writes what the installed library
+        knows now: the library's own exceptions are replaced and every ``user``
+        exception is kept (ADR 0055).
+        """
 
         from msm.bootstrap import resolve_runtime
-        from msm.services.calendars import (
-            build_pandas_market_calendar_materialization,
-            ensure_date_range,
-            materialize_calendar_rows,
-        )
+        from msm.services.calendars import sync_pandas_market_calendar
 
-        start, end = ensure_date_range(valid_from, valid_to)
-        runtime = resolve_runtime(
-            models=[CalendarTable, CalendarDateTable, CalendarSessionTable]
-            if materialize
-            else [CalendarTable],
-            row_model_name=cls.__name__,
-        )
-        resolved_timezone = timezone or _pandas_market_calendar_timezone(source_identifier)
-        calendar = cls.upsert(
+        runtime = resolve_runtime(models=CALENDAR_DEFINITION_TABLES, row_model_name=cls.__name__)
+        if isinstance(calendar_type, CalendarType):
+            calendar_type = calendar_type.value
+        result = sync_pandas_market_calendar(
+            runtime.context,
+            source_identifier=source_identifier,
             unique_identifier=unique_identifier,
             display_name=display_name,
             calendar_type=calendar_type,
-            timezone=resolved_timezone,
-            source="pandas_market_calendars",
-            source_identifier=source_identifier,
-            valid_from=start,
-            valid_to=end,
+            timezone=timezone,
+            session_label=session_label,
+            valid_from=valid_from,
             metadata_json=metadata_json,
         )
-        if materialize:
-            rows = build_pandas_market_calendar_materialization(
-                calendar_uid=calendar.uid,
-                source_identifier=source_identifier,
-                start_date=start,
-                end_date=end,
-                timezone=calendar.timezone,
-                session_label=session_label,
+        return cls.model_validate(result.calendar)
+
+    @classmethod
+    def sessions(
+        cls,
+        calendar_uid: uuid.UUID | str,
+        start_date: dt.date,
+        end_date: dt.date,
+        *,
+        session_label: str | None = None,
+    ) -> list[ComputedCalendarSession]:
+        """The sessions of every local date from ``start_date`` to ``end_date``.
+
+        Computed from the calendar's rules and exceptions. A date outside the
+        calendar's ``valid_from``..``valid_to`` raises ``CalendarRangeError``.
+        """
+
+        from msm.services.calendars import compute_sessions
+
+        definition = cls._definition(calendar_uid, start_date, end_date)
+        return [
+            ComputedCalendarSession.from_computed(session)
+            for session in compute_sessions(
+                definition, start_date, end_date, session_label=session_label
             )
-            materialize_calendar_rows(runtime.context, rows)
-        return calendar
+        ]
+
+    @classmethod
+    def dates(
+        cls,
+        calendar_uid: uuid.UUID | str,
+        start_date: dt.date,
+        end_date: dt.date,
+    ) -> list[ComputedCalendarDate]:
+        """The business-day facts of every local date from ``start_date`` to ``end_date``."""
+
+        from msm.services.calendars import compute_dates
+
+        definition = cls._definition(calendar_uid, start_date, end_date)
+        return [
+            ComputedCalendarDate.from_computed(date)
+            for date in compute_dates(definition, start_date, end_date)
+        ]
+
+    @classmethod
+    def is_business_day(cls, calendar_uid: uuid.UUID | str, local_date: dt.date) -> bool:
+        """Whether ``local_date`` has at least one session on this calendar."""
+
+        from msm.services.calendars import is_business_day
+
+        return is_business_day(cls._definition(calendar_uid, local_date, local_date), local_date)
+
+    @classmethod
+    def _definition(
+        cls,
+        calendar_uid: uuid.UUID | str,
+        start_date: dt.date,
+        end_date: dt.date,
+    ) -> Any:
+        from msm.bootstrap import resolve_runtime
+        from msm.services.calendars import (
+            coerce_local_date,
+            get_calendar_record,
+            load_calendar_definition,
+        )
+
+        runtime = resolve_runtime(models=CALENDAR_DEFINITION_TABLES, row_model_name=cls.__name__)
+        calendar = get_calendar_record(runtime.context, uid=str(calendar_uid))
+        if calendar is None:
+            raise LookupError(f"Calendar {calendar_uid} was not found.")
+        return load_calendar_definition(
+            runtime.context,
+            calendar=calendar,
+            start_date=coerce_local_date(start_date),
+            end_date=coerce_local_date(end_date),
+        )
 
 
 class CalendarCreate(BaseModel):
@@ -140,8 +212,8 @@ class CalendarCreate(BaseModel):
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
     source: str | None = Field(default=None, max_length=128)
     source_identifier: str | None = Field(default=None, max_length=255)
-    valid_from: dt.date
-    valid_to: dt.date
+    valid_from: dt.date | None = None
+    valid_to: dt.date | None = None
     metadata_json: dict[str, Any] | None = None
 
     @field_validator("calendar_type", mode="before")
@@ -153,8 +225,9 @@ class CalendarCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_horizon(self) -> CalendarCreate:
-        if self.valid_to < self.valid_from:
-            raise ValueError("valid_to must be greater than or equal to valid_from.")
+        if self.valid_from is not None and self.valid_to is not None:
+            if self.valid_to < self.valid_from:
+                raise ValueError("valid_to must be greater than or equal to valid_from.")
         return self
 
 
@@ -193,14 +266,8 @@ class CalendarUpdate(BaseModel):
         return self
 
 
-def _pandas_market_calendar_timezone(source_identifier: str) -> str:
-    import pandas_market_calendars as mcal
-
-    calendar = mcal.get_calendar(source_identifier)
-    return str(getattr(calendar, "tz", None) or "UTC")
-
-
 __all__ = [
+    "CALENDAR_DEFINITION_TABLES",
     "Calendar",
     "CalendarCreate",
     "CalendarType",

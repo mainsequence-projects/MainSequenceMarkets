@@ -78,12 +78,9 @@ account = Account.upsert(
 
 btc_asset = Asset.upsert(unique_identifier="BTC-USD", asset_type="crypto")
 calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="ACCOUNT_CRYPTO_24_7",
+    "24/7",
+    "ACCOUNT_CRYPTO_24_7",
     display_name="Account Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
 )
 
 target_allocation = AccountTargetAllocation.upsert(

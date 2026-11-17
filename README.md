@@ -48,7 +48,8 @@ Architecture and implementation decisions are tracked in
 Main package areas:
 
 - `msm.api.accounts`: account identity and account target assignment row APIs
-- `msm.api.calendars`: calendar identity, date, session, and event row APIs
+- `msm.api.calendars`: calendar identity, session rule, and exception row APIs,
+  with computed dates and sessions
 - `msm.api`: user-facing Pydantic row objects and typed class methods for
   markets MetaTable records
 - `msm.api.http`: installable provider-neutral collection, discovery,
@@ -240,7 +241,7 @@ public API, and pricing tooling. The `analytics` and `pricing-analytics` extras
 reserve the dependency boundary for optional analytics helpers; the current
 spread helpers use the core `numpy` and `pandas` dependencies. The `portfolios`
 extra installs portfolio-only helpers such as `scikit-learn`; `pandas-market-calendars`
-is a core dependency, used by core calendar materialization. The
+is a core dependency, used by the core calendar adapter. The
 `public_api` extra installs FastAPI and Uvicorn for the project-level `apps/v1`
 surface. The `pricing` extra installs QuantLib and the optional pricing runtime
 exposed as `msm_pricing`.

@@ -19,7 +19,7 @@ from .storage import PortfolioCalendarEventsStorage
 
 
 class PortfolioCalendarEventsConfiguration(PortfolioCanonicalUpdaterConfiguration):
-    """Hash-bearing selection of persisted calendar session events."""
+    """Hash-bearing selection of a stored calendar's session events."""
 
     calendar_identifier: str = Field(
         ...,
@@ -30,7 +30,7 @@ class PortfolioCalendarEventsConfiguration(PortfolioCanonicalUpdaterConfiguratio
     session_label: str = Field(
         default="regular",
         min_length=1,
-        description="Persisted CalendarSession label to publish.",
+        description="Session label of the stored calendar to publish.",
     )
     event_types: tuple[Literal["market_open", "market_close"], ...] = Field(
         default=("market_open", "market_close"),
@@ -50,7 +50,7 @@ class PortfolioCalendarEventsConfiguration(PortfolioCanonicalUpdaterConfiguratio
 
 
 class PortfolioCalendarEvents(PortfolioCanonicalUpdater):
-    """Project governed CalendarSession rows into an explicit event dependency."""
+    """Publish a stored calendar's computed sessions as an explicit event dependency."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
 
@@ -83,12 +83,20 @@ class PortfolioCalendarEvents(PortfolioCanonicalUpdater):
         if canonical_identifier != config.calendar_identifier:
             raise ValueError(
                 "PortfolioCalendarEvents.calendar_identifier must be the canonical "
-                "Calendar.unique_identifier, not a source_identifier alias. "
+                "Calendar.unique_identifier. "
                 f"Resolved {config.calendar_identifier!r} to {canonical_identifier!r}."
             )
         if hasattr(calendar, "session_label"):
             calendar = replace(calendar, session_label=config.session_label)
-        schedule = calendar.schedule(start_date=start, end_date=end)
+        # The first run starts at OFFSET_START. A calendar that begins later has
+        # no event before its first date, so the read starts there. A window that
+        # ends after the calendar's last date is refused by the calendar itself.
+        first_date = getattr(getattr(calendar, "calendar", None), "valid_from", None)
+        schedule_start = start if first_date is None else max(start, pd.Timestamp(first_date, tz="UTC"))
+        if schedule_start > end:
+            schedule = pd.DataFrame(columns=list(config.event_types))
+        else:
+            schedule = calendar.schedule(start_date=schedule_start, end_date=end)
         rows: list[dict[str, object]] = []
         for local_date, session in schedule.iterrows():
             for event_type in config.event_types:

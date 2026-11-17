@@ -1,12 +1,10 @@
 import copy
 import datetime
 import uuid
-from functools import lru_cache
 from typing import Annotated, Any
 
 import numpy as np
 import pandas as pd
-import pandas_market_calendars as mcal
 import pytz
 from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
 from tqdm import tqdm
@@ -23,9 +21,13 @@ from msm.time_index.assets.asset_indexed import (
 from msm.time_index.utils.time import normalize_datetime64_ns_utc
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import (
-    asset_calendar,
     asset_unique_identifier,
+    refuse_scope_calendar,
     require_asset_category_scope,
+)
+from msm_portfolios.services.calendars import (
+    PersistedCalendarSchedule,
+    resolve_asset_schedules,
 )
 from msm_portfolios.time_index.prices.storage import (
     InterpolatedPricesStorage,
@@ -34,7 +36,7 @@ from msm_portfolios.time_index.prices.storage import (
 from msm_portfolios.configuration import AssetsConfiguration
 from msm_portfolios.utils import TIMEDELTA
 
-FULL_CALENDAR = "24/7"
+_ONE_DAY = datetime.timedelta(days=1)
 
 
 class InterpolatedPricesConfig(AssetIndexedUpdaterConfiguration):
@@ -183,8 +185,61 @@ def _source_time_indexed_profile_cadence(
     return cadence
 
 
-def _asset_calendar_map(asset_list):
-    return {asset_unique_identifier(asset): asset_calendar(asset) for asset in asset_list}
+def _asset_schedule_map(asset_list) -> dict[str, PersistedCalendarSchedule]:
+    """The stored trading calendar of every asset in the scope (ADR 0056).
+
+    There is no default calendar. An asset with no ``AssetCalendar`` link fails
+    the whole scope, and the error names every such asset.
+    """
+
+    assets = list(asset_list)
+    for asset in assets:
+        refuse_scope_calendar(asset)
+    return resolve_asset_schedules(asset_unique_identifier(asset) for asset in assets)
+
+
+def _session_dates(schedule: pd.DataFrame) -> pd.Series:
+    return pd.Series([pd.Timestamp(value).date() for value in schedule.index], index=schedule.index)
+
+
+def _sessions_between_dates(
+    schedule: pd.DataFrame,
+    start: datetime.date,
+    end: datetime.date,
+) -> pd.DataFrame:
+    """Sessions whose local date lies between two dates, both included."""
+
+    if schedule.empty:
+        return schedule
+    dates = _session_dates(schedule)
+    return schedule[((dates >= start) & (dates <= end)).to_numpy()]
+
+
+def _sessions_closing_between(
+    schedule: pd.DataFrame,
+    first: pd.Timestamp,
+    last: pd.Timestamp,
+) -> pd.DataFrame:
+    """Sessions whose close lies between two instants, both included.
+
+    A session belongs to a window of bars by the instant it closes, not by its
+    date: a session that closes at midnight closes on the next date.
+    """
+
+    if schedule.empty:
+        return schedule
+    closes = schedule["market_close"]
+    return schedule[((closes >= first) & (closes <= last)).to_numpy()]
+
+
+def _has_trading_halts(schedule: pd.DataFrame) -> bool:
+    """Whether some session does not open at the instant the previous one closed."""
+
+    if len(schedule) < 2:
+        return False
+    opens = schedule["market_open"].to_numpy()[1:]
+    closes = schedule["market_close"].to_numpy()[:-1]
+    return bool((opens != closes).any())
 
 
 def _normalize_time_indexed_frame_ns_utc(frame: pd.DataFrame) -> pd.DataFrame:
@@ -202,44 +257,6 @@ def _normalize_time_indexed_frame_ns_utc(frame: pd.DataFrame) -> pd.DataFrame:
             normalized[column_name] = normalize_datetime64_ns_utc(normalized[column_name])
 
     return normalized.set_index(index_names).sort_index()
-
-
-@lru_cache(maxsize=256)
-def _get_calendar_by_name(calendar_name: str):
-    if calendar_name == FULL_CALENDAR:
-        return None
-    return mcal.get_calendar(calendar_name)
-
-
-@lru_cache(maxsize=1024)
-def _get_schedule_cached(calendar_name: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """
-    Returns a schedule DataFrame indexed by normalized UTC session date.
-    start_date / end_date should be 'YYYY-MM-DD' strings for cacheability.
-    """
-    cal = _get_calendar_by_name(calendar_name)
-    if cal is None:
-        # 24/7 synthetic schedule (open at 00:00, close 23:59 UTC)
-        sessions = pd.date_range(start=start_date, end=end_date, freq="D", tz="UTC")
-        df = pd.DataFrame(
-            {
-                "market_open": sessions,
-                "market_close": sessions + pd.Timedelta(days=1) - pd.Timedelta(minutes=1),
-            },
-            index=sessions,
-        )
-        df.index.name = "session"
-        return df
-
-    sched = (
-        cal.schedule(start_date=start_date, end_date=end_date)
-        .reset_index()
-        .rename(columns={"index": "session"})
-    )
-    sched["session"] = pd.to_datetime(sched["session"], utc=True).dt.normalize()
-    sched["market_open"] = pd.to_datetime(sched["market_open"], utc=True)
-    sched["market_close"] = pd.to_datetime(sched["market_close"], utc=True)
-    return sched.set_index("session")
 
 
 def get_interpolated_prices_timeseries(
@@ -317,7 +334,7 @@ class UpsampleAndInterpolation:
         bars_df: pd.DataFrame,
         upsample_frequency_obs: int,
         upsample_frequency_td: object,
-        calendar: str,
+        schedule: pd.DataFrame,
         open_to_close_time_delta: datetime.timedelta,
         is_portfolio: bool = False,
     ) -> pd.DataFrame:
@@ -331,7 +348,8 @@ class UpsampleAndInterpolation:
             bars_df (pd.DataFrame): The bars data to be upsampled.
             upsample_frequency_obs (int): Frequency for upsampling.
             upsample_frequency_td (object): Time delta for upsampling.
-            calendar (str): Trading calendar to account for trading hours.
+            schedule (pd.DataFrame): Sessions of the asset's stored calendar that cover the
+                bars, with ``market_open`` and ``market_close`` in UTC.
             open_to_close_time_delta (datetime.timedelta): Time delta between open and close.
             is_portfolio (bool): Whether the data is for a portfolio or a single asset.
 
@@ -341,16 +359,13 @@ class UpsampleAndInterpolation:
         obs = bars_df.shape[0] / upsample_frequency_obs
         assert obs > 1.0
 
-        calendar_name = getattr(calendar, "name", calendar)
-        trading_halts = calendar_name != FULL_CALENDAR
-
-        calendar = mcal.get_calendar(calendar)
-
-        full_schedule = calendar.schedule(
-            bars_df["trade_day"].min(), bars_df["trade_day"].max()
-        ).reset_index()
-        full_schedule["index"] = full_schedule["index"].apply(lambda x: x.timestamp())
-        full_schedule = full_schedule.set_index("index").to_dict("index")
+        trading_halts = _has_trading_halts(schedule)
+        full_schedule = {
+            session_date: session
+            for session_date, session in zip(
+                _session_dates(schedule), schedule.to_dict("records"), strict=True
+            )
+        }
 
         all_dfs = []
         for i in tqdm(
@@ -361,7 +376,7 @@ class UpsampleAndInterpolation:
             end = i + upsample_frequency_obs
             tmp_df = bars_df.iloc[start:end]
 
-            day_schedule = full_schedule[tmp_df["trade_day"].iloc[0].timestamp()]
+            day_schedule = full_schedule[pd.Timestamp(tmp_df["trade_day"].iloc[0]).date()]
             first_available_bar = day_schedule["market_open"] + upsample_frequency_td
             last_available_bar = day_schedule["market_close"]
 
@@ -401,14 +416,18 @@ class UpsampleAndInterpolation:
         return all_dfs
 
     def get_interpolated_upsampled_bars(
-        self, calendar: str, tmp_df: pd.DataFrame, last_observation: None | pd.Series = None
+        self,
+        schedule: pd.DataFrame,
+        tmp_df: pd.DataFrame,
+        last_observation: None | pd.Series = None,
     ) -> pd.DataFrame:
         """
         Gets interpolated and upsampled bars based on the given parameters.
         First interpolates the data to fill any gaps, then upsamples it to the desired frequency.
 
         Args:
-            calendar (str): Trading calendar for interpolation and upsampling.
+            schedule (pd.DataFrame): Sessions of the asset's stored calendar that cover the
+                bars, with ``market_open`` and ``market_close`` in UTC.
             tmp_df (pd.DataFrame): Dataframe containing the bars to be processed.
             last_observation (Union[None, pd.Series], optional): Last observed data to fill gaps.
 
@@ -435,7 +454,7 @@ class UpsampleAndInterpolation:
             tmp_df = interpolate_daily_bars(
                 bars_df=tmp_df.copy(),
                 interpolation_rule=self.intraday_bar_interpolation_rule,
-                calendar=calendar,
+                schedule=schedule,
                 last_observation=last_observation,
             )
         elif self.bar_frequency_id.endswith("m"):
@@ -445,7 +464,7 @@ class UpsampleAndInterpolation:
             tmp_df = interpolate_intraday_bars(
                 bars_df=tmp_df.copy(),
                 interpolation_rule=self.intraday_bar_interpolation_rule,
-                calendar=calendar,
+                schedule=schedule,
                 bars_frequency_min=bars_frequency_min,
                 last_observation=last_observation,
             )
@@ -469,7 +488,7 @@ class UpsampleAndInterpolation:
                     bars_df=tmp_df,
                     upsample_frequency_obs=upsample_freq_obs,
                     upsample_frequency_td=self.upsample_frequency_td,
-                    calendar=calendar,
+                    schedule=schedule,
                     is_portfolio=False,
                     open_to_close_time_delta=datetime.timedelta(minutes=bars_frequency_min),
                 )
@@ -487,13 +506,16 @@ class UpsampleAndInterpolation:
 def interpolate_daily_bars(
     bars_df: pd.DataFrame,
     interpolation_rule: str,
-    calendar: str,
+    schedule: pd.DataFrame,
     last_observation: None | pd.Series = None,  # fix annotation
 ):
-    try:
-        calendar_name = getattr(calendar, "name", calendar)
-    except Exception as e:
-        raise e
+    """Put daily bars on the session closes of the asset's stored calendar.
+
+    A source bar is stamped at its time of observation: the close of its session.
+    The output has one row per session close between the first and the last
+    source bar, filled forward from the latest source bar at or before it. No row
+    is written after the last source bar.
+    """
 
     def rebase_with_forward_fill(bars_df, last_observation):
         try:
@@ -537,10 +559,11 @@ def interpolate_daily_bars(
 
         return bars_df
 
-    # Extend the schedule window so midnight stamps on non-trading days can fill to the next session close
-    start_date = bars_df.index.min().date().isoformat()
-    end_date = (pd.Timestamp(bars_df.index.max()).normalize()).date().isoformat()
-    restricted_schedule = _get_schedule_cached(calendar_name, start_date, end_date)
+    restricted_schedule = _sessions_closing_between(
+        schedule,
+        pd.Timestamp(bars_df.index.min()),
+        pd.Timestamp(bars_df.index.max()),
+    )
 
     restricted_schedule = restricted_schedule.reset_index()
     market_type = "market_close"
@@ -589,13 +612,18 @@ def interpolate_intraday_bars(
     bars_df: pd.DataFrame,
     interpolation_rule: str,
     bars_frequency_min: int,
-    calendar: str,
+    schedule: pd.DataFrame,
     last_observation: None | pd.Series = None,
 ) -> pd.DataFrame:
     """
     Interpolates intraday bars based on the given parameters. Fills in missing data points in intraday bar data in case of gaps.
     """
-    calendar_instance = mcal.get_calendar(calendar.name)
+    sessions_by_date = {
+        session_date: session
+        for session_date, session in zip(
+            _session_dates(schedule), schedule.to_dict("records"), strict=True
+        )
+    }
 
     def build_daily_range_from_schedule(start, end):
         return pd.date_range(start=start, end=end, freq=f"{bars_frequency_min}min")
@@ -659,14 +687,12 @@ def interpolate_intraday_bars(
 
     full_index = bars_df.index
 
-    try:
-        # because index are closes the greates value should be the open time of the last close to do not extra interpolate
-
-        restricted_schedule = calendar_instance.schedule(
-            bars_df.index.min(), bars_df.iloc[-1]["open_time"]
-        )  # This needs to be faster
-    except Exception as e:
-        raise e
+    # The index holds closes, so the last session to add is the one the last bar opened in.
+    restricted_schedule = _sessions_between_dates(
+        schedule,
+        pd.Timestamp(bars_df.index.min()).date(),
+        pd.Timestamp(bars_df.iloc[-1]["open_time"]).date(),
+    )
 
     bars_df = bars_df[
         ~bars_df.index.duplicated(keep="first")
@@ -685,17 +711,14 @@ def interpolate_intraday_bars(
     interpolated_data = []
 
     for day, group_df in groups:
-        schedule = calendar_instance.schedule(start_date=day, end_date=day)
-        if schedule.shape[0] == 0:
+        session = sessions_by_date.get(pd.Timestamp(day).date())
+        if session is None:
             continue
-        try:
-            trade_starts = schedule["market_open"].iloc[0]
-            trade_ends = schedule["market_close"].iloc[0]
-        except Exception as e:
-            raise e
+        trade_starts = session["market_open"]
+        trade_ends = session["market_close"]
 
-        group_df = group_df[group_df.index >= schedule["market_open"].iloc[0]]
-        group_df = group_df[group_df.index <= schedule["market_close"].iloc[0]]
+        group_df = group_df[group_df.index >= trade_starts]
+        group_df = group_df[group_df.index <= trade_ends]
 
         if group_df.dropna().shape[0] == 0:
             continue
@@ -762,6 +785,8 @@ class InterpolatedPrices(AssetIndexedUpdater):
         not ``update_hash``.
         """
         self.interpolation_config = interpolation_config
+        for asset in interpolation_config.asset_list or []:
+            refuse_scope_calendar(asset)
         intraday_bar_interpolation_rule = interpolation_config.intraday_bar_interpolation_rule
         asset_category_unique_id = interpolation_config.asset_category_unique_id
         asset_list = interpolation_config.asset_list
@@ -832,17 +857,6 @@ class InterpolatedPrices(AssetIndexedUpdater):
     def get_string_frequency_to_minutes(self):
         return string_frequency_to_minutes(self.bar_frequency_id)
 
-    def _get_required_cores(self, last_observation_map) -> int:
-        """
-        Determines the required number of cores for processing.
-        """
-        if len(last_observation_map) == 0:
-            required = 1
-        else:
-            required = min(len(last_observation_map), 20)
-
-        return required
-
     def run_post_update_routines(self, error_on_last_update):
         if not self.table_update.output_table.protect_from_deletion:
             self.update_manager.protect_from_deletion()
@@ -881,49 +895,16 @@ class InterpolatedPrices(AssetIndexedUpdater):
             else:
                 last_observation_map[asset_identifier] = None
 
-        def multiproc_upsample(
-            calendar, tmp_df, asset_identifier, last_observation, interpolator_kwargs
-        ):
-            interpolator = UpsampleAndInterpolation(**interpolator_kwargs)
-            df = interpolator.get_interpolated_upsampled_bars(
-                calendar=calendar,
-                tmp_df=tmp_df,
-                last_observation=last_observation_map[asset_identifier],
-            )
-            df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
-            return df
-
-        required_cores = self._get_required_cores(last_observation_map=last_observation_map)
-        required_cores = 1
-        if required_cores == 1:
-            # Single-core processing
-            for asset_identifier, df in raw_data_df.groupby(ASSET_IDENTIFIER_DIMENSION):
-                if df.shape[0] > 1:
-                    df = self.interpolator.get_interpolated_upsampled_bars(
-                        calendar=self.asset_calendar_map[asset_identifier],
-                        tmp_df=df,
-                        last_observation=last_observation_map[asset_identifier],
-                    )
-                    df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
-                    upsampled_df.append(df)
-        else:
-            from joblib import Parallel, delayed
-
-            upsampled_df = Parallel(n_jobs=required_cores)(
-                delayed(multiproc_upsample)(
-                    calendar=self.asset_calendar_map[asset_identifier],
-                    tmp_df=tmp_df,
-                    asset_identifier=asset_identifier,
+        schedule_frames = self._schedule_frames(raw_data_df)
+        for asset_identifier, df in raw_data_df.groupby(ASSET_IDENTIFIER_DIMENSION):
+            if df.shape[0] > 1:
+                df = self.interpolator.get_interpolated_upsampled_bars(
+                    schedule=schedule_frames[self.asset_schedules[asset_identifier].calendar.uid],
+                    tmp_df=df,
                     last_observation=last_observation_map[asset_identifier],
-                    interpolator_kwargs=dict(
-                        bar_frequency_id=self.bar_frequency_id,
-                        upsample_frequency_id=self.upsample_frequency_id,
-                        intraday_bar_interpolation_rule=self.intraday_bar_interpolation_rule,
-                    ),
                 )
-                for asset_identifier, tmp_df in raw_data_df.groupby(ASSET_IDENTIFIER_DIMENSION)
-                if tmp_df.shape[0] > 0
-            )
+                df[ASSET_IDENTIFIER_DIMENSION] = asset_identifier
+                upsampled_df.append(df)
 
         upsampled_df = [d for d in upsampled_df if len(d) > 0]  # Remove empty dataframes
         if len(upsampled_df) == 0:
@@ -953,6 +934,22 @@ class InterpolatedPrices(AssetIndexedUpdater):
             upsampled_df = pd.DataFrame()
 
         return upsampled_df
+
+    def _schedule_frames(self, raw_data_df: pd.DataFrame) -> dict[Any, pd.DataFrame]:
+        """Each distinct calendar's sessions for the window of the bars, computed once.
+
+        The window is a day wider at both ends: a session can close on the date
+        after its own, and open on the date before it.
+        """
+
+        start = (pd.Timestamp(raw_data_df.index.min()) - _ONE_DAY).date()
+        end = (pd.Timestamp(raw_data_df.index.max()) + _ONE_DAY).date()
+        frames: dict[Any, pd.DataFrame] = {}
+        for asset_identifier in raw_data_df[ASSET_IDENTIFIER_DIMENSION].unique():
+            schedule = self.asset_schedules[asset_identifier]
+            if schedule.calendar.uid not in frames:
+                frames[schedule.calendar.uid] = schedule.schedule(start, end)
+        return frames
 
     def get_upsampled_data(self) -> pd.DataFrame:
         """
@@ -998,7 +995,8 @@ class InterpolatedPrices(AssetIndexedUpdater):
         """
         us: UpdateStatistics = self.update_statistics
 
-        self.asset_calendar_map = _asset_calendar_map(self.get_update_asset_list() or [])
+        # Resolved before any bar is read: an asset with no trading calendar fails the run.
+        self.asset_schedules = _asset_schedule_map(self.get_update_asset_list() or [])
         prices = self.get_upsampled_data()
         if prices.shape[0] == 0:
             return pd.DataFrame()

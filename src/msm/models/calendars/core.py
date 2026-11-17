@@ -16,14 +16,14 @@ from msm.base import (
 
 
 class CalendarTable(MarketsMetaTableMixin, MarketsBase):
-    """Calendar identity and bounded materialization metadata."""
+    """Calendar identity and the range its rules and exceptions are complete for."""
 
     __metatable_identifier__ = "Calendar"
     __metatable_description__ = (
         "Calendar identity table keyed by unique_identifier. Stores the durable "
-        "calendar definition, source adapter identity, timezone, and validity "
-        "horizon used by portfolios, execution, pricing, settlement, and custom "
-        "market workflows."
+        "calendar definition, source adapter identity, timezone, and the range "
+        "its session rules and exceptions are complete for. Used by portfolios, "
+        "execution, pricing, settlement, and custom market workflows."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -79,7 +79,7 @@ class CalendarTable(MarketsMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Source",
-            "description": "Adapter or provider that produced this calendar materialization.",
+            "description": "Adapter or provider that wrote this calendar's rules and exceptions.",
         },
     )
     source_identifier: Mapped[str | None] = mapped_column(
@@ -90,20 +90,20 @@ class CalendarTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Provider-specific calendar key such as NYSE, TARGET, CME_EQ_INDEX, or a user-defined name.",
         },
     )
-    valid_from: Mapped[dt.date] = mapped_column(
+    valid_from: Mapped[dt.date | None] = mapped_column(
         Date,
-        nullable=False,
+        nullable=True,
         info={
             "label": "Valid From",
-            "description": "First local date covered by the persisted calendar materialization.",
+            "description": "First local date the calendar's rules and exceptions are complete for; null when unbounded.",
         },
     )
-    valid_to: Mapped[dt.date] = mapped_column(
+    valid_to: Mapped[dt.date | None] = mapped_column(
         Date,
-        nullable=False,
+        nullable=True,
         info={
             "label": "Valid To",
-            "description": "Last local date covered by the persisted calendar materialization.",
+            "description": "Last local date the calendar's source can answer for; null when unbounded.",
         },
     )
     metadata_json: Mapped[dict | None] = mapped_column(

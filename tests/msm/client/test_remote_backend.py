@@ -243,6 +243,32 @@ def test_delete_uses_the_service_delete(monkeypatch, remote) -> None:
     assert result["deleted_count"] == 1
 
 
+def test_a_calendar_exception_is_deleted_through_markets(monkeypatch, remote) -> None:
+    """Deleting a user's exception is how a user restores the library's answer (ADR 0055)."""
+
+    from msm.api.calendars import CalendarException, CalendarSessionRule
+
+    deleted: list[tuple[str, str]] = []
+
+    def delete_model(context, *, model, uid):
+        deleted.append((model.__name__, str(uid)))
+        return {"ok": True, "row_count": 1}
+
+    monkeypatch.setattr("msm.repositories.crud.delete_model", delete_model)
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    exception_uid, rule_uid = uuid.uuid4(), uuid.uuid4()
+
+    CalendarException.delete(exception_uid)
+    CalendarSessionRule.delete(rule_uid)
+
+    assert recording.calls == [("calendar-exception", "delete"), ("calendar-session-rule", "delete")]
+    assert deleted == [
+        ("CalendarExceptionTable", str(exception_uid)),
+        ("CalendarSessionRuleTable", str(rule_uid)),
+    ]
+
+
 def test_delete_without_a_service_route_is_not_offered(remote) -> None:
     from msm.api.accounts import AccountGroup
     from msm.api.remote import MarketsOperationUnsupported
@@ -631,7 +657,7 @@ class _Recording:
 
 
 def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
-    from msm.api.calendars import CalendarSession
+    from msm.api.calendars import CalendarException
 
     calendar_uid = uuid.uuid4()
     seen: dict[str, Any] = {}
@@ -645,6 +671,8 @@ def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
                     "calendar_uid": str(calendar_uid),
                     "local_date": "2026-01-05",
                     "session_label": "regular",
+                    "exception_type": "EARLY_CLOSE",
+                    "closes_at_local": "13:00:00",
                 }
             ]
         }
@@ -655,15 +683,15 @@ def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
         lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 2}]},
     )
 
-    sessions = CalendarSession.filter(
+    exceptions = CalendarException.filter(
         calendar_uid=calendar_uid,
         local_date__gte=dt.date(2026, 1, 1),
         local_date__lte=dt.date(2026, 1, 31),
         order_by="local_date",
     )
-    total = CalendarSession.count(calendar_uid=calendar_uid, local_date__lt=dt.date(2026, 2, 1))
+    total = CalendarException.count(calendar_uid=calendar_uid, local_date__lt=dt.date(2026, 2, 1))
 
-    assert [session.local_date for session in sessions] == [dt.date(2026, 1, 5)]
+    assert [row.local_date for row in exceptions] == [dt.date(2026, 1, 5)]
     assert seen["search"]["filters"] == {"calendar_uid": calendar_uid}
     assert seen["search"]["range_filters"] == {
         "local_date": {"gte": dt.date(2026, 1, 1), "lte": dt.date(2026, 1, 31)}
@@ -672,36 +700,46 @@ def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
     assert total == 2
 
 
-def test_persisted_calendar_schedule_reads_sessions_through_markets(monkeypatch, remote) -> None:
+def test_persisted_calendar_schedule_computes_sessions_through_markets(monkeypatch, remote) -> None:
     import pandas as pd
 
+    from msm.api.calendars import Calendar
+    from msm.services.calendars import CalendarDefinition
     from msm_portfolios.services.calendars import PersistedCalendarSchedule
 
     calendar_uid = uuid.uuid4()
     recording = _Recording(remote.client.backend)
     use_remote_backend(recording)
-    monkeypatch.setattr(
-        "msm.repositories.crud.search_model",
-        lambda context, **kwargs: {
-            "rows": [
+    seen: dict[str, Any] = {}
+
+    def definition(cls, uid, start_date, end_date):
+        seen["window"] = (str(uid), start_date, end_date)
+        return CalendarDefinition.from_rows(
+            timezone="America/New_York",
+            rules=[
                 {
-                    "uid": str(uuid.uuid4()),
-                    "calendar_uid": str(calendar_uid),
-                    "local_date": "2026-01-05",
-                    "session_label": "regular",
-                    "opens_at": "2026-01-05T14:30:00Z",
-                    "closes_at": "2026-01-05T21:00:00Z",
+                    "effective_from": "1990-01-01",
+                    "weekdays": "1111100",
+                    "opens_at_local": "09:30:00",
+                    "closes_at_local": "16:00:00",
                 }
-            ]
-        },
-    )
+            ],
+            exceptions=[
+                {"local_date": "2026-01-06", "exception_type": "CLOSED", "source": "user"}
+            ],
+        )
+
+    monkeypatch.setattr(Calendar, "_definition", classmethod(definition))
 
     frame = PersistedCalendarSchedule(
         calendar=SimpleNamespace(uid=calendar_uid, unique_identifier="XNYS")
     ).schedule("2026-01-05", "2026-01-06")
 
-    assert recording.calls == [("calendar-session", "filter")]
+    # One call: the Markets API computes the sessions from the rules and exceptions.
+    assert recording.calls == [("calendar", "sessions")]
+    assert seen["window"] == (str(calendar_uid), dt.date(2026, 1, 5), dt.date(2026, 1, 6))
     assert list(frame.index) == [dt.date(2026, 1, 5)]
+    assert frame.loc[dt.date(2026, 1, 5), "market_open"] == pd.Timestamp("2026-01-05T14:30:00Z")
     assert frame.loc[dt.date(2026, 1, 5), "market_close"] == pd.Timestamp("2026-01-05T21:00:00Z")
 
 

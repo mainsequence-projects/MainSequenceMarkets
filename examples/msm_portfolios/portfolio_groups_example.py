@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
 import os
 import sys
 from pathlib import Path
@@ -58,8 +57,6 @@ def run_portfolio_group_workflow() -> dict[str, Any]:
         timezone="UTC",
         source="example",
         source_identifier="portfolio_groups_example",
-        valid_from=dt.date(2026, 1, 1),
-        valid_to=dt.date(2026, 12, 31),
     )
     portfolio = Portfolio.upsert(
         unique_identifier=EXAMPLE_PORTFOLIO_UNIQUE_IDENTIFIER,

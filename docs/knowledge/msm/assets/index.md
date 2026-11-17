@@ -505,6 +505,30 @@ Use an explicit `repository_context` for live platform reads or pass an
 dictionaries; dashboard-specific or Command Center-specific response envelopes
 belong at the application boundary.
 
+## Trading Calendar: Required For Price Interpolation
+
+`Asset.upsert(...)` registers identity only. To interpolate an asset's prices,
+the asset must also be linked to a stored `Calendar` with `AssetCalendar`:
+
+```python
+from msm.api.assets import Asset, AssetCalendar
+from msm.api.calendars import Calendar
+
+calendar = Calendar.create_from_pandas_calendar("24/7", "CRYPTO_24_7", display_name="Crypto 24/7")
+btc = Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
+AssetCalendar.upsert(asset_uid=btc.uid, calendar_uid=calendar.uid)
+```
+
+- `InterpolatedPrices` computes each asset's bars from the sessions of its
+  linked calendar. There is no default calendar, and an unlinked asset is not
+  treated as 24/7.
+- When any asset in the scope of a price update has no link, the whole run
+  fails with `AssetCalendarMissingError`, which names each such asset.
+- An asset has at most one trading calendar. An asset that is never
+  interpolated needs none.
+- Make the link part of asset registration for every asset that will have price
+  bars. See [Trading Calendar](asset_indexed_updaters.md#trading-calendar).
+
 ## Asset-Indexed Updaters
 
 Timestamped asset facts, such as snapshots and pricing details, belong in

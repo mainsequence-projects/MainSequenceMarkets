@@ -207,6 +207,39 @@ finalization, and API rollout separately; a push or an `already current` Alembic
 revision alone is not proof of deployment success. See
 [Migration diagnostics](knowledge/msm/migrations/index.md#migration-diagnostics-and-repeated-runs).
 
+### Calendar re-sync Job
+
+A stored calendar holds what `pandas-market-calendars` knew when it was written
+([ADR 0055](ADR/0055-calendars-as-rules-and-exceptions.md)). A release that upgrades
+the library does not change any stored calendar: no step of the workflow runs
+`resync-calendars`, it has no schedule, and the Markets API never writes a calendar
+again by itself. A person runs the Job when they want the calendars to take what the
+library in the deployed image knows:
+
+```bash
+mainsequence code-repository jobs list
+mainsequence code-repository jobs run <JOB_UID> --arg=--dry-run
+mainsequence code-repository jobs run <JOB_UID>
+mainsequence code-repository jobs run <JOB_UID> --arg=NYSE --arg=CustomNYSE
+mainsequence code-repository jobs runs logs <JOB_RUN_UID> --max-wait-seconds 900
+```
+
+- Without a name the Job takes every calendar the adapter wrote. With names it takes
+  those.
+- `--dry-run` prints the same report and writes nothing. Run it first: the report
+  lists, per calendar, the library version before and after, the range, and the
+  exceptions it would add and remove.
+- Every `user` exception is kept.
+- The Job exits with 1 when a calendar fails. The calendars before it are written and
+  the ones after it are still tried.
+
+Run it once after the release that carries revision 0027. That revision converts each
+stored calendar from its own rows, so a calendar still ends where its rows ended and
+keeps the hours it had stored. The Job takes it to the library's range, 1990-01-01 to
+2200-12-31 for most calendars, and to the library's hours. Read the dry run before
+writing: a calendar whose stored hours differ from the library's changes its sessions,
+and with them the rebalance times of the portfolios on it.
+
 ### MetaTables access in each Environment
 
 The `migrate-markets` Job and the `markets-api` release run as their own workload
@@ -222,6 +255,7 @@ that Environment's MetaTables Admin or with `grant_role`.
 | --- | --- | --- |
 | `migrate-markets` workload User | `editor` | registers and migrates the ms-markets tables |
 | `markets-api` workload User | `data_writer` | reads and writes rows; never migrates, deletes or shares tables |
+| `resync-calendars` workload User | `data_writer` | writes calendar rules and exceptions when a person runs the Job |
 | a person, or a Team of people only | `owner` | decides who has access; a workload is never an owner |
 
 Without `editor`, the Job's registration fails with `403` `namespace_access_required`
@@ -231,6 +265,9 @@ Without a role on the namespace, the API can't attach its tables at startup, so 
 rollout fails and only the next push deploys it. A running API whose role is missing
 has its MetaTables requests refused; they succeed from the next request after the
 grant, with no redeployment.
+
+The `resync-calendars` Job is not part of a rollout. Without its role, a run of it
+fails and nothing else is affected.
 
 **Where the namespace exists.** `mainsequence.markets` predates roles in the
 development and Production Environments, so no migration creates it there. When

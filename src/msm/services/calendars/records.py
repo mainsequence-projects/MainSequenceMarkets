@@ -1,6 +1,13 @@
+"""Calendar records behind the Markets API calendar routes (ADR 0055).
+
+Calendars, session rules and exceptions are stored rows. Dates and sessions are
+computed from them for a requested window.
+"""
+
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -9,29 +16,22 @@ from sqlalchemy import String, cast, func, or_, select
 from msm.api.base import operation_result_rows
 from msm.api.calendars import (
     CalendarCreate,
-    CalendarDateCreate,
-    CalendarDateUpdate,
-    CalendarDateUpsert,
-    CalendarEventCreate,
-    CalendarEventUpdate,
-    CalendarEventUpsert,
-    CalendarSessionCreate,
-    CalendarSessionUpdate,
-    CalendarSessionUpsert,
+    CalendarExceptionCreate,
+    CalendarExceptionUpdate,
+    CalendarExceptionUpsert,
+    CalendarSessionRuleCreate,
+    CalendarSessionRuleUpdate,
+    CalendarSessionRuleUpsert,
     CalendarUpdate,
 )
-from msm.models import (
-    CalendarDateTable,
-    CalendarEventTable,
-    CalendarSessionTable,
-    CalendarTable,
-)
+from msm.api.calendars.exceptions import validate_exception_update
+from msm.api.calendars.rules import validate_rule_update
+from msm.models import CalendarExceptionTable, CalendarSessionRuleTable, CalendarTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories.calendars import (
-    bulk_upsert_calendar_dates,
-    bulk_upsert_calendar_events,
-    bulk_upsert_calendar_sessions,
+    bulk_upsert_calendar_exceptions,
+    bulk_upsert_calendar_session_rules,
 )
 from msm.repositories.crud import (
     create_model,
@@ -40,7 +40,14 @@ from msm.repositories.crud import (
     update_model,
 )
 
-from .validation import coerce_local_date
+from .computation import (
+    EXCEPTION_CLOSED,
+    USER_SOURCE,
+    compute_dates,
+    compute_sessions,
+)
+from .definitions import load_calendar_definition
+from .validation import coerce_local_date, ensure_date_range
 
 
 def list_calendar_records(
@@ -213,7 +220,8 @@ def get_calendar_frontend_detail_summary(
             "relationships": {
                 "dates_url": f"/api/v1/calendar/{calendar_uid}/dates/",
                 "sessions_url": f"/api/v1/calendar/{calendar_uid}/sessions/",
-                "events_url": f"/api/v1/calendar/{calendar_uid}/events/",
+                "rules_url": f"/api/v1/calendar/{calendar_uid}/rules/",
+                "exceptions_url": f"/api/v1/calendar/{calendar_uid}/exceptions/",
             },
         },
     }
@@ -261,269 +269,244 @@ def delete_calendar_record(
     return True
 
 
-def list_calendar_date_records(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    is_business_day: bool | None = None,
-    is_holiday: bool | None = None,
-    is_weekend: bool | None = None,
-    is_early_close: bool | None = None,
-    limit: int = 500,
-    offset: int = 0,
-) -> list[dict[str, Any]]:
-    statement = _calendar_date_list_statement(
-        calendar_uid=calendar_uid,
-        start_date=start_date,
-        end_date=end_date,
-        is_business_day=is_business_day,
-        is_holiday=is_holiday,
-        is_weekend=is_weekend,
-        is_early_close=is_early_close,
-    )
-    return _execute_limited_select(
-        context,
-        statement=statement,
-        limit=limit,
-        offset=offset,
-    )
-
-
 def list_calendar_date_records_page(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
+    start_date: dt.date | str,
+    end_date: dt.date | str,
     is_business_day: bool | None = None,
     is_holiday: bool | None = None,
     is_weekend: bool | None = None,
     is_early_close: bool | None = None,
     limit: int = 500,
     offset: int = 0,
-) -> dict[str, Any]:
-    return _execute_collection_page(
-        context,
-        statement=_calendar_date_list_statement(
-            calendar_uid=calendar_uid,
-            start_date=start_date,
-            end_date=end_date,
-            is_business_day=is_business_day,
-            is_holiday=is_holiday,
-            is_weekend=is_weekend,
-            is_early_close=is_early_close,
-        ),
-        limit=limit,
-        offset=offset,
-    )
-
-
-def get_calendar_date_record(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    uid: str,
 ) -> dict[str, Any] | None:
-    row = _first_operation_row(get_model_by_uid(context, model=CalendarDateTable, uid=uid))
-    if not _belongs_to_calendar(row, calendar_uid):
-        return None
-    return row
+    """The computed dates of a window, filtered and paged. None when the calendar is unknown."""
 
-
-def create_calendar_date_record(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    **values: Any,
-) -> dict[str, Any]:
-    payload = CalendarDateCreate(
-        calendar_uid=calendar_uid,
-        **_without_calendar_uid(values),
-    ).model_dump()
-    row = _first_operation_row(create_model(context, model=CalendarDateTable, values=payload))
-    if row is None:
-        raise RuntimeError("Calendar date creation did not return a calendar date row.")
-    return row
-
-
-def update_calendar_date_record(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    uid: str,
-    **values: Any,
-) -> dict[str, Any] | None:
-    existing = get_calendar_date_record(context, calendar_uid=calendar_uid, uid=uid)
-    if existing is None:
-        return None
-
-    payload = CalendarDateUpdate(**values).model_dump(exclude_unset=True)
-    if not payload:
-        return existing
-
-    row = _first_operation_row(
-        update_model(context, model=CalendarDateTable, uid=uid, values=payload)
+    definition = _window_definition(
+        context, calendar_uid=calendar_uid, start_date=start_date, end_date=end_date
     )
-    return row or get_calendar_date_record(context, calendar_uid=calendar_uid, uid=uid)
-
-
-def delete_calendar_date_record(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    uid: str,
-) -> bool:
-    existing = get_calendar_date_record(context, calendar_uid=calendar_uid, uid=uid)
-    if existing is None:
-        return False
-
-    delete_model(context, model=CalendarDateTable, uid=uid)
-    return True
-
-
-def bulk_upsert_calendar_date_records(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    rows: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    payloads = [
-        CalendarDateUpsert(
-            calendar_uid=calendar_uid,
-            **_without_calendar_uid(row),
-        ).model_dump()
-        for row in rows
+    if definition is None:
+        return None
+    flags = {
+        "is_business_day": is_business_day,
+        "is_holiday": is_holiday,
+        "is_weekend": is_weekend,
+        "is_early_close": is_early_close,
+    }
+    rows = [
+        {
+            "calendar_uid": str(calendar_uid),
+            "local_date": date.local_date,
+            "is_business_day": date.is_business_day,
+            "is_holiday": date.is_holiday,
+            "is_weekend": date.is_weekend,
+            "is_early_close": date.is_early_close,
+            "holiday_name": date.holiday_name,
+        }
+        for date in compute_dates(definition, start_date, end_date)
+        if all(
+            wanted is None or getattr(date, name) == wanted for name, wanted in flags.items()
+        )
     ]
-    if not payloads:
-        return []
-
-    return operation_result_rows(bulk_upsert_calendar_dates(context, payloads))
-
-
-def list_calendar_session_records(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    session_label: str | None = None,
-    is_primary: bool | None = None,
-    limit: int = 500,
-    offset: int = 0,
-) -> list[dict[str, Any]]:
-    statement = _calendar_session_list_statement(
-        calendar_uid=calendar_uid,
-        start_date=start_date,
-        end_date=end_date,
-        session_label=session_label,
-        is_primary=is_primary,
-    )
-    return _execute_limited_select(
-        context,
-        statement=statement,
-        limit=limit,
-        offset=offset,
-    )
+    return {"count": len(rows), "results": rows[offset : offset + limit]}
 
 
 def list_calendar_session_records_page(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
+    start_date: dt.date | str,
+    end_date: dt.date | str,
     session_label: str | None = None,
     is_primary: bool | None = None,
     limit: int = 500,
     offset: int = 0,
+) -> dict[str, Any] | None:
+    """The computed sessions of a window, filtered and paged. None when the calendar is unknown."""
+
+    definition = _window_definition(
+        context, calendar_uid=calendar_uid, start_date=start_date, end_date=end_date
+    )
+    if definition is None:
+        return None
+    rows = [
+        {
+            "calendar_uid": str(calendar_uid),
+            "local_date": session.local_date,
+            "session_label": session.session_label,
+            "opens_at": session.opens_at,
+            "closes_at": session.closes_at,
+            "timezone": session.timezone,
+            "is_primary": session.is_primary,
+            "is_early_close": session.is_early_close,
+            "is_late_open": session.is_late_open,
+        }
+        for session in compute_sessions(
+            definition, start_date, end_date, session_label=session_label
+        )
+        if is_primary is None or session.is_primary == is_primary
+    ]
+    return {"count": len(rows), "results": rows[offset : offset + limit]}
+
+
+def read_calendar_session_records(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str,
+    end_date: dt.date | str,
+    session_label: str | None = None,
+    clamp_to_range: bool = False,
+) -> list[dict[str, Any]]:
+    """Every computed session of a window, as rows.
+
+    ``clamp_to_range`` reads only the part of the window the calendar is
+    complete for, instead of refusing a window that reaches outside it. A
+    caller that inspects stored history uses it; a caller that decides on the
+    sessions must not.
+    """
+
+    calendar = get_calendar_record(context, uid=str(calendar_uid))
+    if calendar is None:
+        raise LookupError(f"Calendar {calendar_uid} was not found.")
+    start, end = ensure_date_range(start_date, end_date)
+    if clamp_to_range:
+        valid_from = _date_or_none(calendar.get("valid_from"))
+        valid_to = _date_or_none(calendar.get("valid_to"))
+        start = start if valid_from is None else max(start, valid_from)
+        end = end if valid_to is None else min(end, valid_to)
+        if end < start:
+            return []
+    definition = load_calendar_definition(context, calendar=calendar, start_date=start, end_date=end)
+    return [
+        {
+            "calendar_uid": str(calendar_uid),
+            "local_date": session.local_date,
+            "session_label": session.session_label,
+            "opens_at": session.opens_at,
+            "closes_at": session.closes_at,
+            "timezone": session.timezone,
+            "is_primary": session.is_primary,
+        }
+        for session in compute_sessions(definition, start, end, session_label=session_label)
+    ]
+
+
+def _window_definition(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date | str,
+    end_date: dt.date | str,
+) -> Any:
+    calendar = get_calendar_record(context, uid=calendar_uid)
+    if calendar is None:
+        return None
+    start, end = ensure_date_range(start_date, end_date)
+    return load_calendar_definition(context, calendar=calendar, start_date=start, end_date=end)
+
+
+def list_calendar_session_rule_records_page(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    session_label: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> dict[str, Any]:
+    statement = select(CalendarSessionRuleTable).where(
+        CalendarSessionRuleTable.calendar_uid == calendar_uid
+    )
+    if session_label not in (None, ""):
+        statement = statement.where(CalendarSessionRuleTable.session_label == str(session_label))
     return _execute_collection_page(
         context,
-        statement=_calendar_session_list_statement(
-            calendar_uid=calendar_uid,
-            start_date=start_date,
-            end_date=end_date,
-            session_label=session_label,
-            is_primary=is_primary,
+        statement=statement.order_by(
+            CalendarSessionRuleTable.session_label,
+            CalendarSessionRuleTable.effective_from,
+            CalendarSessionRuleTable.uid,
         ),
         limit=limit,
         offset=offset,
     )
 
 
-def get_calendar_session_record(
+def get_calendar_session_rule_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
 ) -> dict[str, Any] | None:
-    row = _first_operation_row(get_model_by_uid(context, model=CalendarSessionTable, uid=uid))
+    row = _first_operation_row(get_model_by_uid(context, model=CalendarSessionRuleTable, uid=uid))
     if not _belongs_to_calendar(row, calendar_uid):
         return None
     return row
 
 
-def create_calendar_session_record(
+def create_calendar_session_rule_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     **values: Any,
 ) -> dict[str, Any]:
-    payload = CalendarSessionCreate(
+    payload = CalendarSessionRuleCreate(
         calendar_uid=calendar_uid,
         **_without_calendar_uid(values),
     ).model_dump()
-    row = _first_operation_row(create_model(context, model=CalendarSessionTable, values=payload))
+    row = _first_operation_row(
+        create_model(context, model=CalendarSessionRuleTable, values=payload)
+    )
     if row is None:
-        raise RuntimeError("Calendar session creation did not return a calendar session row.")
+        raise RuntimeError("Calendar session rule creation did not return a row.")
     return row
 
 
-def update_calendar_session_record(
+def update_calendar_session_rule_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
     **values: Any,
 ) -> dict[str, Any] | None:
-    existing = get_calendar_session_record(context, calendar_uid=calendar_uid, uid=uid)
+    existing = get_calendar_session_rule_record(context, calendar_uid=calendar_uid, uid=uid)
     if existing is None:
         return None
 
-    payload = CalendarSessionUpdate(**values).model_dump(exclude_unset=True)
+    payload = CalendarSessionRuleUpdate(**values).model_dump(exclude_unset=True)
     if not payload:
         return existing
+    validate_rule_update(existing, payload)
 
     row = _first_operation_row(
-        update_model(context, model=CalendarSessionTable, uid=uid, values=payload)
+        update_model(context, model=CalendarSessionRuleTable, uid=uid, values=payload)
     )
-    return row or get_calendar_session_record(context, calendar_uid=calendar_uid, uid=uid)
+    return row or get_calendar_session_rule_record(context, calendar_uid=calendar_uid, uid=uid)
 
 
-def delete_calendar_session_record(
+def delete_calendar_session_rule_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
 ) -> bool:
-    existing = get_calendar_session_record(context, calendar_uid=calendar_uid, uid=uid)
+    existing = get_calendar_session_rule_record(context, calendar_uid=calendar_uid, uid=uid)
     if existing is None:
         return False
 
-    delete_model(context, model=CalendarSessionTable, uid=uid)
+    delete_model(context, model=CalendarSessionRuleTable, uid=uid)
     return True
 
 
-def bulk_upsert_calendar_session_records(
+def bulk_upsert_calendar_session_rule_records(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     rows: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     payloads = [
-        CalendarSessionUpsert(
+        CalendarSessionRuleUpsert(
             calendar_uid=calendar_uid,
             **_without_calendar_uid(row),
         ).model_dump()
@@ -532,152 +515,187 @@ def bulk_upsert_calendar_session_records(
     if not payloads:
         return []
 
-    return operation_result_rows(bulk_upsert_calendar_sessions(context, payloads))
+    return operation_result_rows(bulk_upsert_calendar_session_rules(context, payloads))
 
 
-def list_calendar_event_records(
+def list_calendar_exception_records_page(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     start_date: dt.date | str | None = None,
     end_date: dt.date | str | None = None,
-    event_type: str | None = None,
-    event_label: str | None = None,
-    target_type: str | None = None,
-    target_uid: str | None = None,
-    target_identifier: str | None = None,
+    session_label: str | None = None,
+    exception_type: str | None = None,
+    source: str | None = None,
     limit: int = 500,
     offset: int = 0,
-) -> list[dict[str, Any]]:
-    statement = _calendar_event_list_statement(
-        calendar_uid=calendar_uid,
+) -> dict[str, Any]:
+    statement = select(CalendarExceptionTable).where(
+        CalendarExceptionTable.calendar_uid == calendar_uid
+    )
+    statement = _apply_date_window(
+        statement,
+        model=CalendarExceptionTable,
+        field_name="local_date",
         start_date=start_date,
         end_date=end_date,
-        event_type=event_type,
-        event_label=event_label,
-        target_type=target_type,
-        target_uid=target_uid,
-        target_identifier=target_identifier,
     )
-    return _execute_limited_select(
-        context,
-        statement=statement,
-        limit=limit,
-        offset=offset,
-    )
-
-
-def list_calendar_event_records_page(
-    context: MarketsRepositoryContext,
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    event_type: str | None = None,
-    event_label: str | None = None,
-    target_type: str | None = None,
-    target_uid: str | None = None,
-    target_identifier: str | None = None,
-    limit: int = 500,
-    offset: int = 0,
-) -> dict[str, Any]:
+    for field_name, value in {
+        "session_label": session_label,
+        "exception_type": exception_type,
+        "source": source,
+    }.items():
+        if value not in (None, ""):
+            statement = statement.where(getattr(CalendarExceptionTable, field_name) == value)
     return _execute_collection_page(
         context,
-        statement=_calendar_event_list_statement(
-            calendar_uid=calendar_uid,
-            start_date=start_date,
-            end_date=end_date,
-            event_type=event_type,
-            event_label=event_label,
-            target_type=target_type,
-            target_uid=target_uid,
-            target_identifier=target_identifier,
+        statement=statement.order_by(
+            CalendarExceptionTable.local_date,
+            CalendarExceptionTable.session_label,
+            CalendarExceptionTable.exception_type,
+            CalendarExceptionTable.uid,
         ),
         limit=limit,
         offset=offset,
     )
 
 
-def get_calendar_event_record(
+def get_calendar_exception_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
 ) -> dict[str, Any] | None:
-    row = _first_operation_row(get_model_by_uid(context, model=CalendarEventTable, uid=uid))
+    row = _first_operation_row(get_model_by_uid(context, model=CalendarExceptionTable, uid=uid))
     if not _belongs_to_calendar(row, calendar_uid):
         return None
     return row
 
 
-def create_calendar_event_record(
+def create_calendar_exception_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     **values: Any,
 ) -> dict[str, Any]:
-    payload = CalendarEventCreate(
-        calendar_uid=calendar_uid,
-        **_without_calendar_uid(values),
-    ).model_dump()
-    row = _first_operation_row(create_model(context, model=CalendarEventTable, values=payload))
+    """Create one exception with ``source="user"``."""
+
+    payload = _user_exception_payload(CalendarExceptionCreate, calendar_uid, values)
+    _refuse_closed_conflicts(context, calendar_uid=calendar_uid, payloads=[payload])
+    row = _first_operation_row(create_model(context, model=CalendarExceptionTable, values=payload))
     if row is None:
-        raise RuntimeError("Calendar event creation did not return a calendar event row.")
+        raise RuntimeError("Calendar exception creation did not return a row.")
     return row
 
 
-def update_calendar_event_record(
+def update_calendar_exception_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
     **values: Any,
 ) -> dict[str, Any] | None:
-    existing = get_calendar_event_record(context, calendar_uid=calendar_uid, uid=uid)
+    existing = get_calendar_exception_record(context, calendar_uid=calendar_uid, uid=uid)
     if existing is None:
         return None
 
-    payload = CalendarEventUpdate(**values).model_dump(exclude_unset=True)
+    payload = CalendarExceptionUpdate(**values).model_dump(exclude_unset=True)
     if not payload:
         return existing
+    validate_exception_update(existing, payload)
 
     row = _first_operation_row(
-        update_model(context, model=CalendarEventTable, uid=uid, values=payload)
+        update_model(context, model=CalendarExceptionTable, uid=uid, values=payload)
     )
-    return row or get_calendar_event_record(context, calendar_uid=calendar_uid, uid=uid)
+    return row or get_calendar_exception_record(context, calendar_uid=calendar_uid, uid=uid)
 
 
-def delete_calendar_event_record(
+def delete_calendar_exception_record(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     uid: str,
 ) -> bool:
-    existing = get_calendar_event_record(context, calendar_uid=calendar_uid, uid=uid)
+    existing = get_calendar_exception_record(context, calendar_uid=calendar_uid, uid=uid)
     if existing is None:
         return False
 
-    delete_model(context, model=CalendarEventTable, uid=uid)
+    delete_model(context, model=CalendarExceptionTable, uid=uid)
     return True
 
 
-def bulk_upsert_calendar_event_records(
+def bulk_upsert_calendar_exception_records(
     context: MarketsRepositoryContext,
     *,
     calendar_uid: str,
     rows: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    payloads = [
-        CalendarEventUpsert(
-            calendar_uid=calendar_uid,
-            **_without_calendar_uid(row),
-        ).model_dump()
-        for row in rows
-    ]
+    """Upsert exceptions with ``source="user"``."""
+
+    payloads = [_user_exception_payload(CalendarExceptionUpsert, calendar_uid, row) for row in rows]
     if not payloads:
         return []
 
-    return operation_result_rows(bulk_upsert_calendar_events(context, payloads))
+    _refuse_closed_conflicts(context, calendar_uid=calendar_uid, payloads=payloads)
+    return operation_result_rows(bulk_upsert_calendar_exceptions(context, payloads))
+
+
+_CONFLICT_CHECK_DATES = 100
+"""Dates per read of the stored user exceptions; a governed read returns at most 1,000 rows."""
+
+
+def _user_exception_payload(
+    payload_model: type[CalendarExceptionCreate],
+    calendar_uid: str,
+    values: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = payload_model(calendar_uid=calendar_uid, **_without_calendar_uid(values))
+    return {**payload.model_dump(), "source": USER_SOURCE}
+
+
+def _refuse_closed_conflicts(
+    context: MarketsRepositoryContext,
+    *,
+    calendar_uid: str,
+    payloads: Sequence[Mapping[str, Any]],
+) -> None:
+    """Refuse a CLOSED row next to another user row for the same date and session.
+
+    The stored user rows of the written dates and the rows being written are
+    checked together.
+    """
+
+    dates = sorted({payload["local_date"] for payload in payloads})
+    stored: list[dict[str, Any]] = []
+    for index in range(0, len(dates), _CONFLICT_CHECK_DATES):
+        statement = (
+            select(
+                CalendarExceptionTable.local_date,
+                CalendarExceptionTable.session_label,
+                CalendarExceptionTable.exception_type,
+            )
+            .where(CalendarExceptionTable.calendar_uid == calendar_uid)
+            .where(CalendarExceptionTable.source == USER_SOURCE)
+            .where(
+                CalendarExceptionTable.local_date.in_(dates[index : index + _CONFLICT_CHECK_DATES])
+            )
+        )
+        # A date and session holds at most four user rows, one per exception type.
+        stored.extend(
+            _execute_limited_select(context, statement=statement, limit=1000, offset=0)
+        )
+    types_by_session: dict[tuple[str, str], set[str]] = {}
+    for row in [*stored, *payloads]:
+        key = (coerce_local_date(row["local_date"]).isoformat(), str(row["session_label"] or ""))
+        types_by_session.setdefault(key, set()).add(str(row["exception_type"]))
+    for (local_date, session_label), types in sorted(types_by_session.items()):
+        if EXCEPTION_CLOSED in types and len(types) > 1:
+            session = f"session {session_label!r}" if session_label else "the whole day"
+            raise ValueError(
+                f"{local_date} would have a CLOSED exception next to "
+                f"{', '.join(sorted(types - {EXCEPTION_CLOSED}))} for {session}. "
+                "A closed session cannot also open or close at another time."
+            )
 
 
 def _calendar_list_statement(
@@ -720,100 +738,6 @@ def _calendar_list_statement(
     return statement.order_by(
         func.lower(CalendarTable.unique_identifier),
         CalendarTable.uid,
-    )
-
-
-def _calendar_date_list_statement(
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    is_business_day: bool | None = None,
-    is_holiday: bool | None = None,
-    is_weekend: bool | None = None,
-    is_early_close: bool | None = None,
-) -> Any:
-    statement = select(CalendarDateTable).where(CalendarDateTable.calendar_uid == calendar_uid)
-    statement = _apply_date_window(
-        statement,
-        model=CalendarDateTable,
-        field_name="local_date",
-        start_date=start_date,
-        end_date=end_date,
-    )
-    for field_name, value in {
-        "is_business_day": is_business_day,
-        "is_holiday": is_holiday,
-        "is_weekend": is_weekend,
-        "is_early_close": is_early_close,
-    }.items():
-        if value is not None:
-            statement = statement.where(getattr(CalendarDateTable, field_name) == value)
-    return statement.order_by(CalendarDateTable.local_date, CalendarDateTable.uid)
-
-
-def _calendar_session_list_statement(
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    session_label: str | None = None,
-    is_primary: bool | None = None,
-) -> Any:
-    statement = select(CalendarSessionTable).where(
-        CalendarSessionTable.calendar_uid == calendar_uid
-    )
-    statement = _apply_date_window(
-        statement,
-        model=CalendarSessionTable,
-        field_name="local_date",
-        start_date=start_date,
-        end_date=end_date,
-    )
-    if session_label not in (None, ""):
-        statement = statement.where(CalendarSessionTable.session_label == str(session_label))
-    if is_primary is not None:
-        statement = statement.where(CalendarSessionTable.is_primary == is_primary)
-    return statement.order_by(
-        CalendarSessionTable.local_date,
-        CalendarSessionTable.session_label,
-        CalendarSessionTable.uid,
-    )
-
-
-def _calendar_event_list_statement(
-    *,
-    calendar_uid: str,
-    start_date: dt.date | str | None = None,
-    end_date: dt.date | str | None = None,
-    event_type: str | None = None,
-    event_label: str | None = None,
-    target_type: str | None = None,
-    target_uid: str | None = None,
-    target_identifier: str | None = None,
-) -> Any:
-    statement = select(CalendarEventTable).where(CalendarEventTable.calendar_uid == calendar_uid)
-    statement = _apply_date_window(
-        statement,
-        model=CalendarEventTable,
-        field_name="event_date",
-        start_date=start_date,
-        end_date=end_date,
-    )
-    for field_name, value in {
-        "event_type": event_type,
-        "event_label": event_label,
-        "target_type": target_type,
-        "target_uid": target_uid,
-        "target_identifier": target_identifier,
-    }.items():
-        if value not in (None, ""):
-            statement = statement.where(getattr(CalendarEventTable, field_name) == value)
-    return statement.order_by(
-        CalendarEventTable.event_date,
-        CalendarEventTable.event_type,
-        CalendarEventTable.event_label,
-        CalendarEventTable.uid,
     )
 
 
@@ -955,9 +879,18 @@ def _matches_search(
 
 
 def _belongs_to_calendar(row: Mapping[str, Any] | None, calendar_uid: str) -> bool:
+    """Whether a rule or exception row is the given calendar's.
+
+    The uids are compared as UUIDs: SQLite returns 32 hex characters and a caller
+    may write the same uid with dashes or in upper case.
+    """
+
     if row is None:
         return False
-    return str(row.get("calendar_uid")) == str(calendar_uid)
+    try:
+        return uuid.UUID(str(row.get("calendar_uid"))) == uuid.UUID(str(calendar_uid))
+    except ValueError:
+        return False
 
 
 def _without_calendar_uid(values: Mapping[str, Any]) -> dict[str, Any]:
@@ -967,32 +900,26 @@ def _without_calendar_uid(values: Mapping[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
-    "bulk_upsert_calendar_date_records",
-    "bulk_upsert_calendar_event_records",
-    "bulk_upsert_calendar_session_records",
-    "create_calendar_date_record",
-    "create_calendar_event_record",
+    "bulk_upsert_calendar_exception_records",
+    "bulk_upsert_calendar_session_rule_records",
+    "create_calendar_exception_record",
     "create_calendar_record",
-    "create_calendar_session_record",
-    "delete_calendar_date_record",
-    "delete_calendar_event_record",
+    "create_calendar_session_rule_record",
+    "delete_calendar_exception_record",
     "delete_calendar_record",
-    "delete_calendar_session_record",
-    "get_calendar_date_record",
-    "get_calendar_event_record",
+    "delete_calendar_session_rule_record",
+    "get_calendar_exception_record",
     "get_calendar_frontend_detail_summary",
     "get_calendar_record",
-    "get_calendar_session_record",
-    "list_calendar_date_records",
+    "get_calendar_session_rule_record",
     "list_calendar_date_records_page",
-    "list_calendar_event_records",
-    "list_calendar_event_records_page",
+    "list_calendar_exception_records_page",
     "list_calendar_records",
     "list_calendar_records_page",
-    "list_calendar_session_records",
     "list_calendar_session_records_page",
-    "update_calendar_date_record",
-    "update_calendar_event_record",
+    "list_calendar_session_rule_records_page",
+    "read_calendar_session_records",
+    "update_calendar_exception_record",
     "update_calendar_record",
-    "update_calendar_session_record",
+    "update_calendar_session_rule_record",
 ]

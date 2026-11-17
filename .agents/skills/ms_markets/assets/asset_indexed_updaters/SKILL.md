@@ -293,6 +293,18 @@ from the storage MetaTable identifier through `_required_output_table()`.
 `asset_list` is updater scope. It must not define the storage identity of the
 published dataset.
 
+A scope names assets and nothing else. It never carries a calendar:
+
+- `InterpolatedPrices` refuses a scope mapping with a `calendar` key.
+- An asset's trading calendar is its stored `AssetCalendar` link
+  (`AssetCalendar.upsert(asset_uid=..., calendar_uid=...)`). Every asset in the
+  scope of a price interpolation must have one; an unlinked asset fails the
+  whole run and is named in the error. There is no default calendar.
+- `time_index` is the time of observation. A price source stamps each bar at its
+  end, a daily bar at its session close, with the open in `open_time`. A bar
+  stamped at its open is not handled; a source that receives such bars shifts
+  them to the close itself.
+
 Asset-scoped configuration has two categories:
 
 - normal `TimeIndexTableUpdateConfig` fields, which enter `update_hash`

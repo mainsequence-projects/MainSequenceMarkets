@@ -17,6 +17,12 @@ python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
+Every asset the portfolio prices must be linked to a stored calendar with
+`AssetCalendar` before interpolation runs. The run script links the example
+assets to the `CRYPTO_24_7` calendar. An asset with no link fails the price
+update, and the error names it; see
+[An asset that gets price bars needs a trading calendar](01-assets.md#an-asset-that-gets-price-bars-needs-a-trading-calendar).
+
 The preparation script derives the configured interpolated price storage from
 the registered `ExternalPricesStorage` table and the example interpolation
 policy, finds or generates the real dynamic Alembic revision under the active
@@ -85,8 +91,8 @@ reserved for true execution at a signal's original observation timestamp.
 `CalendarEventSignal` requires an explicit persisted calendar identifier and
 an explicit calendar-event updater or table reference. It does not read a
 calendar behind the dependency graph or fall back to a process-local calendar.
-Ensure the required `CalendarSession` horizon exists before executing the
-graph.
+Create the calendar with its session rules and exceptions before executing the
+graph; see [Calendars](02-calendars.md).
 
 Each execution or valuation window is seeded with the latest eligible row for
 every required asset using one set-based `get_last_observation(...)` request.

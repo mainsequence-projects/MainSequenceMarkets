@@ -294,7 +294,10 @@ def _portfolio_calendar_reference(
         "detail_url": f"/api/v1/calendar/{calendar_uid}/" if calendar_uid else None,
         "dates_url": f"/api/v1/calendar/{calendar_uid}/dates/" if calendar_uid else None,
         "sessions_url": f"/api/v1/calendar/{calendar_uid}/sessions/" if calendar_uid else None,
-        "events_url": f"/api/v1/calendar/{calendar_uid}/events/" if calendar_uid else None,
+        "rules_url": f"/api/v1/calendar/{calendar_uid}/rules/" if calendar_uid else None,
+        "exceptions_url": (
+            f"/api/v1/calendar/{calendar_uid}/exceptions/" if calendar_uid else None
+        ),
     }
 
 

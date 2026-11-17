@@ -299,10 +299,12 @@ class MarketsMetaTableRow(BaseModel):
         cls: type[RowT],
         payloads: Sequence[BaseModel | Mapping[str, Any]],
     ) -> list[RowT]:
-        """Upsert many rows on ``__upsert_keys__`` in one statement.
+        """Upsert many rows on ``__upsert_keys__``; every row comes back, in order.
 
         Each payload is validated through the row module's ``<Row>Upsert`` model
-        when it defines one, as :meth:`upsert` does.
+        when it defines one, as :meth:`upsert` does. A list too long for one
+        statement is written in several, each its own transaction; see
+        ``msm.repositories.crud.bulk_upsert_model``.
         """
 
         from msm.repositories.crud import bulk_upsert_model

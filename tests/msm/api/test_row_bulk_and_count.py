@@ -116,8 +116,8 @@ def test_search_model_orders_by_validated_columns(offline_postgresql_runtime) ->
 
 
 def test_range_filters_split_by_suffix_and_compile_to_bounds(monkeypatch, runtime) -> None:
-    from msm.api.calendars import CalendarSession
-    from msm.models import CalendarSessionTable
+    from msm.api.calendars import CalendarException
+    from msm.models import CalendarExceptionTable
     from msm.repositories.crud import _filtered_model_select
 
     seen: dict[str, Any] = {}
@@ -126,7 +126,7 @@ def test_range_filters_split_by_suffix_and_compile_to_bounds(monkeypatch, runtim
         lambda context, **kwargs: seen.update(kwargs) or {"rows": []},
     )
 
-    CalendarSession.filter(
+    CalendarException.filter(
         session_label="regular",
         local_date__gte=dt.date(2026, 1, 1),
         local_date__lt=dt.date(2026, 2, 1),
@@ -136,15 +136,15 @@ def test_range_filters_split_by_suffix_and_compile_to_bounds(monkeypatch, runtim
     assert seen["range_filters"] == {
         "local_date": {"gte": dt.date(2026, 1, 1), "lt": dt.date(2026, 2, 1)}
     }
-    statement = _filtered_model_select(CalendarSessionTable, range_filters=seen["range_filters"])
+    statement = _filtered_model_select(CalendarExceptionTable, range_filters=seen["range_filters"])
     compiled = statement.compile()
     assert "local_date >= :local_date_1" in str(compiled)
     assert "local_date < :local_date_2" in str(compiled)
     assert compiled.params == {"local_date_1": dt.date(2026, 1, 1), "local_date_2": dt.date(2026, 2, 1)}
     with pytest.raises(ValueError, match="Unknown range lookup"):
-        _filtered_model_select(CalendarSessionTable, range_filters={"local_date": {"after": 1}})
+        _filtered_model_select(CalendarExceptionTable, range_filters={"local_date": {"after": 1}})
     with pytest.raises(ValueError):
-        CalendarSession.filter(unknown_column__gte=1)
+        CalendarException.filter(unknown_column__gte=1)
 
 
 def test_index_upsert_many_keeps_the_calculation_method_guard(monkeypatch, runtime) -> None:

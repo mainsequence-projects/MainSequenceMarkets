@@ -97,6 +97,27 @@ class MarketsConflictError(ValueError):
     """The Markets API reported a conflict (HTTP 409)."""
 
 
+UPSTREAM_ERROR_TYPE = "UpstreamApiError"
+"""``error_type`` of the Markets API's answer when an API it calls refused or failed."""
+
+
+class MarketsUpstreamError(MarketsApiError):
+    """An API the Markets API depends on, normally MetaTables, refused or failed its call.
+
+    The message carries the reason that API gave. ``status_code`` is ``502`` when it
+    refused the call, which the same request will be refused again, and ``503`` when
+    it failed or could not be reached, which ``retryable`` reports.
+    """
+
+    def __init__(self, detail: str, *, status_code: int) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+
+    @property
+    def retryable(self) -> bool:
+        return self.status_code == 503
+
+
 class MarketsOperationUnsupported(MarketsApiError, NotImplementedError):
     """The operation is not offered: the Markets API answers HTTP 501.
 
@@ -486,6 +507,8 @@ class _Annotated:
 def raise_for_error(status_code: int, detail: str, error_type: str | None) -> None:
     """Re-raise a remote failure as the exception the runtime backend would raise."""
 
+    if error_type == UPSTREAM_ERROR_TYPE:
+        raise MarketsUpstreamError(detail, status_code=status_code)
     if status_code in (401, 403):
         raise MarketsAccessError(detail)
     if status_code == 404:
@@ -512,8 +535,10 @@ __all__ = [
     "MarketsApiError",
     "MarketsConflictError",
     "MarketsOperationUnsupported",
+    "MarketsUpstreamError",
     "RemoteBackend",
     "RemoteRowOperations",
+    "UPSTREAM_ERROR_TYPE",
     "WRITE_OPERATIONS",
     "active_remote_backend",
     "decode_arguments",

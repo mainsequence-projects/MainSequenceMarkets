@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -36,6 +36,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from metatables import (
     MetaTableCompiledSQLDialect,
     MetaTableCompiledSQLOperation,
+    MetaTableCompiledSQLTransaction,
     MetaTableTransactionGuardError,
 )
 from metatables.compiled_sql.v1 import GuardedStatement
@@ -51,6 +52,7 @@ from .base import (
     execute_markets_write,
     resolve_markets_sql_target,
     values_parameter,
+    with_max_rows,
 )
 
 _MISSING = object()
@@ -150,10 +152,32 @@ UPSERT_STATUS_GUARD = "upsert_status"
 """Label of the SQLite statement that refuses an upsert whose rows changed after their
 statuses were read; ``upsert_model`` and ``bulk_upsert_model`` then read them again."""
 
+MAX_STATEMENT_SQL_CHARACTERS = 1_000_000
+"""Characters of SQL text MetaTables accepts in one statement."""
+
+MAX_STATEMENT_PARAMETERS = 32_766
+"""Values one statement binds: SQLite's default limit. PostgreSQL binds at most 65,535."""
+
+MAX_STATEMENT_ROWS = 10_000
+"""Rows MetaTables returns from one statement, so the most one upsert statement writes."""
+
+MAX_STATEMENT_ROW_BYTES = 2_500_000
+"""Estimated bytes of the rows one upsert statement sends and gets back.
+
+MetaTables accepts a request of 12,100,000 bytes, which on SQLite carries a row's values up
+to three times, and answers a statement with at most 8 MiB of rows.
+"""
+
 _UPSERT_INDEX_COLUMN = "upsert_index"
 _EXPECTED_STATUS_COLUMN = "expected_status"
 _UPSERT_ATTEMPTS = 3
 _EXCLUDED = object()
+_SIZING_ROWS = 16
+_SIZING_MARGIN = 0.8
+
+
+class _StatementTooLong(ValueError):
+    """An upsert statement MetaTables would refuse; ``bulk_upsert_model`` sends fewer rows."""
 
 
 @dataclass(frozen=True)
@@ -189,6 +213,12 @@ class _Upsert:
 
         return {column: value for column, value in self.updates.items() if column.onupdate is None}
 
+    def batch(self, start: int, stop: int) -> _Upsert:
+        """The upsert of rows ``start`` up to ``stop``, their parameters numbered from 0."""
+
+        columns = self.columns[start:stop]
+        return replace(self, rows=_bound_rows(columns, single=self.single), columns=columns)
+
 
 def build_upsert_model_operation(
     context: MarketsOperationContext,
@@ -203,8 +233,11 @@ def build_upsert_model_operation(
 
     upsert = _single_upsert(model, values, conflict_columns)
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
-    return _compile_upsert(
-        context, upsert, data_source_uid=data_source_uid, dialect=dialect, statuses=statuses
+    return _within_statement_limits(
+        upsert,
+        _compile_upsert(
+            context, upsert, data_source_uid=data_source_uid, dialect=dialect, statuses=statuses
+        ),
     )
 
 
@@ -231,12 +264,20 @@ def build_bulk_upsert_model_operation(
     statement list that refuses, with the ``upsert_status`` guard, rows whose status
     changed since, then upserts and returns the rows. :func:`bulk_upsert_model` runs
     both and reads again when the guard refuses.
+
+    This builds one write for all the rows and raises ``ValueError`` when one of its
+    statements is over ``MAX_STATEMENT_SQL_CHARACTERS`` or ``MAX_STATEMENT_PARAMETERS``,
+    which MetaTables or the database would refuse. :func:`bulk_upsert_model` sends such a
+    list in several statements.
     """
 
     upsert = _bulk_upsert(model, values, conflict_columns)
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
-    return _compile_upsert(
-        context, upsert, data_source_uid=data_source_uid, dialect=dialect, statuses=statuses
+    return _within_statement_limits(
+        upsert,
+        _compile_upsert(
+            context, upsert, data_source_uid=data_source_uid, dialect=dialect, statuses=statuses
+        ),
     )
 
 
@@ -247,9 +288,67 @@ def bulk_upsert_model(
     values: Sequence[Mapping[str, Any]],
     conflict_columns: Sequence[str],
 ) -> dict[str, Any]:
-    """Upsert many rows; each returned row carries its ``upsert_status``."""
+    """Upsert many rows; each returned row carries its ``upsert_status``.
 
-    return _run_upsert(context, _bulk_upsert(model, values, conflict_columns))
+    Every input row comes back, in input order, whatever the length of ``values``. The
+    rows go to MetaTables in as many statements as its limits need: a statement's SQL
+    text holds at most ``MAX_STATEMENT_SQL_CHARACTERS`` characters, binds at most
+    ``MAX_STATEMENT_PARAMETERS`` values and returns at most ``MAX_STATEMENT_ROWS`` rows,
+    and its rows are estimated at no more than ``MAX_STATEMENT_ROW_BYTES`` bytes.
+
+    Each statement is its own transaction: a MetaTables transaction returns only its
+    last statement's rows, and a row's status comes from the statement that wrote it. A
+    list that needs several statements is therefore not written atomically. When a
+    statement fails, the rows of the statements before it stay written and the error is
+    raised; calling again with the same rows finishes the write, and the rows already
+    written come back ``unchanged``. The conflict keys of the whole list are checked
+    before anything is written.
+
+    The answer of a list sent in several statements has no ``pagination`` or
+    ``max_rows``, which describe one statement. ``truncated`` is true when MetaTables cut
+    the answer of a statement at its 8 MiB: those rows were written and are not in ``rows``.
+    """
+
+    upsert = _bulk_upsert(model, values, conflict_columns)
+    data_source_uid, dialect = resolve_markets_sql_target(context)
+    total = len(upsert.columns)
+    size = total
+    if total > _SIZING_ROWS:
+        size = _statement_rows(context, upsert, data_source_uid=data_source_uid, dialect=dialect)
+    row_bytes = _row_bytes(upsert)
+    results: list[dict[str, Any]] = []
+    start = 0
+    while start < total:
+        stop = _batch_stop(row_bytes, start, size)
+        batch = upsert if (start, stop) == (0, total) else upsert.batch(start, stop)
+        rows = stop - start
+        try:
+            result = _run_upsert(
+                with_max_rows(context, rows),
+                batch,
+                data_source_uid=data_source_uid,
+                dialect=dialect,
+            )
+        except _StatementTooLong:
+            # These rows need more SQL text than the first rows the size was measured on.
+            if rows == 1:
+                raise
+            size = rows // 2
+            continue
+        results.append(result)
+        start += rows
+    if len(results) == 1:
+        return results[0]
+    merged = {
+        key: value for key, value in results[0].items() if key not in ("pagination", "max_rows")
+    }
+    rows = [row for result in results for row in _result_rows(result)]
+    return {
+        **merged,
+        "rows": rows,
+        "row_count": len(rows),
+        "truncated": any(result.get("truncated") for result in results),
+    }
 
 
 def upsert_model(
@@ -261,7 +360,9 @@ def upsert_model(
 ) -> dict[str, Any]:
     """Upsert one row; the returned row carries its ``upsert_status``."""
 
-    return _run_upsert(context, _single_upsert(model, values, conflict_columns))
+    upsert = _single_upsert(model, values, conflict_columns)
+    data_source_uid, dialect = resolve_markets_sql_target(context)
+    return _run_upsert(context, upsert, data_source_uid=data_source_uid, dialect=dialect)
 
 
 def _single_upsert(
@@ -340,15 +441,7 @@ def _upsert(
             updates[target] = update_value(key, value)
     return _Upsert(
         model=model,
-        rows=[
-            {
-                target: bindparam(
-                    target.key if single else f"{target.key}_m{index}", value, type_=target.type
-                )
-                for target, value in row.items()
-            }
-            for index, row in enumerate(columns)
-        ],
+        rows=_bound_rows(columns, single=single),
         columns=columns,
         keys=keys,
         updates=updates,
@@ -356,16 +449,127 @@ def _upsert(
     )
 
 
-def _run_upsert(context: MarketsOperationContext, upsert: _Upsert) -> dict[str, Any]:
-    data_source_uid, dialect = resolve_markets_sql_target(context)
+def _bound_rows(columns: Sequence[Mapping[Column, Any]], *, single: bool) -> list[dict[Column, Any]]:
+    return [
+        {
+            target: bindparam(
+                target.key if single else f"{target.key}_m{index}", value, type_=target.type
+            )
+            for target, value in row.items()
+        }
+        for index, row in enumerate(columns)
+    ]
+
+
+def _statement_rows(
+    context: MarketsOperationContext,
+    upsert: _Upsert,
+    *,
+    data_source_uid: str,
+    dialect: MetaTableCompiledSQLDialect,
+) -> int:
+    """Rows of ``upsert`` whose statements stay inside the statement limits.
+
+    A statement's SQL text and bound values grow by the same amount with each row, so
+    both are measured on the first rows. ``_SIZING_MARGIN`` leaves room for the longer
+    parameter names of a longer statement.
+    """
+
+    def measure(rows: int) -> tuple[int, int]:
+        statements = _statements(
+            _compile_upsert(
+                context,
+                upsert.batch(0, rows),
+                data_source_uid=data_source_uid,
+                dialect=dialect,
+                statuses=["inserted"] * rows if dialect == "sqlite" else None,
+            )
+        )
+        return (
+            max(len(statement.sql) for statement in statements),
+            max(len(statement.parameters) for statement in statements),
+        )
+
+    one, sample = measure(1), measure(_SIZING_ROWS)
+    rows = MAX_STATEMENT_ROWS
+    limits = (MAX_STATEMENT_SQL_CHARACTERS, MAX_STATEMENT_PARAMETERS)
+    for limit, first, many in zip(limits, one, sample, strict=True):
+        per_row = (many - first) / (_SIZING_ROWS - 1)
+        if per_row > 0:
+            rows = min(rows, int((_SIZING_MARGIN * limit - first) / per_row) + 1)
+    return max(rows, 1)
+
+
+def _row_bytes(upsert: _Upsert) -> list[int]:
+    """An estimate of each row's bytes on the wire, sent and returned.
+
+    A returned row names every column of the table. A column the row gives no value for
+    is counted as a generated one, such as a uid or a timestamp.
+    """
+
+    names = sum(len(column.name) + 46 for column in upsert.table.c)
+    return [names + sum(len(str(value)) for value in row.values()) for row in upsert.columns]
+
+
+def _batch_stop(row_bytes: Sequence[int], start: int, rows: int) -> int:
+    """Where the batch from ``start`` ends: ``rows`` rows or ``MAX_STATEMENT_ROW_BYTES`` on."""
+
+    stop, total = start, 0
+    while stop < min(start + rows, len(row_bytes)):
+        total += row_bytes[stop]
+        if total > MAX_STATEMENT_ROW_BYTES and stop > start:
+            break
+        stop += 1
+    return stop
+
+
+def _statements(write: MarketsCompiledWrite) -> list[Any]:
+    if isinstance(write, MetaTableCompiledSQLTransaction):
+        return list(write.statements)
+    return [write.statement]
+
+
+def _within_statement_limits[WriteT: MarketsCompiledWrite](
+    upsert: _Upsert, write: WriteT
+) -> WriteT:
+    """``write``, or ``ValueError`` when MetaTables or the database would refuse a statement."""
+
+    for statement in _statements(write):
+        for size, limit, unit in (
+            (len(statement.sql), MAX_STATEMENT_SQL_CHARACTERS, "characters of SQL text"),
+            (len(statement.parameters), MAX_STATEMENT_PARAMETERS, "bound values"),
+        ):
+            if size > limit:
+                raise _StatementTooLong(
+                    f"An upsert of {len(upsert.columns)} {upsert.model.__name__} rows needs a "
+                    f"statement of {size:,} {unit}; the limit is {limit:,}. bulk_upsert_model "
+                    "sends a longer list in several statements."
+                )
+    return write
+
+
+def _run_upsert(
+    context: MarketsOperationContext,
+    upsert: _Upsert,
+    *,
+    data_source_uid: str,
+    dialect: MetaTableCompiledSQLDialect,
+) -> dict[str, Any]:
     for attempt in range(1, _UPSERT_ATTEMPTS + 1):
         statuses = None
         if dialect == "sqlite":
             statuses = _read_upsert_statuses(
                 context, upsert, data_source_uid=data_source_uid, dialect=dialect
             )
-        write = _compile_upsert(
-            context, upsert, data_source_uid=data_source_uid, dialect=dialect, statuses=statuses
+        write = _within_statement_limits(
+            upsert,
+            _compile_upsert(
+                context,
+                upsert,
+                data_source_uid=data_source_uid,
+                dialect=dialect,
+                statuses=statuses,
+            ),
         )
         try:
             result = execute_markets_write(write, context=context)
@@ -487,18 +691,17 @@ def _read_upsert_statuses(
         .select_from(inputs.outerjoin(table, _keys_match(upsert, table.c, inputs.c)))
         .order_by(inputs.c[_UPSERT_INDEX_COLUMN])
     )
-    rows = _result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement,
-                context=context,
-                operation="select",
-                dialect=dialect,
-                data_source_uid=data_source_uid,
-            ),
+    read = _within_statement_limits(
+        upsert,
+        compile_markets_statement(
+            statement,
             context=context,
-        )
+            operation="select",
+            dialect=dialect,
+            data_source_uid=data_source_uid,
+        ),
     )
+    rows = _result_rows(execute_markets_operation(read, context=context))
     statuses = {int(row[_UPSERT_INDEX_COLUMN]): row["status"] for row in rows}
     return [statuses[index] for index in range(len(upsert.rows))]
 

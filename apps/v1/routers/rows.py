@@ -66,9 +66,8 @@ def _load_row_classes() -> dict[str, type]:
     import msm.api.accounts  # noqa: F401
     import msm.api.assets  # noqa: F401
     import msm.api.calendars.core  # noqa: F401
-    import msm.api.calendars.dates  # noqa: F401
-    import msm.api.calendars.events  # noqa: F401
-    import msm.api.calendars.sessions  # noqa: F401
+    import msm.api.calendars.exceptions  # noqa: F401
+    import msm.api.calendars.rules  # noqa: F401
     import msm.api.derivatives  # noqa: F401
     import msm.api.execution  # noqa: F401
     import msm.api.formula_indices  # noqa: F401
@@ -150,6 +149,18 @@ def describe_row_operations() -> list[RowResourceDescription]:
         404: {"description": "Unknown resource or operation, or the row was not found."},
         409: {"description": "The operation conflicted with existing rows."},
         501: {"description": "The operation is not offered remotely."},
+        502: {
+            "description": (
+                "An API this deployment calls, normally MetaTables, refused the call "
+                "(`UpstreamApiError`); `detail` carries its reason."
+            )
+        },
+        503: {
+            "description": (
+                "That API failed or could not be reached (`UpstreamApiError`); the "
+                "operation may be tried again."
+            )
+        },
     },
 )
 def run_row_operation(

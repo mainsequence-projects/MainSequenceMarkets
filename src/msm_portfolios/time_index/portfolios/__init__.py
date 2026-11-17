@@ -210,6 +210,7 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
                 override_update_stats=override_update_stats,
             )
         portfolio = self._resolve_portfolio_identity()
+        self._require_strategy_calendar(portfolio)
         self._resolved_unique_identifier = str(portfolio.unique_identifier)
         portfolio_weights = self._ensure_portfolio_weights_node()
         portfolio_values_result = super().run(
@@ -571,6 +572,40 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         markets_config = getattr(self, "portfolio_markets_config", None)
         front_end_details = getattr(markets_config, "front_end_details", None)
         return None if front_end_details is None else str(front_end_details.description)
+
+    def _require_strategy_calendar(self, portfolio: Any) -> None:
+        """Refuse a calendar-event strategy on another calendar than the portfolio's.
+
+        ``Portfolio.calendar_uid`` and the strategy's ``calendar_identifier`` are
+        typed separately. They must name the same stored calendar, so the
+        portfolio has one calendar (ADR 0056). Other strategies read no calendar.
+        """
+
+        from msm.api.calendars import Calendar
+        from msm_portfolios.rebalance_strategy import CalendarEventSignal
+
+        backtesting = self.portfolio_build_configuration.backtesting_weights_configuration
+        strategy = backtesting.rebalance_strategy_instance
+        if not isinstance(strategy, CalendarEventSignal):
+            return
+        strategy_calendar = Calendar.get_by_unique_identifier(strategy.calendar_identifier)
+        strategy_uid = None if strategy_calendar is None else str(strategy_calendar.uid)
+        portfolio_uid = (
+            None if portfolio.calendar_uid in (None, "") else str(portfolio.calendar_uid)
+        )
+        if strategy_uid is not None and strategy_uid == portfolio_uid:
+            return
+        portfolio_calendar = None if portfolio_uid is None else Calendar.get_by_uid(portfolio_uid)
+        portfolio_label = (
+            "no calendar"
+            if portfolio_uid is None
+            else f"calendar {getattr(portfolio_calendar, 'unique_identifier', portfolio_uid)!r}"
+        )
+        raise ValueError(
+            f"Portfolio {portfolio.unique_identifier!r} has {portfolio_label} on its row, but "
+            f"its rebalance strategy uses calendar {strategy.calendar_identifier!r}. A "
+            "CalendarEventSignal must use the calendar of Portfolio.calendar_uid."
+        )
 
     def _update_portfolio_pointers(
         self,

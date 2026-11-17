@@ -28,6 +28,10 @@ Before changing portfolio workflow code, inspect:
 6. `docs/knowledge/msm_portfolios/portfolios/index.md`
 7. `docs/knowledge/msm/accounts/index.md`
 
+For the calendar a portfolio references (getting one, reading its sessions,
+correcting it), read
+`.agents/skills/ms_markets/calendars/calendar_workflow/SKILL.md`.
+
 For position-aware accounting, lifecycle cash flows, or portfolio valuation,
 also read:
 
@@ -160,6 +164,26 @@ msm.start_engine(
 )
 ```
 
+Before `InterpolatedPrices` runs, every asset it prices must be linked to a
+stored calendar (ADR 0056):
+
+```python
+from msm.api.assets import AssetCalendar
+
+for asset in assets:
+    AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=calendar.uid)
+```
+
+- There is no default calendar. An asset with no `AssetCalendar` link fails the
+  whole price update, and the error names it. Link the asset; do not catch the
+  error.
+- The `asset_list` of `InterpolatedPricesConfig` holds identifiers only. A
+  `calendar` key in a scope mapping is refused.
+- A `CalendarEventSignal` must use the calendar of `Portfolio.calendar_uid`.
+  `PortfoliosUpdater` refuses to run when its `calendar_identifier` names another
+  calendar.
+- Attach `AssetCalendar` in the runtime models where price updates run.
+
 Example workflows should stay chainable. The reusable portfolio example exposes
 `build_equal_weight_portfolio(run_updaters=True, runtime_models=None)` so
 other examples can pass a superset model list and avoid starting a second
@@ -255,8 +279,12 @@ Rules:
   persisted market open or close. Its calendar identifier, session label,
   event, offset, cadence, signal selection, and execution valuation convention
   are hash-bearing configuration. The calendar identifier is required and must
-  resolve to persisted `CalendarSession` rows; missing, ambiguous, or failed
+  be the `unique_identifier` of a stored `Calendar`; a `source_identifier` does
+  not name one. Sessions are computed from the calendar's `CalendarSessionRule`
+  and `CalendarException` rows with `Calendar.sessions(...)`. Missing or failed
   governed lookups must not fall back to a local pandas or synthetic calendar.
+  A window outside the calendar's `valid_from`..`valid_to` raises
+  `CalendarRangeError`.
 - `TimeWeighted` and `VolumeParticipation` are not supported public strategies
   until their bar-driven execution implementations are complete.
 - The authoritative portfolio universe is the signal output frame. A signal
@@ -298,10 +326,10 @@ Rules:
 - Repair legacy midnight-indexed `PortfoliosStorage` rows only through a
   dry-run-validated, `portfolio_identifier`-scoped inclusive tail delete using
   `TimeIndexMetaTable.delete_after_date(...)`, followed immediately by a
-  deterministic portfolio replay. Require persisted `CalendarSession` and
-  historical `close_time` agreement, prove the inspection reaches the latest
-  stored row, and apply one portfolio at a time. Never update indexed
-  coordinates in place or use raw SQL.
+  deterministic portfolio replay. Require agreement between the session closes
+  computed from the stored calendar and the historical `close_time`, prove the
+  inspection reaches the latest stored row, and apply one portfolio at a time.
+  Never update indexed coordinates in place or use raw SQL.
 - `PortfoliosUpdater.run(..., update_pointers=True)` is the default portfolio
   workflow behavior. After the graph publishes, it must upsert the resolved
   `PortfolioTable` row with `signal_uid`, `signal_weights_table_update_uid`,
@@ -380,12 +408,9 @@ from msm.time_index.accounts import TargetPositions
 from msm.services import build_target_positions_frame
 
 calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="EXAMPLE_CRYPTO_24_7",
+    "24/7",
+    "EXAMPLE_CRYPTO_24_7",
     display_name="Example Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
 )
 portfolio_sleeve = Portfolio.upsert(
     unique_identifier="example-sleeve",

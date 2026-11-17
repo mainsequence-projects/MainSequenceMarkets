@@ -7,6 +7,207 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-17
+
+This release changes how calendars are stored
+([ADR 0055](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0055-calendars-as-rules-and-exceptions/)). It removes three tables,
+their row classes and sixteen routes, and changes the arguments of
+`Calendar.create_from_pandas_calendar`. Read "Upgrading" at the end of this entry.
+
+It also links each asset to a stored calendar
+([ADR 0056](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0056-asset-trading-calendar-link/)). Price bars are computed from
+that calendar and no longer from a calendar name typed into the asset scope. **After the
+upgrade no price update runs until its assets are linked.**
+
+### Changed
+
+- **A calendar is stored as session rules and exceptions, not as one row per date.**
+  `CalendarSessionRule` is the regular week of a session from a date on: the weekdays it
+  runs and its local open and close. `CalendarException` is one dated departure from it:
+  `CLOSED`, `EARLY_CLOSE`, `LATE_OPEN` or `OPEN`. Dates and sessions are computed from them.
+  NYSE from 2017-12-02 to 2027-11-18 was 3,639 date rows and 2,503 session rows; it is 1 rule
+  and 116 exceptions. Local times are stored as `HH:MM:SS` text in the calendar's timezone and
+  become UTC instants when they are read, so a change of daylight-saving law no longer leaves
+  stored sessions wrong.
+- **`Calendar.create_from_pandas_calendar` writes a calendar once, to the last date the
+  library can answer for.** Its first two arguments are the library's calendar and the name
+  of the stored one: `Calendar.create_from_pandas_calendar("NYSE", "CustomNYSE")`. The stored
+  name defaults to the library's. It no longer takes `valid_to` or `materialize`, and
+  `valid_from` is optional and defaults to 1990-01-01. The range ends where the library's
+  holiday rules end, 2200-12-31 for most calendars; a calendar with no holidays, such as
+  `24/7`, has no last date. Nobody extends a calendar as time passes. The header, the rules
+  and the exceptions are written in one transaction, so a calendar cannot claim a range its
+  rows do not cover.
+- **Calling it again writes only what changed, and keeps a user's rows.** The adapter
+  compares what the installed library says with what is stored, deletes the exceptions the
+  library no longer has and inserts the ones it learned. Exceptions with `source="user"` are
+  never read or written by it.
+- **`Calendar.valid_from` and `Calendar.valid_to` are enforced.** A read of dates or sessions
+  outside them raises `CalendarRangeError`. Before, nothing compared a requested date with
+  the range, and a calendar whose rows had run out produced no session and no error. Both
+  columns are now nullable; a null bound is not checked.
+- **`PortfolioCalendarEvents` fails when its window ends after the calendar's `valid_to`**,
+  where it published nothing. Its first run starts at the calendar's `valid_from` when that
+  is later than the updater's own start.
+- **A stored calendar is found by its `unique_identifier` only.**
+  `resolve_rebalance_calendar` no longer looks a calendar up by `source_identifier` when the
+  first lookup finds none: several stored calendars can come from one library calendar.
+- **`PersistedCalendarSchedule.schedule` is one computed read.** It no longer reads sessions
+  in two-year windows.
+- **`is_weekend` follows the calendar's own week.** It is true on a weekday no session rule
+  runs on. It was Saturday and Sunday for every calendar, so a 24/7 calendar reported a
+  weekend it does not have.
+- **`GET /calendar/{uid}/dates/` and `GET /calendar/{uid}/sessions/` return a computed
+  window.** `start_date` and `end_date` are required; a request without them answers `422`.
+  A window outside the calendar's range answers `400` with the range in the message.
+  `limit`, `offset` and the flag filters work as before. The items have no `uid`.
+
+### Added
+
+- **`AssetCalendar` links an asset to its trading calendar.** It is a one-to-one detail table
+  of `Asset`, with a row class of the same name:
+  `AssetCalendar.upsert(asset_uid=..., calendar_uid=...)`. The linked `Calendar` decides
+  which price bars the asset has. A calendar cannot be deleted while an asset is linked to
+  it; deleting an asset removes its link.
+- **`resolve_asset_schedules`** in `msm_portfolios.services.calendars` returns the stored
+  calendar of each asset as a schedule, in three reads for any number of assets.
+- **`CalendarSessionRule` and `CalendarException` row classes**, with
+  `/calendar/{uid}/rules/` and `/calendar/{uid}/exceptions/` routes: list, create,
+  bulk-upsert, get, update and delete. Both row classes can be deleted under the remote
+  backend. An exception written through them has `source="user"`.
+  A date that has any `user` exception is computed from its `user` exceptions alone, so a
+  correction made by hand wins for its date and survives the adapter. To cancel a closure the
+  library has, write an `OPEN` exception for that date.
+- **`Calendar.sessions`, `Calendar.dates` and `Calendar.is_business_day`** compute a
+  calendar's sessions and business days for a window, under the runtime and the remote
+  backend.
+- **`jobs/resync_calendars.py`, an admin Job that writes stored calendars again from the
+  installed library.** A person runs it; no step of the deployment does, it has no schedule,
+  and the Markets API never writes a calendar again by itself. `--dry-run` prints what would
+  change and writes nothing. The Job is declared in
+  `.mainsequence/workflows/ms-markets-api.yaml` as `resync-calendars`; its workload User needs
+  `data_writer` on `mainsequence.markets` (see "Calendar re-sync Job" in `docs/releasing.md`).
+- **A packaged calendar skill for projects that build on ms-markets.**
+  `.agents/skills/ms_markets/calendars/calendar_workflow/SKILL.md`, copied with
+  `msm copy-msm-skills`, has the rules for getting, reading and correcting a calendar, the
+  Markets API routes, and a table for moving code off the per-date rows.
+- **The library's holiday names.** A closure the library has a holiday rule for carries the
+  rule's name, such as `Thanksgiving`. An ad-hoc closure has none.
+- **`msm.api.remote.MarketsUpstreamError`.** `msm.client` raises it when the Markets API
+  answers `502` or `503` with `error_type` `UpstreamApiError`. It is a `MarketsApiError`, its
+  message is the reason the upstream API gave, and `retryable` is `True` for `503`.
+
+### Removed
+
+- **`with_max_rows` in `msm.repositories.account_registration`.** It is in
+  `msm.repositories.base` and takes a repository context or a table handle.
+- **The default `24/7` calendar of an asset, and every calendar name in an asset scope.**
+  `asset_calendar`, `DEFAULT_MARKET_CALENDAR` and `FULL_CALENDAR` are gone. A scope mapping
+  with a `calendar` key is refused with a `TypeError`.
+- **`PandasMarketCalendarSchedule`, `AlwaysOpenCalendarSchedule` and
+  `resolve_legacy_rebalance_calendar`.** Nothing called them. `pandas_market_calendars` is
+  now imported by the calendar adapter only.
+- **`CalendarDate`, `CalendarSession` and `CalendarEvent`**: the tables, the row classes and
+  their payloads, the repositories, and the create, bulk-upsert, get, update and delete
+  routes of dates and sessions and all six `/calendar/{uid}/events/` routes. Nothing in
+  ms-markets wrote or read `CalendarEvent`. No alias is kept.
+- **`build_pandas_market_calendar_materialization`,
+  `build_always_open_calendar_materialization`, `materialize_calendar_rows` and
+  `CalendarMaterializationRows`.** A 24/7 calendar is
+  `Calendar.create_from_pandas_calendar("24/7", "CRYPTO_24_7")`: one rule and no exception.
+
+### Fixed
+
+- **A hand correction to a calendar changed a portfolio's rebalance dates and not the bars
+  of its assets.** `InterpolatedPrices` asked `pandas_market_calendars` for a calendar name
+  read off the asset scope, with `24/7` when there was none. It now computes its sessions
+  from the stored calendar each asset is linked to, so bars and rebalance dates follow the
+  same rows.
+- **Daily bars of a 24/7 asset were written a day late.** The price updater closed a 24/7 day
+  at 23:59 UTC, so a bar observed at midnight was carried to 23:59 of the following day and
+  flagged `interpolated`. A 24/7 day now closes at the next midnight, as the stored calendar
+  says, and the bar stays at its time of observation.
+- **The first daily bar was dropped and one was invented after the last.** Sessions were
+  chosen by the dates of the first and last source bar, which is one session late when a
+  session closes at midnight. They are now chosen by the instant they close, and no bar is
+  written after the last source bar.
+- **Minute bars could not be interpolated from a calendar name.** The intraday path read
+  `.name` from a string, and upsampling passed an object where a name was expected. Both now
+  take computed sessions. Whether a calendar has trading halts is computed from its sessions,
+  not read off the name `24/7`.
+- **Creating or extending a calendar with a long range answered `500`.** The API sent one
+  row per day of the range in a single statement, which MetaTables refused once it passed
+  1,000,000 characters, after the `Calendar` row had already been written. A calendar is now
+  about 12 exception rows a year, written in one transaction with its header
+  ([issue 83](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/83)).
+- **A bulk upsert of a long list was refused, and nothing was written.** `bulk_upsert_model`
+  compiled every row into one statement, and MetaTables refuses a statement of more than
+  1,000,000 characters: about 5,500 `Asset` rows or 2,300 `CalendarException` rows. It now
+  sends the rows in as many statements as the limits need, so `upsert_many` of every row
+  class and the calendar bulk-upsert routes take a list of any length. Each statement is
+  its own transaction: when one fails, the rows of the statements before it stay written,
+  and calling again with the same list finishes the write
+  ([issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84)).
+- **A bulk upsert of more than 1,000 rows did not return every row.** MetaTables returns at
+  most `max_rows` rows of a statement, 1,000 unless the context says otherwise, and writes
+  the rest without returning them. On SQLite the call raised `KeyError` and wrote nothing.
+  Each statement now asks for as many rows as it writes.
+- **A refused or failed MetaTables call answered `500` with no body.** Every route now
+  answers `502` when MetaTables, or another API the deployment calls, refused the call and
+  `503` when it failed or could not be reached, with `error_type` `UpstreamApiError`, the
+  status it answered with and the reason it gave
+  ([issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84)).
+
+### Upgrading
+
+- **Link every asset that has price bars to a calendar, or its price update fails.** Revision
+  0028 creates `AssetCalendar` and writes no rows: nothing stored says which calendar an
+  asset trades on, and an asset is not linked to a calendar nobody chose. `InterpolatedPrices`
+  now resolves the calendar of every asset in its scope before it reads a bar. When an asset
+  has no link, the whole run fails and the error names each such asset. Link it with
+  `AssetCalendar.upsert(asset_uid=..., calendar_uid=...)` and run again. An asset that trades
+  around the clock is linked to a stored 24/7 calendar.
+- **`time_index` is the time of observation.** A price source stamps each bar at its end: a
+  daily bar at its session close, with the open in `open_time`. A bar stamped at its open is
+  not handled. A source that receives vendor bars labelled by their start shifts them to
+  the close itself.
+- **New daily bars of a 24/7 asset are stamped at midnight; the stored ones are at 23:59.**
+  Stored bars are not rewritten. To make a table uniform, rebuild it from its source.
+- **A `CalendarEventSignal` must use the calendar of its portfolio.** `PortfoliosUpdater`
+  refuses to run when the strategy's `calendar_identifier` is not the `unique_identifier` of
+  `Portfolio.calendar_uid`, and names both calendars. Before, nothing compared them.
+- **Revision 0027 converts every stored calendar from its own rows**, not from the library:
+  the regular week becomes a rule, each stored date that differs becomes an exception, and
+  `valid_from` and `valid_to` become the first and last stored date. It computes each
+  converted calendar back and stops, before dropping anything, if a session differs from the
+  stored one. Rows in `CalendarEvent` are deleted with the table. A calendar whose `timezone`
+  is not an IANA name is converted in UTC and its `timezone` becomes `UTC`.
+- **After the release, run the `resync-calendars` Job once**, with `--dry-run` first. A
+  converted calendar still ends where its stored rows ended, and a read past that date now
+  fails. The Job takes each adapter calendar to the library's range and hours. If a calendar
+  was stored with hours that differ from the library's, the Job changes its sessions, and
+  with them the rebalance times of the portfolios on it: that is why a person decides.
+- **A calendar that was not written from pandas-market-calendars cannot be written from it
+  under the same name.** `create_from_pandas_calendar("24/7", "CRYPTO_24_7")` is refused when
+  `CRYPTO_24_7` was written with the removed always-open helper: writing it from the library
+  would replace its rules. Delete that calendar first, or use another name.
+- **In code that uses ms-markets:**
+  - `CalendarSession.filter(...)` and `CalendarDate.filter(...)` become
+    `Calendar.sessions(calendar_uid, start, end)` and `Calendar.dates(calendar_uid, start, end)`.
+  - `Calendar.create_from_pandas_calendar(source_identifier=..., unique_identifier=...,
+    display_name=..., valid_from=..., valid_to=...)` drops `valid_to` and `materialize`. A
+    caller that called it to move `valid_to` forward stops calling it.
+  - `msm.start_engine(models=[...])` lists `CalendarSessionRule` and `CalendarException`
+    in place of `CalendarDate`, `CalendarSession` and `CalendarEvent`.
+  - A calendar referenced by its `source_identifier` is referenced by its
+    `unique_identifier`.
+  - `{"asset_identifier": "...", "calendar": "NYSE"}` in an `asset_list` becomes
+    `"..."` or `{"asset_identifier": "..."}`, and the asset gets an `AssetCalendar` link.
+  - `IntradayTrendConfig(calendar="NYSE")` becomes
+    `IntradayTrendConfig(calendar_identifier="NYSE")`, the `unique_identifier` of a stored
+    calendar. The signal's hash changes.
+  - `msm.start_engine(models=[...])` lists `AssetCalendar` where price updates run.
+
 ## [3.8.3] - 2026-11-17
 
 ### Fixed

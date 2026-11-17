@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Any
+
 from fastapi import HTTPException, Request
 
 from msm.api.http import (
@@ -33,6 +36,28 @@ _text_filter = resource_text_filter
 _boolean_filter = resource_boolean_filter
 _select_filter = resource_select_filter
 _spec = build_resource_discovery_spec
+
+
+def _computed_window_spec(**kwargs: Any) -> ResourceDiscoverySpec:
+    """Describe a read-only collection computed for a required date window.
+
+    The discovery contract has no field for a required filter. The window is
+    declared in `extensions` and named in the filter labels.
+    """
+
+    spec = _spec(**kwargs)
+    return replace(
+        spec,
+        response=spec.response.model_copy(
+            update={
+                "extensions": {
+                    "computed": True,
+                    "read_only": True,
+                    "required_filters": ["start_date", "end_date"],
+                }
+            }
+        ),
+    )
 
 
 _ASSET_CATEGORY_DELETE = build_bulk_delete_action(
@@ -175,14 +200,14 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
             _column("source", "Source", filter_key="source"),
         ),
     ),
-    "calendar-dates": _spec(
+    "calendar-dates": _computed_window_spec(
         resource_id="calendar-dates",
         label="Calendar dates",
         item_label="calendar dates",
-        identity_fields=("uid",),
+        identity_fields=("local_date",),
         filters=(
-            _text_filter("start_date", "Start date"),
-            _text_filter("end_date", "End date"),
+            _text_filter("start_date", "Start date (required)"),
+            _text_filter("end_date", "End date (required)"),
             _boolean_filter("is_business_day", "Business day"),
             _boolean_filter("is_holiday", "Holiday"),
             _boolean_filter("is_weekend", "Weekend"),
@@ -192,18 +217,19 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
             _column("local_date", "Date", "date", importance="primary"),
             _column("is_business_day", "Business day", "boolean", filter_key="is_business_day"),
             _column("is_holiday", "Holiday", "boolean", filter_key="is_holiday"),
+            _column("is_weekend", "Weekend", "boolean", filter_key="is_weekend"),
             _column("is_early_close", "Early close", "boolean", filter_key="is_early_close"),
             _column("holiday_name", "Holiday name"),
         ),
     ),
-    "calendar-sessions": _spec(
+    "calendar-sessions": _computed_window_spec(
         resource_id="calendar-sessions",
         label="Calendar sessions",
         item_label="calendar sessions",
-        identity_fields=("uid",),
+        identity_fields=("local_date", "session_label"),
         filters=(
-            _text_filter("start_date", "Start date"),
-            _text_filter("end_date", "End date"),
+            _text_filter("start_date", "Start date (required)"),
+            _text_filter("end_date", "End date (required)"),
             _text_filter("session_label", "Session label"),
             _boolean_filter("is_primary", "Primary"),
         ),
@@ -213,28 +239,55 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
             _column("opens_at", "Opens", "datetime"),
             _column("closes_at", "Closes", "datetime"),
             _column("timezone", "Timezone"),
+            _column("is_early_close", "Early close", "boolean"),
+            _column("is_late_open", "Late open", "boolean"),
         ),
     ),
-    "calendar-events": _spec(
-        resource_id="calendar-events",
-        label="Calendar events",
-        item_label="calendar events",
+    "calendar-session-rules": _spec(
+        resource_id="calendar-session-rules",
+        label="Calendar session rules",
+        item_label="session rules",
+        identity_fields=("uid",),
+        filters=(_text_filter("session_label", "Session label"),),
+        columns=(
+            _column("session_label", "Session", importance="primary", filter_key="session_label"),
+            _column("effective_from", "Effective from", "date"),
+            _column("effective_to", "Effective to", "date"),
+            _column("weekdays", "Weekdays"),
+            _column("opens_at_local", "Opens (local)"),
+            _column("closes_at_local", "Closes (local)"),
+            _column("is_primary", "Primary", "boolean"),
+        ),
+    ),
+    "calendar-exceptions": _spec(
+        resource_id="calendar-exceptions",
+        label="Calendar exceptions",
+        item_label="calendar exceptions",
         identity_fields=("uid",),
         filters=(
             _text_filter("start_date", "Start date"),
             _text_filter("end_date", "End date"),
-            _text_filter("event_type", "Event type"),
-            _text_filter("event_label", "Event label"),
-            _text_filter("target_type", "Target type"),
-            _text_filter("target_uid", "Target UID"),
-            _text_filter("target_identifier", "Target identifier"),
+            _text_filter("session_label", "Session label"),
+            _select_filter(
+                "exception_type",
+                "Exception type",
+                (
+                    ("CLOSED", "Closed"),
+                    ("EARLY_CLOSE", "Early close"),
+                    ("LATE_OPEN", "Late open"),
+                    ("OPEN", "Open"),
+                ),
+            ),
+            _text_filter("source", "Source"),
         ),
         columns=(
-            _column("event_date", "Date", "date", importance="primary"),
-            _column("event_type", "Type", filter_key="event_type"),
-            _column("event_label", "Label", filter_key="event_label"),
-            _column("target_identifier", "Target", filter_key="target_identifier"),
-            _column("event_time", "Time"),
+            _column("local_date", "Date", "date", importance="primary"),
+            _column("exception_type", "Type", "badge", filter_key="exception_type"),
+            _column("session_label", "Session", filter_key="session_label"),
+            _column("name", "Name"),
+            _column("opens_at_local", "Opens (local)"),
+            _column("closes_at_local", "Closes (local)"),
+            _column("source", "Source", filter_key="source"),
         ),
     ),
     "index-types": _spec(
