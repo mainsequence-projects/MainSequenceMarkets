@@ -38,6 +38,11 @@ metatables migrations scaffold \
   --alembic-version-table-name ledger__alembic_version
 ```
 
+`--namespace` names the provider. The one value becomes its migration namespace, its
+revisions folder `versions/ledger/` and the catalog namespace of its Alembic version
+table. It does not decide which namespaces the tables are in: each model declares its
+own, and a table can be in several. See [Put tables in namespaces](#put-tables-in-namespaces).
+
 The scaffold creates a provider, model registry, Alembic environment, revision
 template, and versions directory under the chosen source root. Edit its
 `registry.py` to return the intended `Account` and `Balance` models. Scaffold
@@ -126,6 +131,65 @@ Runtime connection credentials are private and must not be logged or persisted.
 The client reserves bindings, executes Alembic, closes its database connection,
 and finalizes physical contracts through the API. Finalization refreshes catalog
 metadata and governed-SQL permissions, including cleanup of dropped provider tables.
+
+## Put tables in namespaces
+
+A namespace groups tables for access: a role on it applies to every table in it. Every
+model declares `__metatable_namespace__`, the application's namespace. To share part of
+the application's tables, declare a further namespace on those tables with
+`__metatable_namespaces__`
+([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)):
+
+```python
+from sqlalchemy import Integer, MetaData
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from metatables import PlatformManagedMetaTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData()
+
+
+class LedgerTable(PlatformManagedMetaTable):
+    __abstract__ = True
+    __metatable_namespace__ = "ledger"
+
+
+class Reporting:
+    __metatable_namespaces__ = ("ledger-reporting",)
+
+
+class Statement(Reporting, LedgerTable, Base):  # in ledger and ledger-reporting
+    __tablename__ = "ledger__statement"
+    __metatable_identifier__ = "ledger.statement"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+class Posting(LedgerTable, Base):  # only in ledger
+    __tablename__ = "ledger__posting"
+    __metatable_identifier__ = "ledger.posting"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+```
+
+- `__metatable_namespace__` holds one name. A subclass that sets it replaces what its
+  base set.
+- `__metatable_namespaces__` only adds. A table is in every name that it or any of its
+  base classes lists there, so a table joins a subset by having the base that declares
+  it.
+- A namespace is not a schema change. `upgrade head` applies the declaration when it
+  finalizes the catalog: it adds the namespaces the code declares, creating a missing
+  one, and removes the ones the code no longer declares. Do not create a revision, a
+  folder or a second provider for it.
+- Removing a name from the code removes the table from that namespace at the next
+  `upgrade`, and its principals stop reaching the table. A namespace a person added by
+  hand is never removed by a migration.
+- The identity that runs the migration needs `tables.create` on each namespace. One
+  that the migration creates gives it `editor`.
+- Grant a Team a role on the second namespace once; it covers the tables in it and the
+  ones added later. A role on the first namespace still reaches every table, so a
+  subset restricts only principals that hold no role there. See
+  [A table in several namespaces](../security/ownership-and-sharing.md#a-table-in-several-namespaces).
 
 ## Protect a column with application encryption
 

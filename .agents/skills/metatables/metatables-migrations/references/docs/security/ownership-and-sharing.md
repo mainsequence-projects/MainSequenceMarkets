@@ -53,7 +53,7 @@ when it commits a change, rather than trusting a previously enabled button.
 ## Effective access
 
 MetaTables combines a caller's direct bindings, the bindings of the caller's current
-platform Teams, and the bindings on the table's current namespace. The strongest
+platform Teams, and the bindings on every namespace the table is in. The strongest
 applicable role wins. Without a matching binding there is no access.
 
 | Bindings that apply to Bob on `prices` | Bob's role |
@@ -119,7 +119,7 @@ directory, not what the API's own identity can see:
   belong to when you are not an admin;
 - the workloads you can view.
 
-`explain` for another User counts the Teams bound on the object, or on its namespace,
+`explain` for another User counts the Teams bound on the object, or on its namespaces,
 whose members you can see. Any bound Team you cannot see is listed in
 `unreadable_team_uids`.
 
@@ -130,9 +130,9 @@ or an updater hash namespace. A role on a namespace gives the table role of the 
 name on every table currently in it, including tables added later: Team Research with
 `data_viewer` on `research` can read every table in `research`.
 
-Revoking that binding removes its contribution from every table at once. Moving
-`prices` out of `research` stops inheritance from `research`; moving it into another
-namespace applies that namespace's roles. Direct table bindings stay in place.
+Revoking that binding removes its contribution from every table at once. Removing
+`prices` from `research` stops inheritance from `research`; adding it to another
+namespace applies that namespace's roles as well. Direct table bindings stay in place.
 Labels never confer access.
 
 For example, Bob has `data_viewer` through `research` and a direct `owner` binding on
@@ -164,7 +164,7 @@ What MetaTables enforces:
   without that action is refused with `namespace_access_required`, naming the caller,
   the action and, when visible, the namespace's owners.
 - **Reading or writing a table** needs `tables.get_data` or `tables.update_data`
-  through a role on the table or its namespace. The API checks it, and the database
+  through a role on the table or one of its namespaces. The API checks it, and the database
   enforces it through the caller's own role
   ([ADR 0007](../adr/api/0007-database-enforced-table-access.md)).
 - **A table created in a namespace gets no binding of its own.**
@@ -189,6 +189,64 @@ Environment's catalog. Another application gets read access through one `data_vi
 binding on the namespace; revoking it removes access to every table at once. See
 [Migrate in the deployment workflow](../client/deploy-application-migrations.md#give-the-job-access).
 
+## A table in several namespaces
+
+A table can be in any number of namespaces
+([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)). All of them are equal:
+a caller's role on the table is the strongest it gets from any of them. Use a second
+namespace to share part of an application's tables without naming them one by one.
+
+```text
+namespace alpaca-connectors          namespace alpaca-market-data
+  bars  quotes  orders  positions      bars  quotes
+
+Team alpaca-development: editor       Team research: data_viewer
+```
+
+Team research reads `bars` and `quotes` and nothing else. A market-data table added
+later is covered as soon as its migration runs.
+
+**Declare the namespaces in code.** `__metatable_namespace__` is the application's
+namespace: one name, which a subclass replaces. `__metatable_namespaces__` lists
+further ones and only adds: a table is in every name that it or any of its base classes
+lists there, so a table joins a subset by having the base that declares it.
+
+```python
+class AlpacaBase(PlatformManagedMetaTable):
+    __abstract__ = True
+    __metatable_namespace__ = "alpaca-connectors"
+
+class MarketData:
+    __metatable_namespaces__ = ("alpaca-market-data",)
+
+class Bars(MarketData, AlpacaBase, Base): ...      # in both
+class Orders(AlpacaBase, Base): ...                # only alpaca-connectors
+```
+
+The application's migration applies the declaration: `metatables migrations upgrade
+--provider <provider> head` adds the namespaces the code declares, creating a missing
+one, and removes the ones it no longer declares. No revision and no new migration
+folder are needed. The Job needs `tables.create` on each namespace; one it creates
+gives it `editor`.
+
+**Add a table by hand.** A person with `tables.update` on the table and `tables.create`
+on the namespace adds it from the Admin or the client; removing needs `tables.create`
+on the namespace. No migration removes a membership added this way.
+
+What to know:
+
+- **A second namespace only adds access.** There is no deny. Someone with a role on
+  `alpaca-connectors` reaches every table whatever `alpaca-market-data` says. A subset
+  works for principals that hold no role on the larger namespace.
+- **Its owners are owners of the table.** Adding a table to a namespace gives that
+  namespace's roles on the table, `owner` included.
+- **Removing a name from the code removes access** at the next migration, with no
+  binding revoked.
+- **The last namespace** can be removed only when the table has a direct `owner`.
+- **A table with no migration**, such as an imported external table, gets its
+  namespaces when it is created. Registering or importing it again changes none; the
+  answer lists them in `namespaces_not_applied`. Add or remove them by hand.
+
 ## The Access panels
 
 Every namespace and table has an **Access** panel. It lists each binding with its
@@ -210,6 +268,9 @@ crm.grant_role(migration_job_user_uid, "editor")
 crm.grant_role(team_uid, "data_viewer", principal_kind="team")
 
 prices = MetaTable.get(identifier="prices")
+prices.namespace_names                              # every namespace it is in
+prices.add_to_namespace("research")                 # it stays in the others
+prices.remove_from_namespace("research")
 prices.get_access()                                 # bindings, inherited ones, revision
 prices.allowed_actions()                            # e.g. ["tables.get", "tables.get_data"]
 prices.explain("tables.update_data", user_uid=bob_uid)
@@ -230,9 +291,14 @@ and review intervening changes.
 | `POST /meta-tables/{uid}/access/changes/`, `POST /namespaces/{uid}/access/changes/` | `set_access`, a manager of the namespace's creating workload, or a workload's manager for that workload; never a workload |
 | `GET .../access/me/` | Any caller who can see the object |
 | `GET .../access/explain/?action=...&user_uid=...` | Yourself: anyone who can see the object; another User: `get_access` |
+| `POST /meta-tables/{uid}/namespaces/changes/` | Add: `tables.update` on the table and `tables.create` on the namespace. Remove: `tables.create` on the namespace |
 | `GET /meta-tables/{uid}/access-history/` | `tables.get_access` |
 | `GET /security/principals/?search=` | Any caller; searches the caller's own platform directory |
 | `GET /security/resources/`, `GET /security/access-history/?kind=...&uid=...` | Organization admin |
+
+`namespaces/changes/` takes `add` and `remove`, two lists of namespace names applied
+together, and returns the table's `namespaces`. The names must exist. The access history
+records each change with the namespace as the principal (`principal_kind` `ns`).
 
 `access/changes/` takes the `revision` from `access/` plus lists of `grant`
 (`principal_kind`, `principal_uid`, `role`) and `revoke` (`principal_kind`,

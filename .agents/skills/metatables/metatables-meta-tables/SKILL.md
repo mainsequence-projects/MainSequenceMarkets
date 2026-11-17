@@ -187,8 +187,14 @@ Use `get_access`, `grant_role`, `revoke_role`, `allowed_actions` and `explain` o
 table or `Namespace` for roles (`metadata_viewer`, `data_viewer`, `data_writer`,
 `editor`, `owner`); `Namespace.create(name)` makes the caller its owner. Registering a
 table into a missing namespace also creates it: a person gets `owner`, a workload `editor`
-(see the [migrations skill](../metatables-migrations/SKILL.md)). Labels can be
-changed through the documented table PATCH path. Authorization is owned by the API
+(see the [migrations skill](../metatables-migrations/SKILL.md)). A table can be in
+several namespaces: `table.namespaces` lists each with its `source` (`declared` by the
+application's code, or `manual`), and `table.namespace_names` their names. A table an
+application declares gets its namespaces from the model and its migration. For any
+other table, `add_to_namespace(name)` and `remove_from_namespace(name)` change them;
+adding needs `tables.update` on the table and `tables.create` on the namespace,
+removing needs `tables.create` on the namespace. PATCH does not accept a namespace.
+Labels can be changed through the documented table PATCH path. Authorization is owned by the API
 catalog; see `docs/security/ownership-and-sharing.md`.
 
 Updater output rollback uses `TimeIndexMetaTable.delete_after_date` with an

@@ -43,7 +43,7 @@ caller an admin.
 | --- | --- | --- | --- | --- | --- |
 | `namespaces.get`: see it, its description and access map | Yes | Yes | Yes | Yes | Yes |
 | `namespaces.update`: rename and describe it | No | No | No | Yes | Yes |
-| `tables.create`: create or register a table in it, move a table into it | No | No | No | Yes | Yes |
+| `tables.create`: create or register a table in it, add a table to it, remove one from it | No | No | No | Yes | Yes |
 | `namespaces.get_access`: see who holds which role | No | No | No | Yes | Yes |
 | `namespaces.set_access`: grant and revoke roles | No | No | No | No | Yes |
 
@@ -62,7 +62,7 @@ table-level bindings.
 | `tables.get`: metadata, schema, contract, lineage, search, impact preview | Yes | Yes | Yes | Yes | Yes |
 | `tables.get_data`: read, query, preview and export rows; statistics | No | Yes | Yes | Yes | Yes |
 | `tables.update_data`: insert, update, upsert and delete rows; time-index delete-after-date | No | No | Yes | Yes | Yes |
-| `tables.update`: descriptions, labels, configuration, compression and retention, moving it out of its namespace | No | No | No | Yes | Yes |
+| `tables.update`: descriptions, labels, configuration, compression and retention, adding it to a namespace | No | No | No | Yes | Yes |
 | `tables.migrate`: migration connection and contract finalization | No | No | No | Yes | Yes |
 | `tables.operate_updaters`: register, configure and run its updaters | No | No | No | Yes | Yes |
 | `tables.delete`: delete managed storage or unregister | No | No | No | Yes | Yes |
@@ -71,7 +71,7 @@ table-level bindings.
 
 Principals: every role can be granted to people, workload Users and Teams, except
 `owner`, which goes to people and Teams only. A principal holds at most one role on an
-object; its access is the strongest of its own, its Teams' and its namespace's roles.
+object; its access is the strongest of its own, its Teams' and its namespaces' roles.
 Without any binding there is no access.
 
 ## Operations involving several resources
@@ -91,9 +91,12 @@ Permissions follow the resources actually affected:
   its inputs. A read-only `TimeIndexTableRef` does not require control of the upstream
   producer. Running an upstream producer requires `tables.operate_updaters` on that
   producer's output.
-- Moving a table between namespaces requires `tables.update` on the table and
-  `tables.create` on the destination namespace. It changes inherited access, so the
-  UI must show that impact.
+- Adding a table to a namespace requires `tables.update` on the table and
+  `tables.create` on the namespace. Removing it requires `tables.create` on the
+  namespace, so a role that comes from one namespace never takes a table out of
+  another. Both change inherited access, so the UI must show that impact. A table
+  leaves its last namespace only when it has a direct `owner`
+  ([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)).
 
 Every role remains subject to lifecycle safeguards: a reserved table is not
 ready for ordinary writes, active work can block destructive changes, and deletion

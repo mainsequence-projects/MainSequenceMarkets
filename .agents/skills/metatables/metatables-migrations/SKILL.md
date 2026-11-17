@@ -81,7 +81,9 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
    application uses another namespace. A namespace created before ADR 0024 has no
    owner until an Organization admin grants one. Recommend one namespace per
    application; it is not required (see "Namespaces and applications" in
-   `docs/security/ownership-and-sharing.md`).
+   `docs/security/ownership-and-sharing.md`). To share part of the application's
+   tables, add a namespace to those tables; see
+   [Namespaces of a table](#namespaces-of-a-table).
 
 Rules:
 
@@ -102,8 +104,49 @@ Rules:
   Environment and each recreated Job: a direct role needs granting again, a Team
   only membership. Do not run the Job as an Organization admin to get around a
   refusal.
-- The Job needs `editor` on every namespace the provider uses; resources that only
-  read and write rows need `data_writer`.
+- The Job needs `editor` on every namespace the provider's tables declare; resources
+  that only read and write rows need `data_writer`.
+
+## Namespaces of a table
+
+A table can be in several namespaces (ADR 0028). A role on a namespace applies to every
+table in it; a table's role for a caller is the strongest across its namespaces.
+
+- `__metatable_namespace__` is the application's namespace: one name. A subclass that
+  sets it replaces what its base set.
+- `__metatable_namespaces__` lists further namespaces and only adds. A table is in
+  every name that it or any of its base classes lists there. Put the attribute on a
+  mixin and give that base to the tables of the subset:
+
+  ```python
+  class LedgerTable(PlatformManagedMetaTable):
+      __abstract__ = True
+      __metatable_namespace__ = "ledger"
+
+  class Reporting:
+      __metatable_namespaces__ = ("ledger-reporting",)
+
+  class Statement(Reporting, LedgerTable, Base): ...   # ledger and ledger-reporting
+  class Posting(LedgerTable, Base): ...                # ledger only
+  ```
+
+- To share some tables of an application with a Team, declare a second namespace on
+  those tables and have an owner grant the Team a role on it once. Do not grant table
+  by table, do not split the application's namespace in two, and do not move tables.
+- A namespace is not a schema change. Do not create a revision, a versions folder or a
+  second provider for it, and do not list a model in two providers' registries: a table
+  belongs to one provider. `upgrade head` applies the declaration at finalization, also
+  when no revision is pending.
+- The migration adds the namespaces the code declares, creating a missing one (the Job
+  gets `editor` and is its creating workload), and removes the declared ones the code
+  no longer lists. Removing a name therefore removes access for that namespace's
+  principals at the next deployment. A namespace a person added by hand is never
+  removed by a migration.
+- A subset restricts only principals that hold no role on the application's namespace:
+  roles add up and there is no deny. Tell the user this when they design a subset.
+- The owners of every namespace a table is in are owners of the table.
+- Never change `__metatable_namespace__` of the Alembic version table; the migration
+  stops if the version table is not in the namespace its provider gives it.
 
 ## Source and runtime context
 
@@ -141,6 +184,11 @@ Rules:
    Always pass `--module` and `--alembic-version-table-name`. Without them the
    scaffold creates a top-level `migrations` module and the shared
    `public.alembic_version` table.
+
+   `--namespace` names the provider: its migration namespace, its revisions folder
+   `versions/<namespace>/` and the catalog namespace of its Alembic version table.
+   It does not decide which namespaces the tables are in; the models do (see
+   [Namespaces of a table](#namespaces-of-a-table)).
 6. Edit the generated `registry.py` so it returns exactly the models owned by
    that migration stream. Scaffolding alone selects no models and creates no
    tables.
@@ -283,8 +331,13 @@ Read `docs/operations/recovery-and-observability.md`.
   error lists, or a manager of the workload that created the namespace, grants the
   `caller_user_uid` `editor`, or adds it to a Team that holds it, then the Job is
   re-run. With `namespace_required`, set the table's namespace. With
-  `table_not_editable`, an owner of the table or its namespace grants `editor`. Do
-  not change code or physical names to get around it.
+  `table_not_editable`, an owner of the table or of one of its namespaces grants
+  `editor`. Do not change code or physical names to get around it.
+- If finalization reports `namespace_access_required` for a table, the code declares a
+  namespace that exists and the Job lacks `tables.create` on it. The table keeps its
+  namespaces and the other tables are finalized. An owner of that namespace grants the
+  Job `editor`, then the Job is re-run. With `last_namespace`, the code no longer
+  declares the only namespace the table is in: keep one on the model.
 - If reservation fails otherwise, compare provider scope and physical identities
   before changing code. Do not create a second catalog row for the same table.
 - If Alembic succeeds but finalization fails, physical DDL may already be

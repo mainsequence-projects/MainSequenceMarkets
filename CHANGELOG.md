@@ -7,6 +7,24 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-11-17
+
+### Changed
+
+- **Requires MetaTables 0.1.66 or later, where a table can be in several namespaces.**
+  `mainsequence-metatable>=0.1.66,<0.2`. That client and the MetaTables API change
+  together: an older client is refused by an API on 0.1.66 or later. A table's impact
+  node carries `namespaces`, a list, instead of `namespace`
+  (`TableImpactNode`, in the account delete preview).
+
+### Fixed
+
+- **The account delete preview on MetaTables 0.1.66 reported every Markets table as a
+  table of another namespace.** It read the one `namespace` of each table the delete
+  reaches, which the API no longer returns, so `other_namespace_cascades` and
+  `other_namespace_restricts` listed the Markets tables too. A table is now a Markets
+  table when the Markets namespace is one of its namespaces.
+
 ## [3.8.1] - 2026-11-16
 
 ### Added

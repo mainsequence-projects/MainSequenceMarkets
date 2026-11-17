@@ -118,6 +118,21 @@
             },
             "title": "Labels",
             "type": "array"
+          },
+          "namespaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespaces"
           }
         },
         "title": "AuthoredTableMetadata",
@@ -1641,18 +1656,6 @@
             ],
             "title": "Labels"
           },
-          "namespace": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Namespace"
-          },
           "protect_from_deletion": {
             "anyOf": [
               {
@@ -1939,6 +1942,30 @@
           "configuration"
         ],
         "title": "MySQLSourceCreate",
+        "type": "object"
+      },
+      "NamespaceChanges": {
+        "additionalProperties": false,
+        "description": "Namespaces to add the table to and to remove it from, applied together (ADR 0028).",
+        "properties": {
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Add",
+            "type": "array"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Remove",
+            "type": "array"
+          }
+        },
+        "title": "NamespaceChanges",
         "type": "object"
       },
       "NamespaceCreate": {
@@ -2694,17 +2721,13 @@
             "title": "Management Mode",
             "type": "string"
           },
-          "namespace": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Namespace"
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Namespaces",
+            "type": "array"
           },
           "physical_schema": {
             "anyOf": [
@@ -3050,17 +3073,13 @@
             "title": "Migration Provider Key",
             "type": "string"
           },
-          "namespace": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Namespace"
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Namespaces",
+            "type": "array"
           },
           "physical_schema": {
             "anyOf": [
@@ -6640,6 +6659,62 @@
         ]
       }
     },
+    "/meta-tables/{table_uid}/namespaces/changes/": {
+      "post": {
+        "description": "Add the table to existing namespaces and remove it from others; returns its namespaces.\n\nAdding needs ``tables.update`` on the table and ``tables.create`` on the namespace;\nremoving needs ``tables.create`` on the namespace. Memberships added here are\n``manual``: no registration removes them.",
+        "operationId": "change_meta_table_namespaces_meta_tables__table_uid__namespaces_changes__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespaceChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Change Meta Table Namespaces Meta Tables  Table Uid  Namespaces Changes  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Meta Table Namespaces",
+        "tags": [
+          "MetaTables"
+        ]
+      }
+    },
     "/meta-tables/{table_uid}/read/": {
       "post": {
         "operationId": "read_rows_meta_tables__table_uid__read__post",
@@ -10021,6 +10096,62 @@
           }
         },
         "summary": "Time Index Migration Connection",
+        "tags": [
+          "TimeIndexMetaTables"
+        ]
+      }
+    },
+    "/time-index-meta-tables/{table_uid}/namespaces/changes/": {
+      "post": {
+        "description": "Add the table to existing namespaces and remove it from others; returns its namespaces.\n\nAdding needs ``tables.update`` on the table and ``tables.create`` on the namespace;\nremoving needs ``tables.create`` on the namespace. Memberships added here are\n``manual``: no registration removes them.",
+        "operationId": "time_index_change_meta_table_namespaces_time_index_meta_tables__table_uid__namespaces_changes__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_uid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Table Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespaceChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Time Index Change Meta Table Namespaces Time Index Meta Tables  Table Uid  Namespaces Changes  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Time Index Change Meta Table Namespaces",
         "tags": [
           "TimeIndexMetaTables"
         ]
