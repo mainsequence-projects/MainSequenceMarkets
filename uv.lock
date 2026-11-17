@@ -1206,6 +1206,7 @@ dependencies = [
     { name = "mainsequence-metatable" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pandas-market-calendars" },
     { name = "pip" },
     { name = "psycopg2" },
     { name = "pydantic" },
@@ -1242,7 +1243,6 @@ docs = [
 ]
 portfolios = [
     { name = "joblib" },
-    { name = "pandas-market-calendars" },
     { name = "scikit-learn" },
     { name = "tqdm" },
 ]
@@ -1287,7 +1287,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "packaging", marker = "extra == 'dev'", specifier = ">=24.2" },
     { name = "pandas" },
-    { name = "pandas-market-calendars", marker = "extra == 'portfolios'", specifier = ">=5.4.0" },
+    { name = "pandas-market-calendars", specifier = ">=5.4.0" },
     { name = "pip", specifier = ">=26.2.2" },
     { name = "psycopg2", specifier = ">=2.9.12" },
     { name = "pydantic" },
