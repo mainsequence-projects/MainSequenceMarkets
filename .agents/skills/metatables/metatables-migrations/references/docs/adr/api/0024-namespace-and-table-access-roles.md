@@ -1,5 +1,11 @@
 # ADR 0024: Access roles for namespaces and tables
 
+> Amendment (2026-11-16): [ADR 0028](0028-tables-in-several-namespaces.md) lets a table be in
+> several namespaces. Its role is the strongest across all of them. "Moving" a table becomes
+> adding it to a namespace (`tables.update` on the table and `tables.create` on the namespace)
+> and removing it (`tables.create` on the namespace); `tables.update` no longer covers leaving
+> a namespace. Where this record says "its namespace", read "each namespace it is in".
+
 Status: Accepted.
 
 Implementation status: implemented on development, in the API and in the MetaTables

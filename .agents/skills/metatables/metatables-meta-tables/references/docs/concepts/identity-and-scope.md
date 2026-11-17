@@ -29,19 +29,20 @@ registry or replicate platform Organization policy. See the implemented
 
 ## Namespaces are not schemas
 
-A catalog **namespace** groups tables in the connected catalog. Its normalized
-name is unique in the catalog. A **SQL schema** names a physical database
+A catalog **namespace** groups tables in the connected catalog for access. Its
+normalized name is unique in the catalog, and a table can be in several
+([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)). A **SQL schema** names a physical database
 container. A **migration namespace** identifies a provider's Alembic stream.
 An updater **hash namespace** isolates configured producer identities.
 
-Use each independently. Setting a catalog namespace does not move a physical
-table or change its database schema. Changing a producer's hash namespace does
+Use each independently. Putting a table in a catalog namespace does not move a
+physical table, change its database schema or need a migration revision. Changing a producer's hash namespace does
 not create a different output table.
 
 ## Author physical names explicitly
 
 Use `schema_table_name("ledger", "account")` for an application/package-prefixed
-name such as `ledger__account`. Declare identifiers, descriptions, namespace, and
+name such as `ledger__account`. Declare identifiers, descriptions, namespaces, and
 column metadata alongside the SQLAlchemy model. Authored Alembic-managed physical
 names are stable across contract changes; schema evolution uses revisions.
 

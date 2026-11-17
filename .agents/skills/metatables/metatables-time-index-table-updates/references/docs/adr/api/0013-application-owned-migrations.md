@@ -1,5 +1,9 @@
 # ADR 0013: Application-owned migrations through the client
 
+> Amendment (2026-11-16): [ADR 0028](0028-tables-in-several-namespaces.md) has finalization carry
+> the namespaces each model declares. The table's provider adds and removes its declared
+> memberships; a namespace needs no revision, folder or provider of its own.
+
 > Amendment (2026-10-09, [MetaTables #50](https://github.com/mainsequence-projects/MetaTables/issues/50)
 > and [#51](https://github.com/mainsequence-projects/MetaTables/issues/51)): The configured login is
 > named `metatables`, so its default `"$user", public` search path starts in the catalog schema.

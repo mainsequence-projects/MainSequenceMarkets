@@ -19,7 +19,10 @@ class TableImpactNode(_TableImpactModel):
     type: str = Field(description="meta_table, relation, update or hidden.")
     uid: str | None = None
     identifier: str | None = None
-    namespace: str | None = None
+    namespaces: list[str] = Field(
+        default_factory=list,
+        description="Every namespace the table is in (MetaTables 0.1.66 or later).",
+    )
     table_kind: str | None = None
     physical_schema: str | None = None
     physical_table_name: str | None = None

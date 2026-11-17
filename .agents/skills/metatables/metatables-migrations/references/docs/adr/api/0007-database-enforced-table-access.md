@@ -13,6 +13,10 @@
 > report the API's transaction still open, or the API stops and rolls back. Reads keep
 > one statement.
 
+> Amendment (2026-11-16): [ADR 0028](0028-tables-in-several-namespaces.md) grants a table to
+> the reader and writer roles of every namespace it is in. Adding or removing a membership
+> refreshes the table's privileges in the same transaction.
+
 > Amendment (2026-10-19): [ADR 0024](0024-namespace-and-table-access-roles.md) keeps the two
 > privilege sets: `data_viewer` maps to Reader's `SELECT`, `data_writer`, `editor` and `owner`
 > to Writer's privileges, and `metadata_viewer` to none. An admin group role holds write

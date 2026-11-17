@@ -56,8 +56,8 @@ tables, which lets it operate updaters and write rows, and `data_viewer` on its
 inputs. A person who manages the migration Job that created the output namespace, or
 an owner, grants these on the namespaces, directly or through a Team (step 4 of the
 [migrations skill](../metatables-migrations/SKILL.md)); no Organization admin is
-needed. Output tables belong to the migration provider and its namespace: a workload
-never creates a table outside a namespace.
+needed. Output tables belong to the migration provider and are in the namespaces
+their models declare: a workload never creates a table outside a namespace.
 
 ## Configuration and dependencies
 

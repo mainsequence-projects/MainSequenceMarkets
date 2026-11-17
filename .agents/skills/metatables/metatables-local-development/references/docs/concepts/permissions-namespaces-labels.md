@@ -6,8 +6,8 @@ audit history, platform-fact freshness, and schema-execution limits.
 
 Access is a role granted on a namespace or a table: `metadata_viewer`, `data_viewer`,
 `data_writer`, `editor` or `owner`, each including the one before it. Tables combine
-their direct bindings, their Teams' bindings and the bindings on their current
-namespace; the strongest role wins. The API filters lists, counts, search, and lineage
+their direct bindings, their Teams' bindings and the bindings on every namespace they
+are in; the strongest role wins. The API filters lists, counts, search, and lineage
 by the same roles; hidden resources generally return 404. Organization admins hold
 every action, data included.
 
@@ -20,9 +20,16 @@ workload manage the namespace's access. A namespace is visible to whoever holds 
 on it, can see at least one of its tables, or manages its creating workload; counts
 show visible tables only. A role on a
 namespace gives the table role of the same name on its current and future tables.
-Revoking it, or moving a table out, removes that contribution; independent direct or
-Team bindings remain. Moving a table needs `tables.update` on the table and
-`tables.create` on the destination namespace.
+Revoking it, or removing a table from the namespace, removes that contribution;
+independent direct or Team bindings remain.
+
+A table can be in several namespaces
+([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)). Its role for a caller is
+the strongest across all of them. An application shares part of its tables by declaring
+a second namespace on those tables and granting on it once; see
+[A table in several namespaces](../security/ownership-and-sharing.md#a-table-in-several-namespaces).
+Adding a table to a namespace needs `tables.update` on the table and `tables.create` on
+the namespace; removing it needs `tables.create` on the namespace.
 
 A namespace is not tied to a project. Creating a table in it needs `tables.create`
 (`editor` or `owner`), whatever project the caller runs. One namespace per application

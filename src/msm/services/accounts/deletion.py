@@ -78,7 +78,9 @@ def account_delete_impact() -> AccountDeleteImpact:
         nodes = {node.id: node for node in base.impact.nodes}
 
         def outside_markets(node: TableImpactNode | None) -> bool:
-            return node is None or node.type != "meta_table" or (node.namespace or "") != namespace
+            # A table can be in several namespaces (MetaTables 0.1.66); it is a Markets table
+            # when the Markets namespace is one of them.
+            return node is None or node.type != "meta_table" or namespace not in node.namespaces
 
         for node in base.impact.nodes:
             if outside_markets(node) and "delete" in node.effects:
