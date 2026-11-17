@@ -326,7 +326,10 @@ CalendarSessionRule.create(
 - `CalendarSessionRule.upsert` matches on `calendar_uid`, `session_label` and
   `effective_from`. `CalendarException.upsert` matches on `calendar_uid`,
   `local_date`, `session_label` and `exception_type`.
-- Deleting a calendar deletes its rules and exceptions.
+- Deleting a calendar deletes its rules and exceptions. A calendar that is the
+  trading calendar of an asset, or the calendar of a portfolio, is not deleted:
+  the delete is refused with the number of each. Move them to another calendar
+  first.
 
 On a calendar an adapter wrote, the adapter owns the rules: the next write from
 the library replaces them. Correct such a calendar with exceptions.

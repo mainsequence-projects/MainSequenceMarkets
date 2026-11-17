@@ -159,8 +159,12 @@ def link_assets_to_calendar(assets: Sequence[Asset], calendar: Calendar) -> None
     refuses it. There is no default calendar.
     """
 
-    for asset in assets:
-        AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=calendar.uid)
+    result = AssetCalendar.link_many(
+        [asset.unique_identifier for asset in assets],
+        calendar_uid=calendar.uid,
+    )
+    if result.unknown:
+        raise LookupError(f"Assets {result.unknown} were not found.")
     print_detail("asset_calendar", f"{len(assets)} assets -> {calendar.unique_identifier}")
 
 

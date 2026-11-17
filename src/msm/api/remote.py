@@ -59,6 +59,7 @@ WRITE_OPERATIONS = frozenset(
         "replace_memberships",
         "create_batch",
         "create_from_pandas_calendar",
+        "link_many",
         "reconcile_dataset_availability",
         "upsert_many",
         "add_many",

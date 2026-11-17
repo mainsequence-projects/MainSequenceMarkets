@@ -232,11 +232,21 @@ def patch_calendar(
         404: {
             "model": ErrorResponse,
             "description": "The requested calendar uid was not found.",
-        }
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": (
+                "The calendar is the trading calendar of an asset or the calendar of a "
+                "portfolio. Move them to another calendar first."
+            ),
+        },
     },
 )
 def remove_calendar(uid: str) -> Calendar | None:
-    deleted = delete_calendar(uid=uid)
+    try:
+        deleted = delete_calendar(uid=uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Calendar {uid!r} was not found.")
     return None

@@ -1153,6 +1153,7 @@ ACCOUNT_REGISTRATION_TABLES: tuple[str, ...] = (
     "asset_types",
     "assets",
     "asset_snapshots",
+    "asset_calendars",
     "accounts",
     "holdings_sets",
     "holdings",
@@ -1207,6 +1208,10 @@ class AccountRegistrationAsset(BaseModel):
     unique_identifier: str = Field(min_length=1, max_length=255)
     asset_type: AccountRegistrationAssetType
     snapshot: AccountRegistrationAssetSnapshot | None = None
+    calendar_identifier: str | None = Field(default=None, min_length=1, max_length=255)
+    """``unique_identifier`` of the asset's trading calendar. The asset is linked to it in
+    the registration's transaction when it has no trading calendar; an asset that has one
+    keeps it (ADR 0057)."""
 
 
 class AccountRegistrationPosition(BaseModel):

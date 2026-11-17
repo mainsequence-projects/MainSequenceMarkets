@@ -306,15 +306,29 @@ A client that does not use the Python row classes calls the routes:
 ## Assets And Price Bars
 
 A stored calendar also decides which price bars an asset has (ADR 0056). An
-asset is linked to its trading calendar with
-`AssetCalendar.upsert(asset_uid=..., calendar_uid=...)`.
+asset is linked to its trading calendar when it is registered, or in bulk
+(ADR 0057):
+
+```python
+from msm.api.assets import Asset, AssetCalendar
+
+Asset.upsert_many(
+    [{"unique_identifier": "asset_us_equity_acme", "asset_type": "equity", "calendar_identifier": "NYSE"}]
+)
+result = AssetCalendar.link_many(["asset_us_equity_beta"], calendar_identifier="NYSE")
+```
+
+`link_many` names assets by `unique_identifier`, writes one transaction, and
+returns `linked`, `moved`, `unchanged`, `kept` and `unknown`.
+`AssetCalendar.unlinked_assets()` lists the assets that have no calendar.
 
 - Price interpolation requires the link. An asset without one fails the price
   update; there is no default calendar.
 - A correction to a calendar moves the bars of every asset linked to it and the
   rebalance dates of every portfolio on it. For different answers, make two
   calendars from the same library calendar.
-- A calendar cannot be deleted while an asset is linked to it.
+- A calendar cannot be deleted while an asset is linked to it or a portfolio
+  uses it. The delete is refused with the number of each; move them first.
 
 ## Limits
 

@@ -65,6 +65,7 @@ class _RequestedAsset:
     unique_identifier: str
     asset_type: NewAssetType
     snapshot: SnapshotRow | None
+    calendar_identifier: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,7 @@ def register_account(
             else f"Assets {names} were not found and are not in assets."
         )
     _refuse_asset_type_conflicts(requested, details)
+    calendar_links = _calendar_links(context, requested, details)
 
     holdings = _holdings_write(
         state,
@@ -155,6 +157,7 @@ def register_account(
             for asset in missing
         ),
         snapshots=_changed_snapshots(requested, details, holdings_date=holdings_date),
+        calendar_links=calendar_links,
         account=_account_write(payload.account, state.row),
         holdings=holdings,
     )
@@ -215,6 +218,7 @@ def _requested_assets(assets: Sequence[Any], *, cash_currency: str | None) -> di
             unique_identifier=identifier,
             asset_type=_asset_type_definition(asset.asset_type),
             snapshot=_snapshot_row(identifier, asset.snapshot),
+            calendar_identifier=_string_or_none(asset.calendar_identifier),
         )
     if cash_currency is None:
         return requested
@@ -321,6 +325,52 @@ def _account_state(
         holdings=holdings,
         holdings_complete=len(holdings) <= position_count,
     )
+
+
+def _calendar_links(
+    context: MarketsRepositoryContext,
+    requested: Mapping[str, _RequestedAsset],
+    details: Mapping[str, Mapping[str, Any]],
+) -> tuple[tuple[uuid.UUID, tuple[str, ...]], ...]:
+    """The links to write: each asset that names a calendar and has no trading calendar.
+
+    Nothing is read when no asset names a calendar. An unknown calendar refuses the
+    registration before anything is written. An asset that already has a trading
+    calendar keeps it, as an existing asset keeps its type (ADR 0057).
+    """
+
+    wanted = {
+        identifier: asset.calendar_identifier
+        for identifier, asset in requested.items()
+        if asset.calendar_identifier
+    }
+    if not wanted:
+        return ()
+
+    from msm.repositories.asset_calendars import read_asset_link_state
+    from msm.services.asset_calendars import resolve_calendar_identifiers
+
+    try:
+        calendars = resolve_calendar_identifiers(context, wanted.values())
+    except LookupError as error:
+        raise ValueError(f"{error} Create the calendar before registering its assets.") from error
+    existing = [identifier for identifier in wanted if identifier in details]
+    linked = (
+        {
+            identifier
+            for identifier, row in read_asset_link_state(
+                context, asset_identifiers=existing
+            ).items()
+            if row.get("calendar_uid") not in (None, "")
+        }
+        if existing
+        else set()
+    )
+    by_calendar: dict[uuid.UUID, list[str]] = {}
+    for identifier, calendar_identifier in wanted.items():
+        if identifier not in linked:
+            by_calendar.setdefault(calendars[calendar_identifier], []).append(identifier)
+    return tuple((calendar_uid, tuple(assets)) for calendar_uid, assets in by_calendar.items())
 
 
 def _refuse_asset_type_conflicts(
@@ -516,6 +566,23 @@ def _result(
             )
         )
     written["asset_snapshots"] = {"created": len(writes.snapshots)}
+
+    for calendar_uid, asset_identifiers in writes.calendar_links:
+        audit.append(
+            AccountRegistrationWrite(
+                "asset-calendar",
+                "create",
+                None,
+                {
+                    "calendar_uid": str(calendar_uid),
+                    "asset_identifiers": list(asset_identifiers),
+                    "account_identifier": identifier,
+                },
+            )
+        )
+    written["asset_calendars"] = {
+        "created": sum(len(asset_identifiers) for _, asset_identifiers in writes.calendar_links)
+    }
 
     account_created = writes.account is not None and _uuid(account_uid) == writes.account.uid
     account_changed = writes.account is not None and not account_created

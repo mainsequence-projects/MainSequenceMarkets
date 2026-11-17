@@ -289,6 +289,8 @@ has one calendar, and the worked example below has one meaning.
 ### 8. Row API
 
 - `AssetCalendar.upsert(asset_uid=..., calendar_uid=...)` links or relinks an asset.
+  [ADR 0057](0057-asset-calendar-links-in-bulk-and-at-registration.md) adds a write for many
+  assets and lets a registration name the calendar.
 - `AssetCalendar.filter(asset_uid__in=[...])` is the read in "3".
 - Deleting the row unlinks the asset. Its price updates then fail (see "2").
 - Routes and the Command Center registry entry are not built (see "Implementation Notes").

@@ -277,6 +277,26 @@ def test_patch_calendar_returns_record(monkeypatch) -> None:
     }
 
 
+def test_delete_of_a_calendar_in_use_answers_409(monkeypatch) -> None:
+    """ADR 0057: a calendar an asset or a portfolio references is not deleted."""
+
+    from msm.services.calendars import CalendarInUseConflictError
+
+    def refuse(uid):
+        raise CalendarInUseConflictError(
+            "Calendar 'NYSE' is the trading calendar of 2 asset(s) and cannot be deleted. "
+            "Move them to another calendar first."
+        )
+
+    monkeypatch.setattr("apps.v1.routers.calendars.delete_calendar", refuse)
+    client = TestClient(app)
+
+    response = client.delete(f"/api/v1/calendar/{uuid.uuid4()}/")
+
+    assert response.status_code == 409
+    assert "trading calendar of 2 asset(s)" in response.json()["detail"]
+
+
 def test_delete_calendar_returns_null(monkeypatch) -> None:
     monkeypatch.setattr("apps.v1.routers.calendars.delete_calendar", lambda uid: True)
 

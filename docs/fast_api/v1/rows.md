@@ -46,7 +46,7 @@ model's own fields only.
 
 Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_portfolio`, `remove_portfolio`, `replace_memberships`, `create_batch`,
-`create_from_pandas_calendar`, `reconcile_dataset_availability`, `upsert_many`,
+`create_from_pandas_calendar`, `link_many`, `reconcile_dataset_availability`, `upsert_many`,
 `add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
 `publish`, `register`, `register_signal`, `unregister`, `unregister_signal`, `reconcile`, `activate_definition`,
 `retire_definition`) run through `registry_write`, which records who made them.

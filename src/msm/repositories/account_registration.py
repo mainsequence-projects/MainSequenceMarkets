@@ -51,6 +51,7 @@ from msm.time_index.assets.snapshots import SNAPSHOT_VALUE_COLUMNS
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 
 from .accounts import HOLDINGS_SET_GUARD
+from .asset_calendars import link_assets_statements
 from .asset_registration import (
     NewAsset,
     NewAssetType,
@@ -132,13 +133,20 @@ class AccountRegistrationWrites:
     asset_types: tuple[NewAssetType, ...] = ()
     assets: tuple[NewAsset, ...] = ()
     snapshots: tuple[SnapshotRow, ...] = ()
+    calendar_links: tuple[tuple[uuid.UUID, tuple[str, ...]], ...] = ()
+    """Per calendar uid, the identifiers of the assets to link that have no trading calendar."""
     account: AccountWrite | None = None
     holdings: HoldingsWrite | None = None
 
     @property
     def is_empty(self) -> bool:
         return not (
-            self.asset_types or self.assets or self.snapshots or self.account or self.holdings
+            self.asset_types
+            or self.assets
+            or self.snapshots
+            or self.calendar_links
+            or self.account
+            or self.holdings
         )
 
 
@@ -276,6 +284,12 @@ def account_registration_statements(
         statements.append(insert_missing_assets(writes.assets, dialect=dialect))
     if writes.snapshots:
         statements.append(_insert_snapshots(writes.snapshots, params=params, dialect=dialect))
+    if writes.calendar_links:
+        # After the asset insert: a link is written by identifier, so an asset this
+        # transaction creates is linked in it. An asset that has a link keeps it.
+        statements.extend(
+            link_assets_statements(dict(writes.calendar_links), dialect=dialect, relink=False)
+        )
     if writes.account is not None:
         statements.append(_upsert_account(writes.account, params=params, dialect=dialect))
     if writes.holdings is not None:

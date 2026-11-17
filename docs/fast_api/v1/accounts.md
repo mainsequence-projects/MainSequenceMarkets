@@ -35,8 +35,9 @@ direct account snapshots and virtual-fund-grouped views.
   - request body: `account` (`unique_identifier`, `account_name`, optional
     `is_paper` and `account_is_active`; a flag left out keeps an existing
     account's value), `assets` (each with `unique_identifier`, `asset_type`
-    `{asset_type, display_name, description}` and an optional `snapshot`
-    `{name, ticker, exchange_code, asset_ticker_group_id}`), optional
+    `{asset_type, display_name, description}`, an optional `snapshot`
+    `{name, ticker, exchange_code, asset_ticker_group_id}` and an optional
+    `calendar_identifier`), optional
     `cash_currency`, `holdings_date`, `overwrite` and `positions`
     (`asset_identifier`, positive `quantity`, `direction`, `extra_details`).
     At most 1,000 distinct assets and 1,000 positions
@@ -50,6 +51,10 @@ direct account snapshots and virtual-fund-grouped views.
     asset; one `400` names every other identifier
   - an existing asset keeps its `asset_type`: a different requested type is a
     `409` listing each such asset, and nothing is written
+  - an asset with a `calendar_identifier` is linked to that stored calendar in
+    the same transaction when it has no trading calendar; an asset that has one
+    keeps it. A calendar that does not exist is a `400` and nothing is written.
+    One more read resolves the calendars, only when an asset names one
   - a snapshot row is written at `holdings_date` when the asset has none, or when
     its latest snapshot is earlier and differs in `name`, `ticker`,
     `exchange_code` or `asset_ticker_group_id` (a missing value equals an empty
@@ -60,7 +65,8 @@ direct account snapshots and virtual-fund-grouped views.
     is written; with `overwrite` they replace the set's rows
   - returns `account`, `asset_uids` by identifier, `holdings_set_uid`,
     `holdings_date` and `written`: per table (`asset_types`, `assets`,
-    `asset_snapshots`, `accounts`, `holdings_sets`, `holdings`) the rows
+    `asset_snapshots`, `asset_calendars`, `accounts`, `holdings_sets`,
+    `holdings`) the rows
     `created` and `changed`
   - audited as `registry_write("account", "register")`, with one record per
     row created or changed, each carrying the account's `unique_identifier`
