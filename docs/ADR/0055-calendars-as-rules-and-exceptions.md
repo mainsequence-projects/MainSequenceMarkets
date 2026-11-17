@@ -357,12 +357,17 @@ After the revision a calendar still ends where its stored rows ended. Running
 
 ## What Issue 83 Still Needs
 
-- `bulk_upsert_model` still sends all its rows in one statement. Every other caller keeps the
-  exposure, so the batching is still needed.
-- The failure still reaches the caller as a bare `500`.
+Nothing. Issue 83 was closed on 2026-11-17 for its calendar part, and its two other findings
+were [issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84), which
+is fixed:
 
-Both are [issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84).
-Issue 83 was closed on 2026-11-17 for its calendar part.
+- `bulk_upsert_model` sent all its rows in one statement. It now sends them in as many
+  statements as the MetaTables limits need, each its own transaction, and returns every row
+  with its status
+  ([Bulk upserts of any length](../knowledge/msm/repositories/index.md#bulk-upserts-of-any-length)).
+- The failure reached the caller as a bare `500`. A MetaTables call that is refused or fails
+  now answers `502` or `503` with `error_type` `UpstreamApiError` and the reason MetaTables
+  gave ([Upstream errors](../fast_api/v1/index.md#upstream-errors)).
 
 ## Rejected Alternatives
 

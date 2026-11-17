@@ -199,7 +199,7 @@ class Index(MarketsMetaTableRow):
         cls,
         payloads: Sequence[IndexUpsert | Mapping[str, Any]],
     ) -> list[Index]:
-        """Upsert many indexes in one statement with :meth:`upsert`'s guard.
+        """Upsert many indexes with :meth:`upsert`'s guard.
 
         An existing index keeps its ``calculation_method`` once it has formulas
         or canonical observations; one refused payload rejects the whole call.

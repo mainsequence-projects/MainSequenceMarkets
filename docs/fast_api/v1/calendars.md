@@ -171,6 +171,9 @@ An exception is one dated departure from the rules.
   - bulk upserts exceptions under the path calendar uid
   - an exception is matched by `local_date`, `session_label` and
     `exception_type`
+  - takes a list of any length; a long list is written in several statements,
+    each its own transaction
+    ([Bulk upserts of any length](../../knowledge/msm/repositories/index.md#bulk-upserts-of-any-length))
 - `GET`, `PATCH`, and
   `DELETE /api/v1/calendar/{calendar_uid}/exceptions/{exception_uid}/`
   - manage one exception and require it to belong to the path calendar uid

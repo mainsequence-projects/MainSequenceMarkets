@@ -86,3 +86,14 @@ the `msm_pricing.api` composites (`curve`, `curve-building-details`,
 | 404 | Unknown resource or operation, or the row was not found | `LookupError` |
 | 409 | The operation conflicted with existing rows | the conflict class name |
 | 501 | The operation is not offered remotely | `NotImplementedError` |
+| 502 | An API this deployment calls, normally MetaTables, refused the call | `UpstreamApiError` |
+| 503 | That API failed or could not be reached; the operation may be tried again | `UpstreamApiError` |
+
+The `502` and `503` answers are the same on every route of the API, not only on
+these; see [Upstream errors](index.md#upstream-errors). `msm.client` raises
+`MarketsUpstreamError` for them.
+
+`upsert_many` takes a list of any length. A long list is written in several
+statements, each its own transaction, so a failure part of the way leaves the
+earlier rows written; sending the same list again finishes the write
+([Bulk upserts of any length](../../knowledge/msm/repositories/index.md#bulk-upserts-of-any-length)).

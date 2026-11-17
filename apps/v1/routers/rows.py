@@ -149,6 +149,18 @@ def describe_row_operations() -> list[RowResourceDescription]:
         404: {"description": "Unknown resource or operation, or the row was not found."},
         409: {"description": "The operation conflicted with existing rows."},
         501: {"description": "The operation is not offered remotely."},
+        502: {
+            "description": (
+                "An API this deployment calls, normally MetaTables, refused the call "
+                "(`UpstreamApiError`); `detail` carries its reason."
+            )
+        },
+        503: {
+            "description": (
+                "That API failed or could not be reached (`UpstreamApiError`); the "
+                "operation may be tried again."
+            )
+        },
     },
 )
 def run_row_operation(

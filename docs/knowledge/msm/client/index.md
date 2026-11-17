@@ -97,9 +97,21 @@ asset pricing details).
 | 404 | `LookupError`; gets return `None` as under the runtime backend |
 | 409 | `MarketsConflictError` (`ValueError`) |
 | 501 | `MarketsOperationUnsupported` (`NotImplementedError`) |
+| 502, 503 with `error_type` `UpstreamApiError` | `MarketsUpstreamError` (`MarketsApiError`) |
+| any other status | `MarketsApiError` (`RuntimeError`) |
 
 Code that catches `ValueError` or `LookupError` behaves the same under both
 backends.
+
+`MarketsUpstreamError` means the Markets API's own call to an API it depends on,
+normally MetaTables, was refused or failed. It is not a fault of the arguments
+checked by the Markets API, so it is not a `ValueError`. Its message carries the
+reason that API gave, for example
+`The upstream API answered 422: body.statement.sql: String should have at most 1000000 characters`.
+`status_code` is `502` when the upstream API refused the call: the same call
+will be refused again. It is `503`, and `retryable` is `True`, when the upstream
+API failed or could not be reached. A `502` or `503` without that `error_type`
+comes from a proxy in front of the Markets API and raises plain `MarketsApiError`.
 
 ## Set-Based Operations
 
@@ -115,18 +127,28 @@ CalendarException.filter(calendar_uid=uid, local_date__gte=start, local_date__lt
 ```
 
 `upsert_many` validates each payload through the row module's `<Row>Upsert`
-model and writes them in one statement on `__upsert_keys__`. An existing row is
+model and upserts them on `__upsert_keys__`. An existing row is
 updated only when a value differs, so an unchanged row is not rewritten; every
 payload's row still comes back, in order. Under the runtime backend,
 `msm.repositories.crud.upsert_model` and `bulk_upsert_model` also give each row
-an `upsert_status` of `inserted`, `updated` or `unchanged`. `filter` takes
+an `upsert_status` of `inserted`, `updated` or `unchanged`.
+
+A list of any length is accepted. A short list is one statement. A longer one
+goes to MetaTables in several statements, each inside its limits; see
+[Bulk upserts of any length](../repositories/index.md#bulk-upserts-of-any-length)
+for the limits. Each statement is its own transaction, so a list that needs
+several is not written atomically: when a statement fails, the rows of the
+statements before it stay written and the error is raised. Call again with the
+same list to finish; the rows already written come back unchanged.
+
+`filter` takes
 equality, `<field>_contains`, `<field>__in` and `<field>__gte`/`__gt`/`__lte`/
 `__lt` filters, `order_by` (`-column` for descending), `limit` and `offset`;
 `count` takes the same filters. Remote values are typed by the row model's
 field, so a date bound arrives as a date.
 
 The typed asset composites batch as well: `CurrencySpot.upsert_many` and
-`Future.upsert_many` write the assets and their details in one statement each,
+`Future.upsert_many` upsert the assets, then their details, each as one list,
 and `CurrencySpot.filter(asset_uids=, base_currency_uids=, quote_currency_uids=)`
 and `Future.filter(asset_uids=, underlying_index_uids=, kinds=)` read them with
 their details.

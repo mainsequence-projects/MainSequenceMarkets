@@ -365,7 +365,7 @@ class CurrencySpot(RemoteRowOperations, BaseModel):
         cls,
         payloads: Sequence[CurrencySpotUpsert | Mapping[str, Any]],
     ) -> list[CurrencySpot]:
-        """Upsert many currency spots: one statement for the assets, one for their details."""
+        """Upsert many currency spots: one bulk upsert of the assets, one of their details."""
 
         values = _last_by_identifier(
             _validate_payload(CurrencySpotUpsert, payload, {}).model_dump() for payload in payloads
@@ -433,7 +433,7 @@ class CurrencySpot(RemoteRowOperations, BaseModel):
 
 
 def _last_by_identifier(values: Any) -> list[dict[str, Any]]:
-    """Keep the last payload per ``unique_identifier``; one statement cannot write a row twice."""
+    """Keep the last payload per ``unique_identifier``; a bulk upsert refuses a key given twice."""
 
     return list({item["unique_identifier"]: item for item in values}.values())
 

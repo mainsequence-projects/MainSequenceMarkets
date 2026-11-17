@@ -32,9 +32,9 @@ from msm.repositories.account_registration import (
     SnapshotRow,
     read_account_registration_state,
     register_account as run_registration,
-    with_max_rows,
 )
 from msm.repositories.asset_registration import NewAsset, NewAssetType
+from msm.repositories.base import with_max_rows
 from msm.services.accounts.core import AccountHoldingsSnapshotExistsError
 from msm.services.assets.currency import AssetTypeConflictError
 from msm.time_index.assets.snapshots import SNAPSHOT_VALUE_COLUMNS

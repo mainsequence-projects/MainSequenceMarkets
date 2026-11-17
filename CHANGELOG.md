@@ -91,9 +91,14 @@ upgrade no price update runs until its assets are linked.**
   Markets API routes, and a table for moving code off the per-date rows.
 - **The library's holiday names.** A closure the library has a holiday rule for carries the
   rule's name, such as `Thanksgiving`. An ad-hoc closure has none.
+- **`msm.api.remote.MarketsUpstreamError`.** `msm.client` raises it when the Markets API
+  answers `502` or `503` with `error_type` `UpstreamApiError`. It is a `MarketsApiError`, its
+  message is the reason the upstream API gave, and `retryable` is `True` for `503`.
 
 ### Removed
 
+- **`with_max_rows` in `msm.repositories.account_registration`.** It is in
+  `msm.repositories.base` and takes a repository context or a table handle.
 - **The default `24/7` calendar of an asset, and every calendar name in an asset scope.**
   `asset_calendar`, `DEFAULT_MARKET_CALENDAR` and `FULL_CALENDAR` are gone. A scope mapping
   with a `calendar` key is refused with a `TypeError`.
@@ -133,7 +138,22 @@ upgrade no price update runs until its assets are linked.**
   1,000,000 characters, after the `Calendar` row had already been written. A calendar is now
   about 12 exception rows a year, written in one transaction with its header
   ([issue 83](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/83)).
-  `bulk_upsert_model` still sends its rows in one statement for its other callers
+- **A bulk upsert of a long list was refused, and nothing was written.** `bulk_upsert_model`
+  compiled every row into one statement, and MetaTables refuses a statement of more than
+  1,000,000 characters: about 5,500 `Asset` rows or 2,300 `CalendarException` rows. It now
+  sends the rows in as many statements as the limits need, so `upsert_many` of every row
+  class and the calendar bulk-upsert routes take a list of any length. Each statement is
+  its own transaction: when one fails, the rows of the statements before it stay written,
+  and calling again with the same list finishes the write
+  ([issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84)).
+- **A bulk upsert of more than 1,000 rows did not return every row.** MetaTables returns at
+  most `max_rows` rows of a statement, 1,000 unless the context says otherwise, and writes
+  the rest without returning them. On SQLite the call raised `KeyError` and wrote nothing.
+  Each statement now asks for as many rows as it writes.
+- **A refused or failed MetaTables call answered `500` with no body.** Every route now
+  answers `502` when MetaTables, or another API the deployment calls, refused the call and
+  `503` when it failed or could not be reached, with `error_type` `UpstreamApiError`, the
+  status it answered with and the reason it gave
   ([issue 84](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/84)).
 
 ### Upgrading

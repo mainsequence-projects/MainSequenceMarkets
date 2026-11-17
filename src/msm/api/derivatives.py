@@ -224,7 +224,7 @@ class Future(RemoteRowOperations, BaseModel):
         cls,
         payloads: Sequence[FutureUpsert | Mapping[str, Any]],
     ) -> list[Future]:
-        """Upsert many futures: one statement for the assets, one for their contract details."""
+        """Upsert many futures: one bulk upsert of the assets, one of their contract details."""
 
         values = _last_by_identifier(
             _validate_payload(FutureUpsert, payload, {}).model_dump() for payload in payloads

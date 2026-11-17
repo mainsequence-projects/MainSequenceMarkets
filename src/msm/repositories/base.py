@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from metatables import (
@@ -120,6 +120,17 @@ MarketsOperationContext = MarketsRepositoryContext | MarketsMetaTableHandle
 
 
 MarketsCompiledWrite = MetaTableCompiledSQLOperation | MetaTableCompiledSQLTransaction
+
+
+def with_max_rows[ContextT: (MarketsRepositoryContext, MarketsMetaTableHandle)](
+    context: ContextT, max_rows: int
+) -> ContextT:
+    """``context`` whose operations return at least ``max_rows`` rows."""
+
+    limits = MetaTableOperationLimits.model_validate(context.limits or {})
+    if limits.max_rows >= max_rows:
+        return context
+    return replace(context, limits=limits.model_copy(update={"max_rows": max_rows}))
 
 
 def resolve_markets_sql_target(
@@ -264,4 +275,5 @@ __all__ = [
     "execute_markets_write",
     "resolve_markets_sql_target",
     "values_parameter",
+    "with_max_rows",
 ]

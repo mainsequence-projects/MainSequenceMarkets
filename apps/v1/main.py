@@ -32,6 +32,7 @@ from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
 from apps.v1.openapi_documentation import apply_metatable_documentation
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
+from apps.v1.upstream_errors import install_upstream_error_handlers
 
 API_TITLE = "MainSequence Markets Public API"
 API_VERSION = package_version()
@@ -274,6 +275,8 @@ def create_app() -> FastAPI:
         return app.openapi_schema
 
     app.openapi = custom_openapi
+    # A call to MetaTables that a route does not handle answers 502 or 503 with its reason.
+    install_upstream_error_handlers(app)
     # Authenticates every request before its handler: the gateway's signed caller
     # assertion when hosted, the caller's Bearer token locally. The platform
     # launcher refuses to serve an application without it.
