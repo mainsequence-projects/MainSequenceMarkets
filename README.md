@@ -239,7 +239,8 @@ Optional extras provide analytics, documentation, development, portfolio,
 public API, and pricing tooling. The `analytics` and `pricing-analytics` extras
 reserve the dependency boundary for optional analytics helpers; the current
 spread helpers use the core `numpy` and `pandas` dependencies. The `portfolios`
-extra installs portfolio-only helpers such as `pandas-market-calendars`. The
+extra installs portfolio-only helpers such as `scikit-learn`; `pandas-market-calendars`
+is a core dependency, used by core calendar materialization. The
 `public_api` extra installs FastAPI and Uvicorn for the project-level `apps/v1`
 surface. The `pricing` extra installs QuantLib and the optional pricing runtime
 exposed as `msm_pricing`.

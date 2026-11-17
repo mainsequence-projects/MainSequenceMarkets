@@ -7,6 +7,19 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [3.8.3] - 2026-11-17
+
+### Fixed
+
+- **The Markets API answered `500` on `calendar/create_from_pandas_calendar`.** The route
+  imports `pandas-market-calendars`, which was only in the `portfolios` extra, and the API's
+  image installs `requirements.txt`, which carries no extras. It is now a dependency of
+  ms-markets, so `pip install ms-markets` installs it and the `portfolios` extra no longer
+  lists it. A packaging test walks the modules the API and the migration Job can reach,
+  imports inside functions included, and fails when one imports a package `requirements.txt`
+  does not pin
+  ([issue 81](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/81)).
+
 ## [3.8.2] - 2026-11-17
 
 ### Changed

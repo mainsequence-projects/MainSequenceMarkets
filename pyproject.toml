@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ms-markets"
-version = "3.8.2"
+version = "3.8.3"
 description = "Financial markets ORM, engines, and application management extensions for Main Sequence."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -41,6 +41,7 @@ dependencies = [
   "mainsequence-metatable>=0.1.66,<0.2",
   "numpy",
   "pandas",
+  "pandas-market-calendars>=5.4.0",
   "pip>=26.2.2",
   "psycopg2>=2.9.12",
   "pydantic",
@@ -79,7 +80,6 @@ docs = [
 ]
 portfolios = [
   "joblib",
-  "pandas-market-calendars>=5.4.0",
   "scikit-learn",
   "tqdm",
 ]

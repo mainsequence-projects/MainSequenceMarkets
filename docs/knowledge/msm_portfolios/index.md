@@ -14,8 +14,9 @@ examples belong here. Virtual-fund identity and holdings allocation belong to
 core `msm` account allocation.
 
 Install portfolio workflows with the `ms-markets[portfolios]` extra. That extra
-owns portfolio-only runtime helpers such as `pandas-market-calendars`; the core
-`ms-markets` install does not require them.
+owns portfolio-only runtime helpers such as `joblib`, `scikit-learn`, and `tqdm`; the
+core `ms-markets` install does not require them. `pandas-market-calendars` is a core
+dependency, because core calendar materialization imports it.
 
 ## Areas
 
