@@ -139,6 +139,18 @@ AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=nyse.uid)
 
 - An asset has at most one trading calendar. An asset that needs none, such as a
   currency, has no row.
+- Name the calendar when the asset is registered:
+  `Asset.upsert_many([{..., "calendar_identifier": "NYSE"}])`. Every payload that
+  writes an asset takes `calendar_identifier` or `calendar_uid`, and so does each
+  asset of an account registration.
+- Link assets that already exist in one call, by identifier:
+  `AssetCalendar.link_many(["asset_us_equity_acme", ...], calendar_identifier="NYSE")`.
+  It writes one transaction and returns `linked`, `moved`, `unchanged`, `kept`
+  and `unknown`.
+- `AssetCalendar.unlinked_assets(asset_type=...)` lists the assets with no
+  trading calendar, and `AssetCalendar.delete(asset_uid)` removes a link. The
+  design is
+  [ADR 0057](../../../ADR/0057-asset-calendar-links-in-bulk-and-at-registration.md).
 - There is no default calendar. `InterpolatedPrices` resolves the calendar of
   every asset in its scope before it reads a bar. When an asset has no link, the
   whole run fails and the error names each such asset. Link the asset and run

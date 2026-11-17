@@ -12,6 +12,7 @@ from typing import Any
 _EXPORTS = {
     "CalendarDefinition": ".computation",
     "CalendarExceptionEntry": ".computation",
+    "CalendarInUseConflictError": ".records",
     "CalendarRangeError": ".computation",
     "CalendarSourceDefinition": ".pandas_market",
     "CalendarSyncResult": ".sync",
@@ -59,6 +60,7 @@ _EXPORTS = {
     "list_calendar_session_records_page": ".records",
     "list_calendar_session_rule_records_page": ".records",
     "read_calendar_session_records": ".records",
+    "refuse_delete_of_calendar_in_use": ".records",
     "load_calendar_definition": ".definitions",
     "normalize_weekdays": ".computation",
     "pandas_market_calendar_timezone": ".pandas_market",

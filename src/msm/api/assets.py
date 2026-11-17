@@ -87,6 +87,58 @@ def _validate_payload(
     raise TypeError("Payload must be a Pydantic model, mapping, or None.")
 
 
+class TradingCalendarReference(BaseModel):
+    """The trading calendar a registration links its asset to (ADR 0057).
+
+    Optional on every payload that writes an asset. Name the stored calendar by
+    ``calendar_uid`` or by ``calendar_identifier``, its ``unique_identifier``.
+    Left out, the asset's link is not touched.
+    """
+
+    calendar_uid: uuid.UUID | str | None = None
+    calendar_identifier: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def _name_the_calendar_once(self) -> TradingCalendarReference:
+        if self.calendar_uid is not None and self.calendar_identifier is not None:
+            raise ValueError("Name the calendar with calendar_uid or calendar_identifier, not both.")
+        return self
+
+
+_CALENDAR_REFERENCE_FIELDS = frozenset(TradingCalendarReference.model_fields)
+
+
+def _asset_values(payload: BaseModel) -> dict[str, Any]:
+    """A registration payload's own fields, without its trading calendar reference."""
+
+    return payload.model_dump(exclude_unset=True, exclude=set(_CALENDAR_REFERENCE_FIELDS))
+
+
+def _link_trading_calendars(row_class: Any, items: Any) -> None:
+    """Link each written asset to the calendar its payload names, in one transaction.
+
+    ``items`` yields ``(asset_identifier, payload values)``. Nothing is read or
+    written when no payload names a calendar.
+    """
+
+    from msm.services.asset_calendars import calendar_reference, link_registered_assets
+
+    links = [
+        (str(identifier), reference)
+        for identifier, values in items
+        if (reference := calendar_reference(values))
+    ]
+    if not links:
+        return
+    from msm.bootstrap import resolve_runtime
+
+    context = resolve_runtime(
+        models=[AssetTable, CalendarTable, AssetCalendarTable],
+        row_model_name=row_class.__name__,
+    ).context
+    link_registered_assets(context, links)
+
+
 class Asset(MarketsMetaTableRow):
     """User-facing asset row returned by typed markets API helpers."""
 
@@ -104,7 +156,10 @@ class Asset(MarketsMetaTableRow):
 
     @classmethod
     def create(cls, payload: AssetCreate | Mapping[str, Any] | None = None, **kwargs: Any) -> Asset:
-        return super().create(_validate_payload(AssetCreate, payload, kwargs))
+        validated = _validate_payload(AssetCreate, payload, kwargs)
+        asset = super().create(_asset_values(validated))
+        _link_trading_calendars(cls, [(asset.unique_identifier, validated.model_dump())])
+        return asset
 
     @classmethod
     def upsert(
@@ -112,7 +167,32 @@ class Asset(MarketsMetaTableRow):
         payload: AssetUpsert | Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> Asset:
-        return super().upsert(_validate_payload(AssetUpsert, payload, kwargs))
+        """Upsert an asset, and link it to its trading calendar when the payload names one."""
+
+        validated = _validate_payload(AssetUpsert, payload, kwargs)
+        asset = super().upsert(_asset_values(validated))
+        _link_trading_calendars(cls, [(asset.unique_identifier, validated.model_dump())])
+        return asset
+
+    @classmethod
+    def upsert_many(
+        cls,
+        payloads: Sequence[AssetUpsert | Mapping[str, Any]],
+    ) -> list[Asset]:
+        """Upsert many assets, then link each to the calendar its payload names.
+
+        The assets are written first and the links after, in one transaction of
+        their own. A payload without ``calendar_uid`` or ``calendar_identifier``
+        leaves its asset's link as it is. When the links fail the call fails;
+        the same call again finishes it (ADR 0057).
+        """
+
+        validated = [_validate_payload(AssetUpsert, payload, {}) for payload in payloads]
+        assets = super().upsert_many([_asset_values(item) for item in validated])
+        _link_trading_calendars(
+            cls, ((item.unique_identifier, item.model_dump()) for item in validated)
+        )
+        return assets
 
     @classmethod
     def update(
@@ -163,7 +243,7 @@ class Asset(MarketsMetaTableRow):
         )
 
 
-class AssetCreate(BaseModel):
+class AssetCreate(TradingCalendarReference):
     """Payload for creating an asset row."""
 
     model_config = ConfigDict(extra="forbid")
@@ -350,6 +430,7 @@ class CurrencySpot(RemoteRowOperations, BaseModel):
         )
         if not detail_rows:
             raise LookupError("CurrencySpot upsert did not return a row.")
+        _link_trading_calendars(cls, [(pair_asset.unique_identifier, values)])
 
         return cls.model_validate(
             {
@@ -395,6 +476,7 @@ class CurrencySpot(RemoteRowOperations, BaseModel):
                 conflict_columns=("asset_uid",),
             )
         )
+        _link_trading_calendars(cls, ((item["unique_identifier"], item) for item in values))
         return _composite_rows(cls, details, {row["uid"]: row for row in assets.values()})
 
     @classmethod
@@ -520,7 +602,7 @@ def _composite_rows(
     return rows
 
 
-class CurrencySpotCreate(BaseModel):
+class CurrencySpotCreate(TradingCalendarReference):
     """Payload for creating a currency spot asset and relationship row."""
 
     model_config = ConfigDict(extra="forbid")
@@ -660,6 +742,7 @@ class Bond(RemoteRowOperations, BaseModel):
         )
         if not detail_rows:
             raise LookupError("Bond upsert did not return a row.")
+        _link_trading_calendars(cls, [(bond_asset.unique_identifier, values)])
 
         return cls.model_validate(
             {
@@ -681,7 +764,7 @@ class Bond(RemoteRowOperations, BaseModel):
         return runtime.context
 
 
-class BondCreate(BaseModel):
+class BondCreate(TradingCalendarReference):
     """Payload for creating a bond asset and detail row."""
 
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
@@ -922,6 +1005,87 @@ class AssetCalendar(MarketsMetaTableRow):
     ) -> AssetCalendar:
         return super().update(uid, _validate_payload(AssetCalendarUpdate, payload, kwargs))
 
+    @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
+        """Unlink an asset, named by its asset uid.
+
+        Nothing references a link, so the row is deleted with no other check. The
+        asset then has no trading calendar and its price updates are refused.
+        """
+
+        return super().delete(uid)
+
+    @classmethod
+    def link_many(
+        cls,
+        asset_identifiers: list[str],
+        *,
+        calendar_uid: uuid.UUID | str | None = None,
+        calendar_identifier: str | None = None,
+        relink: bool = True,
+    ) -> AssetCalendarLinkResult:
+        """Link many assets to one stored calendar, in one transaction (ADR 0057).
+
+        Assets are named by ``unique_identifier`` and the calendar by
+        ``calendar_uid`` or by ``calendar_identifier``, its ``unique_identifier``.
+        With ``relink`` (the default) an asset on another calendar is moved;
+        without it such an asset keeps its calendar and is reported as ``kept``.
+        An identifier no asset has is reported as ``unknown`` and nothing is
+        written for it. Raises ``LookupError`` when the calendar does not exist.
+        """
+
+        from msm.services.asset_calendars import link_assets_to_calendar
+
+        return AssetCalendarLinkResult.model_validate(
+            link_assets_to_calendar(
+                cls._active_context(),
+                asset_identifiers=asset_identifiers,
+                calendar_uid=calendar_uid,
+                calendar_identifier=calendar_identifier,
+                relink=relink,
+            )
+        )
+
+    @classmethod
+    def unlinked_assets(
+        cls,
+        *,
+        asset_type: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[Asset]:
+        """Assets that have no trading calendar, ordered by ``unique_identifier``.
+
+        A price update that covers one of them is refused. ``asset_type`` narrows
+        the read to one type.
+        """
+
+        from msm.services.asset_calendars import list_unlinked_assets
+
+        rows = list_unlinked_assets(
+            cls._active_context(),
+            asset_type=normalize_asset_type(asset_type),
+            limit=limit,
+            offset=offset,
+        )
+        return [Asset.model_validate(row) for row in rows]
+
+
+class AssetCalendarLinkResult(BaseModel):
+    """What ``AssetCalendar.link_many`` did with each asset identifier."""
+
+    calendar_uid: uuid.UUID
+    linked: list[str] = Field(default_factory=list)
+    """Assets that had no trading calendar and now have this one."""
+    moved: list[str] = Field(default_factory=list)
+    """Assets that were on another calendar and are now on this one."""
+    unchanged: list[str] = Field(default_factory=list)
+    """Assets that were already on this calendar."""
+    kept: list[str] = Field(default_factory=list)
+    """Assets left on another calendar because ``relink`` was false."""
+    unknown: list[str] = Field(default_factory=list)
+    """Identifiers no asset has. Nothing was written for them."""
+
 
 class AssetCalendarCreate(BaseModel):
     """Payload for linking an asset to its trading calendar."""
@@ -1073,6 +1237,7 @@ __all__ = [
     "Asset",
     "AssetCalendar",
     "AssetCalendarCreate",
+    "AssetCalendarLinkResult",
     "AssetCalendarUpdate",
     "AssetCalendarUpsert",
     "AssetCategory",
@@ -1105,5 +1270,6 @@ __all__ = [
     "OpenFigiDetailsCreate",
     "OpenFigiDetailsUpdate",
     "OpenFigiDetailsUpsert",
+    "TradingCalendarReference",
     "normalize_asset_type",
 ]

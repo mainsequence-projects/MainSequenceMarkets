@@ -269,6 +269,50 @@ def test_a_calendar_exception_is_deleted_through_markets(monkeypatch, remote) ->
     ]
 
 
+def test_assets_are_linked_to_a_calendar_in_bulk_through_markets(monkeypatch, remote) -> None:
+    """ADR 0057: one call links many assets, named by identifier, and unlinking works."""
+
+    from msm.api.assets import AssetCalendar, AssetCalendarLinkResult
+
+    calendar_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def link(context, **kwargs):
+        seen["link"] = kwargs
+        return {
+            "calendar_uid": calendar_uid,
+            "linked": ["A0"],
+            "moved": [],
+            "unchanged": ["A1"],
+            "kept": [],
+            "unknown": ["NOPE"],
+        }
+
+    def delete_model(context, *, model, uid):
+        seen["delete"] = (model.__name__, str(uid))
+        return {"ok": True, "row_count": 1}
+
+    monkeypatch.setattr("msm.services.asset_calendars.link_assets_to_calendar", link)
+    monkeypatch.setattr("msm.repositories.crud.delete_model", delete_model)
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    asset_uid = uuid.uuid4()
+
+    result = AssetCalendar.link_many(["A0", "A1", "NOPE"], calendar_identifier="NYSE")
+    AssetCalendar.delete(asset_uid)
+
+    assert recording.calls == [("asset-calendar", "link_many"), ("asset-calendar", "delete")]
+    assert isinstance(result, AssetCalendarLinkResult)
+    assert (result.calendar_uid, result.linked, result.unknown) == (calendar_uid, ["A0"], ["NOPE"])
+    assert seen["link"] == {
+        "asset_identifiers": ["A0", "A1", "NOPE"],
+        "calendar_uid": None,
+        "calendar_identifier": "NYSE",
+        "relink": True,
+    }
+    assert seen["delete"] == ("AssetCalendarTable", str(asset_uid))
+
+
 def test_delete_without_a_service_route_is_not_offered(remote) -> None:
     from msm.api.accounts import AccountGroup
     from msm.api.remote import MarketsOperationUnsupported

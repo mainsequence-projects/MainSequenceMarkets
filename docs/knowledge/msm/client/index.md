@@ -80,7 +80,10 @@ themselves, such as `Curve` and the pricing market-data bindings, delete
 remotely as they do under the runtime backend. `CalendarSessionRule` and
 `CalendarException` are among them: deleting a `user` exception is how a
 calendar gets the library's answer back for a date
-([Calendars](../calendars/index.md)).
+([Calendars](../calendars/index.md)). `AssetCalendar` is another: its `delete`
+removes an asset's trading calendar link, and
+`AssetCalendar.link_many(asset_identifiers, calendar_identifier=...)` links many
+assets in one call.
 
 The remote backend covers the `msm.api` rows, the `msm_portfolios.api`
 metadata rows (`SignalMetadata`, `PortfolioMetadata`,

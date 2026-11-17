@@ -170,9 +170,15 @@ stored calendar (ADR 0056):
 ```python
 from msm.api.assets import AssetCalendar
 
-for asset in assets:
-    AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=calendar.uid)
+result = AssetCalendar.link_many(
+    [asset.unique_identifier for asset in assets],
+    calendar_uid=calendar.uid,
+)
+assert not result.unknown
 ```
+
+One call links them all in one transaction. Do not loop over
+`AssetCalendar.upsert`.
 
 - There is no default calendar. An asset with no `AssetCalendar` link fails the
   whole price update, and the error names it. Link the asset; do not catch the

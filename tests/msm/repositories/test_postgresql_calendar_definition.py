@@ -120,3 +120,69 @@ def test_writing_it_again_keeps_user_rows_and_writes_nothing_new(markets) -> Non
     Calendar.delete(calendar_uid)
     assert _count(markets, "ms_markets__calendarexception") == 0
     assert _count(markets, "ms_markets__calendarsessionrule") == 0
+
+
+def test_assets_are_linked_in_bulk_and_at_registration(markets) -> None:
+    """ADR 0057 on PostgreSQL: link by identifier, at bulk registration, and in account registration."""
+
+    from msm.api.assets import Asset, AssetCalendar, AssetType
+    from msm.services import register_account
+    from msm.services.calendars import CalendarInUseConflictError, delete_calendar_record
+
+    AssetType.upsert(asset_type="equity", display_name="Equity")
+    nyse = Calendar.create(unique_identifier="NYSE", display_name="NYSE", calendar_type="TRADING")
+    desk = Calendar.create(unique_identifier="DESK", display_name="Desk", calendar_type="CUSTOM")
+    identifiers = [f"BULK{index:05d}" for index in range(2500)]
+    Asset.upsert_many(
+        [{"unique_identifier": identifier, "asset_type": "equity"} for identifier in identifiers]
+    )
+    transactions = markets.operations.count("transaction")
+
+    result = AssetCalendar.link_many([*identifiers, "NOPE"], calendar_identifier="NYSE")
+
+    assert (len(result.linked), result.unknown) == (2500, ["NOPE"])
+    assert markets.operations.count("transaction") == transactions + 1
+    assert AssetCalendar.count(calendar_uid=nyse.uid) == 2500
+
+    moved = AssetCalendar.link_many(identifiers[:3], calendar_uid=desk.uid)
+    kept = AssetCalendar.link_many(identifiers[3:6], calendar_uid=desk.uid, relink=False)
+    assert (moved.moved, kept.kept) == (identifiers[:3], identifiers[3:6])
+    assert AssetCalendar.count(calendar_uid=desk.uid) == 3
+
+    Asset.upsert_many(
+        [
+            {"unique_identifier": "NEW0", "asset_type": "equity", "calendar_identifier": "DESK"},
+            {"unique_identifier": "NEW1", "asset_type": "equity", "calendar_uid": nyse.uid},
+            {"unique_identifier": "NEW2", "asset_type": "equity"},
+        ]
+    )
+    assert AssetCalendar.count(calendar_uid=desk.uid) == 4
+    assert [asset.unique_identifier for asset in AssetCalendar.unlinked_assets()] == ["NEW2"]
+
+    registered = register_account(
+        markets.context,
+        {
+            "account": {"unique_identifier": "venue::account-1", "account_name": "Venue account"},
+            "assets": [
+                {
+                    "unique_identifier": "venue::AAPL",
+                    "asset_type": {"asset_type": "venue_equity"},
+                    "calendar_identifier": "NYSE",
+                },
+                # Already linked to DESK above: the registration keeps that link.
+                {
+                    "unique_identifier": "NEW0",
+                    "asset_type": {"asset_type": "equity"},
+                    "calendar_identifier": "NYSE",
+                },
+            ],
+            "holdings_date": "2026-11-10T21:00:00+00:00",
+            "positions": [{"asset_identifier": "venue::AAPL", "quantity": "3"}],
+        },
+    )
+    assert registered.response["written"]["asset_calendars"] == {"created": 1, "changed": 0}
+    assert AssetCalendar.count(calendar_uid=nyse.uid) == 2500 - 3 + 1 + 1
+    assert AssetCalendar.count(calendar_uid=desk.uid) == 4
+
+    with pytest.raises(CalendarInUseConflictError):
+        delete_calendar_record(markets.context, uid=str(desk.uid))

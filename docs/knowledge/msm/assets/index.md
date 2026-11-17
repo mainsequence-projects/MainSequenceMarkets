@@ -515,9 +515,23 @@ from msm.api.assets import Asset, AssetCalendar
 from msm.api.calendars import Calendar
 
 calendar = Calendar.create_from_pandas_calendar("24/7", "CRYPTO_24_7", display_name="Crypto 24/7")
-btc = Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
-AssetCalendar.upsert(asset_uid=btc.uid, calendar_uid=calendar.uid)
+btc = Asset.upsert(
+    unique_identifier="example-asset-btc",
+    asset_type="crypto",
+    calendar_identifier="CRYPTO_24_7",
+)
+
+# Assets that already exist are linked in one call, by identifier.
+result = AssetCalendar.link_many(["example-asset-eth"], calendar_uid=calendar.uid)
 ```
+
+- Name the calendar in the payload that registers the asset, with
+  `calendar_identifier` or `calendar_uid`. `Asset.upsert_many` takes one for each
+  asset. A payload that names none leaves the asset's link as it is.
+- `AssetCalendar.link_many` returns `linked`, `moved`, `unchanged`, `kept` and
+  `unknown`; `AssetCalendar.unlinked_assets()` lists the assets that have no
+  trading calendar. See
+  [ADR 0057](../../../ADR/0057-asset-calendar-links-in-bulk-and-at-registration.md).
 
 - `InterpolatedPrices` computes each asset's bars from the sessions of its
   linked calendar. There is no default calendar, and an unlinked asset is not

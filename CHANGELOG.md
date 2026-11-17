@@ -7,6 +7,42 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **One call links many assets to their trading calendar.**
+  `AssetCalendar.link_many(asset_identifiers, calendar_identifier="NYSE")` names assets by
+  `unique_identifier` and the calendar by `calendar_identifier` or `calendar_uid`, and writes
+  the links in one transaction. It returns what happened to each identifier: `linked`,
+  `moved`, `unchanged`, `kept` (with `relink=False`) and `unknown`. An identifier no asset
+  has is reported, not refused. Linking was one `AssetCalendar.upsert` for each asset, or
+  `upsert_many` rows built from asset uids
+  ([ADR 0057](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0057-asset-calendar-links-in-bulk-and-at-registration/)).
+- **A registration may name the asset's trading calendar.** Every payload that writes an
+  asset takes an optional `calendar_identifier` or `calendar_uid`: `Asset.create`,
+  `Asset.upsert`, `Asset.upsert_many`, `CurrencySpot.upsert` and `upsert_many`,
+  `Bond.upsert`, `Future.upsert` and `upsert_many`. A payload that names a calendar links
+  its asset, moving it from another calendar; one that names none leaves the link as it is.
+  The links of a call are written after its assets, in one transaction. A call that names
+  no calendar reads and writes nothing more than before.
+- **An account registration links assets in its one transaction.** An asset of
+  `AccountRegistrationRequest.assets` may carry `calendar_identifier`. An asset with no
+  trading calendar is linked in the registration's transaction; an asset that has one
+  keeps it, so a connector's sync does not undo a link someone moved. A calendar that does
+  not exist refuses the registration before anything is written. `written` gains
+  `asset_calendars`.
+- **`AssetCalendar.unlinked_assets(asset_type=None, limit=500, offset=0)`** lists the assets
+  that have no trading calendar: the ones a price update refuses.
+- **`AssetCalendar.delete` works under the remote backend.** The class defines its own
+  `delete`, which removes the link of one asset. It answered `501` before.
+
+### Changed
+
+- **Deleting a calendar in use is refused with a reason.** A calendar that is the trading
+  calendar of an asset, or the calendar of a portfolio, is not deleted:
+  `DELETE /api/v1/calendar/{uid}/` answers `409` with the number of assets and portfolios
+  that hold it, and the remote row call raises `MarketsConflictError`. The database refused
+  the delete before, and the caller saw its error.
+
 ## [4.0.0] - 2026-11-17
 
 This release changes how calendars are stored

@@ -10,6 +10,8 @@ from typing import Any, ClassVar
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from msm.api.assets import (
+    TradingCalendarReference,
+    _link_trading_calendars,
     Asset,
     _bulk_upsert_composite_assets,
     _composite_rows,
@@ -209,6 +211,7 @@ class Future(RemoteRowOperations, BaseModel):
         )
         if not detail_rows:
             raise LookupError("Future upsert did not return a row.")
+        _link_trading_calendars(cls, [(future_asset.unique_identifier, values)])
 
         return cls.model_validate(
             {
@@ -253,6 +256,7 @@ class Future(RemoteRowOperations, BaseModel):
                 conflict_columns=("asset_uid",),
             )
         )
+        _link_trading_calendars(cls, ((item["unique_identifier"], item) for item in values))
         return _composite_rows(cls, details, {row["uid"]: row for row in assets.values()})
 
     @classmethod
@@ -289,7 +293,7 @@ class Future(RemoteRowOperations, BaseModel):
         return runtime.context
 
 
-class FutureCreate(BaseModel):
+class FutureCreate(TradingCalendarReference):
     """Payload for creating a future asset and contract-detail row."""
 
     model_config = ConfigDict(extra="forbid", use_enum_values=True)

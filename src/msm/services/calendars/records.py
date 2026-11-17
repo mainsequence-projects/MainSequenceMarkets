@@ -26,7 +26,13 @@ from msm.api.calendars import (
 )
 from msm.api.calendars.exceptions import validate_exception_update
 from msm.api.calendars.rules import validate_rule_update
-from msm.models import CalendarExceptionTable, CalendarSessionRuleTable, CalendarTable
+from msm.models import (
+    AssetCalendarTable,
+    CalendarExceptionTable,
+    CalendarSessionRuleTable,
+    CalendarTable,
+    PortfolioTable,
+)
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
 from msm.repositories.calendars import (
@@ -265,8 +271,61 @@ def delete_calendar_record(
     if existing is None:
         return False
 
+    refuse_delete_of_calendar_in_use(context, calendar=existing)
     delete_model(context, model=CalendarTable, uid=uid)
     return True
+
+
+class CalendarInUseConflictError(ValueError):
+    """A calendar that assets or portfolios reference cannot be deleted."""
+
+
+def refuse_delete_of_calendar_in_use(
+    context: MarketsRepositoryContext,
+    *,
+    calendar: Mapping[str, Any],
+) -> None:
+    """Refuse to delete a calendar that is an asset's trading calendar or a portfolio's.
+
+    Both references restrict the delete in the database. This says so before the
+    delete is sent, and says how many rows hold the calendar.
+    """
+
+    calendar_uid = uuid.UUID(str(calendar["uid"]))
+    counts = _execute_limited_select(
+        context,
+        statement=select(
+            select(func.count())
+            .select_from(AssetCalendarTable)
+            .where(AssetCalendarTable.calendar_uid == calendar_uid)
+            .scalar_subquery()
+            .label("assets"),
+            select(func.count())
+            .select_from(PortfolioTable)
+            .where(PortfolioTable.calendar_uid == calendar_uid)
+            .scalar_subquery()
+            .label("portfolios"),
+        ),
+        limit=1,
+        offset=0,
+    )
+    assets = int(counts[0]["assets"]) if counts else 0
+    portfolios = int(counts[0]["portfolios"]) if counts else 0
+    if not assets and not portfolios:
+        return
+    held_by = " and ".join(
+        text
+        for count, text in (
+            (assets, f"the trading calendar of {assets} asset(s)"),
+            (portfolios, f"the calendar of {portfolios} portfolio(s)"),
+        )
+        if count
+    )
+    name = calendar.get("unique_identifier") or calendar_uid
+    raise CalendarInUseConflictError(
+        f"Calendar {name!r} is {held_by} and cannot be deleted. "
+        "Move them to another calendar first."
+    )
 
 
 def list_calendar_date_records_page(
@@ -900,6 +959,7 @@ def _without_calendar_uid(values: Mapping[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "CalendarInUseConflictError",
     "bulk_upsert_calendar_exception_records",
     "bulk_upsert_calendar_session_rule_records",
     "create_calendar_exception_record",
@@ -919,6 +979,7 @@ __all__ = [
     "list_calendar_session_records_page",
     "list_calendar_session_rule_records_page",
     "read_calendar_session_records",
+    "refuse_delete_of_calendar_in_use",
     "update_calendar_exception_record",
     "update_calendar_record",
     "update_calendar_session_rule_record",

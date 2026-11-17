@@ -129,7 +129,11 @@ Rules:
   holdings snapshot. Don't chain `Asset.upsert`, `AssetSnapshots.publish`,
   `Account.upsert` and `AccountHoldingsSnapshots.publish` for this. The call is
   idempotent on `(account.unique_identifier, holdings_date)`. It never changes an
-  existing asset's `asset_type`; a different type is a conflict. A provider sidecar is
+  existing asset's `asset_type`; a different type is a conflict. Give each asset its
+  `calendar_identifier`, the `unique_identifier` of its stored trading calendar: an
+  asset with no trading calendar is linked in the same transaction, and one that has a
+  calendar keeps it (ADR 0057). The calendar must exist first; an unknown one refuses
+  the call. A provider sidecar is
   written afterwards by the provider, with the returned account uid.
 
 ## Runtime Attachment

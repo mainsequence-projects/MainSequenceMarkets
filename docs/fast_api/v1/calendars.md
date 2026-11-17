@@ -43,6 +43,8 @@ sibling `/discovery/` route.
   - deletes one calendar identity row
   - returns `null` on success
   - its session rules and exceptions are removed by database cascade
+  - answers `409` when the calendar is the trading calendar of an asset or the
+    calendar of a portfolio; the message says how many of each
 
 `valid_from` and `valid_to` are optional. They are the first and last date the
 calendar's rules and exceptions are complete for. `valid_to` is null on a
