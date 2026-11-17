@@ -124,16 +124,29 @@ def discover_calendar_sessions(calendar_uid: str, request: Request) -> ResourceD
 
 
 @router.get(
-    "/calendar/{calendar_uid}/events/discovery/",
+    "/calendar/{calendar_uid}/rules/discovery/",
     response_model=ResourceDiscovery,
-    operation_id="discoverCalendarEvents",
-    summary="Discover calendar events",
+    operation_id="discoverCalendarSessionRules",
+    summary="Discover calendar session rules",
     openapi_extra=_DISCOVERY_OPENAPI,
     responses=_DISCOVERY_ERRORS,
 )
-def discover_calendar_events(calendar_uid: str, request: Request) -> ResourceDiscovery:
+def discover_calendar_session_rules(calendar_uid: str, request: Request) -> ResourceDiscovery:
     del calendar_uid
-    return _response("calendar-events", request)
+    return _response("calendar-session-rules", request)
+
+
+@router.get(
+    "/calendar/{calendar_uid}/exceptions/discovery/",
+    response_model=ResourceDiscovery,
+    operation_id="discoverCalendarExceptions",
+    summary="Discover calendar exceptions",
+    openapi_extra=_DISCOVERY_OPENAPI,
+    responses=_DISCOVERY_ERRORS,
+)
+def discover_calendar_exceptions(calendar_uid: str, request: Request) -> ResourceDiscovery:
+    del calendar_uid
+    return _response("calendar-exceptions", request)
 
 
 @router.get(

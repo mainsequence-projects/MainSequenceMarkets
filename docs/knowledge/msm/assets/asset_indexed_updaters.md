@@ -57,6 +57,25 @@ The important distinction is identity. A generic TimeIndexTableUpdater can publi
 shape. An asset-indexed TimeIndexTableUpdater publishes a market table where
 `asset_identifier` contains an `Asset.unique_identifier` value.
 
+## `time_index` Is The Time Of Observation
+
+The library is event driven. Every row of a time-indexed table is an event, and
+its `time_index` is the instant its values became known. This holds for every
+time-indexed table: prices, signals, weights, holdings and snapshots.
+
+For price bars this is critical:
+
+- A bar is stamped at its **end**. A daily bar is stamped at its session close,
+  because its `close` is not known before then. The bar's start goes in
+  `open_time`.
+- A bar stamped at its **open** is not handled. Many vendors label a bar with
+  the start of its interval. Published that way, the row says its close was
+  known at the open, and every reader that takes the latest row at or before a
+  timestamp uses a price from the future. Nothing detects it and there is no
+  setting for it.
+- A source that receives bars labelled by their start publishes them at their
+  end.
+
 ## Core Contract
 
 Asset-indexed tables should follow this shape unless a specific dataset has a
@@ -90,15 +109,46 @@ that key is nested under `metadata`; mapping payloads must not contain
 `unique_identifier`, even when `asset_identifier` is also present. Object scope
 items must expose `.asset_identifier`; `.unique_identifier` is not consulted.
 The same resolver is used by inherited
-`AssetIndexedUpdater` validation and portfolio helpers such as price-calendar
-resolution, so one mapping shape cannot pass one stage and fail the next.
+`AssetIndexedUpdater` validation and by the portfolio price updater, so one
+mapping shape cannot pass one stage and fail the next.
 
 ```python
 asset_list = [
     "asset_crypto_btc",
-    {"asset_identifier": "asset_crypto_eth", "calendar": "24/7"},
+    {"asset_identifier": "asset_crypto_eth"},
 ]
 ```
+
+A scope names assets and nothing else. The price updater refuses a mapping with
+a `calendar` key: an asset's trading calendar is its stored link (see
+"Trading Calendar" below).
+
+## Trading Calendar
+
+`AssetCalendar` links an asset to the stored `Calendar` whose sessions decide
+which price bars the asset has. It is a one-to-one detail table of `Asset`.
+
+```python
+from msm.api.assets import Asset, AssetCalendar
+from msm.api.calendars import Calendar
+
+nyse = Calendar.create_from_pandas_calendar("NYSE")
+asset = Asset.upsert(unique_identifier="asset_us_equity_acme", asset_type="equity")
+AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=nyse.uid)
+```
+
+- An asset has at most one trading calendar. An asset that needs none, such as a
+  currency, has no row.
+- There is no default calendar. `InterpolatedPrices` resolves the calendar of
+  every asset in its scope before it reads a bar. When an asset has no link, the
+  whole run fails and the error names each such asset. Link the asset and run
+  again.
+- An asset that trades around the clock is linked to a stored 24/7 calendar, like
+  any other.
+- Bars and portfolio rebalance dates read the same stored calendars, so a
+  correction made to a calendar by hand moves both.
+- A calendar cannot be deleted while an asset is linked to it. Deleting an asset
+  removes its link.
 
 Asset-scoped configuration has two categories:
 

@@ -1,7 +1,7 @@
 # Tutorial
 
 This tutorial walks you through building a markets project with `ms-markets`
-end to end: registering canonical assets and categories, materializing market
+end to end: registering canonical assets and categories, creating market
 calendars, publishing account holdings and target positions, constructing a
 two-stage equal-weights portfolio, and connecting priceable instruments through
 the optional pricing extra. Each chapter builds on the previous one in the order
@@ -82,8 +82,8 @@ copy the infrastructure from this repository's `apps/v1` tree.
 
 1. [Assets and Categories](01-assets.md) — runtime setup, asset types and
    constants, categories, currency assets, bond assets, and asset snapshots.
-2. [Calendars](02-calendars.md) — materialize durable market, settlement,
-   fixing, and custom calendar facts.
+2. [Calendars](02-calendars.md) — create durable market, settlement,
+   fixing, and custom calendars.
 3. [Accounts and Holdings](03-accounts.md) — account holdings, target positions,
    and virtual-fund allocation.
 4. [Portfolios](04-portfolios.md) — the equal-weights two-stage portfolio

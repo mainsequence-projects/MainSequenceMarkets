@@ -7,7 +7,6 @@ from msm.time_index.assets.asset_indexed import asset_scope_identifier
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
 ASSET_IDENTIFIER = ASSET_IDENTIFIER_DIMENSION
-DEFAULT_MARKET_CALENDAR = "24/7"
 
 _MISSING = object()
 
@@ -41,11 +40,22 @@ def asset_unique_identifier(asset: Any) -> str:
     return value
 
 
-def asset_calendar(asset: Any) -> str:
-    get_calendar = getattr(asset, "get_calendar", None)
-    if callable(get_calendar):
-        return get_calendar()
-    return asset_field(asset, "calendar", DEFAULT_MARKET_CALENDAR)
+def refuse_scope_calendar(asset: Any) -> None:
+    """Refuse a scope mapping that still names a calendar (ADR 0056).
+
+    An asset's trading calendar is its ``AssetCalendar`` link. A ``calendar`` key
+    in a scope mapping is no longer read, so it is refused instead of ignored.
+    """
+
+    if not isinstance(asset, Mapping):
+        return
+    metadata = asset.get("metadata")
+    if "calendar" in asset or (isinstance(metadata, Mapping) and "calendar" in metadata):
+        raise TypeError(
+            "Asset scope mappings must not contain 'calendar'. An asset's trading "
+            "calendar is its AssetCalendar link: "
+            "AssetCalendar.upsert(asset_uid=..., calendar_uid=...)."
+        )
 
 
 def asset_display_name(asset: Any) -> str:
@@ -107,13 +117,12 @@ def asset_spot_reference_unique_identifier(asset: Any) -> str:
 
 __all__ = [
     "ASSET_IDENTIFIER",
-    "DEFAULT_MARKET_CALENDAR",
-    "asset_calendar",
     "asset_display_name",
     "asset_field",
     "asset_spot_reference_unique_identifier",
     "asset_unique_identifier",
     "dedupe_asset_scope",
+    "refuse_scope_calendar",
     "require_asset_category_scope",
     "require_asset_scope",
 ]

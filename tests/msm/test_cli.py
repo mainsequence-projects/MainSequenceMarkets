@@ -59,6 +59,58 @@ def test_msm_skills_source_of_truth_is_root_agents() -> None:
     assert not (repo_root / "src" / "msm" / ".agents").exists()
 
 
+def test_calendar_workflow_skill_is_in_packaged_bundle() -> None:
+    assert "calendars/calendar_workflow" in _bundled_skill_paths()
+
+
+def test_calendar_workflow_skill_defines_the_contract_other_projects_build_on() -> None:
+    """ADR 0055: the skill a consuming project copies states the calendar contract."""
+
+    skill_path = bundled_msm_skills_root() / "calendars" / "calendar_workflow" / "SKILL.md"
+    content = skill_path.read_text(encoding="utf-8")
+
+    required_sections = (
+        "## The Model",
+        "## Rules",
+        "## Runtime Attachment",
+        "## Get A Calendar",
+        "## Read Dates And Sessions",
+        "## Correct A Calendar",
+        "## Write A Calendar No Library Has",
+        "## Take A Newer Library Version",
+        "## Markets API Routes",
+        "## Moving Code Off The Per-Date Rows",
+        "## Do Not Reintroduce",
+        "## Validation",
+    )
+    for section in required_sections:
+        assert section in content
+
+    # Line breaks in the skill's prose do not matter here.
+    text = " ".join(content.split())
+    for rule in (
+        "A calendar is found by its `unique_identifier`",
+        "Do not call `create_from_pandas_calendar` to move a range forward",
+        "A read outside `valid_from`..`valid_to` is an error, not an empty result",
+        "win for their date, and survive every later write from the library",
+        "the Markets API never does it by itself",
+        'models=["Calendar", "CalendarSessionRule", "CalendarException"]',
+    ):
+        assert rule in text
+
+    # The calls the skill shows are the ones the row classes have.
+    from msm.api.calendars import Calendar, CalendarException, CalendarSessionRule
+
+    for name in ("create_from_pandas_calendar", "sessions", "dates", "is_business_day"):
+        assert f"Calendar.{name}" in text or f"`{name}`" in text
+        assert hasattr(Calendar, name)
+    assert "CalendarException.create(" in text and hasattr(CalendarException, "create")
+    assert "CalendarSessionRule.create(" in text and hasattr(CalendarSessionRule, "create")
+    # The removed row classes are named only to say what replaces them.
+    for removed in ("CalendarDate", "CalendarSession.filter", "CalendarEvent"):
+        assert removed in text
+
+
 def test_index_workflow_skill_is_in_packaged_bundle() -> None:
     assert "indices/index_workflow" in _bundled_skill_paths()
 

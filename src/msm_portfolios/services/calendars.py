@@ -1,41 +1,28 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
-from msm.api.calendars import Calendar, CalendarSession
-from msm.services.calendars import ensure_date_range, iter_local_dates
+from msm.api.assets import Asset, AssetCalendar
+from msm.api.calendars import Calendar
+from msm.services.calendars import ensure_date_range
 
-
-# Governed MetaTable reads can cap an operation at 1,000 rows. A multi-year
-# trading-calendar request can exceed that even though the requested date range
-# is valid, so keep every read comfortably below that boundary.
-_SESSION_QUERY_WINDOW_DAYS = 366 * 2
-
-
-def _calendar_session_query_windows(
-    start: dt.date,
-    end: dt.date,
-):
-    window_start = start
-    while window_start <= end:
-        window_end = min(
-            window_start + dt.timedelta(days=_SESSION_QUERY_WINDOW_DAYS - 1),
-            end,
-        )
-        yield window_start, window_end
-        window_start = window_end + dt.timedelta(days=1)
+# One governed read returns at most 1,000 rows; stay well inside it.
+_IN_FILTER_ROWS = 500
 
 
 @dataclass(frozen=True)
 class PersistedCalendarSchedule:
-    """Pandas-like schedule adapter backed by persisted calendar session rows.
+    """Pandas-like schedule adapter over a stored calendar.
 
-    Sessions are read with ``CalendarSession.filter``, so the schedule works
-    under the remote row backend as well as on a Markets runtime.
+    Sessions are computed by ``Calendar.sessions`` from the calendar's session
+    rules and exceptions (ADR 0055), so the schedule works under the remote row
+    backend as well as on a Markets runtime. A window outside the calendar's
+    ``valid_from``..``valid_to`` raises ``CalendarRangeError``.
     """
 
     calendar: Calendar
@@ -51,138 +38,125 @@ class PersistedCalendarSchedule:
         end_date: dt.date | dt.datetime | str,
     ) -> pd.DataFrame:
         start, end = ensure_date_range(start_date, end_date)
-        rows: list[dict[str, Any]] = []
-        for window_start, window_end in _calendar_session_query_windows(start, end):
-            sessions = CalendarSession.filter(
-                calendar_uid=self.calendar.uid,
-                session_label=self.session_label,
-                local_date__gte=window_start,
-                local_date__lte=window_end,
-                order_by="local_date",
-                limit=_SESSION_QUERY_WINDOW_DAYS,
-            )
-            rows.extend(session.model_dump() for session in sessions)
-        if not rows:
+        sessions = Calendar.sessions(
+            self.calendar.uid,
+            start,
+            end,
+            session_label=self.session_label,
+        )
+        if not sessions:
             return pd.DataFrame(columns=["market_open", "market_close"])
 
-        frame = pd.DataFrame(rows)
-        frame["market_open"] = pd.to_datetime(frame["opens_at"], utc=True)
-        frame["market_close"] = pd.to_datetime(frame["closes_at"], utc=True)
-        frame["local_date"] = pd.to_datetime(frame["local_date"]).dt.date
-        return frame.sort_values("local_date").set_index("local_date")[
-            ["market_open", "market_close"]
-        ]
-
-
-@dataclass(frozen=True)
-class AlwaysOpenCalendarSchedule:
-    """Synthetic 24/7 schedule for legacy portfolio strategy configuration."""
-
-    name: str = "CRYPTO_24_7"
-
-    def schedule(
-        self,
-        start_date: dt.date | dt.datetime | str,
-        end_date: dt.date | dt.datetime | str,
-    ) -> pd.DataFrame:
-        rows = []
-        for local_date in iter_local_dates(start_date, end_date):
-            opens_at = dt.datetime.combine(local_date, dt.time.min, tzinfo=dt.UTC)
-            rows.append(
-                {
-                    "local_date": local_date,
-                    "market_open": pd.Timestamp(opens_at),
-                    "market_close": pd.Timestamp(opens_at + dt.timedelta(days=1)),
-                }
-            )
-        if not rows:
-            return pd.DataFrame(columns=["market_open", "market_close"])
-        return pd.DataFrame(rows).set_index("local_date")[["market_open", "market_close"]]
-
-
-@dataclass(frozen=True)
-class PandasMarketCalendarSchedule:
-    """Legacy fallback adapter for calendar keys not persisted yet."""
-
-    calendar_key: str
-
-    @property
-    def name(self) -> str:
-        return self.calendar_key
-
-    def schedule(
-        self,
-        start_date: dt.date | dt.datetime | str,
-        end_date: dt.date | dt.datetime | str,
-    ) -> pd.DataFrame:
-        import pandas_market_calendars as mcal
-
-        calendar = mcal.get_calendar(self.calendar_key)
-        start, end = ensure_date_range(start_date, end_date)
-        return calendar.schedule(start_date=start, end_date=end)
+        frame = pd.DataFrame(
+            {
+                "local_date": [session.local_date for session in sessions],
+                "market_open": pd.to_datetime([session.opens_at for session in sessions], utc=True),
+                "market_close": pd.to_datetime(
+                    [session.closes_at for session in sessions], utc=True
+                ),
+            }
+        )
+        return frame.set_index("local_date")[["market_open", "market_close"]]
 
 
 def resolve_rebalance_calendar(calendar_key: str) -> Any:
-    """Resolve a persisted calendar for an economic rebalance contract.
+    """Resolve a stored calendar for an economic rebalance contract.
 
-    Calendar-relative execution must remain reproducible from governed
-    ``CalendarSession`` rows. Missing calendars and backend lookup failures are
-    therefore errors; callers never silently switch to a local calendar
-    implementation.
+    Calendar-relative execution must remain reproducible from the governed
+    calendar rows. Missing calendars and backend lookup failures are therefore
+    errors; callers never silently switch to a local calendar implementation.
+
+    A calendar is found by its ``unique_identifier`` only. Several stored
+    calendars can come from one library calendar, so a ``source_identifier``
+    does not name one (ADR 0055).
     """
 
     identifier = str(calendar_key).strip()
     if not identifier:
         raise ValueError("calendar_identifier must be a non-empty string.")
 
-    calendar = _find_persisted_calendar(identifier)
+    calendar = Calendar.get_by_unique_identifier(identifier)
     if calendar is None:
         raise ValueError(
-            f"Persisted rebalance calendar {identifier!r} was not found. "
-            "Create and materialize the Calendar and CalendarSession rows before "
+            f"Stored rebalance calendar {identifier!r} was not found. "
+            "Create the Calendar with its session rules and exceptions before "
             "publishing PortfolioCalendarEvents."
         )
     return PersistedCalendarSchedule(calendar=calendar)
 
 
-def resolve_legacy_rebalance_calendar(calendar_key: str) -> Any:
-    """Explicitly resolve a legacy local calendar helper.
+class AssetCalendarMissingError(ValueError):
+    """Assets in a price scope that have no trading calendar (ADR 0056)."""
 
-    This helper is intentionally separate from ``resolve_rebalance_calendar``
-    so a serialized economic strategy cannot fall back to process-local date
-    generation.
+    def __init__(self, *, unlinked: Sequence[str], unknown: Sequence[str]) -> None:
+        self.unlinked = list(unlinked)
+        self.unknown = list(unknown)
+        parts = []
+        if self.unlinked:
+            parts.append(
+                "No trading calendar is linked to: "
+                + ", ".join(self.unlinked)
+                + ". Link each asset with AssetCalendar.upsert(asset_uid=..., calendar_uid=...)."
+            )
+        if self.unknown:
+            parts.append(
+                "Not an Asset row, so it has no trading calendar: " + ", ".join(self.unknown) + "."
+            )
+        super().__init__(" ".join(parts))
+
+
+def resolve_asset_schedules(
+    asset_identifiers: Iterable[str],
+) -> dict[str, PersistedCalendarSchedule]:
+    """The stored trading calendar of each asset, as a schedule.
+
+    Reads the ``Asset`` rows by ``unique_identifier``, their ``AssetCalendar``
+    links, and each distinct ``Calendar`` once. There is no default calendar: when
+    any asset has no link, or is not an ``Asset`` row, nothing is returned and
+    ``AssetCalendarMissingError`` names every such asset.
     """
 
-    identifier = str(calendar_key).strip()
-    if not identifier:
-        raise ValueError("calendar_key must be a non-empty string.")
-    if identifier in {"24/7", "CRYPTO_24_7"}:
-        return AlwaysOpenCalendarSchedule(name=identifier)
-    return PandasMarketCalendarSchedule(calendar_key=identifier)
+    identifiers = list(dict.fromkeys(str(identifier) for identifier in asset_identifiers))
+    if not identifiers:
+        return {}
+
+    assets = _filter_in(Asset, "unique_identifier", identifiers)
+    asset_uid_by_identifier = {asset.unique_identifier: asset.uid for asset in assets}
+    links = _filter_in(AssetCalendar, "asset_uid", list(asset_uid_by_identifier.values()))
+    calendar_uid_by_asset_uid = {link.asset_uid: link.calendar_uid for link in links}
+
+    unknown = [i for i in identifiers if i not in asset_uid_by_identifier]
+    unlinked = [
+        i
+        for i in identifiers
+        if i in asset_uid_by_identifier
+        and asset_uid_by_identifier[i] not in calendar_uid_by_asset_uid
+    ]
+    if unknown or unlinked:
+        raise AssetCalendarMissingError(unlinked=unlinked, unknown=unknown)
+
+    calendar_uids = list(dict.fromkeys(calendar_uid_by_asset_uid.values()))
+    schedules = {
+        calendar.uid: PersistedCalendarSchedule(calendar=calendar)
+        for calendar in _filter_in(Calendar, "uid", calendar_uids)
+    }
+    return {
+        identifier: schedules[calendar_uid_by_asset_uid[asset_uid_by_identifier[identifier]]]
+        for identifier in identifiers
+    }
 
 
-def _find_persisted_calendar(calendar_key: str) -> Calendar | None:
-    matches = Calendar.filter(unique_identifier=calendar_key, limit=2)
-    if len(matches) > 1:
-        raise RuntimeError(
-            f"Persisted calendar identifier {calendar_key!r} resolved to multiple rows."
-        )
-    if matches:
-        return matches[0]
-
-    matches = Calendar.filter(source_identifier=calendar_key, limit=2)
-    if len(matches) > 1:
-        raise ValueError(
-            f"Calendar source_identifier {calendar_key!r} is ambiguous; "
-            "configure CalendarEventSignal with a unique Calendar.unique_identifier."
-        )
-    return matches[0] if matches else None
+def _filter_in(row_model: Any, column: str, values: Sequence[Any]) -> list[Any]:
+    rows: list[Any] = []
+    for start in range(0, len(values), _IN_FILTER_ROWS):
+        chunk = list(values[start : start + _IN_FILTER_ROWS])
+        rows.extend(row_model.filter(**{f"{column}__in": chunk}, limit=len(chunk)))
+    return rows
 
 
 __all__ = [
-    "AlwaysOpenCalendarSchedule",
-    "PandasMarketCalendarSchedule",
+    "AssetCalendarMissingError",
     "PersistedCalendarSchedule",
-    "resolve_legacy_rebalance_calendar",
+    "resolve_asset_schedules",
     "resolve_rebalance_calendar",
 ]

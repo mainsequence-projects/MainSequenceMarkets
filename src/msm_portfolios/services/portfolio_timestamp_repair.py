@@ -13,7 +13,7 @@ import pandas as pd
 from msm.api.base import operation_result_rows
 from msm.api.portfolios import Portfolio
 from msm.repositories.base import MarketsOperationContext
-from msm.repositories.calendars import search_calendar_sessions
+from msm.services.calendars import read_calendar_session_records
 from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage
 
 from .portfolio_reads import portfolio_values
@@ -23,7 +23,6 @@ PortfolioValuesReader = Callable[..., Sequence[Mapping[str, Any]]]
 CalendarSessionsReader = Callable[..., Mapping[str, Any] | Sequence[Mapping[str, Any]]]
 
 _PORTFOLIO_VALUE_PAGE_SIZE = 1000
-_SESSION_QUERY_WINDOW_DAYS = 366 * 2
 
 
 @dataclass(frozen=True)
@@ -120,7 +119,7 @@ def plan_legacy_midnight_portfolio_timestamp_repair(
     context = repository_context or Portfolio._active_context()
     row_reader = portfolio_rows_reader or _read_portfolio_rows
     value_reader = portfolio_values_reader or portfolio_values
-    session_reader = calendar_sessions_reader or search_calendar_sessions
+    session_reader = calendar_sessions_reader or _read_calendar_sessions
     portfolio_rows = [dict(row) for row in row_reader(identifiers=identifiers)]
     value_rows: list[dict[str, Any]] = []
     for identifier in identifiers:
@@ -159,15 +158,14 @@ def plan_legacy_midnight_portfolio_timestamp_repair(
     local_start = start_timestamp.date() - dt.timedelta(days=1)
     local_end = end_timestamp.date() + dt.timedelta(days=1)
     for calendar_uid in calendar_uids:
-        for window_start, window_end in _date_windows(local_start, local_end):
-            result = session_reader(
-                context,
-                calendar_uid=calendar_uid,
-                start_date=window_start,
-                end_date=window_end,
-                session_label=session_label,
-            )
-            session_rows.extend(_result_rows(result))
+        result = session_reader(
+            context,
+            calendar_uid=calendar_uid,
+            start_date=local_start,
+            end_date=local_end,
+            session_label=session_label,
+        )
+        session_rows.extend(_result_rows(result))
 
     return build_legacy_midnight_portfolio_timestamp_repair_plan(
         portfolio_rows=portfolio_rows,
@@ -496,15 +494,28 @@ def _result_rows(
     return [dict(row) for row in result]
 
 
-def _date_windows(start: dt.date, end: dt.date):
-    window_start = start
-    while window_start <= end:
-        window_end = min(
-            window_start + dt.timedelta(days=_SESSION_QUERY_WINDOW_DAYS - 1),
-            end,
-        )
-        yield window_start, window_end
-        window_start = window_end + dt.timedelta(days=1)
+def _read_calendar_sessions(
+    context: MarketsOperationContext,
+    *,
+    calendar_uid: str,
+    start_date: dt.date,
+    end_date: dt.date,
+    session_label: str,
+) -> list[dict[str, Any]]:
+    """The calendar's computed sessions in the window, inside the range it is complete for.
+
+    The repair inspects stored portfolio values. A value outside the calendar's
+    range has no expected session and is reported as such, so the window is not refused.
+    """
+
+    return read_calendar_session_records(
+        context,
+        calendar_uid=calendar_uid,
+        start_date=start_date,
+        end_date=end_date,
+        session_label=session_label,
+        clamp_to_range=True,
+    )
 
 
 __all__ = [

@@ -159,6 +159,8 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0024_account_targets_in_units.py",
         "0025_account_exposure_and_fund_targets.py",
         "0026_weights_series_lookup_indexes.py",
+        "0027_calendar_rules_and_exceptions.py",
+        "0028_asset_trading_calendar.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -205,6 +207,18 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert lookup_indexes.revision == "0026"
     assert lookup_indexes.down_revision == "0025"
+    calendars = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0027_calendar_rules_and_exceptions"
+    )
+    assert calendars.revision == "0027"
+    assert calendars.down_revision == "0026"
+    asset_calendar = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0028_asset_trading_calendar"
+    )
+    assert asset_calendar.revision == "0028"
+    assert asset_calendar.down_revision == "0027"
+    # ADR 0056: the revision creates the link table and links no asset.
+    assert "insert" not in inspect.getsource(asset_calendar.upgrade).lower()
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

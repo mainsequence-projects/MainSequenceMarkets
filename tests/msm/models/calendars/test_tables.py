@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+import msm.models
 from msm.models import (
-    CalendarDateTable,
-    CalendarEventTable,
-    CalendarSessionTable,
+    CalendarExceptionTable,
+    CalendarSessionRuleTable,
     CalendarTable,
     markets_sqlalchemy_models,
 )
@@ -12,51 +14,54 @@ from msm.models import (
 def test_calendar_models_are_in_core_dependency_order() -> None:
     models = markets_sqlalchemy_models()
 
-    assert models.index(CalendarTable) < models.index(CalendarDateTable)
-    assert models.index(CalendarTable) < models.index(CalendarSessionTable)
-    assert models.index(CalendarTable) < models.index(CalendarEventTable)
+    assert models.index(CalendarTable) < models.index(CalendarSessionRuleTable)
+    assert models.index(CalendarTable) < models.index(CalendarExceptionTable)
 
 
-def test_calendar_table_replaces_json_only_shape() -> None:
-    columns = {column.name for column in CalendarTable.__table__.columns}
+def test_per_date_calendar_tables_are_gone() -> None:
+    identifiers = {model.__metatable_identifier__ for model in markets_sqlalchemy_models()}
 
-    assert "unique_identifier" in columns
-    assert "valid_from" in columns
-    assert "valid_to" in columns
-    assert "calendar_dates" not in columns
-    assert "name" not in columns
-
-
-def test_calendar_child_tables_reference_calendar() -> None:
-    for model in [CalendarDateTable, CalendarSessionTable, CalendarEventTable]:
-        fk_targets = {foreign_key.column.table.name for foreign_key in model.__table__.foreign_keys}
-        assert CalendarTable.__table__.name in fk_targets
+    assert not identifiers & {"CalendarDate", "CalendarSession", "CalendarEvent"}
+    for name in ("CalendarDateTable", "CalendarSessionTable", "CalendarEventTable"):
+        with pytest.raises(AttributeError):
+            getattr(msm.models, name)
 
 
-def test_calendar_natural_key_indexes_are_unique() -> None:
-    date_unique_indexes = [
-        [column.name for column in index.columns]
-        for index in CalendarDateTable.__table__.indexes
-        if index.unique
+def test_calendar_range_is_optional() -> None:
+    columns = CalendarTable.__table__.columns
+
+    assert columns["valid_from"].nullable
+    assert columns["valid_to"].nullable
+    assert not columns["unique_identifier"].nullable
+
+
+def test_calendar_child_tables_reference_calendar_and_cascade() -> None:
+    for model in [CalendarSessionRuleTable, CalendarExceptionTable]:
+        keys = list(model.__table__.foreign_key_constraints)
+        assert [key.referred_table.name for key in keys] == [CalendarTable.__table__.name]
+        assert keys[0].ondelete == "CASCADE"
+
+
+def test_calendar_natural_keys_are_unique() -> None:
+    def unique_indexes(model) -> list[list[str]]:
+        return [
+            [column.name for column in index.columns]
+            for index in model.__table__.indexes
+            if index.unique
+        ]
+
+    assert unique_indexes(CalendarSessionRuleTable) == [
+        ["calendar_uid", "session_label", "effective_from"]
     ]
-    session_unique_indexes = [
-        [column.name for column in index.columns]
-        for index in CalendarSessionTable.__table__.indexes
-        if index.unique
-    ]
-    event_unique_indexes = [
-        [column.name for column in index.columns]
-        for index in CalendarEventTable.__table__.indexes
-        if index.unique
+    assert unique_indexes(CalendarExceptionTable) == [
+        ["calendar_uid", "local_date", "session_label", "exception_type", "source"]
     ]
 
-    assert ["calendar_uid", "local_date"] in date_unique_indexes
-    assert ["calendar_uid", "local_date", "session_label"] in session_unique_indexes
-    assert [
-        "calendar_uid",
-        "event_date",
-        "event_type",
-        "event_label",
-        "target_type",
-        "target_identifier",
-    ] in event_unique_indexes
+
+def test_local_times_are_stored_as_text() -> None:
+    for model in [CalendarSessionRuleTable, CalendarExceptionTable]:
+        for name in ("opens_at_local", "closes_at_local"):
+            column = model.__table__.columns[name]
+            assert column.type.python_type is str
+            assert column.type.length == 8
+            assert column.nullable

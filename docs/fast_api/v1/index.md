@@ -39,8 +39,9 @@ This API is intentionally thin:
   categories, including the Command Center monitor frame.
 - [Index Routes](indexes.md): route group for index registry reads,
   delete-impact preflight, and index delete.
-- [Calendar Routes](calendars.md): route group for calendar identity CRUD,
-  summary, and date, session, and event maintenance.
+- [Calendar Routes](calendars.md): route group for calendar identity CRUD and
+  summary, session rule and exception maintenance, and computed date and
+  session windows.
 - [Pricing Market Data Routes](pricing_market_data.md): route group for
   pricing market-data set and concept binding management.
 - [Fixed Income Pricer Routes](fixed_income_pricer.md): route group for
@@ -71,8 +72,9 @@ These FastAPI v1 decisions live in the single
 [ADR tree](../../ADR/README.md):
 
 - [Calendar CRUD And Summary Route](../../ADR/fast_api/v1/0001-calendar-crud-route.md):
-  route group for calendar identity CRUD, summary, and bounded date, session,
-  and event maintenance.
+  route group for calendar identity CRUD and summary. Its date, session and
+  event routes are amended by
+  [ADR 0055](../../ADR/0055-calendars-as-rules-and-exceptions.md).
 - [Command Center Adapter Discovery](../../ADR/fast_api/v1/0002-command-center-adapter-discovery.md):
   additive Adapter from API discovery contract for Command Center without
   breaking existing `/api/v1` clients.

@@ -77,7 +77,10 @@ raise `MarketsOperationUnsupported`. The account-history rows
 nothing: an account's history goes only with the account, through
 `Account.delete` (ADR 0049, ADR 0050). Composites that implement `delete`
 themselves, such as `Curve` and the pricing market-data bindings, delete
-remotely as they do under the runtime backend.
+remotely as they do under the runtime backend. `CalendarSessionRule` and
+`CalendarException` are among them: deleting a `user` exception is how a
+calendar gets the library's answer back for a date
+([Calendars](../calendars/index.md)).
 
 The remote backend covers the `msm.api` rows, the `msm_portfolios.api`
 metadata rows (`SignalMetadata`, `PortfolioMetadata`,
@@ -108,7 +111,7 @@ Asset.upsert_many([{"unique_identifier": "ACME", "asset_type": "equity"}, ...])
 AccountHoldingsSet.filter(account_uid=uid, order_by="-time_index", limit=50, offset=0)
 AccountHoldingsSet.count(account_uid=uid)
 Asset.filter(unique_identifier__in=["A", "B"])
-CalendarSession.filter(calendar_uid=uid, local_date__gte=start, local_date__lte=end)
+CalendarException.filter(calendar_uid=uid, local_date__gte=start, local_date__lte=end)
 ```
 
 `upsert_many` validates each payload through the row module's `<Row>Upsert`
@@ -319,8 +322,10 @@ Both return the `core.tabular_frame@v1` frame, or a pandas DataFrame with
 `limit` is read in pages with `offset` and returned as one frame.
 
 Persisted calendar schedules (`PersistedCalendarSchedule`, used by
-calendar-relative rebalancing) read `CalendarSession.filter`, so they run under
-either backend.
+calendar-relative rebalancing) read a window with one `Calendar.sessions` call,
+so they run under either backend. Under `remote` the Markets API computes the
+sessions from the calendar's rules and exceptions; see
+[Calendars](../calendars/index.md).
 
 ## How It Works
 

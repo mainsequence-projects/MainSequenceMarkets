@@ -7,6 +7,12 @@ Accepted - planned
 This ADR defines the target architecture for robust calendar reference data in
 core `msm`. It is not yet implemented.
 
+[ADR 0055](0055-calendars-as-rules-and-exceptions.md) (accepted 2026-11-17, not yet
+implemented) replaces the storage model below: `CalendarDateTable` and
+`CalendarSessionTable` give way to session rules and exceptions, and
+`CalendarEventTable` is removed. Until ADR 0055 is implemented, this ADR describes
+the tables in use.
+
 ## Context
 
 The current calendar model is too weak for the way calendars are used across
@@ -505,7 +511,7 @@ User-facing docs and examples should be package-scoped:
 
 ```text
 docs/knowledge/msm/calendars/index.md
-examples/msm/calendars/calendar_materialization_workflow.py
+examples/msm/calendars/calendar_rules_and_exceptions_workflow.py
 ```
 
 Portfolio integration belongs in `msm_portfolios` and should not own core

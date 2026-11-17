@@ -198,6 +198,72 @@ def test_command_center_contract_exposes_complete_index_operations() -> None:
     assert values["responseModel"] == "TabularFrameResponse"
 
 
+def test_command_center_contract_exposes_calendar_operations() -> None:
+    operations = _operation_by_id(_contract_payload())
+    resource_operations = {
+        "listCalendars": "GET",
+        "getCalendar": "GET",
+        "getCalendarSummary": "GET",
+        "listCalendarDates": "GET",
+        "listCalendarSessions": "GET",
+        "listCalendarSessionRules": "GET",
+        "getCalendarSessionRule": "GET",
+        "listCalendarExceptions": "GET",
+        "getCalendarException": "GET",
+        "discoverCalendars": "GET",
+        "discoverCalendarDates": "GET",
+        "discoverCalendarSessions": "GET",
+        "discoverCalendarSessionRules": "GET",
+        "discoverCalendarExceptions": "GET",
+    }
+    mutation_operations = {
+        "createCalendar": "POST",
+        "updateCalendar": "PATCH",
+        "deleteCalendar": "DELETE",
+        "createCalendarSessionRule": "POST",
+        "bulkUpsertCalendarSessionRules": "POST",
+        "updateCalendarSessionRule": "PATCH",
+        "deleteCalendarSessionRule": "DELETE",
+        "createCalendarException": "POST",
+        "bulkUpsertCalendarExceptions": "POST",
+        "updateCalendarException": "PATCH",
+        "deleteCalendarException": "DELETE",
+    }
+
+    for operation_id, method in resource_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "resource"
+    for operation_id, method in mutation_operations.items():
+        assert operations[operation_id]["method"] == method
+        assert operations[operation_id]["kind"] == "mutation"
+
+    registered_calendar_operations = {
+        operation_id for operation_id in operations if "Calendar" in operation_id
+    }
+    assert registered_calendar_operations == set(resource_operations) | set(mutation_operations)
+
+    # Dates and sessions are computed windows: both bounds are required (ADR 0055).
+    for operation_id in ("listCalendarDates", "listCalendarSessions"):
+        query = {
+            parameter["name"]: parameter
+            for parameter in operations[operation_id]["parameters"]["query"]
+        }
+        assert query["start_date"]["required"] is True
+        assert query["end_date"]["required"] is True
+        assert query["limit"]["required"] is False
+        assert operations[operation_id]["supportsMaxRows"] is True
+        assert operations[operation_id]["responseModel"] in {
+            "ResourceCollection_ComputedCalendarDate_",
+            "ResourceCollection_ComputedCalendarSession_",
+        }
+
+    exception_create = operations["createCalendarException"]
+    assert (
+        exception_create["requestBody"]["schema"]["$ref"]
+        == "#/components/schemas/CalendarExceptionCreateRequest"
+    )
+
+
 def test_command_center_contract_documents_response_contract_boundaries() -> None:
     payload = _contract_payload()
     operations = _operation_by_id(payload)

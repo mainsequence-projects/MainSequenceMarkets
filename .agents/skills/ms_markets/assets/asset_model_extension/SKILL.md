@@ -250,6 +250,38 @@ For OpenFIGI and similar providers:
 - preserve existing column mappings such as `metadata_text =
   mapped_column("metadata", Text, nullable=True)`
 
+## Trading Calendar Link: Required For Price Interpolation
+
+`AssetCalendar` is the one-to-one detail table that links an asset to the stored
+`Calendar` whose sessions decide its price bars (ADR 0056). Registering an asset
+that will be interpolated is two writes, not one:
+
+```python
+from msm.api.assets import Asset, AssetCalendar
+from msm.api.calendars import Calendar
+
+calendar = Calendar.create_from_pandas_calendar("24/7", "CRYPTO_24_7", display_name="Crypto 24/7")
+btc = Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
+AssetCalendar.upsert(asset_uid=btc.uid, calendar_uid=calendar.uid)
+```
+
+Rules:
+
+- Link every asset that will have price bars when you register it. `Asset.upsert`
+  alone leaves it without a trading calendar.
+- There is no default calendar. Never assume an unlinked asset is 24/7; link a
+  24/7 asset to a stored 24/7 calendar.
+- `InterpolatedPrices` resolves the link of every asset in its scope before it
+  reads a bar. One unlinked asset fails the whole run with
+  `AssetCalendarMissingError`, which names each such asset. Fix it by linking the
+  asset, not by catching the error or skipping the asset.
+- Do not pass a calendar in the asset scope. A `calendar` key in a scope mapping
+  is refused.
+- Do not link an asset to a calendar nobody chose, in a migration or a job, to
+  make a run pass.
+- An asset that is never interpolated, such as a currency used only as a
+  denomination, needs no link.
+
 ## Boundaries
 
 - For timestamped or panel data keyed by assets, use the

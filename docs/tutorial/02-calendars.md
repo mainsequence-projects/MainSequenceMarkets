@@ -1,49 +1,70 @@
 # Calendars
 
-Materialize durable market, settlement, fixing, or custom calendar facts. The
-persisted session rows produced here are what portfolio construction depends on
-in [Portfolios](04-portfolios.md).
+Create durable market, settlement, fixing, or custom calendars. Portfolio
+construction in [Portfolios](04-portfolios.md) reads the sessions of the
+calendar created here.
 
 For the runtime model behind these row APIs, see [Core Concepts](../concepts.md).
 
-## Calendar materialization
+## Creating a calendar
 
-Use this workflow when a project needs durable market, settlement, fixing, or
-custom calendar facts:
+A calendar is stored as its regular week plus the dates that differ from it:
+session rules and exceptions. Dates and sessions are computed from those rows
+when they are read. [Calendars](../knowledge/msm/calendars/index.md) explains
+the model; this chapter is the workflow.
 
 1. Before runtime, run the admin migration flow with
    `metatables --local migrations upgrade --provider msm_migrations:migration head`.
-2. Attach `Calendar`, `CalendarDate`, `CalendarSession`, and `CalendarEvent`
-   with `msm.start_engine(...)`.
-3. Use `Calendar.create_from_pandas_calendar(...)` for generated market
-   calendars, including `source_identifier="24/7"` for the standard crypto
-   24/7 calendar.
-4. Use `msm.services.calendars` directly only when lower-level materialization
-   control is required.
-
-`pandas_market_calendars` is not the durable source of truth. It is an adapter
-that writes into `CalendarDateTable` and `CalendarSessionTable`; consumers
-should read the persisted rows or reference `CalendarTable.uid`.
-Portfolio construction depends on those persisted session rows. A portfolio
-calendar with no sessions for the requested update range raises a calendar
-materialization error instead of producing an empty portfolio no-op.
+2. Attach `Calendar`, `CalendarSessionRule`, and `CalendarException` with
+   `msm.start_engine(...)`.
+3. Use `Calendar.create_from_pandas_calendar(...)` for a calendar the
+   `pandas_market_calendars` library has, including `"24/7"` for the standard
+   crypto calendar.
+4. Write `CalendarSessionRule` and `CalendarException` rows yourself for a
+   calendar no library has, or to correct one that came from the library.
 
 ```python
+import msm
+
 from msm.api.calendars import Calendar
 
+msm.start_engine(models=["Calendar", "CalendarSessionRule", "CalendarException"])
+
 calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="CRYPTO_24_7",
+    "24/7",
+    "CRYPTO_24_7",
     display_name="Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
 )
 ```
 
-See `examples/msm/calendars/calendar_materialization_workflow.py` for the
-calendar workflow covering XNYS materialization from `pandas_market_calendars`
-and a `CRYPTO_24_7` calendar. See
+The first argument is the library's calendar and the second is the name of the
+stored one. No end date is passed: the calendar is written as far as the library
+can answer, so nothing has to be extended as time passes.
+
+`pandas_market_calendars` is not the durable source of truth. It is an adapter
+that writes rules and exceptions; consumers read the stored calendar or
+reference `CalendarTable.uid`.
+
+## Reading it
+
+```python
+import datetime as dt
+
+sessions = Calendar.sessions(calendar.uid, dt.date(2026, 5, 25), dt.date(2026, 5, 31))
+is_open = Calendar.is_business_day(calendar.uid, dt.date(2026, 5, 30))
+```
+
+Each session carries its `local_date` and its `opens_at` and `closes_at` as UTC
+instants. A read outside the calendar's `valid_from` to `valid_to` raises
+`CalendarRangeError` instead of returning fewer sessions.
+
+Portfolio construction reads sessions the same way. A portfolio whose calendar
+does not exist, or whose update window ends after the calendar's `valid_to`,
+fails with an error instead of producing an empty portfolio no-op.
+
+See `examples/msm/calendars/calendar_rules_and_exceptions_workflow.py` for the
+calendar workflow: NYSE stored under a custom name, corrections made by hand, a
+`CRYPTO_24_7` calendar, and a calendar written with one session rule. See
 `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` and
 `examples/msm_portfolios/portfolio_equal_weights_run.py` for the portfolio
 workflow using the generated crypto calendar as `Portfolio.calendar_uid`.

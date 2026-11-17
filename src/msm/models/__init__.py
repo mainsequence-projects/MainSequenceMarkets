@@ -11,6 +11,7 @@ from .accounts import (
     VirtualFundTable,
 )
 from .assets import (
+    AssetCalendarTable,
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTable,
@@ -20,9 +21,8 @@ from .assets import (
     OpenFigiAssetDetailsTable,
 )
 from .calendars import (
-    CalendarDateTable,
-    CalendarEventTable,
-    CalendarSessionTable,
+    CalendarExceptionTable,
+    CalendarSessionRuleTable,
     CalendarTable,
 )
 from .derivatives import FutureAssetDetailsTable
@@ -60,9 +60,9 @@ def markets_sqlalchemy_models() -> list[type]:
         BondAssetDetailsTable,
         FutureAssetDetailsTable,
         CalendarTable,
-        CalendarDateTable,
-        CalendarSessionTable,
-        CalendarEventTable,
+        CalendarSessionRuleTable,
+        CalendarExceptionTable,
+        AssetCalendarTable,
         SignalMetadataTable,
         PortfolioTable,
         PortfolioDatasetAvailabilityTable,
@@ -124,14 +124,14 @@ __all__ = [
     "AccountAllocationModelTable",
     "AccountTable",
     "AccountTargetAllocationTable",
+    "AssetCalendarTable",
     "AssetCategoryMembershipTable",
     "AssetCategoryTable",
     "AssetTable",
     "AssetTypeTable",
     "BondAssetDetailsTable",
-    "CalendarDateTable",
-    "CalendarEventTable",
-    "CalendarSessionTable",
+    "CalendarExceptionTable",
+    "CalendarSessionRuleTable",
     "CalendarTable",
     "CurrencySpotAssetDetailsTable",
     "FutureAssetDetailsTable",

@@ -47,7 +47,7 @@ Models answer these questions:
 - `msm.models.assets.types`: registered asset type definitions.
 - `msm.models.assets.bonds`: one-to-one bond asset detail rows.
 - `msm.models.assets.categories`: categories and memberships.
-- `msm.models.calendars`: calendar identity, date, session, and event tables.
+- `msm.models.calendars`: calendar identity, session rule, and exception tables.
 - `msm.models.execution`: execution tables.
 - `msm_portfolios.models.virtual_funds`: funds.
 - `msm.models.indices`: index type registry and canonical index reference rows.

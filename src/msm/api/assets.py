@@ -33,6 +33,8 @@ from msm.constants import (
     ASSET_TYPE_EQUITY,
 )
 from msm.models import (
+    AssetCalendarTable,
+    CalendarTable,
     AssetCategoryMembershipTable,
     AssetCategoryTable,
     AssetTypeTable,
@@ -875,6 +877,72 @@ class OpenFigiDetailsUpdate(BaseModel):
     raw_payload: dict[str, Any] | None = None
 
 
+class AssetCalendar(MarketsMetaTableRow):
+    """The stored calendar whose sessions say when an asset has price bars (ADR 0056).
+
+    One row per asset. An asset without a row has no trading calendar, and a
+    price update that covers it is refused. ``upsert`` links or relinks an asset;
+    deleting the row unlinks it.
+    """
+
+    __table__: ClassVar[type[AssetCalendarTable]] = AssetCalendarTable
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        CalendarTable,
+        AssetCalendarTable,
+    ]
+    __upsert_keys__: ClassVar[tuple[str, ...]] = ("asset_uid",)
+
+    uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
+    asset_uid: uuid.UUID
+    calendar_uid: uuid.UUID
+
+    @classmethod
+    def create(
+        cls,
+        payload: AssetCalendarCreate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetCalendar:
+        return super().create(_validate_payload(AssetCalendarCreate, payload, kwargs))
+
+    @classmethod
+    def upsert(
+        cls,
+        payload: AssetCalendarUpsert | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetCalendar:
+        return super().upsert(_validate_payload(AssetCalendarUpsert, payload, kwargs))
+
+    @classmethod
+    def update(
+        cls,
+        uid: uuid.UUID | str,
+        payload: AssetCalendarUpdate | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AssetCalendar:
+        return super().update(uid, _validate_payload(AssetCalendarUpdate, payload, kwargs))
+
+
+class AssetCalendarCreate(BaseModel):
+    """Payload for linking an asset to its trading calendar."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_uid: uuid.UUID | str
+    calendar_uid: uuid.UUID | str
+
+
+class AssetCalendarUpsert(AssetCalendarCreate):
+    """Payload for linking or relinking an asset by asset UID."""
+
+
+class AssetCalendarUpdate(BaseModel):
+    """Payload for moving an asset to another trading calendar."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    calendar_uid: uuid.UUID | str
+
 
 class AssetSnapshotReference(BaseModel):
     """An asset with its latest snapshot; the snapshot fields are ``None`` without one."""
@@ -1003,6 +1071,10 @@ __all__ = [
     "AssetSnapshotReference",
     "AssetSnapshots",
     "Asset",
+    "AssetCalendar",
+    "AssetCalendarCreate",
+    "AssetCalendarUpdate",
+    "AssetCalendarUpsert",
     "AssetCategory",
     "AssetCategoryCreate",
     "AssetCategoryMembership",

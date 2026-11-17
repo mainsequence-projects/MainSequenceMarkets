@@ -221,7 +221,8 @@ page-specific resolved metadata for consumers that need more than a field URL.
       "detail_url": "/api/v1/calendar/calendar-uid/",
       "dates_url": "/api/v1/calendar/calendar-uid/dates/",
       "sessions_url": "/api/v1/calendar/calendar-uid/sessions/",
-      "events_url": "/api/v1/calendar/calendar-uid/events/"
+      "rules_url": "/api/v1/calendar/calendar-uid/rules/",
+      "exceptions_url": "/api/v1/calendar/calendar-uid/exceptions/"
     },
     "nodes": {
       "portfolio_weights": {

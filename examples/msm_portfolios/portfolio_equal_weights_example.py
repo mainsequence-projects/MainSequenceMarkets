@@ -34,7 +34,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 import msm_portfolios  # noqa: E402
 from metatables import TimeIndexMetaTable  # noqa: E402
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
-from msm.api.assets import Asset, AssetType  # noqa: E402
+from msm.api.assets import Asset, AssetCalendar, AssetType  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.time_index.assets.asset_indexed import (  # noqa: E402
     AssetIndexedUpdater,
@@ -152,14 +152,23 @@ def register_assets() -> list[Asset]:
     return assets
 
 
+def link_assets_to_calendar(assets: Sequence[Asset], calendar: Calendar) -> None:
+    """Link each asset to the stored calendar whose sessions decide its price bars.
+
+    An asset without this link has no trading calendar, and the price update
+    refuses it. There is no default calendar.
+    """
+
+    for asset in assets:
+        AssetCalendar.upsert(asset_uid=asset.uid, calendar_uid=calendar.uid)
+    print_detail("asset_calendar", f"{len(assets)} assets -> {calendar.unique_identifier}")
+
+
 def create_crypto_calendar_from_pandas() -> Calendar:
     portfolio_calendar = Calendar.create_from_pandas_calendar(
-        source_identifier="24/7",
-        unique_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
+        "24/7",
+        CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
         display_name="Crypto 24/7",
-        valid_from=TIME_INDEX.date(),
-        valid_to=TIME_INDEX.date(),
-        timezone="UTC",
         metadata_json={"example": "portfolio_equal_weights_example"},
     )
     print_detail("calendar_uid", portfolio_calendar.uid)
@@ -236,12 +245,9 @@ def build_interpolated_prices_node(
 ) -> InterpolatedPrices:
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
-            # Mapping scopes use the stored dimension name as their canonical
-            # identity key; calendar resolution consumes the same mapping.
-            asset_list=[
-                {"asset_identifier": asset_identifier, "calendar": "24/7"}
-                for asset_identifier in ASSET_UNIQUE_IDENTIFIERS
-            ],
+            # The scope names the assets. Each asset's trading calendar is its
+            # stored AssetCalendar link, written by link_assets_to_calendar().
+            asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
             intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
             source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
@@ -402,6 +408,7 @@ def build_equal_weight_portfolio(
 
     print_step(3, "Creating or reusing the crypto 24/7 calendar with sessions.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
+    link_assets_to_calendar(assets, portfolio_calendar)
 
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
     source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(

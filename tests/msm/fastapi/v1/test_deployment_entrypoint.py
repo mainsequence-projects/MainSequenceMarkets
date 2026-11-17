@@ -21,7 +21,7 @@ def test_main_fastapi_workflow_uses_current_automatic_deployment_contract() -> N
     assert workflow["name"] == "mainsequence-markets-fastapi"
 
     resources = {resource["key"]: resource for resource in workflow["resources"]}
-    assert set(resources) == {"markets-api", "migrate-markets"}
+    assert set(resources) == {"markets-api", "migrate-markets", "resync-calendars"}
     release = resources["markets-api"]
     assert release["kind"] == "fastapi"
 

@@ -63,6 +63,15 @@ row class raises under the runtime backend too: an account's history is kept
 for as long as the account exists, and only the account delete removes it
 ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md)).
 
+The calendar resources are `calendar`, `calendar-session-rule` and
+`calendar-exception`
+([ADR 0055](../../ADR/0055-calendars-as-rules-and-exceptions.md)).
+`Calendar.sessions`, `Calendar.dates` and `Calendar.is_business_day` compute
+their answer from the calendar's rules and exceptions. A date outside the
+calendar's `valid_from` to `valid_to` range answers `400` with `error_type`
+`CalendarRangeError`. A `calendar-exception` written here is stored with
+`source="user"`.
+
 The resources include the `msm_portfolios.api` metadata rows
 (`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and
 the `msm_pricing.api` composites (`curve`, `curve-building-details`,

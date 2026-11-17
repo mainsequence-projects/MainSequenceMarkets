@@ -128,12 +128,10 @@ def test_every_mutating_service_is_a_registry_write() -> None:
         "assets": {"delete_asset"},
         "calendars": {
             "create_calendar", "update_calendar", "delete_calendar",
-            "create_calendar_date", "update_calendar_date", "delete_calendar_date",
-            "bulk_upsert_calendar_dates",
-            "create_calendar_session", "update_calendar_session", "delete_calendar_session",
-            "bulk_upsert_calendar_sessions",
-            "create_calendar_event", "update_calendar_event", "delete_calendar_event",
-            "bulk_upsert_calendar_events",
+            "create_calendar_session_rule", "update_calendar_session_rule",
+            "delete_calendar_session_rule", "bulk_upsert_calendar_session_rules",
+            "create_calendar_exception", "update_calendar_exception",
+            "delete_calendar_exception", "bulk_upsert_calendar_exceptions",
         },
         "indices": {
             "create_index", "update_index", "delete_index",

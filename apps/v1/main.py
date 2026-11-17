@@ -82,7 +82,10 @@ API_TAGS = [
     {
         "name": "calendar",
         "x-displayName": "Calendars",
-        "description": "Calendar identities plus dated business-day, session, and event facts.",
+        "description": (
+            "Calendar identities, their session rules and dated exceptions, and the dates and "
+            "sessions computed from them."
+        ),
     },
     {
         "name": "pricing-market-data",

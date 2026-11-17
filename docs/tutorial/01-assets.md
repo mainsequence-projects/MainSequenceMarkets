@@ -190,6 +190,30 @@ platform/data-source issue should be fixed directly.
 See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and
 contract notes.
 
+## An asset that gets price bars needs a trading calendar
+
+Registering an asset is not enough to interpolate its prices. `InterpolatedPrices`
+puts an asset's bars on the sessions of a stored `Calendar`, and it finds that
+calendar through the asset's `AssetCalendar` link. Link the asset when you
+register it:
+
+```python
+from msm.api.assets import Asset, AssetCalendar
+from msm.api.calendars import Calendar
+
+calendar = Calendar.create_from_pandas_calendar("24/7", "CRYPTO_24_7", display_name="Crypto 24/7")
+btc = Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
+AssetCalendar.upsert(asset_uid=btc.uid, calendar_uid=calendar.uid)
+```
+
+- There is no default calendar. An asset with no link is not treated as 24/7.
+- `InterpolatedPrices` checks its whole scope before it reads a bar. When any
+  asset has no link, the run fails and the error names each such asset. Link it
+  and run again.
+- An asset that is never interpolated, such as a currency used only as a
+  denomination, needs no link.
+- Create the calendar first: see [Calendars](02-calendars.md).
+
 ## Currency assets
 
 Single currencies and currency spot pairs are separate assets. Create or resolve

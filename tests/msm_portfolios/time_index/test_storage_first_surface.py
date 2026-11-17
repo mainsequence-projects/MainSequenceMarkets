@@ -11,7 +11,7 @@ from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.asset_scope import ASSET_IDENTIFIER
 from msm_portfolios.contrib.prices.updaters import (
     InterpolatedPrices,
-    _asset_calendar_map,
+    _asset_schedule_map,
     _normalize_time_indexed_frame_ns_utc,
     _source_time_indexed_profile_cadence,
 )
@@ -132,37 +132,61 @@ def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> No
     )
 
 
-def test_interpolated_prices_mapping_scope_uses_canonical_asset_identifier() -> None:
+def test_interpolated_prices_mapping_scope_uses_canonical_asset_identifier(monkeypatch) -> None:
     asset_scope = [
         "example-asset-btc",
-        {
-            "asset_identifier": "example-asset-eth",
-            "calendar": "NYSE",
-        },
+        {"asset_identifier": "example-asset-eth"},
         {"metadata": {"asset_identifier": "example-asset-sol"}},
     ]
+    resolved: list[list[str]] = []
+
+    def fake_resolve(identifiers):
+        resolved.append(list(identifiers))
+        return {identifier: "schedule" for identifier in resolved[-1]}
+
+    monkeypatch.setattr(
+        "msm_portfolios.contrib.prices.updaters.resolve_asset_schedules", fake_resolve
+    )
 
     assert InterpolatedPrices.asset_unique_identifiers(asset_scope) == [
         "example-asset-btc",
         "example-asset-eth",
         "example-asset-sol",
     ]
-    assert _asset_calendar_map(asset_scope) == {
-        "example-asset-btc": "24/7",
-        "example-asset-eth": "NYSE",
-        "example-asset-sol": "24/7",
+    # The calendar of each asset comes from its stored link, by identifier (ADR 0056).
+    assert _asset_schedule_map(asset_scope) == {
+        "example-asset-btc": "schedule",
+        "example-asset-eth": "schedule",
+        "example-asset-sol": "schedule",
     }
+    assert resolved == [["example-asset-btc", "example-asset-eth", "example-asset-sol"]]
 
 
 @pytest.mark.parametrize(
     "asset_scope",
     [
-        [{"unique_identifier": "example-asset-invalid", "calendar": "NYSE"}],
+        [{"asset_identifier": "example-asset-eth", "calendar": "NYSE"}],
+        [{"asset_identifier": "example-asset-eth", "metadata": {"calendar": "NYSE"}}],
+    ],
+)
+def test_interpolated_prices_scope_refuses_a_calendar_key(monkeypatch, asset_scope) -> None:
+    monkeypatch.setattr(
+        "msm_portfolios.contrib.prices.updaters.resolve_asset_schedules",
+        lambda _identifiers: pytest.fail("a scope with a calendar key is refused before any read"),
+    )
+
+    with pytest.raises(TypeError, match="must not contain 'calendar'"):
+        _asset_schedule_map(asset_scope)
+
+
+@pytest.mark.parametrize(
+    "asset_scope",
+    [
+        [{"unique_identifier": "example-asset-invalid"}],
         [
             {
                 "asset_identifier": "example-asset-invalid",
                 "unique_identifier": "legacy-example-asset-invalid",
-                "calendar": "NYSE",
             }
         ],
     ],
@@ -174,7 +198,7 @@ def test_interpolated_prices_mapping_scope_rejects_unique_identifier_key(
     with pytest.raises(TypeError, match="must not contain 'unique_identifier'"):
         InterpolatedPrices.asset_unique_identifiers(asset_scope)
     with pytest.raises(TypeError, match="must not contain 'unique_identifier'"):
-        _asset_calendar_map(asset_scope)
+        _asset_schedule_map(asset_scope)
 
 
 def test_interpolated_prices_normalizes_time_index_output_to_ns_utc() -> None:

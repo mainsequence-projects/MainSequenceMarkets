@@ -143,7 +143,8 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
         "/api/v1/asset-category/",
         "/api/v1/calendar/",
         "/api/v1/calendar/{calendar_uid}/dates/",
-        "/api/v1/calendar/{calendar_uid}/events/",
+        "/api/v1/calendar/{calendar_uid}/exceptions/",
+        "/api/v1/calendar/{calendar_uid}/rules/",
         "/api/v1/calendar/{calendar_uid}/sessions/",
         "/api/v1/index/",
         "/api/v1/index/{uid}/datasets/",
@@ -174,7 +175,7 @@ def test_every_resource_collection_exposes_canonical_discovery() -> None:
         == "command-center.resource_collection@v1"
     }
 
-    assert len(collection_paths) == 26
+    assert len(collection_paths) == 27
     for collection_path in collection_paths:
         discovery_path = f"{collection_path.rstrip('/')}/discovery/"
         discovery = payload["paths"][discovery_path]["get"]
@@ -833,37 +834,154 @@ def test_openapi_json_documents_calendar_routes() -> None:
         result_ref="#/components/schemas/Calendar",
     )
 
-    calendar_dates_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"]["get"]
-    assert calendar_dates_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarDate_"}
-    _assert_paginated_schema(
-        payload,
-        schema_ref="#/components/schemas/ResourceCollection_CalendarDate_",
-        result_ref="#/components/schemas/CalendarDate",
-    )
+    # Dates and sessions are computed for a required window (ADR 0055).
+    for segment, operation_id, item_schema in (
+        ("dates", "listCalendarDates", "ComputedCalendarDate"),
+        ("sessions", "listCalendarSessions", "ComputedCalendarSession"),
+    ):
+        path_item = payload["paths"][f"/api/v1/calendar/{{calendar_uid}}/{segment}/"]
+        assert set(path_item) == {"get"}
+        operation = path_item["get"]
+        assert operation["operationId"] == operation_id
+        assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": f"#/components/schemas/ResourceCollection_{item_schema}_"
+        }
+        _assert_paginated_schema(
+            payload,
+            schema_ref=f"#/components/schemas/ResourceCollection_{item_schema}_",
+            result_ref=f"#/components/schemas/{item_schema}",
+        )
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        assert parameters["start_date"]["required"] is True
+        assert parameters["end_date"]["required"] is True
+        assert parameters["limit"]["required"] is False
+        assert parameters["offset"]["required"] is False
+        for status_code in ("400", "404"):
+            assert operation["responses"][status_code]["content"]["application/json"][
+                "schema"
+            ] == {"$ref": "#/components/schemas/ErrorResponse"}
+        assert "uid" not in payload["components"]["schemas"][item_schema]["properties"]
 
-    calendar_sessions_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/sessions/"][
-        "get"
+    date_parameters = {
+        parameter["name"]
+        for parameter in payload["paths"]["/api/v1/calendar/{calendar_uid}/dates/"]["get"][
+            "parameters"
+        ]
+    }
+    assert {"is_business_day", "is_holiday", "is_weekend", "is_early_close"} <= date_parameters
+    session_parameters = {
+        parameter["name"]
+        for parameter in payload["paths"]["/api/v1/calendar/{calendar_uid}/sessions/"]["get"][
+            "parameters"
+        ]
+    }
+    assert {"session_label", "is_primary"} <= session_parameters
+
+    # Session rules and exceptions are the stored rows, with full CRUD.
+    for segment, uid_parameter, singular, plural, row_schema in (
+        ("rules", "rule_uid", "CalendarSessionRule", "CalendarSessionRules", "CalendarSessionRule"),
+        (
+            "exceptions",
+            "exception_uid",
+            "CalendarException",
+            "CalendarExceptions",
+            "CalendarException",
+        ),
+    ):
+        collection = payload["paths"][f"/api/v1/calendar/{{calendar_uid}}/{segment}/"]
+        bulk = payload["paths"][f"/api/v1/calendar/{{calendar_uid}}/{segment}/bulk-upsert/"]
+        detail = payload["paths"][
+            f"/api/v1/calendar/{{calendar_uid}}/{segment}/{{{uid_parameter}}}/"
+        ]
+        assert {
+            collection["get"]["operationId"],
+            collection["post"]["operationId"],
+            bulk["post"]["operationId"],
+            detail["get"]["operationId"],
+            detail["patch"]["operationId"],
+            detail["delete"]["operationId"],
+        } == {
+            f"list{plural}",
+            f"create{singular}",
+            f"bulkUpsert{plural}",
+            f"get{singular}",
+            f"update{singular}",
+            f"delete{singular}",
+        }
+        assert collection["get"]["x-ui-contract"] == "command-center.resource_collection@v1"
+        assert collection["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": f"#/components/schemas/ResourceCollection_{row_schema}_"
+        }
+        _assert_paginated_schema(
+            payload,
+            schema_ref=f"#/components/schemas/ResourceCollection_{row_schema}_",
+            result_ref=f"#/components/schemas/{row_schema}",
+        )
+        assert detail["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": f"#/components/schemas/{row_schema}"
+        }
+        assert (
+            collection["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+            == f"#/components/schemas/{row_schema}CreateRequest"
+        )
+        assert (
+            detail["patch"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+            == f"#/components/schemas/{row_schema}Update"
+        )
+
+    exception_filters = {
+        parameter["name"]
+        for parameter in payload["paths"]["/api/v1/calendar/{calendar_uid}/exceptions/"]["get"][
+            "parameters"
+        ]
+    }
+    assert {"start_date", "end_date", "session_label", "exception_type", "source"} <= (
+        exception_filters
+    )
+    assert payload["components"]["schemas"]["CalendarExceptionType"]["enum"] == [
+        "CLOSED",
+        "EARLY_CLOSE",
+        "LATE_OPEN",
+        "OPEN",
     ]
-    assert calendar_sessions_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarSession_"}
-    _assert_paginated_schema(
-        payload,
-        schema_ref="#/components/schemas/ResourceCollection_CalendarSession_",
-        result_ref="#/components/schemas/CalendarSession",
-    )
 
-    calendar_events_operation = payload["paths"]["/api/v1/calendar/{calendar_uid}/events/"]["get"]
-    assert calendar_events_operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/ResourceCollection_CalendarEvent_"}
-    _assert_paginated_schema(
-        payload,
-        schema_ref="#/components/schemas/ResourceCollection_CalendarEvent_",
-        result_ref="#/components/schemas/CalendarEvent",
-    )
+    calendar_operation_ids = {
+        operation["operationId"]
+        for path, path_item in payload["paths"].items()
+        if path.startswith("/api/v1/calendar/")
+        for operation in path_item.values()
+    }
+    assert calendar_operation_ids == {
+        "listCalendars",
+        "createCalendar",
+        "getCalendar",
+        "getCalendarSummary",
+        "updateCalendar",
+        "deleteCalendar",
+        "listCalendarDates",
+        "listCalendarSessions",
+        "listCalendarSessionRules",
+        "createCalendarSessionRule",
+        "bulkUpsertCalendarSessionRules",
+        "getCalendarSessionRule",
+        "updateCalendarSessionRule",
+        "deleteCalendarSessionRule",
+        "listCalendarExceptions",
+        "createCalendarException",
+        "bulkUpsertCalendarExceptions",
+        "getCalendarException",
+        "updateCalendarException",
+        "deleteCalendarException",
+        "discoverCalendars",
+        "discoverCalendarDates",
+        "discoverCalendarSessions",
+        "discoverCalendarSessionRules",
+        "discoverCalendarExceptions",
+    }
+
+    for field in ("valid_from", "valid_to"):
+        assert field not in payload["components"]["schemas"]["Calendar"].get("required", [])
+        assert field not in payload["components"]["schemas"]["CalendarCreate"].get("required", [])
 
     calendar_summary_operation = payload["paths"]["/api/v1/calendar/{uid}/summary/"]["get"]
     assert calendar_summary_operation["summary"] == "Get calendar summary"

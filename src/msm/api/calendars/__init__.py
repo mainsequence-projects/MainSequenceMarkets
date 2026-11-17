@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .computed import ComputedCalendarDate, ComputedCalendarSession
 from .core import (
     Calendar,
     CalendarCreate,
@@ -7,41 +8,35 @@ from .core import (
     CalendarUpdate,
     CalendarUpsert,
 )
-from .dates import (
-    CalendarDate,
-    CalendarDateCreate,
-    CalendarDateUpdate,
-    CalendarDateUpsert,
+from .exceptions import (
+    CalendarException,
+    CalendarExceptionCreate,
+    CalendarExceptionType,
+    CalendarExceptionUpdate,
+    CalendarExceptionUpsert,
 )
-from .events import (
-    CalendarEvent,
-    CalendarEventCreate,
-    CalendarEventUpdate,
-    CalendarEventUpsert,
-)
-from .sessions import (
-    CalendarSession,
-    CalendarSessionCreate,
-    CalendarSessionUpdate,
-    CalendarSessionUpsert,
+from .rules import (
+    CalendarSessionRule,
+    CalendarSessionRuleCreate,
+    CalendarSessionRuleUpdate,
+    CalendarSessionRuleUpsert,
 )
 
 __all__ = [
     "Calendar",
     "CalendarCreate",
-    "CalendarDate",
-    "CalendarDateCreate",
-    "CalendarDateUpdate",
-    "CalendarDateUpsert",
-    "CalendarEvent",
-    "CalendarEventCreate",
-    "CalendarEventUpdate",
-    "CalendarEventUpsert",
-    "CalendarSession",
-    "CalendarSessionCreate",
-    "CalendarSessionUpdate",
-    "CalendarSessionUpsert",
+    "CalendarException",
+    "CalendarExceptionCreate",
+    "CalendarExceptionType",
+    "CalendarExceptionUpdate",
+    "CalendarExceptionUpsert",
+    "CalendarSessionRule",
+    "CalendarSessionRuleCreate",
+    "CalendarSessionRuleUpdate",
+    "CalendarSessionRuleUpsert",
     "CalendarType",
     "CalendarUpdate",
     "CalendarUpsert",
+    "ComputedCalendarDate",
+    "ComputedCalendarSession",
 ]

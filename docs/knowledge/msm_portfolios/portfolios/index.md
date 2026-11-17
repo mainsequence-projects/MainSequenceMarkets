@@ -161,15 +161,14 @@ import msm
 from msm.api.calendars import Calendar
 from msm.api.portfolios import Portfolio
 
-msm.start_engine(models=["Calendar", "CalendarDate", "CalendarSession", "Portfolio"])
+msm.start_engine(
+    models=["Calendar", "CalendarSessionRule", "CalendarException", "Portfolio"]
+)
 
 calendar = Calendar.create_from_pandas_calendar(
-    source_identifier="24/7",
-    unique_identifier="CRYPTO_24_7",
+    "24/7",
+    "CRYPTO_24_7",
     display_name="Crypto 24/7",
-    valid_from="2026-05-25",
-    valid_to="2026-05-25",
-    timezone="UTC",
 )
 
 portfolio = Portfolio.upsert(
@@ -178,8 +177,10 @@ portfolio = Portfolio.upsert(
 )
 ```
 
-`PortfolioCalendarEvents` publishes persisted `CalendarSession` opens or closes
-at their actual UTC timestamps, including early closes and DST shifts.
+`PortfolioCalendarEvents` publishes the session opens or closes of a stored
+calendar at their actual UTC timestamps, including early closes and DST shifts.
+It computes them with `Calendar.sessions` from the calendar's session rules and
+exceptions; see [Calendars](../../msm/calendars/index.md).
 `CalendarEventSignal` declares that published table as an observed dependency.
 `ImmediateSignal` instead selects original signal observations and declares no
 additional event source. Event selection and state transitions occur in the
@@ -187,12 +188,18 @@ strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
 `PortfoliosUpdater` builds a rebalance index.
 
 `calendar_identifier` and `calendar_events_instance` are required for
-`CalendarEventSignal`. The event producer requires the canonical persisted
-`Calendar.unique_identifier`; a `source_identifier` alias is rejected because
-published rows carry a foreign key to that canonical value. Missing and failed
-calendar lookups raise an error; neither the producer nor the strategy
-substitutes a local pandas or synthetic calendar. Materialize the calendar
-horizon before running the portfolio graph.
+`CalendarEventSignal`. The event producer requires the stored
+`Calendar.unique_identifier`. A calendar is found by that value only: several
+stored calendars can come from one library calendar, so a `source_identifier`
+does not name one. Missing and failed calendar lookups raise an error; neither
+the producer nor the strategy substitutes a local pandas or synthetic calendar.
+
+Create the calendar with its session rules and exceptions before running the
+portfolio graph. A calendar created from the library runs to the last date the
+library can answer for, so nothing has to be extended as time passes. The
+producer's first run starts at the calendar's `valid_from` when that is later
+than 2018-01-01. A window that ends after the calendar's `valid_to` fails with
+`CalendarRangeError`.
 
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
@@ -662,10 +669,11 @@ PYTHONPATH=src:. python \
   --end <latest-portfolio-value-timestamp>
 ```
 
-The default is a read-only dry run. It checks `Portfolio.calendar_uid`,
-persisted `CalendarSession.closes_at`, the historical `close_time`, destination
-conflicts, and whether `--end` reaches the latest stored value. Any uncertainty
-is a blocking issue. Review the JSON plan, then apply exactly one portfolio:
+The default is a read-only dry run. It checks `Portfolio.calendar_uid`, the
+session closes computed from the stored calendar, the historical `close_time`,
+destination conflicts, and whether `--end` reaches the latest stored value. Any
+uncertainty is a blocking issue. Review the JSON plan, then apply exactly one
+portfolio:
 
 ```bash
 PYTHONPATH=src:. python \
@@ -732,11 +740,10 @@ src/msm_portfolios/models/portfolios/
 `PortfolioTable`; it is human-facing metadata that can be managed without
 changing the portfolio identity row.
 
-Rebalance strategy calendar keys resolve persisted core `CalendarTable` rows
-first. Durable portfolio records must use `PortfolioTable.calendar_uid`; this
-field is required and cannot be null. Legacy pandas-market calendar keys remain
-a fallback path only for runtime calendar resolution, not for persisted
-portfolio identity.
+A rebalance strategy's calendar key is the `unique_identifier` of a stored core
+`CalendarTable` row. A key that names no stored calendar is an error; there is
+no fallback to a local calendar. Durable portfolio records must use
+`PortfolioTable.calendar_uid`; this field is required and cannot be null.
 
 ## Table Relationships
 
@@ -883,6 +890,17 @@ vendor connector, model valuation process, or project TimeIndexTableUpdater.
 
 Portfolio valuation inputs are not stored on `PortfolioTable`. They are provided
 by the portfolio build configuration and consumed through TimeIndexTableUpdater dependencies.
+
+`InterpolatedPrices` computes its bars from the stored calendar each asset is
+linked to with `AssetCalendar`. An asset in its scope with no link fails the
+whole run, and the error names it; there is no default calendar. A
+`CalendarEventSignal` must use the calendar of `Portfolio.calendar_uid`, so a
+portfolio has one calendar.
+
+A valuation source must stamp each row at its time of observation: a price bar
+at its end, a daily bar at its session close. A bar stamped at its open is not
+handled and gives the portfolio a price from the future. See
+[`time_index` Is The Time Of Observation](../../msm/assets/asset_indexed_updaters.md#time_index-is-the-time-of-observation).
 
 The current portfolio path keeps execution and valuation dependencies explicit:
 

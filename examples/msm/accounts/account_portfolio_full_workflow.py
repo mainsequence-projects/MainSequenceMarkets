@@ -40,8 +40,8 @@ ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "AssetType",
     "Asset",
     "Calendar",
-    "CalendarDate",
-    "CalendarSession",
+    "CalendarSessionRule",
+    "CalendarException",
     "AssetSnapshotsStorage",
     "AccountAllocationModel",
     "AccountGroup",
@@ -307,12 +307,9 @@ def run_account_portfolio_full_workflow(
     if portfolio_example_result is None:
         print("8. Creating a portfolio sleeve that account targets can reference.")
         sleeve_calendar = Calendar.create_from_pandas_calendar(
-            source_identifier="24/7",
-            unique_identifier="EXAMPLE_ACCOUNT_CRYPTO_24_7",
+            "24/7",
+            "EXAMPLE_ACCOUNT_CRYPTO_24_7",
             display_name="Example Account Crypto 24/7",
-            valid_from=workflow_time.date(),
-            valid_to=workflow_time.date(),
-            timezone="UTC",
         )
         target_sleeve_portfolio = Portfolio.upsert(
             **EXAMPLE_ACCOUNT_TARGET_SLEEVE_PORTFOLIO,

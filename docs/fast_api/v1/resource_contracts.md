@@ -47,6 +47,20 @@ state such as `limit`, `offset`, `page`, `page_size`, `ordering`, or `sort` is
 rejected. Migrated clients must not call a separate `/bulk-actions/` endpoint
 or inspect collection metadata as a fallback.
 
+### Computed collections
+
+`/api/v1/calendar/{calendar_uid}/dates/` and
+`/api/v1/calendar/{calendar_uid}/sessions/` are computed for a window and are
+read-only ([Calendar Routes](calendars.md)). Their items have no `uid`, so
+their identity fields are `local_date`, and `local_date` plus `session_label`.
+`start_date` and `end_date` are required on the collection. The discovery
+contract has no field for a required filter, so both discovery documents
+declare it in `extensions`:
+
+```json
+{"computed": true, "read_only": true, "required_filters": ["start_date", "end_date"]}
+```
+
 ## Complete collection inventory
 
 | Collection | Discovery |
@@ -59,7 +73,8 @@ or inspect collection metadata as a fallback.
 | `/api/v1/calendar/` | `/api/v1/calendar/discovery/` |
 | `/api/v1/calendar/{calendar_uid}/dates/` | `/api/v1/calendar/{calendar_uid}/dates/discovery/` |
 | `/api/v1/calendar/{calendar_uid}/sessions/` | `/api/v1/calendar/{calendar_uid}/sessions/discovery/` |
-| `/api/v1/calendar/{calendar_uid}/events/` | `/api/v1/calendar/{calendar_uid}/events/discovery/` |
+| `/api/v1/calendar/{calendar_uid}/rules/` | `/api/v1/calendar/{calendar_uid}/rules/discovery/` |
+| `/api/v1/calendar/{calendar_uid}/exceptions/` | `/api/v1/calendar/{calendar_uid}/exceptions/discovery/` |
 | `/api/v1/index-type/` | `/api/v1/index-type/discovery/` |
 | `/api/v1/index/` | `/api/v1/index/discovery/` |
 | `/api/v1/index/{uid}/formulas/` | `/api/v1/index/{uid}/formulas/discovery/` |
@@ -70,6 +85,7 @@ or inspect collection metadata as a fallback.
 | `/api/v1/portfolio-group/{uid}/portfolios/` | `/api/v1/portfolio-group/{uid}/portfolios/discovery/` |
 | `/api/v1/portfolio-signal/` | `/api/v1/portfolio-signal/discovery/` |
 | `/api/v1/portfolio/` | `/api/v1/portfolio/discovery/` |
+| `/api/v1/portfolio/{uid}/account-targets/` | `/api/v1/portfolio/{uid}/account-targets/discovery/` |
 | `/api/v1/virtualfund/` | `/api/v1/virtualfund/discovery/` |
 | `/api/v1/pricing/curves/` | `/api/v1/pricing/curves/discovery/` |
 | `/api/v1/pricing/curves/{uid}/curve-selections/` | `/api/v1/pricing/curves/{uid}/curve-selections/discovery/` |
@@ -104,5 +120,5 @@ discovery paths do not exist.
 The test suite vendors the complete SDK `0.1.13` contract bundle under
 `tests/contracts/command-center-sdk-v0.1.13/`. It compiles every manifest-selected
 schema, accepts every official valid fixture, rejects every official invalid
-fixture, validates all 25 discovery documents, and asserts that OpenAPI exposes
-one discovery route for every collection route.
+fixture, and asserts that OpenAPI exposes one discovery route for each of the 27
+collection routes.

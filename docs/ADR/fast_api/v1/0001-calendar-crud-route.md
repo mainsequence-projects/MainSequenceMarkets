@@ -4,6 +4,19 @@
 
 Accepted
 
+Amended on 2026-11-17 by
+[ADR 0055](../../0055-calendars-as-rules-and-exceptions.md):
+
+- The date and session routes are read-only. They return the dates or sessions
+  computed for a required `start_date` to `end_date` window. Their create,
+  bulk-upsert, get-by-uid, update and delete routes are removed.
+- The six event routes are removed.
+- `/calendar/{calendar_uid}/rules/` and `/calendar/{calendar_uid}/exceptions/`
+  are added with list, create, bulk-upsert, get, update and delete routes.
+
+The sections below describe the routes as first decided. The current routes are
+in [Calendar Routes](../../../fast_api/v1/calendars.md).
+
 ## Date
 
 2026-06-05

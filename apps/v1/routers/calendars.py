@@ -6,48 +6,43 @@ from typing import Annotated
 from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.calendars import (
-    BulkUpsertCalendarDatesRequest,
-    BulkUpsertCalendarEventsRequest,
-    BulkUpsertCalendarSessionsRequest,
+    BulkUpsertCalendarExceptionsRequest,
+    BulkUpsertCalendarSessionRulesRequest,
     Calendar,
     CalendarCreate,
-    CalendarDate,
-    CalendarDateCreateRequest,
-    CalendarDateUpdate,
-    CalendarEvent,
-    CalendarEventCreateRequest,
-    CalendarEventUpdate,
-    CalendarSession,
-    CalendarSessionCreateRequest,
-    CalendarSessionUpdate,
+    CalendarException,
+    CalendarExceptionCreateRequest,
+    CalendarExceptionType,
+    CalendarExceptionUpdate,
+    CalendarSessionRule,
+    CalendarSessionRuleCreateRequest,
+    CalendarSessionRuleUpdate,
     CalendarUpdate,
+    ComputedCalendarDate,
+    ComputedCalendarSession,
 )
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.services.calendars import (
-    bulk_upsert_calendar_dates,
-    bulk_upsert_calendar_events,
-    bulk_upsert_calendar_sessions,
+    bulk_upsert_calendar_exceptions,
+    bulk_upsert_calendar_session_rules,
     create_calendar,
-    create_calendar_date,
-    create_calendar_event,
-    create_calendar_session,
+    create_calendar_exception,
+    create_calendar_session_rule,
     delete_calendar,
-    delete_calendar_date,
-    delete_calendar_event,
-    delete_calendar_session,
+    delete_calendar_exception,
+    delete_calendar_session_rule,
     get_calendar,
-    get_calendar_date,
-    get_calendar_event,
-    get_calendar_session,
+    get_calendar_exception,
+    get_calendar_session_rule,
     get_calendar_summary,
     list_calendar_dates,
-    list_calendar_events,
+    list_calendar_exceptions,
+    list_calendar_session_rules,
     list_calendar_sessions,
     list_calendars,
     update_calendar,
-    update_calendar_date,
-    update_calendar_event,
-    update_calendar_session,
+    update_calendar_exception,
+    update_calendar_session_rule,
 )
 from msm.api.http import (
     RESOURCE_COLLECTION_CONTRACT,
@@ -228,8 +223,8 @@ def patch_calendar(
     response_model=Calendar | None,
     summary="Delete calendar",
     description=(
-        "Delete one calendar identity row. Calendar date, session, and event rows "
-        "are removed by the database cascade. The migrated API returns `null` on success."
+        "Delete one calendar identity row. Its session rules and exceptions are removed "
+        "by the database cascade. The migrated API returns `null` on success."
     ),
     operation_id="deleteCalendar",
     status_code=status.HTTP_200_OK,
@@ -249,22 +244,40 @@ def remove_calendar(uid: str) -> Calendar | None:
 
 @router.get(
     "/{calendar_uid}/dates/",
-    response_model=ResourceCollection[CalendarDate],
+    response_model=ResourceCollection[ComputedCalendarDate],
     summary="List calendar dates",
-    description="Return bounded local-date facts for one calendar.",
+    description=(
+        "Return the dates of one calendar from `start_date` to `end_date`. The dates are "
+        "computed from the calendar's session rules and exceptions; nothing is stored per "
+        "date, so an item has no uid and the collection is read-only. The flag filters, "
+        "`limit` and `offset` apply to the computed dates."
+    ),
     operation_id="listCalendarDates",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "`end_date` is before `start_date`, or the window is outside the calendar's "
+                "`valid_from` to `valid_to` range."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested calendar uid was not found.",
+        },
+    },
 )
 def get_calendar_dates(
     calendar_uid: str,
     start_date: Annotated[
-        dt.date | None,
-        Query(description="Optional first local date to include."),
-    ] = None,
+        dt.date,
+        Query(description="First local date of the window. Required."),
+    ],
     end_date: Annotated[
-        dt.date | None,
-        Query(description="Optional last local date to include."),
-    ] = None,
+        dt.date,
+        Query(description="Last local date of the window. Required."),
+    ],
     is_business_day: Annotated[
         bool | None,
         Query(description="Optional business-day flag filter."),
@@ -283,21 +296,142 @@ def get_calendar_dates(
     ] = None,
     limit: Annotated[
         int,
-        Query(ge=1, le=10000, description="Maximum number of date rows to return."),
+        Query(ge=1, le=10000, description="Maximum number of computed dates to return."),
     ] = 500,
     offset: Annotated[
         int,
-        Query(ge=0, description="Zero-based starting offset into the date row list."),
+        Query(ge=0, description="Zero-based starting offset into the computed date list."),
     ] = 0,
-) -> ResourceCollection[CalendarDate]:
-    response = list_calendar_dates(
+) -> ResourceCollection[ComputedCalendarDate]:
+    try:
+        response = list_calendar_dates(
+            calendar_uid=calendar_uid,
+            start_date=start_date,
+            end_date=end_date,
+            is_business_day=is_business_day,
+            is_holiday=is_holiday,
+            is_weekend=is_weekend,
+            is_early_close=is_early_close,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Calendar {calendar_uid!r} was not found.")
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{calendar_uid}/sessions/",
+    response_model=ResourceCollection[ComputedCalendarSession],
+    summary="List calendar sessions",
+    description=(
+        "Return the sessions of one calendar from `start_date` to `end_date`, with their "
+        "UTC open and close. The sessions are computed from the calendar's session rules "
+        "and exceptions; nothing is stored per session, so an item has no uid and the "
+        "collection is read-only. The filters, `limit` and `offset` apply to the computed "
+        "sessions."
+    ),
+    operation_id="listCalendarSessions",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "`end_date` is before `start_date`, or the window is outside the calendar's "
+                "`valid_from` to `valid_to` range."
+            ),
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested calendar uid was not found.",
+        },
+    },
+)
+def get_calendar_sessions(
+    calendar_uid: str,
+    start_date: Annotated[
+        dt.date,
+        Query(description="First local date of the window. Required."),
+    ],
+    end_date: Annotated[
+        dt.date,
+        Query(description="Last local date of the window. Required."),
+    ],
+    session_label: Annotated[
+        str | None,
+        Query(description="Optional exact session label filter."),
+    ] = None,
+    is_primary: Annotated[
+        bool | None,
+        Query(description="Optional primary-session flag filter."),
+    ] = None,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=10000, description="Maximum number of computed sessions to return."),
+    ] = 500,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Zero-based starting offset into the computed session list."),
+    ] = 0,
+) -> ResourceCollection[ComputedCalendarSession]:
+    try:
+        response = list_calendar_sessions(
+            calendar_uid=calendar_uid,
+            start_date=start_date,
+            end_date=end_date,
+            session_label=session_label,
+            is_primary=is_primary,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"Calendar {calendar_uid!r} was not found.")
+    return resource_collection_response(
+        items=response["results"],
+        total_items=response["count"],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{calendar_uid}/rules/",
+    response_model=ResourceCollection[CalendarSessionRule],
+    summary="List calendar session rules",
+    description=(
+        "Return the session rules of one calendar: the regular week of each session, "
+        "from a date on."
+    ),
+    operation_id="listCalendarSessionRules",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
+)
+def get_calendar_session_rules(
+    calendar_uid: str,
+    session_label: Annotated[
+        str | None,
+        Query(description="Optional exact session label filter."),
+    ] = None,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=10000, description="Maximum number of session rule rows to return."),
+    ] = 500,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Zero-based starting offset into the session rule row list."),
+    ] = 0,
+) -> ResourceCollection[CalendarSessionRule]:
+    response = list_calendar_session_rules(
         calendar_uid=calendar_uid,
-        start_date=start_date,
-        end_date=end_date,
-        is_business_day=is_business_day,
-        is_holiday=is_holiday,
-        is_weekend=is_weekend,
-        is_early_close=is_early_close,
+        session_label=session_label,
         limit=limit,
         offset=offset,
     )
@@ -310,135 +444,178 @@ def get_calendar_dates(
 
 
 @router.post(
-    "/{calendar_uid}/dates/",
-    response_model=CalendarDate,
-    summary="Create calendar date",
-    description="Create one local-date fact under the path calendar uid.",
-    operation_id="createCalendarDate",
-)
-def post_calendar_date(
-    calendar_uid: str,
-    request: Annotated[
-        CalendarDateCreateRequest,
-        Body(description="Create payload for a calendar date row."),
-    ],
-) -> CalendarDate:
-    return create_calendar_date(
-        calendar_uid=calendar_uid,
-        payload=request.model_dump(exclude_none=True),
-    )
-
-
-@router.post(
-    "/{calendar_uid}/dates/bulk-upsert/",
-    response_model=list[CalendarDate],
-    summary="Bulk upsert calendar dates",
-    description="Bulk upsert local-date facts under the path calendar uid.",
-    operation_id="bulkUpsertCalendarDates",
-)
-def post_calendar_dates_bulk_upsert(
-    calendar_uid: str,
-    request: Annotated[
-        BulkUpsertCalendarDatesRequest,
-        Body(description="Bulk upsert payload for calendar date rows."),
-    ],
-) -> list[CalendarDate]:
-    return bulk_upsert_calendar_dates(
-        calendar_uid=calendar_uid,
-        rows=[row.model_dump(exclude_none=True) for row in request.rows],
-    )
-
-
-@router.get(
-    "/{calendar_uid}/dates/{date_uid}/",
-    response_model=CalendarDate,
-    summary="Get calendar date",
-    description="Return one local-date fact by uid under the path calendar uid.",
-    operation_id="getCalendarDate",
+    "/{calendar_uid}/rules/",
+    response_model=CalendarSessionRule,
+    summary="Create calendar session rule",
+    description="Create one session rule under the path calendar uid.",
+    operation_id="createCalendarSessionRule",
     responses={
-        404: {
+        400: {
             "model": ErrorResponse,
-            "description": "The requested calendar date uid was not found under this calendar.",
+            "description": "The session rule values were refused.",
         }
     },
 )
-def get_calendar_date_by_uid(calendar_uid: str, date_uid: str) -> CalendarDate:
-    record = get_calendar_date(calendar_uid=calendar_uid, uid=date_uid)
+def post_calendar_session_rule(
+    calendar_uid: str,
+    request: Annotated[
+        CalendarSessionRuleCreateRequest,
+        Body(description="Create payload for a calendar session rule row."),
+    ],
+) -> CalendarSessionRule:
+    try:
+        return create_calendar_session_rule(
+            calendar_uid=calendar_uid,
+            payload=request.model_dump(exclude_none=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{calendar_uid}/rules/bulk-upsert/",
+    response_model=list[CalendarSessionRule],
+    summary="Bulk upsert calendar session rules",
+    description=(
+        "Bulk upsert session rules under the path calendar uid. A rule is matched by "
+        "session label and first date."
+    ),
+    operation_id="bulkUpsertCalendarSessionRules",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The session rule values were refused.",
+        }
+    },
+)
+def post_calendar_session_rules_bulk_upsert(
+    calendar_uid: str,
+    request: Annotated[
+        BulkUpsertCalendarSessionRulesRequest,
+        Body(description="Bulk upsert payload for calendar session rule rows."),
+    ],
+) -> list[CalendarSessionRule]:
+    try:
+        return bulk_upsert_calendar_session_rules(
+            calendar_uid=calendar_uid,
+            rows=[row.model_dump(exclude_none=True) for row in request.rows],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{calendar_uid}/rules/{rule_uid}/",
+    response_model=CalendarSessionRule,
+    summary="Get calendar session rule",
+    description="Return one session rule by uid under the path calendar uid.",
+    operation_id="getCalendarSessionRule",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "The requested calendar session rule uid was not found under this calendar."
+            ),
+        }
+    },
+)
+def get_calendar_session_rule_by_uid(calendar_uid: str, rule_uid: str) -> CalendarSessionRule:
+    record = get_calendar_session_rule(calendar_uid=calendar_uid, uid=rule_uid)
     if record is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Calendar date {date_uid!r} was not found under calendar {calendar_uid!r}.",
+            detail=(
+                f"Calendar session rule {rule_uid!r} was not found under calendar {calendar_uid!r}."
+            ),
         )
     return record
 
 
 @router.patch(
-    "/{calendar_uid}/dates/{date_uid}/",
-    response_model=CalendarDate,
-    summary="Update calendar date",
-    description="Update mutable facts for one local-date row under the path calendar uid.",
-    operation_id="updateCalendarDate",
+    "/{calendar_uid}/rules/{rule_uid}/",
+    response_model=CalendarSessionRule,
+    summary="Update calendar session rule",
+    description="Update mutable fields for one session rule under the path calendar uid.",
+    operation_id="updateCalendarSessionRule",
     responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The session rule values were refused.",
+        },
         404: {
             "model": ErrorResponse,
-            "description": "The requested calendar date uid was not found under this calendar.",
-        }
+            "description": (
+                "The requested calendar session rule uid was not found under this calendar."
+            ),
+        },
     },
 )
-def patch_calendar_date(
+def patch_calendar_session_rule(
     calendar_uid: str,
-    date_uid: str,
+    rule_uid: str,
     request: Annotated[
-        CalendarDateUpdate,
-        Body(description="Patch payload for an existing calendar date row."),
+        CalendarSessionRuleUpdate,
+        Body(description="Patch payload for an existing calendar session rule row."),
     ],
-) -> CalendarDate:
-    record = update_calendar_date(
-        calendar_uid=calendar_uid,
-        uid=date_uid,
-        payload=request.model_dump(exclude_unset=True, exclude_none=False),
-    )
+) -> CalendarSessionRule:
+    try:
+        record = update_calendar_session_rule(
+            calendar_uid=calendar_uid,
+            uid=rule_uid,
+            payload=request.model_dump(exclude_unset=True, exclude_none=False),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if record is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Calendar date {date_uid!r} was not found under calendar {calendar_uid!r}.",
+            detail=(
+                f"Calendar session rule {rule_uid!r} was not found under calendar {calendar_uid!r}."
+            ),
         )
     return record
 
 
 @router.delete(
-    "/{calendar_uid}/dates/{date_uid}/",
-    response_model=CalendarDate | None,
-    summary="Delete calendar date",
-    description="Delete one local-date row under the path calendar uid. Returns `null` on success.",
-    operation_id="deleteCalendarDate",
+    "/{calendar_uid}/rules/{rule_uid}/",
+    response_model=CalendarSessionRule | None,
+    summary="Delete calendar session rule",
+    description="Delete one session rule under the path calendar uid. Returns `null` on success.",
+    operation_id="deleteCalendarSessionRule",
     status_code=status.HTTP_200_OK,
     responses={
         404: {
             "model": ErrorResponse,
-            "description": "The requested calendar date uid was not found under this calendar.",
+            "description": (
+                "The requested calendar session rule uid was not found under this calendar."
+            ),
         }
     },
 )
-def remove_calendar_date(calendar_uid: str, date_uid: str) -> CalendarDate | None:
-    deleted = delete_calendar_date(calendar_uid=calendar_uid, uid=date_uid)
+def remove_calendar_session_rule(calendar_uid: str, rule_uid: str) -> CalendarSessionRule | None:
+    deleted = delete_calendar_session_rule(calendar_uid=calendar_uid, uid=rule_uid)
     if not deleted:
         raise HTTPException(
             status_code=404,
-            detail=f"Calendar date {date_uid!r} was not found under calendar {calendar_uid!r}.",
+            detail=(
+                f"Calendar session rule {rule_uid!r} was not found under calendar {calendar_uid!r}."
+            ),
         )
     return None
 
 
 @router.get(
-    "/{calendar_uid}/sessions/",
-    response_model=ResourceCollection[CalendarSession],
-    summary="List calendar sessions",
-    description="Return session rows for one calendar, optionally bounded by local date.",
-    operation_id="listCalendarSessions",
+    "/{calendar_uid}/exceptions/",
+    response_model=ResourceCollection[CalendarException],
+    summary="List calendar exceptions",
+    description=(
+        "Return the exceptions of one calendar: its dated departures from the session "
+        "rules, optionally bounded by local date."
+    ),
+    operation_id="listCalendarExceptions",
     openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
 )
-def get_calendar_sessions(
+def get_calendar_exceptions(
     calendar_uid: str,
     start_date: Annotated[
         dt.date | None,
@@ -452,25 +629,35 @@ def get_calendar_sessions(
         str | None,
         Query(description="Optional exact session label filter."),
     ] = None,
-    is_primary: Annotated[
-        bool | None,
-        Query(description="Optional primary-session flag filter."),
+    exception_type: Annotated[
+        CalendarExceptionType | None,
+        Query(description="Optional exception type filter."),
+    ] = None,
+    source: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Optional exact source filter: `user`, or the name of the adapter that "
+                "wrote the row."
+            ),
+        ),
     ] = None,
     limit: Annotated[
         int,
-        Query(ge=1, le=10000, description="Maximum number of session rows to return."),
+        Query(ge=1, le=10000, description="Maximum number of exception rows to return."),
     ] = 500,
     offset: Annotated[
         int,
-        Query(ge=0, description="Zero-based starting offset into the session row list."),
+        Query(ge=0, description="Zero-based starting offset into the exception row list."),
     ] = 0,
-) -> ResourceCollection[CalendarSession]:
-    response = list_calendar_sessions(
+) -> ResourceCollection[CalendarException]:
+    response = list_calendar_exceptions(
         calendar_uid=calendar_uid,
         start_date=start_date,
         end_date=end_date,
         session_label=session_label,
-        is_primary=is_primary,
+        exception_type=exception_type.value if exception_type is not None else None,
+        source=source,
         limit=limit,
         offset=offset,
     )
@@ -483,315 +670,172 @@ def get_calendar_sessions(
 
 
 @router.post(
-    "/{calendar_uid}/sessions/",
-    response_model=CalendarSession,
-    summary="Create calendar session",
-    description="Create one session row under the path calendar uid.",
-    operation_id="createCalendarSession",
-)
-def post_calendar_session(
-    calendar_uid: str,
-    request: Annotated[
-        CalendarSessionCreateRequest,
-        Body(description="Create payload for a calendar session row."),
-    ],
-) -> CalendarSession:
-    return create_calendar_session(
-        calendar_uid=calendar_uid,
-        payload=request.model_dump(exclude_none=True),
-    )
-
-
-@router.post(
-    "/{calendar_uid}/sessions/bulk-upsert/",
-    response_model=list[CalendarSession],
-    summary="Bulk upsert calendar sessions",
-    description="Bulk upsert session rows under the path calendar uid.",
-    operation_id="bulkUpsertCalendarSessions",
-)
-def post_calendar_sessions_bulk_upsert(
-    calendar_uid: str,
-    request: Annotated[
-        BulkUpsertCalendarSessionsRequest,
-        Body(description="Bulk upsert payload for calendar session rows."),
-    ],
-) -> list[CalendarSession]:
-    return bulk_upsert_calendar_sessions(
-        calendar_uid=calendar_uid,
-        rows=[row.model_dump(exclude_none=True) for row in request.rows],
-    )
-
-
-@router.get(
-    "/{calendar_uid}/sessions/{session_uid}/",
-    response_model=CalendarSession,
-    summary="Get calendar session",
-    description="Return one session row by uid under the path calendar uid.",
-    operation_id="getCalendarSession",
+    "/{calendar_uid}/exceptions/",
+    response_model=CalendarException,
+    summary="Create calendar exception",
+    description=(
+        'Create one exception under the path calendar uid. The row is stored with `source="user"`.'
+    ),
+    operation_id="createCalendarException",
     responses={
-        404: {
+        400: {
             "model": ErrorResponse,
-            "description": "The requested calendar session uid was not found under this calendar.",
+            "description": (
+                "The exception values were refused, or a `CLOSED` exception would stand next "
+                "to another user exception for the same date and session."
+            ),
         }
     },
 )
-def get_calendar_session_by_uid(calendar_uid: str, session_uid: str) -> CalendarSession:
-    record = get_calendar_session(calendar_uid=calendar_uid, uid=session_uid)
+def post_calendar_exception(
+    calendar_uid: str,
+    request: Annotated[
+        CalendarExceptionCreateRequest,
+        Body(description="Create payload for a calendar exception row."),
+    ],
+) -> CalendarException:
+    try:
+        return create_calendar_exception(
+            calendar_uid=calendar_uid,
+            payload=request.model_dump(exclude_none=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{calendar_uid}/exceptions/bulk-upsert/",
+    response_model=list[CalendarException],
+    summary="Bulk upsert calendar exceptions",
+    description=(
+        "Bulk upsert exceptions under the path calendar uid. The rows are stored with "
+        '`source="user"` and matched by local date, session label and exception type.'
+    ),
+    operation_id="bulkUpsertCalendarExceptions",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": (
+                "The exception values were refused, or a `CLOSED` exception would stand next "
+                "to another user exception for the same date and session."
+            ),
+        }
+    },
+)
+def post_calendar_exceptions_bulk_upsert(
+    calendar_uid: str,
+    request: Annotated[
+        BulkUpsertCalendarExceptionsRequest,
+        Body(description="Bulk upsert payload for calendar exception rows."),
+    ],
+) -> list[CalendarException]:
+    try:
+        return bulk_upsert_calendar_exceptions(
+            calendar_uid=calendar_uid,
+            rows=[row.model_dump(exclude_none=True) for row in request.rows],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{calendar_uid}/exceptions/{exception_uid}/",
+    response_model=CalendarException,
+    summary="Get calendar exception",
+    description="Return one exception by uid under the path calendar uid.",
+    operation_id="getCalendarException",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "The requested calendar exception uid was not found under this calendar."
+            ),
+        }
+    },
+)
+def get_calendar_exception_by_uid(calendar_uid: str, exception_uid: str) -> CalendarException:
+    record = get_calendar_exception(calendar_uid=calendar_uid, uid=exception_uid)
     if record is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Calendar session {session_uid!r} was not found under calendar {calendar_uid!r}."
+                f"Calendar exception {exception_uid!r} was not found "
+                f"under calendar {calendar_uid!r}."
             ),
         )
     return record
 
 
 @router.patch(
-    "/{calendar_uid}/sessions/{session_uid}/",
-    response_model=CalendarSession,
-    summary="Update calendar session",
-    description="Update mutable fields for one session row under the path calendar uid.",
-    operation_id="updateCalendarSession",
+    "/{calendar_uid}/exceptions/{exception_uid}/",
+    response_model=CalendarException,
+    summary="Update calendar exception",
+    description="Update mutable fields for one exception under the path calendar uid.",
+    operation_id="updateCalendarException",
     responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "The exception values were refused.",
+        },
         404: {
             "model": ErrorResponse,
-            "description": "The requested calendar session uid was not found under this calendar.",
-        }
+            "description": (
+                "The requested calendar exception uid was not found under this calendar."
+            ),
+        },
     },
 )
-def patch_calendar_session(
+def patch_calendar_exception(
     calendar_uid: str,
-    session_uid: str,
+    exception_uid: str,
     request: Annotated[
-        CalendarSessionUpdate,
-        Body(description="Patch payload for an existing calendar session row."),
+        CalendarExceptionUpdate,
+        Body(description="Patch payload for an existing calendar exception row."),
     ],
-) -> CalendarSession:
-    record = update_calendar_session(
-        calendar_uid=calendar_uid,
-        uid=session_uid,
-        payload=request.model_dump(exclude_unset=True, exclude_none=False),
-    )
+) -> CalendarException:
+    try:
+        record = update_calendar_exception(
+            calendar_uid=calendar_uid,
+            uid=exception_uid,
+            payload=request.model_dump(exclude_unset=True, exclude_none=False),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if record is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Calendar session {session_uid!r} was not found under calendar {calendar_uid!r}."
+                f"Calendar exception {exception_uid!r} was not found "
+                f"under calendar {calendar_uid!r}."
             ),
         )
     return record
 
 
 @router.delete(
-    "/{calendar_uid}/sessions/{session_uid}/",
-    response_model=CalendarSession | None,
-    summary="Delete calendar session",
-    description="Delete one session row under the path calendar uid. Returns `null` on success.",
-    operation_id="deleteCalendarSession",
+    "/{calendar_uid}/exceptions/{exception_uid}/",
+    response_model=CalendarException | None,
+    summary="Delete calendar exception",
+    description="Delete one exception under the path calendar uid. Returns `null` on success.",
+    operation_id="deleteCalendarException",
     status_code=status.HTTP_200_OK,
     responses={
         404: {
             "model": ErrorResponse,
-            "description": "The requested calendar session uid was not found under this calendar.",
+            "description": (
+                "The requested calendar exception uid was not found under this calendar."
+            ),
         }
     },
 )
-def remove_calendar_session(calendar_uid: str, session_uid: str) -> CalendarSession | None:
-    deleted = delete_calendar_session(calendar_uid=calendar_uid, uid=session_uid)
+def remove_calendar_exception(calendar_uid: str, exception_uid: str) -> CalendarException | None:
+    deleted = delete_calendar_exception(calendar_uid=calendar_uid, uid=exception_uid)
     if not deleted:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Calendar session {session_uid!r} was not found under calendar {calendar_uid!r}."
+                f"Calendar exception {exception_uid!r} was not found "
+                f"under calendar {calendar_uid!r}."
             ),
-        )
-    return None
-
-
-@router.get(
-    "/{calendar_uid}/events/",
-    response_model=ResourceCollection[CalendarEvent],
-    summary="List calendar events",
-    description="Return event rows for one calendar, optionally bounded by event date.",
-    operation_id="listCalendarEvents",
-    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
-)
-def get_calendar_events(
-    calendar_uid: str,
-    start_date: Annotated[
-        dt.date | None,
-        Query(description="Optional first event date to include."),
-    ] = None,
-    end_date: Annotated[
-        dt.date | None,
-        Query(description="Optional last event date to include."),
-    ] = None,
-    event_type: Annotated[
-        str | None,
-        Query(description="Optional exact event type filter."),
-    ] = None,
-    event_label: Annotated[
-        str | None,
-        Query(description="Optional exact event label filter."),
-    ] = None,
-    target_type: Annotated[
-        str | None,
-        Query(description="Optional exact event target type filter."),
-    ] = None,
-    target_uid: Annotated[
-        str | None,
-        Query(description="Optional exact event target uid filter."),
-    ] = None,
-    target_identifier: Annotated[
-        str | None,
-        Query(description="Optional exact event target identifier filter."),
-    ] = None,
-    limit: Annotated[
-        int,
-        Query(ge=1, le=10000, description="Maximum number of event rows to return."),
-    ] = 500,
-    offset: Annotated[
-        int,
-        Query(ge=0, description="Zero-based starting offset into the event row list."),
-    ] = 0,
-) -> ResourceCollection[CalendarEvent]:
-    response = list_calendar_events(
-        calendar_uid=calendar_uid,
-        start_date=start_date,
-        end_date=end_date,
-        event_type=event_type,
-        event_label=event_label,
-        target_type=target_type,
-        target_uid=target_uid,
-        target_identifier=target_identifier,
-        limit=limit,
-        offset=offset,
-    )
-    return resource_collection_response(
-        items=response["results"],
-        total_items=response["count"],
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.post(
-    "/{calendar_uid}/events/",
-    response_model=CalendarEvent,
-    summary="Create calendar event",
-    description="Create one calendar-level event row under the path calendar uid.",
-    operation_id="createCalendarEvent",
-)
-def post_calendar_event(
-    calendar_uid: str,
-    request: Annotated[
-        CalendarEventCreateRequest,
-        Body(description="Create payload for a calendar event row."),
-    ],
-) -> CalendarEvent:
-    return create_calendar_event(
-        calendar_uid=calendar_uid,
-        payload=request.model_dump(exclude_none=True),
-    )
-
-
-@router.post(
-    "/{calendar_uid}/events/bulk-upsert/",
-    response_model=list[CalendarEvent],
-    summary="Bulk upsert calendar events",
-    description="Bulk upsert calendar-level event rows under the path calendar uid.",
-    operation_id="bulkUpsertCalendarEvents",
-)
-def post_calendar_events_bulk_upsert(
-    calendar_uid: str,
-    request: Annotated[
-        BulkUpsertCalendarEventsRequest,
-        Body(description="Bulk upsert payload for calendar event rows."),
-    ],
-) -> list[CalendarEvent]:
-    return bulk_upsert_calendar_events(
-        calendar_uid=calendar_uid,
-        rows=[row.model_dump(exclude_none=True) for row in request.rows],
-    )
-
-
-@router.get(
-    "/{calendar_uid}/events/{event_uid}/",
-    response_model=CalendarEvent,
-    summary="Get calendar event",
-    description="Return one calendar-level event row by uid under the path calendar uid.",
-    operation_id="getCalendarEvent",
-    responses={
-        404: {
-            "model": ErrorResponse,
-            "description": "The requested calendar event uid was not found under this calendar.",
-        }
-    },
-)
-def get_calendar_event_by_uid(calendar_uid: str, event_uid: str) -> CalendarEvent:
-    record = get_calendar_event(calendar_uid=calendar_uid, uid=event_uid)
-    if record is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Calendar event {event_uid!r} was not found under calendar {calendar_uid!r}.",
-        )
-    return record
-
-
-@router.patch(
-    "/{calendar_uid}/events/{event_uid}/",
-    response_model=CalendarEvent,
-    summary="Update calendar event",
-    description="Update mutable fields for one calendar-level event under the path calendar uid.",
-    operation_id="updateCalendarEvent",
-    responses={
-        404: {
-            "model": ErrorResponse,
-            "description": "The requested calendar event uid was not found under this calendar.",
-        }
-    },
-)
-def patch_calendar_event(
-    calendar_uid: str,
-    event_uid: str,
-    request: Annotated[
-        CalendarEventUpdate,
-        Body(description="Patch payload for an existing calendar event row."),
-    ],
-) -> CalendarEvent:
-    record = update_calendar_event(
-        calendar_uid=calendar_uid,
-        uid=event_uid,
-        payload=request.model_dump(exclude_unset=True, exclude_none=False),
-    )
-    if record is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Calendar event {event_uid!r} was not found under calendar {calendar_uid!r}.",
-        )
-    return record
-
-
-@router.delete(
-    "/{calendar_uid}/events/{event_uid}/",
-    response_model=CalendarEvent | None,
-    summary="Delete calendar event",
-    description="Delete one calendar-level event under the path calendar uid. Returns `null` on success.",
-    operation_id="deleteCalendarEvent",
-    status_code=status.HTTP_200_OK,
-    responses={
-        404: {
-            "model": ErrorResponse,
-            "description": "The requested calendar event uid was not found under this calendar.",
-        }
-    },
-)
-def remove_calendar_event(calendar_uid: str, event_uid: str) -> CalendarEvent | None:
-    deleted = delete_calendar_event(calendar_uid=calendar_uid, uid=event_uid)
-    if not deleted:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Calendar event {event_uid!r} was not found under calendar {calendar_uid!r}.",
         )
     return None

@@ -66,6 +66,26 @@ def test_ensure_apps_v1_runtime_includes_target_position_models() -> None:
     assert "VirtualFundHoldingsStorage" in runtime_bootstrap.V1_RUNTIME_MODELS
 
 
+def test_ensure_apps_v1_runtime_attaches_the_calendar_definition_tables() -> None:
+    """Dates and sessions are computed from a calendar's rules and exceptions (ADR 0055)."""
+
+    from msm.api.calendars import Calendar, CalendarException, CalendarSessionRule
+    from msm.models.registration import resolve_markets_meta_table_models
+    from msm_portfolios.bootstrap import resolve_portfolio_models
+
+    assert {
+        name for name in runtime_bootstrap.V1_RUNTIME_MODELS if name.startswith("Calendar")
+    } == {"Calendar", "CalendarSessionRule", "CalendarException"}
+
+    attached = set(
+        resolve_markets_meta_table_models(
+            resolve_portfolio_models(runtime_bootstrap.V1_RUNTIME_MODELS)
+        )
+    )
+    for row_class in (Calendar, CalendarSessionRule, CalendarException):
+        assert set(row_class.__required_tables__) <= attached
+
+
 def test_ensure_apps_v1_pricing_runtime_covers_current_pricing_detail_dependencies() -> None:
     from msm_pricing.api import (
         AssetCurrentPricingDetails,

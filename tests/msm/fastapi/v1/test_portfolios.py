@@ -320,7 +320,8 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
         "detail_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/",
         "dates_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/dates/",
         "sessions_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/sessions/",
-        "events_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/events/",
+        "rules_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/rules/",
+        "exceptions_url": f"/api/v1/calendar/{portfolio['calendar_uid']}/exceptions/",
     }
     assert summary["extensions"]["nodes"] == {
         "portfolio_weights": {

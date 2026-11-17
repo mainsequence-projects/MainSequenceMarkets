@@ -26,6 +26,8 @@ Use these adjacent skills when the task crosses their boundary:
   `.agents/skills/ms_markets/assets/asset_indexed_updaters/SKILL.md`
 - Portfolio construction examples and portfolio calculation workflows:
   `.agents/skills/ms_markets/portfolios/portfolio_workflow/SKILL.md`
+- Calendars: getting, reading and correcting one:
+  `.agents/skills/ms_markets/calendars/calendar_workflow/SKILL.md`
 - Bootstrap/catalog registration:
   `.agents/skills/ms_markets/platform/bootstrap_registration/SKILL.md`
 
@@ -144,8 +146,8 @@ msm.start_engine(
         "AssetType",
         "Asset",
         "Calendar",
-        "CalendarDate",
-        "CalendarSession",
+        "CalendarSessionRule",
+        "CalendarException",
         "IndexType",
         "Index",
         "AssetSnapshotsStorage",

@@ -66,9 +66,8 @@ def _load_row_classes() -> dict[str, type]:
     import msm.api.accounts  # noqa: F401
     import msm.api.assets  # noqa: F401
     import msm.api.calendars.core  # noqa: F401
-    import msm.api.calendars.dates  # noqa: F401
-    import msm.api.calendars.events  # noqa: F401
-    import msm.api.calendars.sessions  # noqa: F401
+    import msm.api.calendars.exceptions  # noqa: F401
+    import msm.api.calendars.rules  # noqa: F401
     import msm.api.derivatives  # noqa: F401
     import msm.api.execution  # noqa: F401
     import msm.api.formula_indices  # noqa: F401

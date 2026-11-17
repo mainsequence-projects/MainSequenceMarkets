@@ -40,7 +40,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--apply requires exactly one --portfolio-identifier")
 
     runtime = msm_portfolios.start_engine(
-        models=["Calendar", "CalendarSession", "Portfolio", "PortfoliosStorage"]
+        models=[
+            "Calendar",
+            "CalendarSessionRule",
+            "CalendarException",
+            "Portfolio",
+            "PortfoliosStorage",
+        ]
     )
     plan = plan_legacy_midnight_portfolio_timestamp_repair(
         args.portfolio_identifier,
