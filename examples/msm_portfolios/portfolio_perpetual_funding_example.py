@@ -11,6 +11,7 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
+from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from msm_portfolios.accounting import (
     AccountingStateView,
     CashDeltaBatch,
@@ -29,7 +30,39 @@ from msm_portfolios.rebalance_strategy import (
     InstrumentExecutionSpec,
     ProportionalExecutionCostModel,
     TargetWeightExecutionModel,
+    observed_prices,
 )
+
+CALENDAR_EVENTS_TABLE = TimeIndexTableRef(
+    output_table=TimeIndexMetaTable.model_construct(
+        uid="00000000-0000-4000-8000-0000000000c1",
+        data_source_uid="00000000-0000-4000-8000-0000000000d1",
+    )
+)
+
+
+def always_open_calendar_events(first: str, published_until: str) -> pd.DataFrame:
+    """CRYPTO_24_7 session events as ``PortfolioCalendarEvents`` publishes them.
+
+    Each session opens at 00:00 UTC and closes when the next one opens. Events are
+    published only up to ``published_until``, as the updater publishes up to its
+    run time. A real graph declares a ``PortfolioCalendarEvents`` updater; this
+    offline example passes the rows directly.
+    """
+    rows = []
+    until = pd.Timestamp(published_until)
+    for day in pd.date_range(pd.Timestamp(first, tz="UTC"), until.floor("D"), freq="D"):
+        local_date = day.date().isoformat()
+        rows.append((day, "CRYPTO_24_7", "regular", "market_open", local_date))
+        rows.append(
+            (day + pd.Timedelta(days=1), "CRYPTO_24_7", "regular", "market_close", local_date)
+        )
+    frame = pd.DataFrame(
+        rows,
+        columns=["time_index", "calendar_identifier", "session_label", "event_type", "local_date"],
+    )
+    frame = frame[frame["time_index"] <= until]
+    return frame.set_index(["time_index", "calendar_identifier", "session_label", "event_type"])
 
 
 class PerpetualFundingCashFlowModel(PositionCashFlowModel):
@@ -130,8 +163,10 @@ def build_example() -> dict[str, pd.DataFrame]:
 
     prices = pd.DataFrame(
         [
+            ("2026-02-28T00:00:00Z", "BTC-PERP", 100.0, "USD", "mark-0"),
             ("2026-03-01T00:00:00Z", "BTC-PERP", 100.0, "USD", "mark-1"),
             ("2026-03-02T00:00:00Z", "BTC-PERP", 100.0, "USD", "mark-2"),
+            ("2026-03-02T12:00:00Z", "BTC-PERP", 100.0, "USD", "mark-2b"),
             ("2026-03-03T00:00:00Z", "BTC-PERP", 100.0, "USD", "mark-3"),
         ],
         columns=[
@@ -144,8 +179,12 @@ def build_example() -> dict[str, pd.DataFrame]:
     )
     signals = pd.DataFrame(
         [
-            ("2026-03-01T00:00:00Z", "perpetual-signal", "BTC-PERP", 1.0),
-            ("2026-03-02T00:00:00Z", "perpetual-signal", "BTC-PERP", 1.0),
+            # Each signal is sized from the NAV and the last mark before it, and trades
+            # at the first mark observed strictly after it. The second comes after the
+            # first funding event and repeats the weight: it resizes the position to
+            # the NAV left after funding.
+            ("2026-02-28T23:00:00Z", "perpetual-signal", "BTC-PERP", 1.0),
+            ("2026-03-02T06:00:00Z", "perpetual-signal", "BTC-PERP", 1.0),
         ],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
     ).set_index(["time_index", "signal_uid", "asset_identifier"])
@@ -185,13 +224,14 @@ def build_example() -> dict[str, pd.DataFrame]:
     )
     funding_model = PerpetualFundingCashFlowModel()
     configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-02-28T00:00:00Z",
         position_valuation_model_instance=VariationMarginValuationModel(),
         lifecycle_event_model_instances=(funding_model,),
     )
     strategy = ImmediateSignal(
+        calendar_events_instance=CALENDAR_EVENTS_TABLE,
+        calendar_identifier="CRYPTO_24_7",
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=(
                 InstrumentExecutionSpec(
@@ -208,12 +248,26 @@ def build_example() -> dict[str, pd.DataFrame]:
         ),
         execution_cost_model_instances=(ProportionalExecutionCostModel(rate=0.01),),
     )
+    # PortfolioRebalance records each fill at the next observed price; the ledger
+    # books exactly those fills. Offline, the strategy runs directly.
+    rebalance_state = strategy.build_transitions(
+        start=pd.Timestamp("2026-02-28T00:00:00Z"),
+        end=pd.Timestamp("2026-03-03T00:00:00Z"),
+        signal_observations=signals,
+        observed_inputs={
+            "calendar_events": always_open_calendar_events(
+                "2026-02-28", published_until="2026-03-03T00:00:00Z"
+            )
+        },
+        previous_state=None,
+        fill_prices=observed_prices(prices, price_column="price"),
+    )
     accounting = PortfolioEngine.calculate_backtest(
         portfolio_identifier="mock-linear-perpetual",
         accounting_configuration=configuration,
+        valuation_asset_identifier="USD",
         rebalance_strategy=strategy,
-        signal_observations=signals,
-        rebalance_inputs={},
+        rebalance_state=rebalance_state,
         valuation_observations=prices,
         lifecycle_inputs={funding_model.model_identifier: {"funding": funding}},
         valuation_times=("2026-03-03T00:00:00Z",),

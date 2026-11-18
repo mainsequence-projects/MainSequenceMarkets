@@ -44,7 +44,8 @@ class PortfolioAccountingConfiguration(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    valuation_asset_identifier: str = Field(min_length=1)
+    # The portfolio's currency is PortfolioBuildConfiguration.valuation_asset_identifier
+    # (ADR 0059); initial_nav is in it.
     initial_nav: float = Field(gt=0.0, allow_inf_nan=False)
     initial_state_time_index: dt.datetime
     position_valuation_model_instance: PositionValuationModel

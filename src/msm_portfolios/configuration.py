@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     WithJsonSchema,
     field_serializer,
+    model_validator,
 )
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
@@ -370,7 +371,7 @@ class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
 
 
 class ValuationAlignmentPolicy(PortfolioConfigBaseModel):
-    """Bounded per-asset as-of policy for consumed valuation observations."""
+    """Per-asset as-of policy for consumed valuation observations (ADR 0058)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -378,18 +379,21 @@ class ValuationAlignmentPolicy(PortfolioConfigBaseModel):
         default=dt.timedelta(days=1),
         gt=dt.timedelta(0),
         description=(
-            "Maximum age of the latest valuation observation selected at an explicit "
-            "execution or valuation timestamp. Alignment never creates timestamps."
+            "Age past which a valuation observation is marked stale. A held asset is "
+            "always valued at its last observed price, however old; a portfolio value "
+            "that uses an older price has valuation_stale set. Only a held asset with no "
+            "observed price at all raises. Alignment never creates timestamps."
         ),
         examples=["P1D"],
     )
     fail_on_missing_values: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "Fail when any required asset has no valuation at or before an explicit "
-            "target timestamp within maximum_staleness."
+            "Raise when a held asset's last observed price is older than "
+            "maximum_staleness, instead of valuing it at that price and marking the "
+            "value stale (the default, ADR 0058)."
         ),
-        examples=[True, False],
+        examples=[False, True],
     )
 
 
@@ -485,6 +489,10 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
             Explicit TimeIndexTableUpdater/TimeIndexTableRef valuation dependency consumed by the portfolio.
         valuation_column:
             Numeric column from the consumed valuation source used for valuation.
+        valuation_asset_identifier:
+            The portfolio's currency: NAV, cash and every value are in it.
+        fx_source_instance:
+            The portfolio's one FX source, when an asset is quoted in another currency.
         valuation_alignment_policy:
             Bounded per-asset as-of behavior for the consumed valuation frame.
         execution_configuration:
@@ -519,6 +527,34 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         ),
         examples=["close", "fair_value", "nav", "mark_price"],
     )
+
+    valuation_asset_identifier: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The portfolio's currency (ADR 0059). NAV, cash and every value are in it; the "
+            "ledger, PortfolioRebalance and the weights path all read it from here."
+        ),
+        examples=["USD"],
+    )
+
+    fx_source_instance: Annotated[
+        TimeIndexTableUpdater | TimeIndexTableRef | None,
+        Field(
+            default=None,
+            exclude_if=lambda value: value is None,
+            description=(
+                "The portfolio's one FX source, indexed by time_index, "
+                "base_asset_identifier and quote_asset_identifier, with a rate: one unit "
+                "of the base is rate units of the quote. PortfolioRebalance, the ledger "
+                "and the weights path convert prices quoted in another currency into "
+                "valuation_asset_identifier at the last observed rate. With it, the "
+                "valuation source must have a price_asset_identifier column; without "
+                "it, every asset is priced in the portfolio's currency (ADR 0059)."
+            ),
+        ),
+        WithJsonSchema({"type": "object"}),
+    ]
 
     valuation_alignment_policy: ValuationAlignmentPolicy = Field(
         default_factory=ValuationAlignmentPolicy,
@@ -556,6 +592,29 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     def ser_valuation_source(self, v: TimeIndexTableUpdater | TimeIndexTableRef) -> dict[str, Any]:
         """Serialize the explicit valuation dependency identity, not backend update rows."""
         return canonical_valuation_source_configuration(v)
+
+    @field_serializer("fx_source_instance", when_used="json")
+    def ser_fx_source(
+        self,
+        v: TimeIndexTableUpdater | TimeIndexTableRef | None,
+    ) -> dict[str, Any] | None:
+        return None if v is None else canonical_valuation_source_configuration(v)
+
+    @model_validator(mode="after")
+    def _fixed_cash_limit_needs_a_ledger(self) -> PortfolioBuildConfiguration:
+        """A fixed-amount negative cash limit is in currency; only a ledger has one."""
+        strategy = self.backtesting_weights_configuration.rebalance_strategy_instance
+        if (
+            self.accounting_configuration is None
+            and strategy.own_execution_prices() is None
+            and strategy.fill_policy().negative_cash == "fixed_amount"
+        ):
+            raise ValueError(
+                "A fixed-amount negative cash limit needs accounting_configuration: a "
+                "portfolio without a ledger has no NAV in currency, so it allows no "
+                "negative cash or a fraction of NAV (ADR 0059)."
+            )
+        return self
 
     @field_serializer(
         "valuation_alignment_policy",

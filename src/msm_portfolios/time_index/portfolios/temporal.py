@@ -33,6 +33,19 @@ def normalize_asset_observations(frame: pd.DataFrame | None) -> pd.DataFrame:
     return normalized.set_index(["time_index", ASSET_IDENTIFIER]).sort_index()
 
 
+def strictly_before(start: Any) -> tuple[Any, str]:
+    """Return ``(end_date, end_date_operand)`` that selects rows strictly before ``start``.
+
+    Stored times have microsecond precision, while an incremental window starts
+    1 ns after its last row. ``to_pydatetime`` would drop that nanosecond, and
+    ``< floor`` would then miss a row stamped exactly at the last row's time.
+    "Strictly before" such a start is "at or before" its microsecond floor.
+    """
+    boundary = pd.Timestamp(start)
+    floor = boundary.floor("us")
+    return floor.to_pydatetime(), "<=" if floor != boundary else "<"
+
+
 def fetch_asset_observations(
     source: Any,
     *,
@@ -74,14 +87,15 @@ def fetch_asset_observations(
         if extra_dimensions
         else [{}]
     )
+    seed_end, seed_operand = strictly_before(start)
     range_map = [
         {
             "coordinate": {
                 **extra_coordinate,
                 ASSET_IDENTIFIER: asset_identifier,
             },
-            "end_date": pd.Timestamp(start).to_pydatetime(),
-            "end_date_operand": "<",
+            "end_date": seed_end,
+            "end_date_operand": seed_operand,
         }
         for extra_coordinate in extra_coordinates
         for asset_identifier in assets
@@ -100,8 +114,8 @@ def fetch_asset_observations(
     else:
         seed_candidates = normalize_asset_observations(
             source.get_df_between_dates(
-                end_date=start,
-                less_or_equal=False,
+                end_date=seed_end,
+                less_or_equal=seed_operand == "<=",
                 dimension_filters=dimension_filters,
             )
         )
@@ -120,10 +134,17 @@ def align_asset_observations(
     asset_identifiers: Iterable[str],
     value_columns: Iterable[str],
     maximum_staleness: Any,
-    fail_on_missing_values: bool,
     required_coordinates: pd.DataFrame | None = None,
+    fail_on_missing_values: bool = False,
 ) -> pd.DataFrame:
-    """Select the latest eligible observation per asset at explicit target times."""
+    """Select each asset's last observation at or before explicit target times.
+
+    By default a held asset is valued at its last observed price, however old, and
+    an observation older than ``maximum_staleness`` is marked in the ``stale``
+    column. With ``fail_on_missing_values`` a required stale observation raises
+    instead. A required asset with no observation at or before a target always
+    raises (ADR 0058).
+    """
     targets = utc_index(target_index)
     assets = list(dict.fromkeys(str(value) for value in asset_identifiers))
     columns = list(value_columns)
@@ -146,7 +167,7 @@ def align_asset_observations(
     available_assets = set(normalized.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique())
     absent_assets = sorted(set(assets) - available_assets)
     absent_required_assets = [asset for asset in absent_assets if required[asset].any()]
-    if absent_required_assets and fail_on_missing_values:
+    if absent_required_assets:
         raise ValueError(
             "Valuation source is missing required assets: " + ", ".join(absent_required_assets)
         )
@@ -175,11 +196,9 @@ def align_asset_observations(
         {asset: targets for asset in assets},
         index=targets,
     )
-    ages = target_matrix - observation_times
-    stale = ages > pd.Timedelta(maximum_staleness)
-    missing = observation_times.isna() | stale
-    missing_required = missing & required
-    if missing_required.any().any() and fail_on_missing_values:
+    never_observed = observation_times.isna()
+    missing_required = never_observed & required
+    if missing_required.any().any():
         details = [
             f"{asset}@{timestamp.isoformat()}"
             for timestamp, row in missing_required.iterrows()
@@ -187,18 +206,30 @@ def align_asset_observations(
             if bool(is_missing)
         ]
         raise ValueError(
+            "No observed valuation at or before the target for " + ", ".join(details[:10])
+        )
+    stale = (target_matrix - observation_times) > pd.Timedelta(maximum_staleness)
+    stale_required = stale & required
+    if fail_on_missing_values and stale_required.any().any():
+        details = [
+            f"{asset}@{timestamp.isoformat()}"
+            for timestamp, row in stale_required.iterrows()
+            for asset, is_stale in row.items()
+            if bool(is_stale)
+        ]
+        raise ValueError(
             "No sufficiently fresh valuation observation for " + ", ".join(details[:10])
         )
 
-    for values in result_parts.values():
-        values[missing] = pd.NA
-
     stacked_parts = []
     for column, values in result_parts.items():
-        series = values.stack().rename(column)
+        series = values.stack(future_stack=True).rename(column)
         stacked_parts.append(series)
+    stacked_parts.append((stale & ~never_observed).stack(future_stack=True).rename("stale"))
     aligned = pd.concat(stacked_parts, axis=1)
     aligned.index.names = ["time_index", ASSET_IDENTIFIER]
+    aligned = aligned[aligned[columns].notna().any(axis=1)]
+    aligned["stale"] = aligned["stale"].astype(bool)
     return aligned.sort_index()
 
 
@@ -218,5 +249,6 @@ __all__ = [
     "align_asset_observations",
     "fetch_asset_observations",
     "normalize_asset_observations",
+    "strictly_before",
     "utc_index",
 ]

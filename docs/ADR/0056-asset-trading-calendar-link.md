@@ -273,7 +273,9 @@ have them equal.
 - When a rebalance falls where an asset has no bar, the valuation uses the asset's latest
   bar, within `ValuationAlignmentPolicy.maximum_staleness` (one day by default). With
   `fail_on_missing_values` (the default) an older bar is an error. This is today's
-  behaviour and does not change.
+  behaviour and does not change. (Amended 2026-11-18 by
+  [ADR 0058](0058-trade-at-the-next-observed-price.md): an older bar is used and marked
+  stale; `fail_on_missing_values` stays an option and defaults to `False`.)
 - No new check compares the two calendars.
 
 What changes is that both are stored calendars. When they are the same row, a correction
@@ -285,6 +287,10 @@ On the portfolio side there are two candidates for "the portfolio's calendar" (s
 is not the `unique_identifier` of the portfolio's `calendar_uid`. The error names both
 calendars. The other strategies read no calendar and are not checked. Then the portfolio
 has one calendar, and the worked example below has one meaning.
+
+Extended 2026-11-18 by [ADR 0058](0058-trade-at-the-next-observed-price.md): `ImmediateSignal`
+now reads a calendar too, so `PortfoliosUpdater` checks it the same way.
+`CalendarEventSignal` is its subclass.
 
 ### 8. Row API
 

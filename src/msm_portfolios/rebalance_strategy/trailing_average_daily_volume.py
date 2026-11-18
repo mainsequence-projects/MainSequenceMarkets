@@ -175,6 +175,9 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
             "execution_bars": self.execution_bars_instance,
         }
 
+    def own_execution_prices(self) -> tuple[str, str]:
+        return "execution_bars", self.execution_price_column
+
     def required_input_contract(self) -> dict[str, RebalanceInputContract]:
         return {
             "daily_liquidity": RebalanceInputContract(

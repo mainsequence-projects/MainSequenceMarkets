@@ -687,6 +687,12 @@ class PortfolioAccounting:
     ) -> pd.DataFrame:
         economic = event.copy()
         economic["recognized_pnl"] = np.nan
+        # A held asset is valued at its last observed price, however old; the summary
+        # names the prices and rates past maximum_staleness (ADR 0058).
+        stale_sources = sorted(
+            set(getattr(valuation_before, "stale_sources", ()))
+            | set(getattr(valuation_after, "stale_sources", ()))
+        )
         summary = pd.DataFrame(
             [
                 {
@@ -696,6 +702,11 @@ class PortfolioAccounting:
                     "nav_after": valuation_after.nav,
                     "recognized_pnl": recognized_pnl,
                     "valuation_asset_identifier": self.valuation_asset_identifier,
+                    "extension_payload": (
+                        json.dumps({"stale_sources": stale_sources}, separators=(",", ":"))
+                        if stale_sources
+                        else None
+                    ),
                 }
             ]
         )

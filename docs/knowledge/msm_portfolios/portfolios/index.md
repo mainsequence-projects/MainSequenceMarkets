@@ -59,7 +59,11 @@ and settlement does not recognize the dividend a second time.
 the configured valuation Asset. Foreign values require an explicit observation
 with grain `(time_index, base_asset_identifier, quote_asset_identifier)` and a
 strictly positive `rate`; it does not infer an inverse pair or silently replace
-a missing rate. Price and FX selection is bounded by `maximum_staleness`.
+a missing rate. A held asset is always valued at its last observed price, and
+FX at its last observed rate, however old: past `maximum_staleness` the price or
+rate is marked stale (`ValuationResult.stale_sources`, and `"stale": "true"` in
+the ledger's `valuation_references`), never refused. Only a held asset with no
+observed price at all raises.
 
 Use the public extension boundary for unusual economics:
 
@@ -181,14 +185,61 @@ portfolio = Portfolio.upsert(
 calendar at their actual UTC timestamps, including early closes and DST shifts.
 It computes them with `Calendar.sessions` from the calendar's session rules and
 exceptions; see [Calendars](../../msm/calendars/index.md).
-`CalendarEventSignal` declares that published table as an observed dependency.
-`ImmediateSignal` instead selects original signal observations and declares no
-additional event source. Event selection and state transitions occur in the
+`CalendarEventSignal` and `ImmediateSignal` declare that published table as a
+dependency. A price's `time_index` is the moment it was observed, and a trade
+happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-next-observed-price.md)):
+
+- **Earliest moment.** The strategy's moment is the signal's `time_index` for
+  `ImmediateSignal` and each selected open or close for `CalendarEventSignal`.
+  While the portfolio's calendar is in session (`market_open <= t <=
+  market_close`) the earliest moment is that moment; otherwise it is the next
+  `market_open`. On `CRYPTO_24_7` every moment is in session.
+- **Next observed price.** Each asset trades at the first row of the portfolio's
+  valuation source at or after the earliest moment, strictly after the signal
+  that set the target, and inside a session (`market_open < time_index <=
+  market_close`: a bar stamped at an open is not). Rows with `interpolated=True`
+  never count, and the fill column must be observed at its row's time, a close
+  or a mark; `open`, `high`, `low` and `vwap` are refused.
+- **Independent fills.** Each asset fills at its own next price, and only a step
+  of its order writes a row (`complete`, `partial` or `cancelled`); between fills
+  the unfilled part is cash. A missing price makes the trade wait, and a newer
+  target replaces the running rebalance at the first instant it could trade. A
+  waiting asset looks for its price from its target's earliest moment, so a slow
+  source's bar still counts when it arrives late.
+- **Execution policy.** These are facts. The choices are
+  `ImmediateSignal.execution_policy` (`ExecutionPolicy`, hash-bearing), whose
+  defaults are the owner's decisions: shares sized at the decision
+  (`sizing="at_decision"`, or `"at_fill"`), no negative cash
+  (`negative_cash`: `not_allowed`, `fraction_of_nav`, or `fixed_amount` with
+  a ledger), sells before buys, buys short of
+  cash at one instant filling the same fraction (`pro_rata`), a buy cash cannot
+  cover filling what it can and waiting for the rebalance's pending sells, then
+  cut and cancelled with the reason `insufficient_cash` (`cut_and_cancel`), and
+  the portfolio calendar gating trades (`calendar_gating="none"` lifts the
+  earliest-moment wait and the session check). `PortfolioRebalance` keeps the
+  book's shares and cash in each row's `strategy_state` and resumes from them.
+  The book is in the portfolio's currency
+  (`PortfolioBuildConfiguration.valuation_asset_identifier`); with
+  `fx_source_instance`, prices quoted in another currency (the valuation
+  source's `price_asset_identifier`) are converted at the last observed rate,
+  and without it every asset must be priced in the portfolio's currency
+  ([ADR 0059](../../../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
+- **Time stamps.** A signal's `time_index` is the moment it was known, as a
+  price's is; its producer is responsible for it.
+
+`PortfolioCalendarEvents` publishes events only up to the time it runs, so a
+target set while the market is closed waits for a run after the next open has
+been published. The dependency must publish both `market_open` and
+`market_close`. On an incremental run the latest open and close before the
+window are read explicitly, so a window that starts mid-session knows the market
+is open. Strategies with their own bars (`TimeWeighted`, `VolumeParticipation`,
+`LiquidityConstrained`, `TrailingAverageDailyVolumeParticipation`) trade at
+them, under the same conditions. Event selection and state transitions occur in the
 strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
 `PortfoliosUpdater` builds a rebalance index.
 
 `calendar_identifier` and `calendar_events_instance` are required for
-`CalendarEventSignal`. The event producer requires the stored
+`ImmediateSignal` and `CalendarEventSignal`. The event producer requires the stored
 `Calendar.unique_identifier`. A calendar is found by that value only: several
 stored calendars can come from one library calendar, so a `source_identifier`
 does not name one. Missing and failed calendar lookups raise an error; neither
@@ -893,9 +944,9 @@ by the portfolio build configuration and consumed through TimeIndexTableUpdater 
 
 `InterpolatedPrices` computes its bars from the stored calendar each asset is
 linked to with `AssetCalendar`. An asset in its scope with no link fails the
-whole run, and the error names it; there is no default calendar. A
-`CalendarEventSignal` must use the calendar of `Portfolio.calendar_uid`, so a
-portfolio has one calendar.
+whole run, and the error names it; there is no default calendar. An
+`ImmediateSignal` or `CalendarEventSignal` must use the calendar of
+`Portfolio.calendar_uid`, so a portfolio has one calendar.
 
 A valuation source must stamp each row at its time of observation: a price bar
 at its end, a daily bar at its session close. A bar stamped at its open is not
@@ -928,7 +979,9 @@ compatible registered storage. The valuation source must expose rows keyed by
 `(time_index, asset_identifier)` and include the configured numeric
 `valuation_column`, for example `close`, `fair_value`, `nav`, or `mark_price`.
 Execution observations are strategy inputs, not portfolio valuation inputs.
-`ImmediateSignal` requires no execution market-data dependency.
+`ImmediateSignal` and `CalendarEventSignal` declare no execution bars: each asset
+trades at its next observed price in the valuation source, which
+`PortfolioRebalance` reads. Their only declared input is the calendar events.
 `TimeWeighted` declares price bars, `VolumeParticipation` declares price and
 volume bars, `TrailingAverageDailyVolumeParticipation` declares completed daily
 liquidity plus observable intraday execution bars, and `LiquidityConstrained`
@@ -1065,7 +1118,6 @@ signal_weights = FixedWeights.from_signal_configuration(...)
 calendar_events = PortfolioCalendarEvents(
     config=PortfolioCalendarEventsConfiguration(
         calendar_identifier="CRYPTO_24_7",
-        event_types=("market_close",),
     )
 )
 
@@ -1073,6 +1125,7 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
         valuation_source_instance=price_source,
         valuation_column="close",
+        valuation_asset_identifier="USD",
         execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(
             signal_weights_instance=signal_weights,
@@ -1097,6 +1150,7 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
         valuation_source_instance=valuation_source,
         valuation_column="fair_value",
+        valuation_asset_identifier="USD",
         execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(...),
     ),
@@ -1111,7 +1165,18 @@ strategy's required grain and fields, and persists the resulting state.
 `PortfoliosUpdater.dependencies()` continues to expose canonical
 executed weights and its independent valuation source. Valuation sources may
 contain extra assets; required holdings are aligned independently using the
-latest observation at or before the target within `maximum_staleness`.
+latest observation at or before the target, however old. Past
+`ValuationAlignmentPolicy.maximum_staleness` the observation is marked stale,
+never refused: the portfolio value row has `valuation_stale` set, and
+`PortfoliosUpdater` logs a warning naming those holdings. Only a held asset with
+no observation at all raises. A portfolio whose strategy records a rebalance book
+is valued from the book's shares and cash, which `PortfolioWeights` projects
+(`held_shares`, `book_cash`): its value is the cash plus each asset's shares at
+its price, so weights drift with prices between rebalances (ADR 0059). Weights
+without a book are valued from constant weights. `fail_on_missing_values` (default `False`) refuses a
+stale observation instead, as an option of the policy. A provider
+that owns `PortfoliosTS` instances adds the `valuation_stale` column to them in
+its own migration.
 
 `portfolio_prices_frequency` and `PriceAlignmentPolicy` were removed. Use
 `ValuationAlignmentPolicy` for source freshness and `PortfolioAnalytics` for

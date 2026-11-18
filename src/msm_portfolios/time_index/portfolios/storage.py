@@ -130,6 +130,29 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "description": "Asset volume from the previous rebalance reference.",
         },
     )
+    held_shares: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Held Shares",
+            "description": (
+                "Shares of the asset after this row, in the rebalance book's unit (the NAV "
+                "at the portfolio's first rebalance). Null for strategies that record no "
+                "book (ADR 0059)."
+            ),
+        },
+    )
+    book_cash: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        info={
+            "label": "Book Cash",
+            "description": (
+                "The rebalance book's cash after this row's instant, in the portfolio's "
+                "currency and the book's unit. Null for strategies that record no book."
+            ),
+        },
+    )
 
 
 class PortfolioCalendarEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -437,6 +460,19 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Close Time",
             "description": "UTC close timestamp represented by this portfolio value row.",
+        },
+    )
+    valuation_stale: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+        info={
+            "label": "Valuation Stale",
+            "description": (
+                "True when a held asset was valued at its last observed price and that "
+                "price was older than ValuationAlignmentPolicy.maximum_staleness (ADR "
+                "0058). A held asset is always valued, however old its price; null on "
+                "rows written before the marking existed."
+            ),
         },
     )
 

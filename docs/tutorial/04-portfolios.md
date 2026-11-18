@@ -86,11 +86,40 @@ FixedWeights signal
 
 `PortfoliosUpdater` never creates a calendar or frequency-based index. A
 weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
-daily valuation source produces daily portfolio values. `ImmediateSignal` is
-reserved for true execution at a signal's original observation timestamp.
-`CalendarEventSignal` requires an explicit persisted calendar identifier and
-an explicit calendar-event updater or table reference. It does not read a
-calendar behind the dependency graph or fall back to a process-local calendar.
+daily valuation source produces daily portfolio values. `ImmediateSignal`
+rebalances at every new signal.
+
+A signal can arrive at any hour; it is not a trade. Prices are stamped at the
+moment they were observed (the end of a bar), and a trade happens only at an
+observed price ([ADR 0058](../ADR/0058-trade-at-the-next-observed-price.md)). The earliest moment a target may trade is its signal's
+time (for `CalendarEventSignal`, the selected open or close) while the
+portfolio's calendar is in session, otherwise the next session start. Each asset
+then trades at the first row of the valuation source at or after that moment,
+strictly after the signal and inside a session (`market_open < time_index <=
+market_close`). Interpolated rows never count, the fill column must be a close or
+a mark, assets fill independently, and a missing price makes the trade wait. On
+`CRYPTO_24_7` every moment is in session.
+
+Those are facts. How the trade is sized and paid for is the strategy's
+`execution_policy` (`ExecutionPolicy`), whose defaults are the owner's decisions:
+shares fixed at the decision, no negative cash, sells before buys, buys short of
+cash at one instant filling the same fraction, and a buy cash cannot cover
+filling what it can, waiting for the rebalance's pending sells, then cut with the
+rest cancelled (`insufficient_cash`).
+
+The build configuration names the portfolio's currency
+(`valuation_asset_identifier`). A portfolio holding an asset quoted in another
+currency declares one `fx_source_instance`, and its valuation source names each
+price's currency in `price_asset_identifier`; prices convert at the last observed
+rate. Without a ledger, the portfolio is valued from the shares the rebalance
+records, so its weights drift with prices between rebalances
+([ADR 0059](../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
+
+Both strategies require an explicit persisted calendar identifier and an
+explicit calendar-event updater or table reference that publishes `market_open`
+and `market_close`, and the calendar must be the portfolio's `calendar_uid`.
+Neither reads a calendar behind the dependency graph or falls back to a
+process-local calendar.
 Create the calendar with its session rules and exceptions before executing the
 graph; see [Calendars](02-calendars.md).
 
@@ -211,6 +240,15 @@ the event-level summary rows: entitlement recognizes income once; the later
 cash receipt has zero recognized P&L because it only exchanges receivable state
 for settled cash.
 
+The ledger books exactly the fills `PortfolioRebalance` recorded, each at its
+time and observed price. A rebalance fixes every asset's share count once, at its
+decision: target weight x NAV / price, with the NAV and the prices last observed
+before its earliest moment. Each asset then fills that count at its own price; a
+fill that trades part of its order trades that part of the ledger's. The ledger
+builds no schedule of its own and looks up no mark for a fill. A held
+asset is always valued at its last observed price, however old; past
+`maximum_staleness` it is marked stale, never refused.
+
 The same example also normalizes an exact retry and rejects a duplicated
 economic record moved to another timestamp. Keep economic identity stable;
 changing time alone is not a new event. Hosted publication compares the complete
@@ -240,13 +278,14 @@ uv run --extra portfolios python \
 ```
 
 This fixture configures `TargetWeightExecutionModel` on the existing
-`ImmediateSignal` rebalance strategy. Explicit instrument terms declare
+`ImmediateSignal` rebalance strategy on the `CRYPTO_24_7` calendar: each signal
+trades at the first mark observed after it. Explicit instrument terms declare
 notional-weight sizing, contract units and rounding, USD quote currency, and
 variation-margin settlement. The strategy opens ten contracts without deducting
-their full notional from cash and applies commission once. At the next timestamp,
-a funding lifecycle model reduces NAV before the same-time target is sized, so
-the position is reduced to eight contracts; a later funding event changes cash
-and NAV without a rebalance. Portfolios never accept broker executions or
+their full notional from cash and applies commission once. A funding lifecycle
+model then reduces NAV; the next signal is sized from the NAV after it, so the
+position is reduced to eight contracts; a later funding event changes cash and
+NAV without a rebalance. Portfolios never accept broker executions or
 Account holdings; all execution facts in this path are internal deterministic
 simulation output.
 

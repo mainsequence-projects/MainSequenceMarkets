@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import json
 from abc import ABC, abstractmethod
@@ -43,6 +42,10 @@ class AccountingExecutionContext:
     event_observations: Mapping[str, pd.DataFrame]
     strategy_revision: str
     completion_tolerance: float
+    # The lowest cash the execution policy allows, in the portfolio's currency.
+    # ``None`` books every fill in full; otherwise buys the ledger's own cash cannot
+    # cover are cut (ADR 0058).
+    cash_floor: float | None = None
 
     def __post_init__(self) -> None:
         timestamp = _utc_timestamp(self.time_index)
@@ -149,6 +152,24 @@ class PositionExecutionModel(BaseModel, ABC):
         del fx_observations
         return _market_value_weights(valuation_result)
 
+    def decision_quantities(
+        self,
+        *,
+        valuation_result: Any,
+        time_index: pd.Timestamp,
+        target_weights: Mapping[str, float],
+        valuation_asset_identifier: str,
+        valuation_observations: pd.DataFrame,
+        fx_observations: pd.DataFrame,
+    ) -> dict[str, float] | None:
+        """Return the share counts fixed at a rebalance's decision, or ``None``.
+
+        ``None`` (the default) leaves sizing to ``simulate``, at each fill.
+        """
+        del valuation_result, time_index, target_weights, valuation_asset_identifier
+        del valuation_observations, fx_observations
+        return None
+
     @abstractmethod
     def simulate(
         self,
@@ -167,10 +188,6 @@ class TargetWeightExecutionModel(PositionExecutionModel):
 
     instrument_specs: tuple[InstrumentExecutionSpec, ...]
     price_column: str = Field(default="price", min_length=1)
-    maximum_staleness: dt.timedelta = Field(
-        default=dt.timedelta(days=1),
-        gt=dt.timedelta(0),
-    )
 
     @model_validator(mode="after")
     def validate_instrument_specs(self) -> TargetWeightExecutionModel:
@@ -189,23 +206,16 @@ class TargetWeightExecutionModel(PositionExecutionModel):
         cost_models: tuple[ExecutionCostModel, ...],
     ) -> EventBatch:
         execution_assets = _economically_required_execution_assets(context)
-        batches: list[EventBatch] = []
-        for grouped_assets in self._execution_groups(execution_assets):
-            facts = self._execution_facts(context, execution_assets=grouped_assets)
-            cost_delta = np.zeros(len(facts), dtype="float64")
-            for model in cost_models:
-                values = np.asarray(model.cost_quantity_deltas(facts), dtype="float64")
-                if values.shape != (len(facts),):
-                    raise ValueError(
-                        f"{model.model_identifier} must return one cost delta per execution."
-                    )
-                if not np.isfinite(values).all() or (values > 0.0).any():
-                    raise ValueError(
-                        "Execution cost models must return finite non-positive deltas."
-                    )
-                cost_delta += values
-            facts["cost_quantity_delta"] = cost_delta
-            batches.append(_execution_event_batch(facts))
+        groups = [
+            _with_costs(
+                self._execution_facts(context, execution_assets=grouped_assets),
+                cost_models,
+            )
+            for grouped_assets in self._execution_groups(execution_assets)
+        ]
+        if context.cash_floor is not None and groups:
+            groups = _cut_uncovered_buys(context, groups, cost_models)
+        batches: list[EventBatch] = [_execution_event_batch(facts) for facts in groups]
         progress_only_assets = set(context.desired_weights) - execution_assets
         if progress_only_assets:
             batches.append(
@@ -242,6 +252,93 @@ class TargetWeightExecutionModel(PositionExecutionModel):
             )
             grouped.setdefault(signature, set()).add(asset)
         return tuple(grouped[signature] for signature in sorted(grouped, key=str))
+
+    def decision_quantities(
+        self,
+        *,
+        valuation_result: Any,
+        time_index: pd.Timestamp,
+        target_weights: Mapping[str, float],
+        valuation_asset_identifier: str,
+        valuation_observations: pd.DataFrame,
+        fx_observations: pd.DataFrame,
+    ) -> dict[str, float]:
+        """Return the share counts a rebalance decided at ``time_index`` fixes.
+
+        ``target weight x NAV / price``, rounded down to the lot step. NAV and every
+        price are the last observed at or before ``time_index``, the same set for
+        all assets; the caller passes the instant just before the rebalance's
+        earliest moment. A zero target is zero shares and needs no price.
+        """
+        nav = float(valuation_result.nav)
+        if not np.isfinite(nav) or nav <= 0.0:
+            raise ValueError(
+                "Position-aware target-weight execution requires positive finite NAV."
+            )
+        quantities = {
+            str(asset): 0.0
+            for asset, weight in target_weights.items()
+            if np.isclose(float(weight), 0.0, rtol=0.0, atol=1e-15)
+        }
+        sized = sorted(str(asset) for asset in target_weights if str(asset) not in quantities)
+        if not sized:
+            return quantities
+        by_asset = {spec.asset_identifier: spec for spec in self.instrument_specs}
+        missing_specs = sorted(set(sized) - set(by_asset))
+        if missing_specs:
+            raise ValueError(
+                "Missing explicit instrument execution specs for: " + ", ".join(missing_specs)
+            )
+        try:
+            marks = _select_execution_marks(
+                valuation_observations,
+                time_index=time_index,
+                asset_identifiers=sized,
+                price_column=self.price_column,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"A rebalance decided at {time_index.isoformat()} sizes its shares from the "
+                f"last prices observed before its earliest moment. {error}"
+            ) from error
+        rows = _instrument_specs_frame(by_asset[asset] for asset in sized).merge(
+            marks,
+            on="asset_identifier",
+            how="left",
+            validate="one_to_one",
+        )
+        mismatched_quote = rows[
+            rows["price_asset_identifier_x"].astype(str)
+            != rows["price_asset_identifier_y"].astype(str)
+        ]
+        if not mismatched_quote.empty:
+            raise ValueError(
+                "Execution mark quote Asset disagrees with instrument terms for: "
+                + ", ".join(mismatched_quote["asset_identifier"].astype(str))
+            )
+        fx_rates, _ = _execution_fx_rates(
+            rows["price_asset_identifier_x"],
+            valuation_asset_identifier=valuation_asset_identifier,
+            time_index=time_index,
+            fx_observations=fx_observations,
+        )
+        unit_value = (
+            rows[self.price_column].to_numpy(dtype="float64")
+            * rows["contract_multiplier"].to_numpy(dtype="float64")
+            * fx_rates
+        )
+        weights = np.array(
+            [float(target_weights[asset]) for asset in rows["asset_identifier"].astype(str)],
+            dtype="float64",
+        )
+        decided = _round_to_steps(
+            weights * nav / unit_value,
+            rows["quantity_step"].to_numpy(dtype="float64"),
+        )
+        quantities.update(
+            zip(rows["asset_identifier"].astype(str), decided.tolist(), strict=True)
+        )
+        return quantities
 
     def current_weights(
         self,
@@ -292,7 +389,6 @@ class TargetWeightExecutionModel(PositionExecutionModel):
             time_index=time_index,
             asset_identifiers=specs["asset_identifier"].tolist(),
             price_column=self.price_column,
-            maximum_staleness=self.maximum_staleness,
         )
         marked = specs.merge(marks, on="asset_identifier", how="left", validate="one_to_one")
         mismatched_quote = marked[
@@ -313,7 +409,6 @@ class TargetWeightExecutionModel(PositionExecutionModel):
             valuation_asset_identifier=valuation_asset_identifier,
             time_index=time_index,
             fx_observations=fx_observations,
-            maximum_staleness=self.maximum_staleness,
         )
         exposures = (
             quantities
@@ -340,36 +435,35 @@ class TargetWeightExecutionModel(PositionExecutionModel):
                 "Missing explicit instrument execution specs for: " + ", ".join(missing_specs)
             )
 
-        specs = _instrument_specs_frame(
+        rows = _instrument_specs_frame(
             spec for spec in self.instrument_specs if spec.asset_identifier in execution_assets
         )
-        marks = _select_execution_marks(
-            context.valuation_observations,
-            time_index=context.time_index,
-            asset_identifiers=specs["asset_identifier"].tolist(),
-            price_column=self.price_column,
-            maximum_staleness=self.maximum_staleness,
-        )
-        rows = specs.merge(marks, on="asset_identifier", how="left", validate="one_to_one")
-        mismatched_quote = rows[
-            rows["price_asset_identifier_x"].astype(str)
-            != rows["price_asset_identifier_y"].astype(str)
-        ]
-        if not mismatched_quote.empty:
-            raise ValueError(
-                "Execution mark quote Asset disagrees with instrument terms for: "
-                + ", ".join(mismatched_quote["asset_identifier"].astype(str))
-            )
-        rows = rows.rename(
-            columns={
-                "price_asset_identifier_x": "price_asset_identifier",
-                "source_revision": "price_source_revision",
-            }
-        ).drop(columns=["price_asset_identifier_y"])
-
+        # Each execution books the price PortfolioRebalance recorded for its fill: an
+        # observed price at the fill's time. The ledger does not look up its own mark.
+        prices: list[float] = []
         strategy_input_revisions: list[str] = []
         strategy_observed_at: list[pd.Timestamp] = []
         for asset in rows["asset_identifier"].astype(str):
+            execution = context.asset_executions[asset]
+            execution_price = getattr(execution, "execution_price", None)
+            if execution_price is None:
+                raise ValueError(
+                    f"The fill of {asset} at {context.time_index.isoformat()} has no recorded "
+                    "execution price."
+                )
+            price_time = getattr(execution, "price_time_index", None)
+            if price_time is None or _utc_timestamp(price_time) != context.time_index:
+                # A later price inside an earlier event would value the trade with
+                # information the ledger did not have yet.
+                observed = "an unknown time" if price_time is None else price_time.isoformat()
+                raise ValueError(
+                    f"The fill of {asset} at {context.time_index.isoformat()} carries a price "
+                    f"observed at {observed}; a fill is booked at its price's own time."
+                )
+            price = float(execution_price)
+            if not np.isfinite(price) or price <= 0.0:
+                raise ValueError("Recorded execution prices must be finite and positive.")
+            prices.append(price)
             revision, observed_at = _strategy_observation_reference(
                 context.event_observations,
                 asset_identifier=asset,
@@ -377,12 +471,9 @@ class TargetWeightExecutionModel(PositionExecutionModel):
             )
             strategy_input_revisions.append(revision)
             strategy_observed_at.append(observed_at)
-            execution_price = getattr(context.asset_executions[asset], "execution_price", None)
-            if execution_price is not None:
-                price = float(execution_price)
-                if not np.isfinite(price) or price <= 0.0:
-                    raise ValueError("Strategy execution prices must be finite and positive.")
-                rows.loc[rows["asset_identifier"] == asset, self.price_column] = price
+        rows[self.price_column] = prices
+        rows["price_source_revision"] = strategy_input_revisions
+        rows["mark_observed_at"] = strategy_observed_at
         rows["strategy_input_revision"] = strategy_input_revisions
         rows["strategy_observed_at"] = strategy_observed_at
 
@@ -391,7 +482,6 @@ class TargetWeightExecutionModel(PositionExecutionModel):
             valuation_asset_identifier=context.valuation_asset_identifier,
             time_index=context.time_index,
             fx_observations=context.fx_observations,
-            maximum_staleness=self.maximum_staleness,
         )
         rows["fx_rate"] = fx_rates
         rows["fx_source_revision"] = fx_revisions
@@ -415,22 +505,52 @@ class TargetWeightExecutionModel(PositionExecutionModel):
         )
         if not np.isfinite(unit_value).all() or (unit_value <= 0.0).any():
             raise ValueError("Execution unit values must be finite and strictly positive.")
-        raw_target_quantity = (
+        # A rebalance that fixed its share counts at the decision fills them; any
+        # other execution is sized here, from the NAV at the fill.
+        decided = np.array(
+            [
+                np.nan
+                if getattr(context.asset_executions[asset], "target_quantity", None) is None
+                else float(context.asset_executions[asset].target_quantity)
+                for asset in rows["asset_identifier"].astype(str)
+            ],
+            dtype="float64",
+        )
+        sized_at_fill = _round_to_steps(
             rows["target_weight"].to_numpy(dtype="float64")
             * float(context.pre_execution_nav)
-            / unit_value
+            / unit_value,
+            rows["quantity_step"].to_numpy(dtype="float64"),
         )
-        steps = rows["quantity_step"].to_numpy(dtype="float64")
-        scaled_quantity = raw_target_quantity / steps
-        nearest_step = np.rint(scaled_quantity)
-        rounded_steps = np.where(
-            np.isclose(scaled_quantity, nearest_step, rtol=0.0, atol=1e-12),
-            nearest_step,
-            np.trunc(scaled_quantity),
+        order_target = np.where(np.isnan(decided), sized_at_fill, decided)
+        # A fill that trades part of its open order trades that part of the ledger's
+        # own order, rounded toward zero to the lot step.
+        fraction = np.array(
+            [
+                float(getattr(context.asset_executions[asset], "fill_fraction", 1.0))
+                for asset in rows["asset_identifier"].astype(str)
+            ],
+            dtype="float64",
         )
-        target_quantity = rounded_steps * steps
-        target_quantity[np.isclose(target_quantity, 0.0, rtol=0.0, atol=1e-15)] = 0.0
+        if not np.isfinite(fraction).all():
+            raise ValueError("Recorded fill fractions must be finite.")
+        partial = ~np.isclose(fraction, 1.0, rtol=0.0, atol=1e-12)
+        target_quantity = np.where(
+            partial,
+            current_quantity
+            + _round_to_steps(
+                (order_target - current_quantity) * fraction,
+                rows["quantity_step"].to_numpy(dtype="float64"),
+            ),
+            order_target,
+        )
         rows["target_quantity"] = target_quantity
+        # The weight a fill reaches comes from its share count and its price.
+        rows["target_weight"] = np.where(
+            np.isnan(decided) & ~partial,
+            rows["target_weight"].to_numpy(dtype="float64"),
+            target_quantity * unit_value / float(context.pre_execution_nav),
+        )
         rows["quantity_delta"] = target_quantity - current_quantity
         rows["execution_price"] = rows[self.price_column].to_numpy(dtype="float64")
         rows["settlement_asset_identifier"] = rows["price_asset_identifier"]
@@ -508,6 +628,122 @@ class TargetWeightExecutionModel(PositionExecutionModel):
         return rows
 
 
+INSUFFICIENT_LEDGER_CASH = "insufficient_cash"
+
+
+def _with_costs(facts: pd.DataFrame, cost_models: tuple[ExecutionCostModel, ...]) -> pd.DataFrame:
+    cost_delta = np.zeros(len(facts), dtype="float64")
+    for model in cost_models:
+        values = np.asarray(model.cost_quantity_deltas(facts), dtype="float64")
+        if values.shape != (len(facts),):
+            raise ValueError(f"{model.model_identifier} must return one cost delta per execution.")
+        if not np.isfinite(values).all() or (values > 0.0).any():
+            raise ValueError("Execution cost models must return finite non-positive deltas.")
+        cost_delta += values
+    facts["cost_quantity_delta"] = cost_delta
+    return facts
+
+
+def _cut_uncovered_buys(
+    context: AccountingExecutionContext,
+    groups: list[pd.DataFrame],
+    cost_models: tuple[ExecutionCostModel, ...],
+) -> list[pd.DataFrame]:
+    """Cut the buys the ledger's own cash cannot cover, pro rata, and record the cut.
+
+    ``PortfolioRebalance`` already fitted its fills to its cash. The ledger's cash can
+    still be short of it: lot rounding, execution costs and lifecycle cash flows are
+    the ledger's alone. Cash is counted across all currencies in the portfolio's
+    currency at the last observed FX rate (ADR 0059). Sells and costs at this instant
+    count; the buys then share what is left down to ``context.cash_floor``, each cut by
+    the same fraction and rounded toward zero to its lot step (ADR 0058).
+    """
+    for facts in groups:
+        facts["ledger_cut_quantity"] = 0.0
+        facts["ledger_cut_reason"] = None
+    floor = float(context.cash_floor or 0.0)
+    balances = context.available_balances
+    balance = 0.0
+    if not balances.empty:
+        rates, _ = _execution_fx_rates(
+            balances["asset_identifier"].astype(str),
+            valuation_asset_identifier=context.valuation_asset_identifier,
+            time_index=context.time_index,
+            fx_observations=context.fx_observations,
+        )
+        balance = float((balances["quantity"].to_numpy(dtype="float64") * rates).sum())
+    flow = 0.0
+    spend = 0.0
+    buy_costs = 0.0
+    for facts in groups:
+        fx_rate = facts["fx_rate"].to_numpy(dtype="float64")
+        settled = facts["settlement_quantity_delta"].to_numpy(dtype="float64") * fx_rate
+        costs = facts["cost_quantity_delta"].to_numpy(dtype="float64") * fx_rate
+        buys = _cash_settled_buys(facts)
+        flow += float(settled.sum() + costs.sum())
+        spend -= float(settled[buys].sum())
+        buy_costs -= float(costs[buys].sum())
+    if balance + flow >= floor - 1e-9 or spend <= 0.0:
+        return groups
+    # The buys' spend and costs are what the cut can save; the rest is fixed.
+    available = balance + flow + spend + buy_costs - floor
+    fraction = min(max(available / (spend + buy_costs), 0.0), 1.0)
+    nav = float(context.pre_execution_nav)
+    changed: set[int] = set()
+    for position, facts in enumerate(groups):
+        buys = _cash_settled_buys(facts)
+        if not buys.any():
+            continue
+        delta = facts["quantity_delta"].to_numpy(dtype="float64")
+        kept = _round_to_steps(delta * fraction, facts["quantity_step"].to_numpy(dtype="float64"))
+        new_delta = np.where(buys, kept, delta)
+        cut = delta - new_delta
+        if not (np.abs(cut) > 0.0).any():
+            continue
+        unit_value = (
+            facts["execution_price"].to_numpy(dtype="float64")
+            * facts["contract_multiplier"].to_numpy(dtype="float64")
+            * facts["fx_rate"].to_numpy(dtype="float64")
+        )
+        facts["quantity_delta"] = new_delta
+        facts["target_quantity"] = facts["quantity_before"].to_numpy(dtype="float64") + new_delta
+        facts["target_weight"] = np.where(
+            buys,
+            facts["target_quantity"].to_numpy(dtype="float64") * unit_value / nav,
+            facts["target_weight"].to_numpy(dtype="float64"),
+        )
+        facts["settlement_quantity_delta"] = np.where(
+            facts["settlement_style"].astype(str).to_numpy() == "cash",
+            -(
+                new_delta
+                * facts["execution_price"].to_numpy(dtype="float64")
+                * facts["contract_multiplier"].to_numpy(dtype="float64")
+            ),
+            0.0,
+        )
+        facts["ledger_cut_quantity"] = cut
+        facts["ledger_cut_reason"] = [
+            INSUFFICIENT_LEDGER_CASH if abs(value) > 0.0 else None for value in cut
+        ]
+        facts["source_revision"] = [
+            revision
+            if abs(value) == 0.0
+            else _digest({"source_revision": revision, "ledger_cut_quantity": float(value)})
+            for revision, value in zip(facts["source_revision"], cut, strict=True)
+        ]
+        changed.add(position)
+    return [
+        _with_costs(facts, cost_models) if position in changed else facts
+        for position, facts in enumerate(groups)
+    ]
+
+
+def _cash_settled_buys(facts: pd.DataFrame) -> np.ndarray:
+    return (
+        (facts["settlement_style"].astype(str) == "cash") & (facts["quantity_delta"] > 0.0)
+    ).to_numpy()
+
+
 def _execution_event_batch(facts: pd.DataFrame) -> EventBatch:
     """Convert internal simulated facts into explicit economic and progress records."""
 
@@ -581,6 +817,13 @@ def _execution_event_batch(facts: pd.DataFrame) -> EventBatch:
             - float(fact["target_weight"]),
             "strategy_state": fact["strategy_state"],
         }
+        ledger_cut = float(fact.get("ledger_cut_quantity") or 0.0)
+        if ledger_cut and np.isfinite(ledger_cut):
+            # The part of the fill the ledger's own cash could not cover (ADR 0058).
+            progress["ledger_cut"] = {
+                "quantity": ledger_cut,
+                "reason": str(fact["ledger_cut_reason"]),
+            }
         rows.append(
             {
                 **common,
@@ -679,6 +922,9 @@ def _combine_event_batches(batches: list[EventBatch]) -> EventBatch:
 
 
 def _execution_status(context: AccountingExecutionContext, asset: str) -> str:
+    status = getattr(context.asset_executions.get(asset), "status", None)
+    if status is not None:
+        return str(status)
     remaining = float(context.signal_target_weights.get(asset, 0.0)) - float(
         context.desired_weights[asset]
     )
@@ -692,13 +938,26 @@ def _execution_status(context: AccountingExecutionContext, asset: str) -> str:
     return "partial"
 
 
+def _round_to_steps(raw_quantity: np.ndarray, steps: np.ndarray) -> np.ndarray:
+    """Round toward zero to whole lot steps, keeping a value already on a step."""
+    scaled_quantity = raw_quantity / steps
+    nearest_step = np.rint(scaled_quantity)
+    rounded_steps = np.where(
+        np.isclose(scaled_quantity, nearest_step, rtol=0.0, atol=1e-12),
+        nearest_step,
+        np.trunc(scaled_quantity),
+    )
+    quantity = rounded_steps * steps
+    quantity[np.isclose(quantity, 0.0, rtol=0.0, atol=1e-15)] = 0.0
+    return quantity
+
+
 def _select_execution_marks(
     frame: pd.DataFrame,
     *,
     time_index: pd.Timestamp,
     asset_identifiers: list[str],
     price_column: str,
-    maximum_staleness: dt.timedelta,
 ) -> pd.DataFrame:
     flat = frame.copy().reset_index()
     required = {
@@ -717,7 +976,6 @@ def _select_execution_marks(
     selected = flat[
         flat["asset_identifier"].astype(str).isin(asset_identifiers)
         & (flat["time_index"] <= time_index)
-        & (flat["time_index"] >= time_index - maximum_staleness)
     ]
     selected = (
         selected.sort_values(["asset_identifier", "time_index"], kind="stable")
@@ -726,7 +984,10 @@ def _select_execution_marks(
     )
     missing_assets = sorted(set(asset_identifiers) - set(selected["asset_identifier"].astype(str)))
     if missing_assets:
-        raise ValueError("Missing fresh execution valuations for: " + ", ".join(missing_assets))
+        raise ValueError(
+            f"No observed price at or before {time_index.isoformat()} for: "
+            + ", ".join(missing_assets)
+        )
     prices = pd.to_numeric(selected[price_column], errors="raise").astype("float64")
     if not np.isfinite(prices).all() or (prices <= 0.0).any():
         raise ValueError("Execution prices must be finite and strictly positive.")
@@ -755,7 +1016,6 @@ def _execution_fx_rates(
     valuation_asset_identifier: str,
     time_index: pd.Timestamp,
     fx_observations: pd.DataFrame,
-    maximum_staleness: dt.timedelta,
 ) -> tuple[np.ndarray, np.ndarray]:
     assets = asset_identifiers.astype(str).to_numpy()
     foreign = sorted(set(assets) - {valuation_asset_identifier})
@@ -787,7 +1047,6 @@ def _execution_fx_rates(
             flat["base_asset_identifier"].astype(str).isin(foreign)
             & (flat["quote_asset_identifier"].astype(str) == valuation_asset_identifier)
             & (flat["time_index"] <= time_index)
-            & (flat["time_index"] >= time_index - maximum_staleness)
         ]
         selected = (
             selected.sort_values(["base_asset_identifier", "time_index"], kind="stable")
@@ -871,19 +1130,30 @@ def _instrument_specs_frame(specs: Iterable[InstrumentExecutionSpec]) -> pd.Data
 def _economically_required_execution_assets(
     context: AccountingExecutionContext,
 ) -> set[str]:
-    assets = {
+    """Return the filled assets that trade: a nonzero target or a position to change.
+
+    A cancellation with nothing filled carries no price and only records progress.
+    """
+    held: set[str] = set()
+    if not context.state.positions.empty:
+        positions = context.state.positions
+        held = set(
+            positions.loc[
+                ~np.isclose(
+                    positions["quantity"].to_numpy(dtype="float64"), 0.0, rtol=0.0, atol=1e-15
+                ),
+                "asset_identifier",
+            ].astype(str)
+        )
+    return {
         str(asset)
         for asset, desired_weight in context.desired_weights.items()
-        if not np.isclose(float(desired_weight), 0.0, rtol=0.0, atol=1e-15)
+        if getattr(context.asset_executions.get(asset), "execution_price", 0.0) is not None
+        and (
+            str(asset) in held
+            or not np.isclose(float(desired_weight), 0.0, rtol=0.0, atol=1e-15)
+        )
     }
-    if context.state.positions.empty:
-        return assets
-    held = context.state.positions.copy()
-    held = held[
-        ~np.isclose(held["quantity"].to_numpy(dtype="float64"), 0.0, rtol=0.0, atol=1e-15)
-    ]
-    assets.update(held["asset_identifier"].astype(str))
-    return assets
 
 
 def _empty_event_batch() -> EventBatch:

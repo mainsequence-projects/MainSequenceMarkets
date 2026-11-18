@@ -18,10 +18,9 @@ from msm_portfolios.accounting import (
     event_digest,
 )
 from msm_portfolios.accounting.reducer import _validate_ledger_record_identities
-from msm_portfolios.rebalance_strategy import (
-    AccountingRebalanceEvent,
-    RebalanceStrategyBase,
-)
+from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
+from msm_portfolios.rebalance_strategy.accounting import _empty_event_batch
 
 from msm_portfolios.retirement import (
     drop_retired_rows,
@@ -30,7 +29,6 @@ from msm_portfolios.retirement import (
     window_is_empty,
 )
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
-from .rebalance import normalize_rebalance_input
 from .storage import PortfolioEventLedgerStorage
 
 
@@ -41,19 +39,41 @@ class PortfolioEngineConfiguration(PortfolioCanonicalUpdaterConfiguration):
 
     portfolio_identifier: str = Field(min_length=1)
     accounting_configuration: PortfolioAccountingConfiguration
-    signal_weights_instance: TimeIndexTableUpdater | TimeIndexTableRef
-    rebalance_strategy_instance: RebalanceStrategyBase
+    valuation_asset_identifier: str = Field(
+        min_length=1,
+        description="The portfolio's currency, from its build configuration (ADR 0059).",
+    )
+    fx_source_instance: TimeIndexTableUpdater | TimeIndexTableRef | None = Field(
+        default=None,
+        description="The portfolio's FX source, from its build configuration (ADR 0059).",
+    )
+    portfolio_rebalance_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
+        description=(
+            "The portfolio's rebalance state. The ledger books exactly the fills it "
+            "recorded: time, asset and price (ADR 0058)."
+        ),
+    )
+    rebalance_strategy_instance: RebalanceStrategyBase = Field(
+        description="The strategy whose execution model sizes and costs each recorded fill.",
+    )
 
-    @field_serializer("signal_weights_instance", when_used="json")
-    def serialize_signal_weights(
+    @field_serializer("portfolio_rebalance_instance", when_used="json")
+    def serialize_portfolio_rebalance(
         self,
         value: TimeIndexTableUpdater | TimeIndexTableRef,
     ) -> dict[str, Any]:
-        from msm_portfolios.time_index.signals.weights import (
-            canonical_signal_configuration,
-        )
+        from msm_portfolios.configuration import canonical_valuation_source_configuration
 
-        return canonical_signal_configuration(value)
+        return canonical_valuation_source_configuration(value)
+
+    @field_serializer("fx_source_instance", when_used="json")
+    def serialize_fx_source(
+        self,
+        value: TimeIndexTableUpdater | TimeIndexTableRef | None,
+    ) -> dict[str, Any] | None:
+        from msm_portfolios.configuration import canonical_valuation_source_configuration
+
+        return None if value is None else canonical_valuation_source_configuration(value)
 
     @field_serializer("rebalance_strategy_instance", when_used="json")
     def serialize_rebalance_strategy(
@@ -77,28 +97,38 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         *,
         portfolio_identifier: str,
         namespace: str | None = None,
+        portfolio_rebalance: TimeIndexTableUpdater | TimeIndexTableRef | None = None,
         **kwargs,
     ) -> PortfolioEngine:
-        """Construct the opt-in engine from the nested portfolio build contract."""
+        """Construct the opt-in engine from the nested portfolio build contract.
 
-        accounting = getattr(
-            portfolio_configuration.portfolio_build_configuration,
-            "accounting_configuration",
-            None,
-        )
+        The ledger follows the portfolio's ``PortfolioRebalance``; one is built from
+        the same configuration unless ``portfolio_rebalance`` is given.
+        """
+
+        build = portfolio_configuration.portfolio_build_configuration
+        accounting = getattr(build, "accounting_configuration", None)
         if accounting is None:
             raise ValueError(
                 "PortfolioEngine requires enabled PortfolioBuildConfiguration.accounting_configuration."
+            )
+        if portfolio_rebalance is None:
+            from .rebalance import PortfolioRebalance
+
+            portfolio_rebalance = PortfolioRebalance(namespace=namespace)
+            portfolio_rebalance.set_portfolio_configuration(
+                portfolio_configuration,
+                portfolio_identifier=portfolio_identifier,
             )
         return cls(
             config=PortfolioEngineConfiguration(
                 portfolio_identifier=portfolio_identifier,
                 accounting_configuration=accounting,
-                signal_weights_instance=(
-                    portfolio_configuration.portfolio_build_configuration.backtesting_weights_configuration.signal_weights_instance
-                ),
+                valuation_asset_identifier=build.valuation_asset_identifier,
+                fx_source_instance=build.fx_source_instance,
+                portfolio_rebalance_instance=portfolio_rebalance,
                 rebalance_strategy_instance=(
-                    portfolio_configuration.portfolio_build_configuration.backtesting_weights_configuration.rebalance_strategy_instance
+                    build.backtesting_weights_configuration.rebalance_strategy_instance
                 ),
             ),
             namespace=namespace,
@@ -109,12 +139,10 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         accounting = self._engine_config().accounting_configuration
         engine = self._engine_config()
         dependencies: dict[str, TimeIndexTableUpdater | TimeIndexTableRef] = {
-            "signal_weights": engine.signal_weights_instance,
+            "portfolio_rebalance": engine.portfolio_rebalance_instance,
         }
-        for name, dependency in sorted(
-            engine.rebalance_strategy_instance.declared_dependencies().items()
-        ):
-            dependencies[f"rebalance.{name}"] = dependency
+        if engine.fx_source_instance is not None:
+            dependencies["fx"] = engine.fx_source_instance
         for name, dependency in sorted(
             accounting.position_valuation_model_instance.declared_dependencies().items()
         ):
@@ -150,41 +178,12 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 output_table=self.output_table,
             )
 
-        signal_filters = None
-        signal_uid = getattr(config.signal_weights_instance, "signal_uid", None)
-        if signal_uid not in (None, ""):
-            signal_filters = {"signal_uid": [str(signal_uid)]}
-        signals = _normalize_signal_observations(
-            _read_dependency(
-                config.signal_weights_instance,
-                start=start,
-                end=end,
-                dimension_filters=signal_filters,
-            )
+        rebalance_state = _read_dependency(
+            config.portfolio_rebalance_instance,
+            start=start,
+            end=end,
+            dimension_filters={"portfolio_identifier": [config.portfolio_identifier]},
         )
-        rebalance_inputs: dict[str, pd.DataFrame] = {}
-        strategy_dependencies = config.rebalance_strategy_instance.declared_dependencies()
-        strategy_contracts = config.rebalance_strategy_instance.required_input_contract()
-        if set(strategy_dependencies) != set(strategy_contracts):
-            raise ValueError(
-                "Rebalance strategy dependency names and input-contract names must match."
-            )
-        for name, dependency in sorted(strategy_dependencies.items()):
-            source_start, source_end = config.rebalance_strategy_instance.dependency_window(
-                name,
-                start.to_pydatetime(),
-                end.to_pydatetime(),
-            )
-            frame = _read_dependency(
-                dependency,
-                start=pd.Timestamp(source_start),
-                end=pd.Timestamp(source_end),
-            )
-            rebalance_inputs[name] = normalize_rebalance_input(
-                frame,
-                dependency_name=name,
-                contract=strategy_contracts[name],
-            )
         frames: dict[str, pd.DataFrame] = {}
         for name, dependency in sorted(
             accounting_config.position_valuation_model_instance.declared_dependencies().items()
@@ -229,7 +228,13 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         valuations = frames.get("valuation.valuations", pd.DataFrame())
         if valuations.empty:
             raise ValueError("PortfolioEngine requires declared valuation observations.")
-        fx = frames.get("valuation.fx", pd.DataFrame())
+        fx = pd.DataFrame()
+        if config.fx_source_instance is not None:
+            fx = _validate_declared_input(
+                _read_dependency(config.fx_source_instance, start=start, end=end),
+                contract=FX_INPUT_CONTRACT,
+                name="fx",
+            )
         lifecycle_inputs: dict[str, dict[str, pd.DataFrame]] = {}
         for model in accounting_config.lifecycle_event_model_instances:
             lifecycle_inputs[model.model_identifier] = {
@@ -240,9 +245,9 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         reducer = self.calculate_backtest(
             portfolio_identifier=config.portfolio_identifier,
             accounting_configuration=accounting_config,
+            valuation_asset_identifier=config.valuation_asset_identifier,
             rebalance_strategy=config.rebalance_strategy_instance,
-            signal_observations=signals,
-            rebalance_inputs=rebalance_inputs,
+            rebalance_state=rebalance_state,
             valuation_observations=valuations,
             fx_observations=fx,
             lifecycle_inputs=lifecycle_inputs,
@@ -282,38 +287,41 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         *,
         portfolio_identifier: str,
         accounting_configuration: PortfolioAccountingConfiguration,
+        valuation_asset_identifier: str,
         rebalance_strategy: RebalanceStrategyBase,
-        signal_observations: pd.DataFrame,
-        rebalance_inputs: dict[str, pd.DataFrame],
+        rebalance_state: pd.DataFrame,
         valuation_observations: pd.DataFrame,
         fx_observations: pd.DataFrame | None = None,
         lifecycle_inputs: dict[str, dict[str, pd.DataFrame]] | None = None,
         valuation_times: Any = (),
     ) -> PortfolioAccounting:
-        """Calculate one deterministic backtest without any external execution ingress."""
+        """Book the fills ``PortfolioRebalance`` recorded, without external execution ingress.
+
+        ``rebalance_state`` is the portfolio's rebalance-state rows. Every row whose
+        executed weight changed is a fill, booked at its time and recorded price,
+        with quantities sized from the ledger's NAV at that moment.
+        """
 
         fx = pd.DataFrame() if fx_observations is None else fx_observations
         valuation_times = tuple(valuation_times)
+        fills = recorded_fills(rebalance_state)
         calculation_end = _calculation_end(
-            signal_observations,
-            rebalance_inputs,
+            fills,
             valuation_observations,
             lifecycle_inputs or {},
             valuation_times,
         )
-        simulator = _CoordinatedExecutionSimulator(
+        simulator = _RecordedFillBooker(
             strategy=rebalance_strategy,
             start=accounting_configuration.initial_state_time_index,
-            end=calculation_end,
-            signal_observations=signal_observations,
-            observed_inputs=rebalance_inputs,
+            fills=fills,
             valuation_observations=valuation_observations,
             fx_observations=fx,
-            valuation_asset_identifier=(accounting_configuration.valuation_asset_identifier),
+            valuation_asset_identifier=valuation_asset_identifier,
         )
         reducer = PortfolioAccounting(
             portfolio_identifier=portfolio_identifier,
-            valuation_asset_identifier=accounting_configuration.valuation_asset_identifier,
+            valuation_asset_identifier=valuation_asset_identifier,
             initial_nav=accounting_configuration.initial_nav,
             initial_state_time_index=accounting_configuration.initial_state_time_index,
             valuation_model=accounting_configuration.position_valuation_model_instance,
@@ -390,6 +398,12 @@ def _validate_complete_event_groups(frame: pd.DataFrame) -> None:
             raise ValueError("Portfolio event ledger event_digest does not match its records.")
 
 
+FX_INPUT_CONTRACT = LifecycleInputContract(
+    index_names=("time_index", "base_asset_identifier", "quote_asset_identifier"),
+    required_columns=("rate", "source_revision"),
+)
+
+
 def _read_dependency(
     dependency: TimeIndexTableUpdater | TimeIndexTableRef,
     *,
@@ -409,34 +423,108 @@ def _read_dependency(
     return pd.DataFrame() if frame is None else frame
 
 
-def _normalize_signal_observations(frame: pd.DataFrame) -> pd.DataFrame:
-    flat = frame.copy().reset_index()
-    required = {"time_index", "asset_identifier", "signal_weight"}
-    missing = sorted(required - set(flat.columns))
+FILL_COLUMNS = (
+    "time_index",
+    "rebalance_intent_id",
+    ASSET_IDENTIFIER_DIMENSION,
+    "target_signal_time_index",
+    "event_source",
+    "target_weight",
+    "weight_after",
+    "executed_weight_delta",
+    "execution_price",
+    "execution_status",
+    "strategy_state",
+)
+
+
+def recorded_fills(rebalance_state: pd.DataFrame | None) -> pd.DataFrame:
+    """Return the trades ``PortfolioRebalance`` recorded, and its cancellations.
+
+    A row carries an ``execution_price`` exactly when its asset traded at that time,
+    at that observed price. A cancelled row without a price cut an order that filled
+    nothing then; the ledger records it as progress with the reason its state gives. A fill can leave the weight unchanged, when a new target
+    repeats the asset's weight; the ledger then resizes the position at its NAV.
+    Each fill keeps its time, asset, price and target, plus a ``source_revision``
+    that digests them, so a changed fill is a changed source.
+    """
+    if rebalance_state is None or rebalance_state.empty:
+        return pd.DataFrame(columns=[*FILL_COLUMNS, "source_revision"])
+    flat = rebalance_state.reset_index()
+    missing = [column for column in FILL_COLUMNS if column not in flat.columns]
     if missing:
-        raise ValueError("Signal observations are missing: " + ", ".join(missing))
+        raise ValueError("Rebalance state is missing columns: " + ", ".join(missing))
+    flat = flat[~flat["execution_status"].isin({"superseded", "rejected"})]
+    cancelled = flat["execution_status"].astype(str) == "cancelled"
+    flat = flat[flat["execution_price"].notna() | cancelled].copy()
+    if flat.empty:
+        return pd.DataFrame(columns=[*FILL_COLUMNS, "source_revision"])
+    cancelled = flat["execution_status"].astype(str) == "cancelled"
     flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
-    flat["asset_identifier"] = flat["asset_identifier"].astype(str)
-    if flat.duplicated(subset=["time_index", "asset_identifier"]).any():
-        raise ValueError("Signal observations contain duplicate target coordinates.")
-    index_names = ["time_index"]
-    if "signal_uid" in flat.columns:
-        index_names.append("signal_uid")
-    index_names.append("asset_identifier")
-    return flat.set_index(index_names).sort_index()
+    flat["target_signal_time_index"] = pd.to_datetime(
+        flat["target_signal_time_index"], utc=True
+    )
+    flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
+    price = pd.to_numeric(flat["execution_price"], errors="coerce")
+    priced = price.notna() & (price > 0.0) & price.map(_is_finite)
+    # A cancellation that filled nothing carries no price; the ledger records it.
+    unpriced = flat[~priced & ~(cancelled & price.isna())]
+    if not unpriced.empty:
+        first = unpriced.iloc[0]
+        raise ValueError(
+            f"The recorded fill of {first[ASSET_IDENTIFIER_DIMENSION]} at "
+            f"{first['time_index'].isoformat()} has no observed execution price."
+        )
+    flat["execution_price"] = price.astype("float64")
+    flat["source_revision"] = [
+        _digest(
+            {
+                "time_index": row["time_index"].isoformat(),
+                "rebalance_intent_id": str(row["rebalance_intent_id"]),
+                "asset_identifier": row[ASSET_IDENTIFIER_DIMENSION],
+                "target_signal_time_index": row["target_signal_time_index"].isoformat(),
+                "target_weight": float(row["target_weight"]),
+                "weight_after": float(row["weight_after"]),
+                "execution_price": (
+                    None if pd.isna(row["execution_price"]) else float(row["execution_price"])
+                ),
+                "execution_status": str(row["execution_status"]),
+                "strategy_state": RebalanceStrategyBase.parse_strategy_state(row),
+            }
+        )
+        for row in flat.to_dict(orient="records")
+    ]
+    if flat.duplicated(subset=["time_index", ASSET_IDENTIFIER_DIMENSION]).any():
+        raise ValueError("Rebalance state records two fills of one asset at one time.")
+    return flat[[*FILL_COLUMNS, "source_revision"]].sort_values(
+        ["time_index", ASSET_IDENTIFIER_DIMENSION], kind="stable"
+    ).reset_index(drop=True)
 
 
-class _CoordinatedExecutionSimulator:
-    """Bind one configured strategy to the reducer's execution phase."""
+def _is_finite(value: Any) -> bool:
+    try:
+        return bool(pd.notna(value)) and abs(float(value)) != float("inf")
+    except (TypeError, ValueError):
+        return False
+
+
+class _RecordedFillBooker:
+    """Book the fills ``PortfolioRebalance`` recorded, in time order (ADR 0058).
+
+    With the execution policy's default sizing, a rebalance fixes its share counts
+    once, at its decision: the instant before its earliest moment, with the NAV and
+    the prices last observed before it, the same set for every asset. Each asset
+    then fills its fixed count, or the recorded fraction of its open order, at its
+    own recorded price. A rebalance sized at each fill, or without a recorded
+    earliest moment (a strategy with its own bars), is sized at each fill.
+    """
 
     def __init__(
         self,
         *,
         strategy: RebalanceStrategyBase,
         start: Any,
-        end: Any,
-        signal_observations: pd.DataFrame,
-        observed_inputs: dict[str, pd.DataFrame],
+        fills: pd.DataFrame,
         valuation_observations: pd.DataFrame,
         fx_observations: pd.DataFrame,
         valuation_asset_identifier: str,
@@ -445,42 +533,31 @@ class _CoordinatedExecutionSimulator:
         self.valuation_observations = valuation_observations
         self.fx_observations = fx_observations
         self.valuation_asset_identifier = str(valuation_asset_identifier)
-        for name, frame in observed_inputs.items():
-            if (
-                frame is not None
-                and not frame.empty
-                and "source_revision" not in frame.reset_index()
-            ):
-                raise ValueError(
-                    f"Position-aware rebalance dependency {name!r} requires source_revision."
-                )
-        schedule = strategy.build_accounting_schedule(
-            start=_utc_timestamp(start).to_pydatetime(),
-            end=_utc_timestamp(end).to_pydatetime(),
-            signal_observations=signal_observations,
-            observed_inputs=observed_inputs,
-        )
-        self._events: dict[pd.Timestamp, AccountingRebalanceEvent] = {
-            event.time_index: event for event in schedule
+        start_ts = _utc_timestamp(start)
+        booked = fills[fills["time_index"] >= start_ts] if not fills.empty else fills
+        self._fills_by_time: dict[pd.Timestamp, pd.DataFrame] = {
+            _utc_timestamp(time_index): group
+            for time_index, group in booked.groupby("time_index", sort=True)
         }
-        if len(self._events) != len(schedule):
-            raise ValueError("A rebalance strategy must schedule at most one event per timestamp.")
-        self.event_times = tuple(sorted(self._events))
-        event_frame = pd.DataFrame(
-            [
-                {"time_index": event.time_index, "event_source": event.event_source}
-                for event in schedule
-            ],
-            columns=["time_index", "event_source"],
+        self._decisions: dict[pd.Timestamp, dict[str, dict[str, float]]] = {}
+        # Sizing at each fill is the execution policy's other choice (ADR 0058).
+        sized_at_decision = (
+            strategy.own_execution_prices() is None
+            and strategy.fill_policy().sizing == "at_decision"
         )
-        self._observations_by_event = strategy._observations_by_event(
-            observed_inputs,
-            event_times=pd.DatetimeIndex(self.event_times),
-        )
-        self._execution_context = strategy.prepare_execution_context(
-            events=event_frame,
-            observed_inputs=observed_inputs,
-        )
+        for intent_id, group in booked.groupby("rebalance_intent_id", sort=True):
+            if not sized_at_decision:
+                break
+            earliest = _recorded_earliest_moment(group)
+            if earliest is None:
+                continue
+            decision_time = max(earliest - pd.Timedelta(1, unit="ns"), start_ts)
+            self._decisions.setdefault(decision_time, {})[str(intent_id)] = {
+                str(row[ASSET_IDENTIFIER_DIMENSION]): float(row["target_weight"])
+                for row in group.to_dict(orient="records")
+            }
+        self._decided: dict[str, dict[str, float]] = {}
+        self.event_times = tuple(sorted(set(self._fills_by_time) | set(self._decisions)))
         from msm_portfolios.configuration import compute_strategy_revision
 
         self._strategy_revision = compute_strategy_revision(strategy)
@@ -490,39 +567,59 @@ class _CoordinatedExecutionSimulator:
                 f"{strategy.__class__.__name__} requires execution_model_instance for "
                 "position-aware accounting."
             )
+        self._model = model
         strategy_name = f"{strategy.__class__.__module__}.{strategy.__class__.__qualname__}"
         self.model_identifier = f"{model.model_identifier}:{strategy_name}"
         self.model_version = model.model_version
 
     def simulate(self, *, time_index, state, valuation_result):
         timestamp = _utc_timestamp(time_index)
-        scheduled_event = self._events[timestamp]
-        event_observations = {
-            name: grouped.get(timestamp, pd.DataFrame())
-            for name, grouped in self._observations_by_event.items()
-        }
-        return self.strategy.simulate_accounting_event(
-            scheduled_event=scheduled_event,
+        for intent_id, target_weights in self._decisions.get(timestamp, {}).items():
+            quantities = self._model.decision_quantities(
+                valuation_result=valuation_result,
+                time_index=timestamp,
+                target_weights=target_weights,
+                valuation_asset_identifier=self.valuation_asset_identifier,
+                valuation_observations=self.valuation_observations,
+                fx_observations=self.fx_observations,
+            )
+            if quantities is not None:
+                self._decided[intent_id] = quantities
+        fills = self._fills_by_time.get(timestamp)
+        if fills is None:
+            return _empty_event_batch()
+        intent_id = str(fills["rebalance_intent_id"].iloc[0])
+        return self.strategy.simulate_recorded_fills(
+            time_index=timestamp,
+            fills=fills,
             state=state,
             valuation_result=valuation_result,
             valuation_asset_identifier=self.valuation_asset_identifier,
             valuation_observations=self.valuation_observations,
             fx_observations=self.fx_observations,
-            event_observations=event_observations,
-            execution_context=self._execution_context,
             strategy_revision=self._strategy_revision,
+            decided_quantities=self._decided.get(intent_id),
         )
 
 
+def _recorded_earliest_moment(fills: pd.DataFrame) -> pd.Timestamp | None:
+    """Return the earliest moment a rebalance's fills recorded, the first if several."""
+    moments = []
+    for value in fills["strategy_state"]:
+        state = RebalanceStrategyBase.parse_strategy_state({"strategy_state": value})
+        if state.get("earliest_time_index"):
+            moments.append(_utc_timestamp(state["earliest_time_index"]))
+    return min(moments) if moments else None
+
+
 def _calculation_end(
-    signal_observations: pd.DataFrame,
-    rebalance_inputs: dict[str, pd.DataFrame],
+    fills: pd.DataFrame,
     valuation_observations: pd.DataFrame,
     lifecycle_inputs: dict[str, dict[str, pd.DataFrame]],
     valuation_times: Any,
 ) -> pd.Timestamp:
     values: list[pd.Timestamp] = []
-    for frame in [signal_observations, valuation_observations, *rebalance_inputs.values()]:
+    for frame in [fills, valuation_observations]:
         values.extend(_frame_time_values(frame))
     for model_inputs in lifecycle_inputs.values():
         for frame in model_inputs.values():
@@ -674,4 +771,5 @@ __all__ = [
     "PortfolioEngine",
     "PortfolioEngineConfiguration",
     "normalize_portfolio_event_ledger_frame",
+    "recorded_fills",
 ]

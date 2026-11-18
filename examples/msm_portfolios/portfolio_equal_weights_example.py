@@ -204,6 +204,7 @@ def build_portfolio_configuration(
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=price_source,
+            valuation_asset_identifier="USD",
             valuation_column="close",
             # Strict freshness applies to current and immediately preceding
             # nonzero holdings, preserving entry/exit checks and zero rows.

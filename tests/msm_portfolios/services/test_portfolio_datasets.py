@@ -31,7 +31,15 @@ NOW = dt.datetime(2026, 1, 31, tzinfo=dt.UTC)
 @pytest.fixture(autouse=True)
 def compile_updates_offline(offline_postgresql_runtime, monkeypatch) -> None:
     monkeypatch.setattr(SignalMetadataTable, "__metatable_uid__", str(uuid.uuid4()), raising=False)
-VALUES_COLUMNS = ["time_index", "portfolio_identifier", "close", "return", "calculated_close", "close_time"]
+VALUES_COLUMNS = [
+    "time_index",
+    "portfolio_identifier",
+    "close",
+    "return",
+    "calculated_close",
+    "close_time",
+    "valuation_stale",
+]
 
 
 def _meta_table(uid: str, *, physical: str, columns: list[str] | None = None, index_names=None):
@@ -131,7 +139,8 @@ def test_register_verifies_contract_tables_and_reconciles(monkeypatch) -> None:
             "weights-uid",
             physical="my_provider__portfolioweightsts__main",
             columns=["time_index", "portfolio_identifier", "asset_identifier", "weight", "weight_before",
-                     "price_current", "price_before", "volume_current", "volume_before", "extra"],
+                     "price_current", "price_before", "volume_current", "volume_before",
+                     "held_shares", "book_cash", "extra"],
             index_names=["time_index", "portfolio_identifier", "asset_identifier"],
         ),
         "signal-uid": _meta_table(

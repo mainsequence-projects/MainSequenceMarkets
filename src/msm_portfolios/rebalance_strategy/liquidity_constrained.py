@@ -56,6 +56,9 @@ class LiquidityConstrained(RebalanceStrategyBase):
     ) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         return {"available_liquidity": self.liquidity_source_instance}
 
+    def own_execution_prices(self) -> tuple[str, str]:
+        return "available_liquidity", self.price_column
+
     def required_input_contract(self) -> dict[str, RebalanceInputContract]:
         return {
             "available_liquidity": RebalanceInputContract(

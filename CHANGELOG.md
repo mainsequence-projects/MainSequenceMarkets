@@ -7,18 +7,125 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-### Fixed
-
-- **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
-  `update_model` dropped each `None` it was given, so clearing
-  `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL
-  refused. `unregister_portfolio_datasets` failed the same way when it unbound a signal.
-  `update_model` now writes exactly the values it is given: `None` sets the column to SQL
-  `NULL`, JSON columns included
-  ([issue 87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)).
-
 ### Changed
 
+- **Breaking: a trade happens only at a price observed at the trade's time.** A rebalance
+  was recorded at the signal's own time, weekends, nights and holidays included, and no
+  strategy checked that a price was observed when it traded ([issue 89](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/89), [ADR 0058](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0058-trade-at-the-next-observed-price/)). Prices are
+  stamped at the moment they were observed. For every rebalance strategy:
+  - the earliest moment is the strategy's moment (the signal for `ImmediateSignal`, the
+    selected open or close for `CalendarEventSignal`) while the portfolio's calendar is in
+    session (`market_open <= t <= market_close`), otherwise the calendar's next
+    `market_open`; on `CRYPTO_24_7` every moment is in session;
+  - each asset trades at the first row of the portfolio's `valuation_source_instance` at or
+    after the earliest moment, strictly after the signal that set its target, and inside a
+    session (`market_open < time_index <= market_close`; a bar stamped at an open is not),
+    at that row's `valuation_column`;
+  - rows with `interpolated=True` are never a trade price, and `open`, `high`, `low` and
+    `vwap` are refused as fill columns: a fill price is a close or a mark;
+  - assets fill independently, the unfilled part is cash, a newer target replaces the target
+    of assets not filled yet, and a missing price makes the trade wait instead of raising.
+
+  Strategies with their own bars (`TimeWeighted`, `VolumeParticipation`,
+  `LiquidityConstrained`, `TrailingAverageDailyVolumeParticipation`) keep trading at them
+  under the same conditions: a bar trades only toward a signal observed strictly before it,
+  and an asset moves only at its own observed bar.
+- **Breaking: every portfolio gets a new identity.** `RebalanceStrategyBase` has a
+  hash-bearing `fill_rule` (`"next_observed_price"`), so every portfolio configuration hash
+  and strategy revision changes. Retire existing portfolios and keep them as history; do not
+  delete them. There is no optional or legacy mode.
+- **Breaking: every `ImmediateSignal` needs the portfolio's calendar.**
+  `calendar_events_instance` and `calendar_identifier` are required, and `session_label`
+  defaults to `"regular"`; `CalendarEventSignal` inherits them. The calendar dependency must
+  publish both `market_open` and `market_close`: one configured or published with one event
+  type is refused, also for a `CalendarEventSignal`. `PortfoliosUpdater` refuses an
+  `ImmediateSignal` whose `calendar_identifier` is not the portfolio's `calendar_uid`
+  (ADR 0056).
+- **Breaking: the position ledger books the fills the rebalance recorded.** `PortfolioEngine`
+  depends on `PortfolioRebalance` and books exactly its fills: time, asset and price. It no
+  longer builds its own schedule or requires its own mark for a fill. A rebalance fixes every
+  asset's share count once, at its decision: target weight x NAV / price, with the NAV and
+  the prices last observed strictly before its earliest moment, however old; each asset
+  fills that count at its own next observed price, and the weight it reaches comes from the
+  fill. Strategies with their own bars are sized at each fill.
+  `PortfolioEngineConfiguration.signal_weights_instance`
+  is replaced by `portfolio_rebalance_instance`, and
+  `PortfolioEngine.calculate_backtest` takes `rebalance_state` instead of
+  `signal_observations` and `rebalance_inputs`. A new target that repeats an asset's weight
+  still fills, and the ledger resizes the position at that fill; it no longer re-sizes
+  positions at events where the rebalance recorded nothing. Each fill carries its price's
+  time (`AssetExecution.price_time_index`) and is booked at that time; a price observed at
+  another time is refused.
+- **Breaking: a held asset is valued at its last observed price, however old.** In the
+  ledger and in the weights path, an observation older than `maximum_staleness` is used and
+  marked stale instead of failing the run; only a held asset with no observed price at all
+  raises. FX rates follow the same rule. In the ledger a stale price or rate carries
+  `"stale": "true"` in `valuation_references`, is listed in
+  `ValuationResult.stale_sources`, and is named in the `valuation_summary` row's
+  `extension_payload`. In the weights path the portfolio value row has the new
+  `valuation_stale` column set, and a warning names the holdings. Refusing a stale price
+  stays an option of the valuation policy: `ValuationAlignmentPolicy.fail_on_missing_values`
+  now defaults to `False`, and `MarketPriceValuationModel.fail_on_missing_values` is new.
+  `TargetWeightExecutionModel.maximum_staleness` is removed.
+- **Breaking: `PortfoliosStorage` has a `valuation_stale` column** (Alembic revision 0029,
+  nullable). Apply the migration. A provider with its own `PortfoliosTS` instances adds the
+  column in a revision of its own; dataset registration refuses an instance without it.
+- **Breaking: the execution choices are a policy; its defaults are the owner's decisions.**
+  `ImmediateSignal.execution_policy` (`ExecutionPolicy`, inherited by `CalendarEventSignal`)
+  is hash-bearing: `sizing` (`"at_decision"`), `negative_cash` (`"not_allowed"`, or
+  `"fraction_of_nav"`, or `"fixed_amount"` for a portfolio with a ledger) with its
+  `negative_cash_limit`, `sells_before_buys` (`True`), `cash_shortfall_allocation` (`"pro_rata"`),
+  `uncovered_buys` (`"cut_and_cancel"`) and `calendar_gating` (`"portfolio_calendar"`).
+  `PortfolioRebalance` runs it on a book of shares and cash: sells at an instant pay its
+  buys; a buy cash cannot cover fills what it can and waits for the rebalance's pending
+  sells; once none is pending its remainder is cancelled with the reason
+  `insufficient_cash`; buys short of cash at one instant fill the same fraction. The facts
+  (observed price strictly after the signal, at or after the earliest moment, in session)
+  are not settings. A fixed amount is refused without `accounting_configuration`.
+- **Breaking: the portfolio's currency and FX source are on the build configuration**
+  ([ADR 0059](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0059-portfolio-currency-fx-and-drifting-weights/)).
+  `PortfolioBuildConfiguration.valuation_asset_identifier` is required and replaces
+  `PortfolioAccountingConfiguration.valuation_asset_identifier`;
+  `PortfolioEngine.calculate_backtest` takes it as an argument. The optional
+  `fx_source_instance` is the portfolio's one FX source, read by `PortfolioRebalance`, the
+  ledger and the weights path; `MarketPriceValuationModel.fx_source` is removed. With an FX
+  source the valuation source must have `price_asset_identifier`; without one, a price
+  quoted in another currency is refused. Prices are converted at the last observed rate,
+  and the ledger counts cash in every currency in the portfolio's currency.
+- **Breaking: weights drift in the weights-only path.** `PortfoliosUpdater` values a
+  portfolio whose strategy records a rebalance book from its shares and cash, so weights
+  drift with prices between rebalances instead of returning to target at every price.
+  `PortfolioWeightsStorage` has `held_shares` and `book_cash` columns (Alembic revision
+  0030, nullable); apply the migration. A provider with its own `PortfolioWeightsTS`
+  instances adds them in a revision of its own. Weights without a book (and the strategies
+  with their own bars, until issue 90) are valued from constant weights.
+- **`PortfolioRebalance` reads the portfolio's valuation source** for strategies without
+  bars of its own, and declares it as the `valuation_source` dependency. For those
+  strategies it writes a rebalance-state row only when an asset's order steps, at the
+  price's time, with `event_source` `"valuation_source"`: `complete`, `partial`, or
+  `cancelled` (a cancellation that filled nothing has no price). `weight_after` is the
+  weight the fill reached, and `strategy_state` records the decision, the order and the
+  book's shares and cash, from which the next run resumes. There are no `pending` or
+  `superseded` rows. The state before a window is the latest row of every asset, read
+  through the update statistics. It values the book with all the source's rows, its last
+  row before the window included.
+- **The ledger books the filled part of its own order.** Each recorded fill trades the same
+  fraction of the ledger's open order as of the book's, rounded down to the lot step, and a
+  cancellation is recorded as execution progress with its reason. The ledger cuts only its
+  own shortfalls (lot rounding, execution costs, lifecycle cash): buys settled in the
+  valuation currency share what is left down to the policy's limit, pro rata, and the
+  progress record carries `ledger_cut`. `PortfolioWeights` and `recorded_fills` keep
+  `cancelled` rows, which can carry a partial fill.
+- **A waiting asset looks for its price from its own earliest moment.** A slow asset's bar
+  that arrives after another asset's later fill was recorded is still its next observed
+  price, so `PortfolioRebalance` reads prices from the newest recorded rebalance's earliest
+  moment rather than from the window start. There is no completeness watermark, and a
+  signal's `time_index` is used as the moment it was known. A fill recorded this way is
+  earlier than rows already written: `PortfolioWeights` does not project it, and the
+  position ledger's replay refuses the changed history.
+- **A signal stamped at the last fill time is no longer lost.** An incremental window starts
+  1 ns after its last row, and the seed reads dropped that nanosecond. They now select rows
+  at or before its microsecond floor, and a moment at the last fill time is selected again.
 - **An update that cannot be written is refused before it is sent.** `update_model` raises
   `ValueError` naming the table and the row when its values name no column, or set a
   `NOT NULL` column to `NULL`. The rows route and the calendar, portfolio-group and
@@ -34,6 +141,37 @@ and this project follows versioned releases.
   `None` as `NULL`. The account-group, asset, portfolio-metadata, signal-metadata and
   rebalance-strategy-metadata helpers leave a field passed as `None` unchanged; a call that
   leaves every field unchanged raises `ValueError`.
+
+### Added
+
+- **Reading the state in force before a window.**
+  `RebalanceStrategyBase.dependency_seed_coordinates(name)` names coordinates whose latest
+  row strictly before the dependency window is read too, by `read_rebalance_input`.
+  `ImmediateSignal` uses it for the latest open and close, so an incremental run that starts
+  mid-session knows the market is open.
+- **`earliest_moment`, `in_session`, `observed_prices`, `valuation_prices`,
+  `require_observed_price_column`, `ExecutionPolicy` and `PriceConversion`** in
+  `msm_portfolios.rebalance_strategy`, and `recorded_fills` in
+  `msm_portfolios.time_index.portfolios.accounting`.
+- **[ADR 0058](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0058-trade-at-the-next-observed-price/)**
+  records the rule. It amends ADR 0040's immediate mode and extends ADR 0056, decision 7.
+
+### Removed
+
+- **Breaking:** `RebalanceStrategyBase.build_accounting_schedule`,
+  `RebalanceStrategyBase.simulate_accounting_event` (replaced by
+  `simulate_recorded_fills`), `RebalanceStrategyBase.target_selection_mode`, and
+  `AccountingRebalanceEvent`.
+
+### Fixed
+
+- **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
+  `update_model` dropped each `None` it was given, so clearing
+  `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL
+  refused. `unregister_portfolio_datasets` failed the same way when it unbound a signal.
+  `update_model` now writes exactly the values it is given: `None` sets the column to SQL
+  `NULL`, JSON columns included
+  ([issue 87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)).
 
 ## [4.0.1] - 2026-11-17
 

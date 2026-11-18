@@ -14,7 +14,10 @@ from msm.time_index.utils.time import normalize_datetime64_ns_utc
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy import (
     RebalanceInputContract,
+    PriceConversion,
     RebalanceStrategyBase,
+    observed_prices,
+    valuation_prices,
 )
 
 from msm_portfolios.retirement import (
@@ -33,7 +36,11 @@ from ..base import (
 from ..constants import PORTFOLIO_IDENTIFIER
 from ..portfolio_identity import get_or_create_portfolio
 from .storage import PortfolioRebalanceStateStorage
-from .temporal import fetch_asset_observations, normalize_asset_observations
+from .temporal import (
+    fetch_asset_observations,
+    normalize_asset_observations,
+    strictly_before,
+)
 
 
 class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
@@ -73,6 +80,14 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self._portfolio_resolver = portfolio_resolver
         self.signal_weights = backtesting.signal_weights_instance
         self.rebalance_strategy: RebalanceStrategyBase = backtesting.rebalance_strategy_instance
+        build = portfolio_configuration.portfolio_build_configuration
+        self.valuation_source = build.valuation_source_instance
+        self.valuation_column = str(build.valuation_column)
+        self.valuation_asset_identifier = str(build.valuation_asset_identifier)
+        self.fx_source = build.fx_source_instance
+        accounting = build.accounting_configuration
+        # A ledger's initial NAV gives the book a currency (ADR 0059).
+        self.book_unit_value = None if accounting is None else float(accounting.initial_nav)
         return self
 
     def set_rebalance_state_frame(
@@ -100,8 +115,9 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
         declared = self.rebalance_strategy.declared_dependencies()
-        if "signal_weights" in declared:
-            raise ValueError("'signal_weights' is reserved by PortfolioRebalance.")
+        for reserved in ("signal_weights", "valuation_source", "fx_source"):
+            if reserved in declared:
+                raise ValueError(f"{reserved!r} is reserved by PortfolioRebalance.")
         invalid = {
             name: dependency
             for name, dependency in declared.items()
@@ -112,7 +128,13 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 "Rebalance dependencies must be TimeIndexTableUpdater or "
                 "TimeIndexTableRef instances: " + ", ".join(sorted(invalid))
             )
-        return {"signal_weights": self.signal_weights, **dict(sorted(declared.items()))}
+        dependencies = {"signal_weights": self.signal_weights}
+        if self.rebalance_strategy.own_execution_prices() is None:
+            # Each asset trades at its next observed price in the valuation source.
+            dependencies["valuation_source"] = self.valuation_source
+            if self.fx_source is not None:
+                dependencies["fx_source"] = self.fx_source
+        return {**dependencies, **dict(sorted(declared.items()))}
 
     def update(self) -> pd.DataFrame:
         if getattr(self, "_portfolio_configuration", None) is None:
@@ -145,12 +167,36 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             )
         observed_inputs = self._observed_inputs(start=start, end=end, assets=assets)
         previous_state = self._previous_state(latest)
+        fill_prices = None
+        reference_prices = None
+        price_conversion = None
+        if self.rebalance_strategy.own_execution_prices() is None:
+            held = (
+                []
+                if previous_state is None
+                else previous_state.reset_index()[ASSET_IDENTIFIER_DIMENSION].astype(str).tolist()
+            )
+            # The newest recorded rebalance's open orders trade at their first eligible
+            # price from its earliest moment on, which can be before this window.
+            since = self.rebalance_strategy.recorded_earliest_moment(previous_state, signals)
+            price_start = start
+            if since is not None and since < pd.Timestamp(start):
+                price_start = since
+            fill_prices, reference_prices, price_conversion = self._portfolio_prices(
+                start=price_start,
+                end=end,
+                assets=list(dict.fromkeys([*assets, *held])),
+            )
         transitions = self.rebalance_strategy.build_transitions(
             start=start,
             end=end,
             signal_observations=signals,
             observed_inputs=observed_inputs,
             previous_state=previous_state,
+            fill_prices=fill_prices,
+            reference_prices=reference_prices,
+            price_conversion=price_conversion,
+            book_unit_value=self.book_unit_value,
         )
         return drop_retired_rows(
             normalize_rebalance_state_frame(
@@ -238,6 +284,64 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             .sort_index()
         )
 
+    def _portfolio_prices(
+        self,
+        *,
+        start: Any,
+        end: Any,
+        assets: list[str],
+    ) -> tuple[pd.DataFrame, pd.DataFrame, PriceConversion | None]:
+        """Read the valuation source: the prices assets fill at, and those that value them.
+
+        Fill prices are its observed rows in ``[start, end]``. Reference prices are all
+        its rows there plus each asset's last row before ``start``, so a rebalance can
+        value its holdings and size its decision at the window's first instant. With an
+        FX source, prices in another currency are converted at the last observed rate
+        (ADR 0059); the rates are read from ``start``, with each currency's last rate
+        before it.
+        """
+        kwargs: dict[str, Any] = {
+            "start_date": start,
+            "end_date": end,
+            "great_or_equal": True,
+            "less_or_equal": True,
+        }
+        if assets:
+            kwargs["dimension_filters"] = {ASSET_IDENTIFIER_DIMENSION: assets}
+        frame = self.valuation_source.get_df_between_dates(**kwargs)
+        seeds = _last_rows_before(
+            self.valuation_source,
+            coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in assets),
+            before=start,
+        )
+        flat_frames = [
+            _flat_frame(item) for item in (seeds, frame) if item is not None and not item.empty
+        ]
+        combined = pd.concat(flat_frames, ignore_index=True) if flat_frames else pd.DataFrame()
+        currencies = quote_currencies(
+            combined,
+            valuation_asset_identifier=self.valuation_asset_identifier,
+            fx_declared=self.fx_source is not None,
+        )
+        conversion = None
+        if self.fx_source is not None:
+            conversion = PriceConversion(
+                valuation_asset_identifier=self.valuation_asset_identifier,
+                currencies=currencies,
+                fx_rates=read_fx_rates(
+                    self.fx_source,
+                    currencies=currencies,
+                    valuation_asset_identifier=self.valuation_asset_identifier,
+                    start=start,
+                    end=end,
+                ),
+            )
+        return (
+            observed_prices(frame, price_column=self.valuation_column),
+            valuation_prices(combined, price_column=self.valuation_column),
+            conversion,
+        )
+
     def _observed_inputs(
         self,
         *,
@@ -255,31 +359,102 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         for name in sorted(dependencies):
             source_start, source_end = self.rebalance_strategy.dependency_window(name, start, end)
             contract = contracts[name]
-            kwargs: dict[str, Any] = {
-                "start_date": source_start,
-                "end_date": source_end,
-                "great_or_equal": True,
-                "less_or_equal": True,
-            }
-            if contract.asset_scoped and assets:
-                kwargs["dimension_filters"] = {ASSET_IDENTIFIER_DIMENSION: assets}
-            frame = dependencies[name].get_df_between_dates(**kwargs)
-            result[name] = normalize_rebalance_input(
-                frame,
+            result[name] = read_rebalance_input(
+                dependencies[name],
                 dependency_name=name,
                 contract=contract,
+                start=source_start,
+                end=source_end,
+                seed_coordinates=self.rebalance_strategy.dependency_seed_coordinates(name),
+                dimension_filters=(
+                    {ASSET_IDENTIFIER_DIMENSION: assets}
+                    if contract.asset_scoped and assets
+                    else None
+                ),
             )
         return result
 
     def _previous_state(self, latest: Any | None) -> pd.DataFrame | None:
+        """Return the latest rebalance-state row of every asset of the portfolio.
+
+        Assets fill independently, so their latest rows have different times and
+        intents; an asset missing from the rows at ``latest`` still holds its
+        weight. The update statistics hold the latest time of every
+        ``(intent, asset)``, and the rows at those times are read exactly.
+        """
         if latest is None:
             return None
-        frame = self.get_df_between_dates(
-            start_date=latest,
-            end_date=latest,
-            dimension_filters={PORTFOLIO_IDENTIFIER: [self._resolve_portfolio_identifier()]},
+        portfolio_identifier = self._resolve_portfolio_identifier()
+        coordinates = self._latest_coordinates_by_asset(portfolio_identifier)
+        if not coordinates:
+            frame = self.get_df_between_dates(
+                start_date=latest,
+                end_date=latest,
+                dimension_filters={PORTFOLIO_IDENTIFIER: [portfolio_identifier]},
+            )
+            return None if frame is None or frame.empty else frame
+        frame = self.get_last_observation(
+            dimension_filters={
+                PORTFOLIO_IDENTIFIER: [portfolio_identifier],
+                "rebalance_intent_id": sorted({intent for intent, _asset, _time in coordinates}),
+                ASSET_IDENTIFIER_DIMENSION: sorted(
+                    {asset for _intent, asset, _time in coordinates}
+                ),
+            },
+            dimension_range_map=[
+                {
+                    "coordinate": {
+                        PORTFOLIO_IDENTIFIER: portfolio_identifier,
+                        "rebalance_intent_id": intent,
+                        ASSET_IDENTIFIER_DIMENSION: asset,
+                    },
+                    "end_date": pd.Timestamp(time_index).to_pydatetime(),
+                    "end_date_operand": "<=",
+                }
+                for intent, asset, time_index in coordinates
+            ],
         )
         return None if frame is None or frame.empty else frame
+
+    def _latest_coordinates_by_asset(
+        self,
+        portfolio_identifier: str,
+    ) -> list[tuple[str, str, pd.Timestamp]]:
+        """Return ``(intent, asset, time)`` of each asset's latest row from update statistics.
+
+        Rows that tie at an asset's latest time are all returned; a superseded row
+        and its replacement share a time.
+        """
+        statistics = getattr(self, "update_statistics", None)
+        progress = getattr(statistics, "index_progress", None)
+        if not isinstance(progress, dict):
+            return []
+        by_intent = progress.get(portfolio_identifier)
+        if not isinstance(by_intent, dict):
+            return []
+        latest: dict[str, list[tuple[str, pd.Timestamp]]] = {}
+        for intent, by_asset in by_intent.items():
+            if not isinstance(by_asset, dict):
+                return []
+            for asset, value in by_asset.items():
+                if value is None:
+                    continue
+                time_index = pd.Timestamp(value)
+                time_index = (
+                    time_index.tz_localize("UTC")
+                    if time_index.tzinfo is None
+                    else time_index.tz_convert("UTC")
+                )
+                current = latest.get(str(asset))
+                if current is None or time_index > current[0][1]:
+                    latest[str(asset)] = [(str(intent), time_index)]
+                elif time_index == current[0][1]:
+                    current.append((str(intent), time_index))
+        return [
+            (intent, asset, time_index)
+            for asset, entries in sorted(latest.items())
+            for intent, time_index in entries
+        ]
 
     def _resolve_portfolio_identifier(self) -> str:
         explicit = getattr(self, "_portfolio_identifier", None)
@@ -306,6 +481,192 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         return PortfolioRebalanceStateStorage
 
 
+def read_rebalance_input(
+    dependency: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    dependency_name: str,
+    contract: RebalanceInputContract,
+    start: Any,
+    end: Any,
+    seed_coordinates: tuple[dict[str, str], ...] = (),
+    dimension_filters: dict[str, list[str]] | None = None,
+) -> pd.DataFrame:
+    """Read one declared strategy input over ``[start, end]``.
+
+    For each of ``seed_coordinates`` the latest row strictly before ``start`` is
+    read too, so the strategy sees the state in force when the window opens.
+    """
+    kwargs: dict[str, Any] = {
+        "start_date": start,
+        "end_date": end,
+        "great_or_equal": True,
+        "less_or_equal": True,
+    }
+    if dimension_filters:
+        kwargs["dimension_filters"] = dimension_filters
+    frames = [
+        dependency.get_df_between_dates(**kwargs),
+        _last_rows_before(dependency, coordinates=seed_coordinates, before=start),
+    ]
+    flat_frames = [
+        _flat_frame(frame) for frame in frames if frame is not None and not frame.empty
+    ]
+    combined = pd.concat(flat_frames, ignore_index=True) if flat_frames else pd.DataFrame()
+    return normalize_rebalance_input(
+        combined,
+        dependency_name=dependency_name,
+        contract=contract,
+    )
+
+
+def _last_rows_before(
+    dependency: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    coordinates: tuple[dict[str, str], ...],
+    before: Any,
+) -> pd.DataFrame:
+    """Return, for each coordinate, its latest row strictly before ``before``."""
+    if not coordinates:
+        return pd.DataFrame()
+    dimensions = sorted({name for coordinate in coordinates for name in coordinate})
+    if any(set(coordinate) != set(dimensions) for coordinate in coordinates):
+        raise ValueError("Seed coordinates must all name the same dimensions.")
+    dimension_filters = {
+        name: sorted({str(coordinate[name]) for coordinate in coordinates})
+        for name in dimensions
+    }
+    boundary = pd.Timestamp(before)
+    boundary = boundary.tz_localize("UTC") if boundary.tzinfo is None else boundary
+    request_end, operand = strictly_before(boundary)
+    get_last_observation = getattr(dependency, "get_last_observation", None)
+    if callable(get_last_observation):
+        frame = get_last_observation(
+            dimension_filters=dimension_filters,
+            dimension_range_map=[
+                {
+                    "coordinate": dict(coordinate),
+                    "end_date": request_end,
+                    "end_date_operand": operand,
+                }
+                for coordinate in coordinates
+            ],
+        )
+    else:
+        frame = dependency.get_df_between_dates(
+            end_date=request_end,
+            less_or_equal=operand == "<=",
+            dimension_filters=dimension_filters,
+        )
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+    flat = _flat_frame(frame)
+    flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
+    flat = flat[flat["time_index"] < boundary]
+    wanted = {tuple(str(coordinate[name]) for name in dimensions) for coordinate in coordinates}
+    keys = zip(*(flat[name].astype(str) for name in dimensions), strict=True)
+    flat = flat[pd.Series([key in wanted for key in keys], index=flat.index, dtype=bool)]
+    return (
+        flat.sort_values("time_index", kind="stable")
+        .groupby(dimensions, sort=False)
+        .tail(1)
+        .reset_index(drop=True)
+    )
+
+
+def quote_currencies(
+    frame: pd.DataFrame | None,
+    *,
+    valuation_asset_identifier: str,
+    fx_declared: bool,
+) -> dict[str, str]:
+    """Return each asset's quote currency from the valuation source (ADR 0059).
+
+    With an FX source the source must name each price's currency in
+    ``price_asset_identifier``. Without one, every asset is priced in the portfolio's
+    currency: a currency column naming another is refused, never converted silently.
+    """
+    flat = pd.DataFrame() if frame is None or frame.empty else _flat_frame(frame)
+    if "price_asset_identifier" not in flat.columns:
+        if fx_declared and not flat.empty:
+            raise ValueError(
+                "The portfolio declares fx_source_instance, so its valuation source must "
+                "have a price_asset_identifier column naming each price's currency "
+                "(ADR 0059)."
+            )
+        return {}
+    pairs = flat[[ASSET_IDENTIFIER_DIMENSION, "price_asset_identifier"]].astype(str)
+    pairs = pairs.drop_duplicates()
+    repeated = sorted(
+        pairs.loc[pairs[ASSET_IDENTIFIER_DIMENSION].duplicated(), ASSET_IDENTIFIER_DIMENSION]
+    )
+    if repeated:
+        raise ValueError(
+            "The valuation source quotes these assets in more than one currency: "
+            + ", ".join(repeated)
+        )
+    currencies = dict(
+        zip(pairs[ASSET_IDENTIFIER_DIMENSION], pairs["price_asset_identifier"], strict=True)
+    )
+    foreign = sorted(
+        asset for asset, currency in currencies.items() if currency != valuation_asset_identifier
+    )
+    if foreign and not fx_declared:
+        raise ValueError(
+            f"The valuation source quotes {', '.join(foreign)} in another currency than the "
+            f"portfolio's {valuation_asset_identifier}; a portfolio holding them needs "
+            "fx_source_instance (ADR 0059)."
+        )
+    return currencies
+
+
+def read_fx_rates(
+    fx_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    currencies: dict[str, str],
+    valuation_asset_identifier: str,
+    start: Any,
+    end: Any,
+) -> pd.DataFrame:
+    """Read the rates into the portfolio's currency over ``[start, end]``.
+
+    Each needed currency's last rate before ``start`` is read too, so a price at the
+    window's first instant has a rate.
+    """
+    foreign = sorted(
+        {currency for currency in currencies.values() if currency != valuation_asset_identifier}
+    )
+    if not foreign:
+        return pd.DataFrame()
+    filters = {
+        "base_asset_identifier": foreign,
+        "quote_asset_identifier": [valuation_asset_identifier],
+    }
+    window = fx_source.get_df_between_dates(
+        start_date=start,
+        end_date=end,
+        great_or_equal=True,
+        less_or_equal=True,
+        dimension_filters=filters,
+    )
+    seeds = _last_rows_before(
+        fx_source,
+        coordinates=tuple(
+            {"base_asset_identifier": currency, "quote_asset_identifier": valuation_asset_identifier}
+            for currency in foreign
+        ),
+        before=start,
+    )
+    frames = [_flat_frame(item) for item in (seeds, window) if item is not None and not item.empty]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _flat_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return the frame with its named index levels as columns."""
+    if list(frame.index.names) == [None]:
+        return frame.reset_index(drop=True)
+    return frame.reset_index()
+
+
 def normalize_rebalance_input(
     frame: pd.DataFrame | None,
     *,
@@ -315,7 +676,7 @@ def normalize_rebalance_input(
     """Validate and deterministically consolidate one declared observed input."""
     if frame is None or frame.empty:
         return pd.DataFrame()
-    flat = frame.copy().reset_index()
+    flat = _flat_frame(frame.copy())
     required = [*contract.index_names, *contract.required_columns]
     missing = [column for column in required if column not in flat.columns]
     if missing:
@@ -360,4 +721,5 @@ __all__ = [
     "PortfolioRebalance",
     "normalize_rebalance_input",
     "normalize_rebalance_state_frame",
+    "read_rebalance_input",
 ]

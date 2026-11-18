@@ -8,7 +8,10 @@ The execution/valuation/analytics separation was implemented in version 1.0.6.
 The general rebalance-strategy amendment dated 2026-09-07 is implemented in
 the Unreleased line. `ImmediateSignal`, `CalendarEventSignal`, `TimeWeighted`,
 `VolumeParticipation`, and `LiquidityConstrained` now share one declared-input,
-stateful execution contract.
+stateful execution contract. [ADR 0058](0058-trade-at-the-next-observed-price.md)
+(2026-11-18) amends the immediate `signal_time` mode and the position ledger's
+schedule: every asset trades at its next observed price, and the ledger books
+the fills the rebalance recorded.
 
 This ADR amends:
 
@@ -346,7 +349,9 @@ executed/current. It is not a reporting bucket and not the time the job ran.
 Its timestamps are copied from rebalance-state transitions that changed
 executed weights. The upstream strategy may select events from:
 
-- original signal observations for a truly immediate strategy;
+- for an immediate strategy, each asset's first observed valuation-source price
+  at or after the earliest moment the portfolio calendar allows and strictly after
+  the signal ([ADR 0058](0058-trade-at-the-next-observed-price.md));
 - persisted `CalendarSession.opens_at` or `closes_at` values for a
   calendar-relative strategy;
 - actual execution/valuation bar timestamps for time-weighted or
@@ -389,6 +394,17 @@ signal_time
 next_eligible_event
   map the signal observation to an explicitly configured future calendar event
 ```
+
+Amended 2026-11-18 by [ADR 0058](0058-trade-at-the-next-observed-price.md)
+([issue #89](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/89)).
+`ImmediateSignal` implements `signal_time` with a required calendar, which must be
+the portfolio's. The earliest moment is the signal's time while that calendar is
+in session (`market_open <= t <= market_close`), otherwise its next
+`market_open`. Each asset then trades at its first observed price in the
+portfolio's valuation source at or after the earliest moment and strictly after
+the signal; interpolated rows never count, assets fill independently, and a
+missing price makes the trade wait. The position ledger books exactly those
+fills instead of building its own schedule.
 
 A strategy that applies the latest signal at every market close is a
 close-event strategy. It must not describe itself as immediate at the original
