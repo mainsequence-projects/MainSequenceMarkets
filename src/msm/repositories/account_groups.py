@@ -87,9 +87,13 @@ def build_update_account_group_operation(
         model=AccountGroupTable,
         uid=uid,
         values={
-            "group_name": group_name,
-            "group_description": group_description,
-            "metadata_json": metadata_json,
+            key: value
+            for key, value in {
+                "group_name": group_name,
+                "group_description": group_description,
+                "metadata_json": metadata_json,
+            }.items()
+            if value is not None
         },
     )
 

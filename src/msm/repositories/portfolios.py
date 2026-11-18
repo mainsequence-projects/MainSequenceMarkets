@@ -478,23 +478,25 @@ def search_portfolio_groups(context: MarketsRepositoryContext, **kwargs: Any) ->
     )
 
 
+_PORTFOLIO_GROUP_UPDATE_FIELDS = frozenset({"display_name", "description", "metadata_json"})
+
+
 def build_update_portfolio_group_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
-    display_name: str | None = None,
-    description: str | None = None,
-    metadata_json: dict[str, Any] | None = None,
+    **values: Any,
 ) -> MetaTableCompiledSQLOperation:
+    """Write exactly the fields given; ``None`` clears a nullable field."""
+
+    unknown = sorted(set(values) - _PORTFOLIO_GROUP_UPDATE_FIELDS)
+    if unknown:
+        raise TypeError(f"A portfolio group update cannot set {', '.join(unknown)}.")
     return build_update_model_operation(
         context,
         model=PortfolioGroupTable,
         uid=uid,
-        values={
-            "display_name": display_name,
-            "description": description,
-            "metadata_json": metadata_json,
-        },
+        values=values,
     )
 
 

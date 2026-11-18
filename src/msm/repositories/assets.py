@@ -168,7 +168,11 @@ def build_update_asset_operation(
         model=AssetTable,
         uid=uid,
         values={
-            "asset_type": asset_type,
+            key: value
+            for key, value in {
+                "asset_type": asset_type,
+            }.items()
+            if value is not None
         },
     )
 

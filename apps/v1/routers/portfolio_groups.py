@@ -256,10 +256,13 @@ def patch_portfolio_group(
         Body(description="Patch payload for an existing portfolio group."),
     ],
 ) -> PortfolioGroup:
-    group = update_portfolio_group(
-        uid=uid,
-        payload=request.model_dump(exclude_unset=True, exclude_none=False),
-    )
+    try:
+        group = update_portfolio_group(
+            uid=uid,
+            payload=request.model_dump(exclude_unset=True, exclude_none=False),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if group is None:
         raise HTTPException(status_code=404, detail=f"Portfolio group {uid!r} was not found.")
     return group

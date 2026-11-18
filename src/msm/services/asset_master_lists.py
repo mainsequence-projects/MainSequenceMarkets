@@ -781,7 +781,7 @@ def update_asset_category_record(
 
     update_values: dict[str, Any] = {}
     if display_name is not _UNSET:
-        update_values["display_name"] = str(display_name).strip()
+        update_values["display_name"] = None if display_name is None else str(display_name).strip()
     if description is not _UNSET:
         update_values["description"] = _normalize_optional_text(description)
 

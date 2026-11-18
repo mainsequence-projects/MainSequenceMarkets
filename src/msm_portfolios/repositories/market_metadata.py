@@ -82,7 +82,9 @@ def build_update_portfolio_metadata_operation(
         context,
         model=PortfolioMetadataTable,
         uid=uid,
-        values={"description": description},
+        values={
+            key: value for key, value in {"description": description}.items() if value is not None
+        },
     )
 
 
@@ -139,7 +141,11 @@ def build_update_signal_metadata_operation(
         context,
         model=SignalMetadataTable,
         uid=uid,
-        values={"signal_description": signal_description},
+        values={
+            key: value
+            for key, value in {"signal_description": signal_description}.items()
+            if value is not None
+        },
     )
 
 
@@ -200,8 +206,12 @@ def build_update_rebalance_strategy_metadata_operation(
         model=RebalanceStrategyMetadataTable,
         uid=uid,
         values={
-            "rebalance_strategy_description": rebalance_strategy_description,
-            "configuration_json": configuration_json,
+            key: value
+            for key, value in {
+                "rebalance_strategy_description": rebalance_strategy_description,
+                "configuration_json": configuration_json,
+            }.items()
+            if value is not None
         },
     )
 

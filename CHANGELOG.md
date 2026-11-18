@@ -7,6 +7,34 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
+  `update_model` dropped each `None` it was given, so clearing
+  `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL
+  refused. `unregister_portfolio_datasets` failed the same way when it unbound a signal.
+  `update_model` now writes exactly the values it is given: `None` sets the column to SQL
+  `NULL`, JSON columns included
+  ([issue 87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)).
+
+### Changed
+
+- **An update that cannot be written is refused before it is sent.** `update_model` raises
+  `ValueError` naming the table and the row when its values name no column, or set a
+  `NOT NULL` column to `NULL`. The rows route and the calendar, portfolio-group and
+  asset-category `PATCH` routes answer it with `400`; it reached the database as invalid SQL
+  and came back as `502` before.
+- **An explicit `null` in an update payload clears the column.** `Row.update` payloads and
+  the `PATCH` routes send only the fields a caller set; a field set to `null` was ignored
+  before and now clears a nullable column. `PATCH /asset-category/{uid}/` with
+  `"description": null` now clears the description, as its schema documents, and
+  `"display_name": null` answers `400` instead of storing the text `None`.
+- **The repository update helpers state what `None` means.** `build_update_asset_category_operation`
+  and `build_update_portfolio_group_operation` take the fields to write as keywords and write
+  `None` as `NULL`. The account-group, asset, portfolio-metadata, signal-metadata and
+  rebalance-strategy-metadata helpers leave a field passed as `None` unchanged; a call that
+  leaves every field unchanged raises `ValueError`.
+
 ## [4.0.1] - 2026-11-17
 
 ### Added

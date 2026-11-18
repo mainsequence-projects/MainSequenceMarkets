@@ -201,7 +201,10 @@ def patch_asset_category(
     ],
 ) -> AssetCategory:
     payload = request.model_dump(exclude_unset=True, exclude_none=False)
-    record = update_asset_category(uid=uid, payload=payload)
+    try:
+        record = update_asset_category(uid=uid, payload=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail=f"Asset category {uid!r} was not found.")
     return record
