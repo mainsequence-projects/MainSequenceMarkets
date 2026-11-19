@@ -8,6 +8,7 @@ import pandas as pd
 import pytz
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
+from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
 
 from msm_portfolios.retirement import (
     drop_retired_rows,
@@ -195,7 +196,8 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
         if latest is not None:
             flat = flat[flat["time_index"] > pd.Timestamp(latest)]
-        flat = flat[~flat["execution_status"].isin({"superseded", "cancelled", "rejected"})]
+        # A cancelled row can still have filled part of its order (ADR 0058).
+        flat = flat[~flat["execution_status"].isin({"superseded", "rejected"})]
         if flat.empty:
             return pd.DataFrame()
         flat = flat.sort_values(
@@ -219,6 +221,14 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
                 "observed_volume": "volume_current",
             }
         )
+        # The rebalance book's shares and cash, which value a portfolio without a
+        # ledger (ADR 0059). Strategies that record no book leave them empty.
+        states = [
+            RebalanceStrategyBase.parse_strategy_state(row)
+            for row in projected.to_dict(orient="records")
+        ]
+        projected["held_shares"] = [state.get("held_shares") for state in states]
+        projected["book_cash"] = [state.get("cash") for state in states]
         projected = projected[
             [
                 "time_index",
@@ -227,6 +237,8 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
                 "weight_before",
                 "price_current",
                 "volume_current",
+                "held_shares",
+                "book_cash",
             ]
         ].sort_values(["time_index", ASSET_IDENTIFIER], kind="stable")
 
@@ -366,6 +378,10 @@ def normalize_portfolio_weights_frame(
         flat = _empty_flat_frame(column_names=required_columns)
     flat = flat.rename(columns=PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES)
     flat[PORTFOLIO_IDENTIFIER] = str(portfolio_identifier)
+    # Weights supplied without a rebalance book carry no shares (ADR 0059).
+    for column in ("held_shares", "book_cash"):
+        if column in required_columns and column not in flat.columns:
+            flat[column] = None
     _require_columns(
         flat,
         required_columns=required_columns,

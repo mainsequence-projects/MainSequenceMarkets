@@ -209,10 +209,13 @@ def patch_calendar(
         Body(description="Patch payload for an existing calendar identity row."),
     ],
 ) -> Calendar:
-    record = update_calendar(
-        uid=uid,
-        payload=request.model_dump(exclude_unset=True, exclude_none=False),
-    )
+    try:
+        record = update_calendar(
+            uid=uid,
+            payload=request.model_dump(exclude_unset=True, exclude_none=False),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail=f"Calendar {uid!r} was not found.")
     return record

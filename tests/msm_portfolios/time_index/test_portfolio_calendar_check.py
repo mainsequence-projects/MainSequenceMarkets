@@ -1,4 +1,4 @@
-"""A calendar-event strategy must use the calendar on the portfolio's row (ADR 0056)."""
+"""A calendar-reading strategy must use the calendar on the portfolio's row (ADR 0056)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from msm.api.calendars import Calendar
-from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal
+from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal, TimeWeighted
 from msm_portfolios.time_index.portfolios import PortfoliosUpdater
 
 STORED = {
@@ -63,11 +63,24 @@ def test_a_portfolio_without_a_calendar_is_refused() -> None:
         check(calendar_event_signal("NYSE"), calendar_uid=None)
 
 
+def test_an_immediate_signal_on_another_calendar_is_refused() -> None:
+    check(ImmediateSignal.model_construct(calendar_identifier="NYSE"), calendar_uid="nyse-uid")
+
+    with pytest.raises(ValueError) as raised:
+        check(
+            ImmediateSignal.model_construct(calendar_identifier="CustomNYSE"),
+            calendar_uid="nyse-uid",
+        )
+
+    assert "its rebalance strategy uses calendar 'CustomNYSE'" in str(raised.value)
+    assert "Its ImmediateSignal must use the calendar" in str(raised.value)
+
+
 def test_strategies_that_read_no_calendar_are_not_checked(monkeypatch) -> None:
     monkeypatch.setattr(
         Calendar,
         "get_by_unique_identifier",
-        lambda _identifier: pytest.fail("only a calendar-event strategy reads a calendar"),
+        lambda _identifier: pytest.fail("only a calendar-reading strategy is checked"),
     )
 
-    check(ImmediateSignal(), calendar_uid="nyse-uid")
+    check(TimeWeighted.model_construct(), calendar_uid="nyse-uid")

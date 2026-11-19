@@ -28,6 +28,8 @@ def test_portfolio_time_columns_are_datetime64_ns_utc() -> None:
                     "price_before": 99.0,
                     "volume_current": 1000.0,
                     "volume_before": 900.0,
+                    "held_shares": None,
+                    "book_cash": None,
                 }
             ]
         )

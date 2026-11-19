@@ -36,6 +36,9 @@ from ..constants import (
 from ..metadata import emit_portfolio_metadata, extract_portfolio_description
 from ..portfolio_identity import get_or_create_portfolio
 from .storage import PortfoliosStorage
+from msm_portfolios.rebalance_strategy import PriceConversion
+
+from .rebalance import quote_currencies, read_fx_rates
 from .temporal import align_asset_observations, fetch_asset_observations, utc_index
 from .weights import PortfolioWeights
 
@@ -141,6 +144,8 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         self.valuation_source = build.valuation_source_instance
         self.valuation_column = str(build.valuation_column)
         self.valuation_alignment_policy = build.valuation_alignment_policy
+        self.valuation_asset_identifier = str(build.valuation_asset_identifier)
+        self.fx_source = build.fx_source_instance
         self.signal_weights = backtesting.signal_weights_instance
         self._ensure_portfolio_weights_node()
 
@@ -303,8 +308,14 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if latest_value is not None:
             calculation_index = utc_index([latest_value, *observation_index])
         held_weights = self._weights_as_of(weights, calculation_index, assets)
+        book = _has_book(weights)
+        held_shares = (
+            self._weights_as_of(weights, calculation_index, assets, column="held_shares")
+            if book
+            else None
+        )
         required_valuations = self._required_valuation_coordinates(
-            held_weights=held_weights,
+            held_weights=held_weights if held_shares is None else held_shares,
             valuation_assets=valuation_assets,
             override_asset=override_asset,
         )
@@ -326,6 +337,15 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
                 columns=valuation_assets,
             )
         )
+        prices = self._in_portfolio_currency(
+            prices, all_valuations, end=end, required=required_valuations
+        )
+        valuation_stale = self._stale_valuations(
+            aligned,
+            required_valuations=required_valuations,
+            calculation_index=calculation_index,
+            valuation_assets=valuation_assets,
+        )
         eligible = (prices.notna() | ~required_valuations).all(axis=1)
         observation_index = observation_index.intersection(eligible[eligible].index)
         if len(observation_index) == 0:
@@ -340,6 +360,7 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             valuations=prices,
             executed_weights=weights,
             latest_value=latest_value,
+            held_shares=None if held_shares is None else held_shares.reindex(calculation_index),
         ).loc[observation_index]
         portfolio = self._apply_cumulative_portfolio_values(portfolio_returns)
         portfolio["calculated_close"] = portfolio["close"]
@@ -350,15 +371,101 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             previous_override = prices[str(override_asset)].shift(1).reindex(portfolio.index)
             portfolio["return"] = (override_values / previous_override - 1).fillna(0.0)
         portfolio["close_time"] = portfolio.index
+        portfolio["valuation_stale"] = (
+            valuation_stale.reindex(portfolio.index).fillna(False).astype(bool)
+        )
         return portfolio
+
+    @staticmethod
+    def _stale_valuations(
+        aligned: pd.DataFrame,
+        *,
+        required_valuations: pd.DataFrame,
+        calculation_index: pd.DatetimeIndex,
+        valuation_assets: list[str],
+    ) -> pd.Series:
+        """Return, per valuation time, whether a held asset used a stale price.
+
+        A held asset is valued at its last observed price, however old (ADR 0058);
+        past ``ValuationAlignmentPolicy.maximum_staleness`` that price is stale. The
+        holdings concerned are logged as a warning.
+        """
+        stale = (
+            aligned["stale"]
+            .unstack(ASSET_IDENTIFIER)
+            .reindex(index=calculation_index, columns=valuation_assets)
+            .fillna(False)
+            .astype(bool)
+            & required_valuations.reindex(
+                index=calculation_index, columns=valuation_assets
+            ).fillna(False).astype(bool)
+        )
+        if stale.to_numpy().any():
+            from msm_portfolios import logger
+
+            logger.warning(
+                "Portfolio values use prices older than "
+                "ValuationAlignmentPolicy.maximum_staleness for: "
+                + ", ".join(sorted(str(asset) for asset in stale.columns[stale.any(axis=0)]))
+            )
+        return stale.any(axis=1).rename("valuation_stale")
+
+    def _in_portfolio_currency(
+        self,
+        prices: pd.DataFrame,
+        valuations: pd.DataFrame,
+        *,
+        end: Any,
+        required: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Convert the prices a valuation needs at the last observed FX rate.
+
+        Without an FX source every asset must be priced in the portfolio's currency
+        (ADR 0059); a source naming another currency is refused. A price no holding
+        needs is left as it is.
+        """
+        currencies = quote_currencies(
+            valuations,
+            valuation_asset_identifier=self.valuation_asset_identifier,
+            fx_declared=self.fx_source is not None,
+        )
+        if self.fx_source is None or prices.empty:
+            return prices
+        conversion = PriceConversion(
+            valuation_asset_identifier=self.valuation_asset_identifier,
+            currencies=currencies,
+            fx_rates=read_fx_rates(
+                self.fx_source,
+                currencies=currencies,
+                valuation_asset_identifier=self.valuation_asset_identifier,
+                start=prices.index.min(),
+                end=end,
+            ),
+        )
+        rates = pd.DataFrame(
+            {
+                asset: [
+                    conversion.rate(str(asset), time_index)
+                    if pd.notna(prices.at[time_index, asset])
+                    and bool(required.at[time_index, asset])
+                    else 1.0
+                    for time_index in prices.index
+                ]
+                for asset in prices.columns
+            },
+            index=prices.index,
+        )
+        return prices * rates
 
     @staticmethod
     def _weights_as_of(
         weights: pd.DataFrame,
         target_index: pd.DatetimeIndex,
         assets: list[str],
+        *,
+        column: str = "weight",
     ) -> pd.DataFrame:
-        wide = weights["weight"].unstack(ASSET_IDENTIFIER).reindex(columns=assets)
+        wide = weights[column].unstack(ASSET_IDENTIFIER).reindex(columns=assets)
         combined = wide.index.union(target_index).sort_values()
         return wide.reindex(combined).ffill().reindex(target_index).fillna(0.0)
 
@@ -383,12 +490,28 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         valuations: pd.DataFrame,
         executed_weights: pd.DataFrame,
         latest_value: Any | None,
+        held_shares: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
+        """Return each valuation time's portfolio return, net of the commission fee.
+
+        With the rebalance book's shares, the portfolio is its cash plus its shares at
+        their prices: weights drift with prices between fills (ADR 0059). Shares and
+        cash change only at fills, which are self-financing at the fill's price.
+        """
         valuations = valuations.reindex(columns=held_weights.columns)
-        asset_returns = valuations.pct_change(fill_method=None).replace([np.inf, -np.inf], 0.0)
-        asset_returns = asset_returns.fillna(0.0)
-        period_weights = held_weights.shift(1).fillna(held_weights)
-        result = pd.DataFrame({"return": (period_weights * asset_returns).sum(axis=1)})
+        if held_shares is not None:
+            cash = _book_cash_as_of(executed_weights, valuations.index)
+            holdings = held_shares.reindex(columns=valuations.columns).fillna(0.0)
+            invested = (holdings * valuations).where(holdings != 0.0, 0.0).sum(axis=1)
+            value = cash + invested
+            result = pd.DataFrame({"return": value.pct_change(fill_method=None).fillna(0.0)})
+        else:
+            asset_returns = valuations.pct_change(fill_method=None).replace(
+                [np.inf, -np.inf], 0.0
+            )
+            asset_returns = asset_returns.fillna(0.0)
+            period_weights = held_weights.shift(1).fillna(held_weights)
+            result = pd.DataFrame({"return": (period_weights * asset_returns).sum(axis=1)})
         events = executed_weights.reset_index()
         if latest_value is not None:
             events = events[events["time_index"] > pd.Timestamp(latest_value)]
@@ -574,19 +697,21 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         return None if front_end_details is None else str(front_end_details.description)
 
     def _require_strategy_calendar(self, portfolio: Any) -> None:
-        """Refuse a calendar-event strategy on another calendar than the portfolio's.
+        """Refuse a calendar-reading strategy on another calendar than the portfolio's.
 
         ``Portfolio.calendar_uid`` and the strategy's ``calendar_identifier`` are
         typed separately. They must name the same stored calendar, so the
-        portfolio has one calendar (ADR 0056). Other strategies read no calendar.
+        portfolio has one calendar (ADR 0056). ``ImmediateSignal`` and its
+        subclass ``CalendarEventSignal`` read a calendar; the other strategies
+        read none.
         """
 
         from msm.api.calendars import Calendar
-        from msm_portfolios.rebalance_strategy import CalendarEventSignal
+        from msm_portfolios.rebalance_strategy import ImmediateSignal
 
         backtesting = self.portfolio_build_configuration.backtesting_weights_configuration
         strategy = backtesting.rebalance_strategy_instance
-        if not isinstance(strategy, CalendarEventSignal):
+        if not isinstance(strategy, ImmediateSignal):
             return
         strategy_calendar = Calendar.get_by_unique_identifier(strategy.calendar_identifier)
         strategy_uid = None if strategy_calendar is None else str(strategy_calendar.uid)
@@ -603,8 +728,8 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         )
         raise ValueError(
             f"Portfolio {portfolio.unique_identifier!r} has {portfolio_label} on its row, but "
-            f"its rebalance strategy uses calendar {strategy.calendar_identifier!r}. A "
-            "CalendarEventSignal must use the calendar of Portfolio.calendar_uid."
+            f"its rebalance strategy uses calendar {strategy.calendar_identifier!r}. Its "
+            f"{type(strategy).__name__} must use the calendar of Portfolio.calendar_uid."
         )
 
     def _update_portfolio_pointers(
@@ -688,6 +813,30 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         return PortfoliosStorage
 
 
+def _has_book(weights: pd.DataFrame) -> bool:
+    """Return whether the weights carry the rebalance book's shares and cash."""
+    if "held_shares" not in weights.columns or "book_cash" not in weights.columns:
+        return False
+    recorded = weights["held_shares"].notna() & weights["book_cash"].notna()
+    if recorded.all():
+        return True
+    if recorded.any():
+        raise ValueError(
+            "Portfolio weights mix rows with and without the rebalance book's shares; "
+            "they cannot be valued together (ADR 0059)."
+        )
+    return False
+
+
+def _book_cash_as_of(weights: pd.DataFrame, target_index: pd.DatetimeIndex) -> pd.Series:
+    """Return the book's cash at each time: the one its newest row recorded."""
+    by_time = (
+        weights["book_cash"].astype("float64").groupby(level="time_index").last().sort_index()
+    )
+    combined = by_time.index.union(target_index).sort_values()
+    return by_time.reindex(combined).ffill().reindex(target_index)
+
+
 def normalize_portfolio_values_frame(
     portfolio_values_frame: pd.DataFrame,
     *,
@@ -706,6 +855,9 @@ def normalize_portfolio_values_frame(
         flat["calculated_close"] = flat["close"]
     if "close_time" not in flat.columns and PORTFOLIO_CANONICAL_TIME_INDEX_NAME in flat.columns:
         flat["close_time"] = flat[PORTFOLIO_CANONICAL_TIME_INDEX_NAME]
+    if "valuation_stale" not in flat.columns and "valuation_stale" in required_columns:
+        # A value supplied without the marking is unknown, not fresh (ADR 0058).
+        flat["valuation_stale"] = pd.Series(pd.NA, index=flat.index, dtype="boolean")
     _require_columns(flat, required_columns=required_columns, frame_name="PortfoliosUpdater")
     return PortfoliosUpdater.validate_frame(flat[required_columns], output_table=output_table)
 

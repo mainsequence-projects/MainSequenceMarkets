@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from msm_portfolios.accounting import (
     DividendCashFlowModel,
     MarketPriceValuationModel,
@@ -20,8 +21,41 @@ from msm_portfolios.time_index import PortfolioEngine, normalize_portfolio_event
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     InstrumentExecutionSpec,
+    PriceConversion,
     TargetWeightExecutionModel,
+    observed_prices,
 )
+
+CALENDAR_EVENTS_TABLE = TimeIndexTableRef(
+    output_table=TimeIndexMetaTable.model_construct(
+        uid="00000000-0000-4000-8000-0000000000c1",
+        data_source_uid="00000000-0000-4000-8000-0000000000d1",
+    )
+)
+
+
+def always_open_calendar_events(first: str, published_until: str) -> pd.DataFrame:
+    """CRYPTO_24_7 session events as ``PortfolioCalendarEvents`` publishes them.
+
+    Each session opens at 00:00 UTC and closes when the next one opens. Events are
+    published only up to ``published_until``, as the updater publishes up to its
+    run time. A real graph declares a ``PortfolioCalendarEvents`` updater; this
+    offline example passes the rows directly.
+    """
+    rows = []
+    until = pd.Timestamp(published_until)
+    for day in pd.date_range(pd.Timestamp(first, tz="UTC"), until.floor("D"), freq="D"):
+        local_date = day.date().isoformat()
+        rows.append((day, "CRYPTO_24_7", "regular", "market_open", local_date))
+        rows.append(
+            (day + pd.Timedelta(days=1), "CRYPTO_24_7", "regular", "market_close", local_date)
+        )
+    frame = pd.DataFrame(
+        rows,
+        columns=["time_index", "calendar_identifier", "session_label", "event_type", "local_date"],
+    )
+    frame = frame[frame["time_index"] <= until]
+    return frame.set_index(["time_index", "calendar_identifier", "session_label", "event_type"])
 
 
 def build_example() -> dict[str, pd.DataFrame]:
@@ -29,6 +63,8 @@ def build_example() -> dict[str, pd.DataFrame]:
 
     prices = pd.DataFrame(
         [
+            # A rebalance sizes its shares from the last prices before its earliest moment.
+            ("2026-01-01T10:00:00Z", "STOCK-EUR", 50.0, "EUR", "price-0"),
             ("2026-01-02T10:00:00Z", "STOCK-EUR", 50.0, "EUR", "price-1"),
             ("2026-01-03T10:00:00Z", "STOCK-EUR", 49.0, "EUR", "price-2"),
             ("2026-01-04T10:00:00Z", "STOCK-EUR", 49.0, "EUR", "price-3"),
@@ -46,6 +82,7 @@ def build_example() -> dict[str, pd.DataFrame]:
         [
             (time_index, "EUR", "USD", 1.10, revision)
             for time_index, revision in (
+                ("2026-01-01T10:00:00Z", "fx-0"),
                 ("2026-01-02T10:00:00Z", "fx-1"),
                 ("2026-01-03T10:00:00Z", "fx-2"),
                 ("2026-01-04T10:00:00Z", "fx-3"),
@@ -60,16 +97,17 @@ def build_example() -> dict[str, pd.DataFrame]:
             "source_revision",
         ],
     )
+    # Each signal trades at the first price observed strictly after it.
     signals = pd.DataFrame(
         [
             (
-                "2026-01-02T10:00:00Z",
+                "2026-01-02T09:00:00Z",
                 "mock-stock-signal",
                 "STOCK-EUR",
                 0.55,
             ),
             (
-                "2026-01-04T10:00:00Z",
+                "2026-01-04T09:00:00Z",
                 "mock-stock-signal",
                 "STOCK-EUR",
                 0.0,
@@ -110,7 +148,6 @@ def build_example() -> dict[str, pd.DataFrame]:
     )
 
     accounting_configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-01-01T10:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(
@@ -118,7 +155,12 @@ def build_example() -> dict[str, pd.DataFrame]:
         ),
         lifecycle_event_model_instances=(DividendCashFlowModel(),),
     )
+    # The mock prices are observed every day, weekends included, so the fixture
+    # trades on a 24/7 calendar and each rebalance is at its signal's time. On an
+    # exchange calendar the Sunday signal would rebalance at Monday's open.
     strategy = ImmediateSignal(
+        calendar_events_instance=CALENDAR_EVENTS_TABLE,
+        calendar_identifier="CRYPTO_24_7",
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=(
                 InstrumentExecutionSpec(
@@ -132,15 +174,35 @@ def build_example() -> dict[str, pd.DataFrame]:
                     terms_version="mock-stock-v1",
                 ),
             ),
-            maximum_staleness=pd.Timedelta(days=3),
         )
+    )
+    # PortfolioRebalance records each fill at the next observed price; the ledger
+    # books exactly those fills. Offline, the strategy runs directly.
+    rebalance_state = strategy.build_transitions(
+        start=pd.Timestamp("2026-01-01T10:00:00Z"),
+        end=pd.Timestamp("2026-01-05T10:00:00Z"),
+        signal_observations=signals,
+        observed_inputs={
+            "calendar_events": always_open_calendar_events(
+                "2026-01-01", published_until="2026-01-05T10:00:00Z"
+            )
+        },
+        previous_state=None,
+        fill_prices=observed_prices(prices, price_column="price"),
+        # The stock is quoted in EUR and the portfolio is in USD: the rebalance's book
+        # converts each price at the last observed rate (ADR 0059).
+        price_conversion=PriceConversion(
+            valuation_asset_identifier="USD",
+            currencies={"STOCK-EUR": "EUR"},
+            fx_rates=fx,
+        ),
     )
     accounting = PortfolioEngine.calculate_backtest(
         portfolio_identifier="mock-eur-stock-portfolio",
         accounting_configuration=accounting_configuration,
+        valuation_asset_identifier="USD",
         rebalance_strategy=strategy,
-        signal_observations=signals,
-        rebalance_inputs={},
+        rebalance_state=rebalance_state,
         valuation_observations=prices,
         fx_observations=fx,
         lifecycle_inputs={DividendCashFlowModel.model_identifier: {"dividends": dividends}},

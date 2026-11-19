@@ -29,6 +29,10 @@ class ValuationResult:
     components: pd.DataFrame
     nav: float
     valuation_references: str
+    stale_sources: tuple[str, ...] = ()
+    """Prices and rates older than ``maximum_staleness`` used here, as
+    ``"valuation:<asset>"`` or ``"fx:<asset>"``. Their references carry
+    ``"stale": "true"``."""
 
 
 class PositionValuationModel(BaseModel, ABC):
@@ -65,16 +69,31 @@ class MarketPriceValuationModel(PositionValuationModel):
     model_version: ClassVar[str] = "1"
 
     valuation_source: ValuationDependency | None = Field(default=None, exclude=True)
-    fx_source: ValuationDependency | None = Field(default=None, exclude=True)
     price_column: str = "price"
-    maximum_staleness: dt.timedelta = Field(default=dt.timedelta(days=1), gt=dt.timedelta(0))
+    maximum_staleness: dt.timedelta = Field(
+        default=dt.timedelta(days=1),
+        gt=dt.timedelta(0),
+        description=(
+            "Age past which a price or FX rate is marked stale. A held asset is always "
+            "valued at its last observed price, however old; a stale one is listed in "
+            "ValuationResult.stale_sources and its valuation reference carries "
+            '"stale": "true". Only a held asset with no observed price at all raises '
+            "(ADR 0058)."
+        ),
+    )
+    fail_on_missing_values: bool = Field(
+        default=False,
+        description=(
+            "Raise when a held asset's last observed price, or a needed FX rate, is "
+            "older than maximum_staleness, instead of using it and marking it stale "
+            "(the default)."
+        ),
+    )
 
     def declared_dependencies(self) -> dict[str, ValuationDependency]:
         dependencies: dict[str, ValuationDependency] = {}
         if self.valuation_source is not None:
             dependencies["valuations"] = self.valuation_source
-        if self.fx_source is not None:
-            dependencies["fx"] = self.fx_source
         return dependencies
 
     def required_input_contracts(self) -> dict[str, LifecycleInputContract]:
@@ -88,15 +107,6 @@ class MarketPriceValuationModel(PositionValuationModel):
                 ),
             )
         }
-        if self.fx_source is not None:
-            contracts["fx"] = LifecycleInputContract(
-                index_names=(
-                    "time_index",
-                    "base_asset_identifier",
-                    "quote_asset_identifier",
-                ),
-                required_columns=("rate", "source_revision"),
-            )
         return contracts
 
     def value(
@@ -126,6 +136,7 @@ class MarketPriceValuationModel(PositionValuationModel):
                 value_columns=(self.price_column, "price_asset_identifier"),
                 maximum_staleness=self.maximum_staleness,
                 frame_name="valuation",
+                fail_on_stale=self.fail_on_missing_values,
             )
             marked = positions.merge(
                 marks, on="asset_identifier", how="left", validate="many_to_one"
@@ -139,6 +150,7 @@ class MarketPriceValuationModel(PositionValuationModel):
                 timestamp=timestamp,
                 fx_observations=fx_observations,
                 maximum_staleness=self.maximum_staleness,
+                fail_on_stale=self.fail_on_missing_values,
             )
             marked["value"] = marked["native_value"].to_numpy() * fx_rates
             marked["component_kind"] = "position"
@@ -161,6 +173,7 @@ class MarketPriceValuationModel(PositionValuationModel):
                 timestamp=timestamp,
                 fx_observations=fx_observations,
                 maximum_staleness=self.maximum_staleness,
+                fail_on_stale=self.fail_on_missing_values,
             )
             native["native_value"] = native["quantity"].to_numpy(dtype="float64")
             native["value"] = native["native_value"].to_numpy() * fx_rates
@@ -184,12 +197,21 @@ class MarketPriceValuationModel(PositionValuationModel):
             sort_keys=True,
             separators=(",", ":"),
         )
+        stale_sources = sorted(
+            {
+                f"{reference['source_kind']}:"
+                + reference.get("asset_identifier", reference.get("base_asset_identifier", ""))
+                for reference in references
+                if reference.get("stale") == "true"
+            }
+        )
         return ValuationResult(
             time_index=timestamp,
             valuation_asset_identifier=str(valuation_asset_identifier),
             components=result,
             nav=nav,
             valuation_references=serialized_references,
+            stale_sources=tuple(stale_sources),
         )
 
 
@@ -234,6 +256,7 @@ def _select_latest_rows(
     value_columns: tuple[str, ...],
     maximum_staleness: dt.timedelta,
     frame_name: str,
+    fail_on_stale: bool = False,
 ) -> pd.DataFrame:
     flat = _normalize_time_frame(frame, frame_name=frame_name)
     required_columns = {*keys, *value_columns}
@@ -242,18 +265,27 @@ def _select_latest_rows(
         raise ValueError(f"{frame_name} observations are missing: {', '.join(missing_columns)}")
     if flat.duplicated(subset=["time_index", *keys]).any():
         raise ValueError(f"{frame_name} observations contain duplicate grain coordinates.")
-    start = timestamp - pd.Timedelta(maximum_staleness)
-    selected = flat[(flat["time_index"] <= timestamp) & (flat["time_index"] >= start)]
+    # The last observation at or before the timestamp, however old: past
+    # maximum_staleness it is marked stale, never refused.
+    selected = flat[flat["time_index"] <= timestamp]
     selected = (
         selected.sort_values([*keys, "time_index"], kind="stable")
         .groupby(list(keys), sort=False)
         .tail(1)
+        .copy()
     )
     present = set(selected[keys[0]].astype(str))
     missing_values = sorted(set(map(str, required_values)) - present)
     if missing_values:
         raise ValueError(
-            f"Missing fresh {frame_name} observations for: " + ", ".join(missing_values)
+            f"No observed {frame_name} price at or before {timestamp.isoformat()} for: "
+            + ", ".join(missing_values)
+        )
+    selected["stale"] = (timestamp - selected["time_index"]) > pd.Timedelta(maximum_staleness)
+    if fail_on_stale and selected["stale"].any():
+        raise ValueError(
+            f"Missing fresh {frame_name} observations for: "
+            + ", ".join(sorted(selected.loc[selected["stale"], keys[0]].astype(str)))
         )
     for column in value_columns:
         if selected[column].isna().any():
@@ -270,6 +302,7 @@ def _fx_rates(
     timestamp: pd.Timestamp,
     fx_observations: pd.DataFrame,
     maximum_staleness: dt.timedelta,
+    fail_on_stale: bool = False,
 ) -> tuple[np.ndarray, list[dict[str, str]]]:
     assets = asset_identifiers.astype(str).to_numpy()
     unique = np.unique(assets)
@@ -296,17 +329,28 @@ def _fx_rates(
             subset=["time_index", "base_asset_identifier", "quote_asset_identifier"]
         ).any():
             raise ValueError("FX observations contain duplicate grain coordinates.")
+        # The last observed rate, however old: past maximum_staleness it is marked
+        # stale, never refused.
         selected = flat[
             (flat["base_asset_identifier"].astype(str).isin(foreign))
             & (flat["quote_asset_identifier"].astype(str) == valuation_asset_identifier)
             & (flat["time_index"] <= timestamp)
-            & (flat["time_index"] >= timestamp - pd.Timedelta(maximum_staleness))
         ]
         selected = (
             selected.sort_values(["base_asset_identifier", "time_index"], kind="stable")
             .groupby("base_asset_identifier", sort=False)
             .tail(1)
+            .copy()
         )
+        selected["stale"] = (timestamp - selected["time_index"]) > pd.Timedelta(
+            maximum_staleness
+        )
+        if fail_on_stale and selected["stale"].any():
+            raise ValueError(
+                "Missing fresh FX observations into "
+                f"{valuation_asset_identifier}: "
+                + ", ".join(sorted(selected.loc[selected["stale"], "base_asset_identifier"]))
+            )
         missing_fx = sorted(set(foreign) - set(selected["base_asset_identifier"].astype(str)))
         if missing_fx:
             raise ValueError(
@@ -338,8 +382,12 @@ def _references_from_rows(frame: pd.DataFrame, source_kind: str) -> list[dict[st
         if column in frame.columns
     ]
     return [
-        {"source_kind": source_kind, **{key: str(row[key]) for key in keys}}
-        for row in frame[keys].to_dict(orient="records")
+        {
+            "source_kind": source_kind,
+            **{key: str(row[key]) for key in keys},
+            **({"stale": "true"} if bool(row.get("stale", False)) else {}),
+        }
+        for row in frame.to_dict(orient="records")
     ]
 
 

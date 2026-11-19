@@ -11,6 +11,8 @@ import pytest
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 
 from msm.models import PortfolioDatasetAvailabilityTable, SignalMetadataTable
+from msm.repositories.base import MarketsRepositoryContext
+from msm.repositories.crud import build_update_model_operation
 from msm_portfolios.services import portfolio_datasets
 from msm_portfolios.services.portfolio_datasets import (
     PortfolioDatasetRegistration,
@@ -24,7 +26,20 @@ from msm_portfolios.services.portfolio_datasets import (
 )
 
 NOW = dt.datetime(2026, 1, 31, tzinfo=dt.UTC)
-VALUES_COLUMNS = ["time_index", "portfolio_identifier", "close", "return", "calculated_close", "close_time"]
+
+
+@pytest.fixture(autouse=True)
+def compile_updates_offline(offline_postgresql_runtime, monkeypatch) -> None:
+    monkeypatch.setattr(SignalMetadataTable, "__metatable_uid__", str(uuid.uuid4()), raising=False)
+VALUES_COLUMNS = [
+    "time_index",
+    "portfolio_identifier",
+    "close",
+    "return",
+    "calculated_close",
+    "close_time",
+    "valuation_stale",
+]
 
 
 def _meta_table(uid: str, *, physical: str, columns: list[str] | None = None, index_names=None):
@@ -54,6 +69,7 @@ class _Store:
         self.catalog = {uuid.UUID(str(row["portfolio_uid"])): dict(row) for row in (catalog or [])}
         self.upserts: list[dict[str, Any]] = []
         self.updates: list[dict[str, Any]] = []
+        self.update_sql: list[str] = []
         self.aggregate_sql: list[str] = []
         self.aggregates: dict[str, list[dict[str, Any]]] = {}
         self.aggregate_errors: dict[str, Exception] = {}
@@ -100,7 +116,12 @@ class _Store:
         return {"rows": [row]}
 
     def _update(self, _context, *, model, uid, values, returning=True):
+        # Compile the real statement: a recorder alone hid the empty SET of #87.
+        operation = build_update_model_operation(
+            MarketsRepositoryContext(), model=model, uid=uid, values=values, returning=returning
+        )
         self.updates.append({"model": model, "uid": uid, **values})
+        self.update_sql.append(operation.statement.sql)
         return {}
 
 
@@ -118,7 +139,8 @@ def test_register_verifies_contract_tables_and_reconciles(monkeypatch) -> None:
             "weights-uid",
             physical="my_provider__portfolioweightsts__main",
             columns=["time_index", "portfolio_identifier", "asset_identifier", "weight", "weight_before",
-                     "price_current", "price_before", "volume_current", "volume_before", "extra"],
+                     "price_current", "price_before", "volume_current", "volume_before",
+                     "held_shares", "book_cash", "extra"],
             index_names=["time_index", "portfolio_identifier", "asset_identifier"],
         ),
         "signal-uid": _meta_table(
@@ -274,6 +296,10 @@ def test_unregister_removes_the_catalog_row_and_its_signal_binding(monkeypatch) 
     assert state is not None and state.values_meta_table_uid == "values-uid"
     assert deleted == [(PortfolioDatasetAvailabilityTable, catalog_row["uid"])]
     assert store.updates == [{"model": SignalMetadataTable, "uid": signal_row_uid, "meta_table_uid": None}]
+    assert store.update_sql == [
+        "UPDATE ms_markets__signalmetadata SET meta_table_uid=NULL "
+        "WHERE ms_markets__signalmetadata.uid = %(uid_1)s::UUID"
+    ]
 
     store.updates.clear()
     store.catalog[growth["uid"]] = dict(catalog_row)
@@ -304,6 +330,7 @@ def test_unregister_signal_clears_only_a_bound_signal(monkeypatch) -> None:
 
     assert removed is not None and removed.signal_meta_table_uid == "signal-uid"
     assert store.updates == [{"model": SignalMetadataTable, "uid": signal_row_uid, "meta_table_uid": None}]
+    assert " SET meta_table_uid=NULL WHERE " in store.update_sql[0]
     bound["meta_table_uid"] = None
     assert unregister_signal_dataset(object(), signal_uid="last-week-signal") is None
     assert len(store.updates) == 1

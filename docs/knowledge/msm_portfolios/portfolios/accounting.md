@@ -96,11 +96,13 @@ versioned model configuration.
 
 ```text
 PortfolioBuildConfiguration
+  valuation_source_instance        prices the rebalance fills at
+  valuation_asset_identifier       the portfolio's currency (ADR 0059)
+  fx_source_instance               optional; prices in another currency
   backtesting_weights_configuration
     signal_weights_instance
     rebalance_strategy_instance
   accounting_configuration
-    valuation_asset_identifier
     initial_nav
     initial_state_time_index
     position_valuation_model_instance
@@ -125,6 +127,8 @@ from msm_portfolios.rebalance_strategy import (
 )
 
 strategy = ImmediateSignal(
+    calendar_events_instance=calendar_events,  # a PortfolioCalendarEvents for XNYS
+    calendar_identifier="XNYS",
     execution_model_instance=TargetWeightExecutionModel(
         instrument_specs=(
             InstrumentExecutionSpec(
@@ -144,6 +148,32 @@ strategy = ImmediateSignal(
     ),
 )
 ```
+
+`PortfolioEngine` depends on the portfolio's `PortfolioRebalance`
+(`portfolio_rebalance_instance`) and books exactly the fills it recorded: time,
+asset and observed price ([ADR 0058](../../../ADR/0058-trade-at-the-next-observed-price.md)).
+A rebalance fixes every asset's share count once, at its decision: target weight
+x NAV / price, with the NAV and the prices last observed strictly before its
+earliest moment, the same set for all assets. Each asset then fills that count at
+its own next observed price; the weight it reaches comes from the fill. The engine
+builds no schedule of its own and looks up no mark for a fill. The decision's NAV,
+prices and FX rates are the last observed before the earliest moment, however old:
+a decision after a weekend reads Friday's close. Strategies with their own bars
+are sized at each fill.
+
+A recorded fill that trades part of its order (a cash-limited buy) trades the
+same fraction of the ledger's own open order, rounded down to the lot step, and
+a cancellation is recorded as execution progress with the reason in its
+`strategy_state`. The ledger cuts only its own shortfalls: lot rounding,
+execution costs and lifecycle cash can leave it with less cash than the
+rebalance's book. Cash in every currency is counted in the portfolio's currency
+at the last observed FX rate, and the buys share what is left down to the
+execution policy's floor (no negative cash, a fraction of NAV, or a fixed amount),
+pro rata; the progress record carries `ledger_cut` (`quantity`, `reason`)
+([ADR 0059](../../../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
+
+The ledger reads the portfolio's FX source from the build configuration
+(`fx_source_instance`); `MarketPriceValuationModel` declares none of its own.
 
 `TargetWeightExecutionModel` sizes every compatible Asset in one vectorized
 timestamp batch from the immutable post-lifecycle state and NAV. Every Asset
@@ -174,8 +204,8 @@ The current opening-state contract is deliberately narrow:
 
 - `initial_nav` must be finite and strictly positive.
 - `initial_state_time_index` must be timezone-aware.
-- The opening book is exactly `initial_nav` units of settled cash in
-  `valuation_asset_identifier`.
+- The opening book is exactly `initial_nav` units of settled cash in the
+  portfolio's currency, `PortfolioBuildConfiguration.valuation_asset_identifier`.
 - Restart does not create another opening contribution. It reconstructs state
   from the canonical ledger.
 
@@ -224,9 +254,12 @@ from an Asset type or ticker.
 | `price_asset_identifier` | Quote Asset of that price |
 | `source_revision` | Reproducible observation revision |
 
-The most recent observation at or before the accounting timestamp is selected
-only within `maximum_staleness`. Missing or stale marks for held positions fail
-the event.
+The most recent observation at or before the accounting timestamp is selected,
+however old. Past `maximum_staleness` it is marked stale: the valuation reference
+carries `"stale": "true"`, `ValuationResult.stale_sources` lists it, and the event's
+`valuation_summary` row names it in its `extension_payload` as
+`{"stale_sources": [...]}`. A held position with no observation at all at or before
+the timestamp fails the event. FX rates follow the same rule.
 
 ### FX Observations
 
@@ -300,10 +333,11 @@ uv run --extra portfolios python \
 
 The first signal targets 100% notional exposure at USD 100 and creates ten
 contracts without a USD 1,000 trade-consideration debit; its one-percent
-commission reduces NAV to USD 990 exactly once. At the next timestamp, a
-vectorized `PositionCashFlowModel` applies USD 100 of funding in
-`pre_execution`. The same-time signal is sized from the resulting USD 890 NAV,
-changes the position to eight contracts, and applies a USD 2 commission once. A
+commission reduces NAV to USD 990 exactly once. Then a vectorized
+`PositionCashFlowModel` applies USD 100 of funding in `pre_execution`. The next
+signal comes after it and is sized at its decision from the resulting USD 890
+NAV; its fill changes the position to eight contracts and applies a USD 2
+commission once. A
 second funding event changes cash and NAV with no rebalance. The fixture uses a
 custom `PositionValuationModel` because a variation-margined contract has
 different value semantics from a cash-settled share; settlement style and
@@ -481,7 +515,7 @@ Accounting mode is strict. Common failures mean:
 
 | Error | Cause |
 | --- | --- |
-| Missing fresh valuation | A held position has no mark within `maximum_staleness` |
+| No observed valuation price | A held position has no mark at or before the timestamp |
 | Missing explicit FX | A non-valuation Asset has no direct FX observation into the valuation Asset |
 | Duplicate grain coordinates | A declared source contains more than one row at its stated grain |
 | Observation would cause look-ahead | `observed_at` is later than the economic event in `as_known` mode |

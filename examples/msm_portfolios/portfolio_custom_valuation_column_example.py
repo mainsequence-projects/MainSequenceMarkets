@@ -66,6 +66,7 @@ def build_fair_value_portfolio_configuration(
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=valuation_source,
+            valuation_asset_identifier="USD",
             valuation_column=FAIR_VALUE_COLUMN,
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(

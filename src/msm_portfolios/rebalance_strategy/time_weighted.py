@@ -60,6 +60,9 @@ class TimeWeighted(RebalanceStrategyBase):
     ) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         return {"execution_bars": self.execution_bars_instance}
 
+    def own_execution_prices(self) -> tuple[str, str]:
+        return "execution_bars", self.price_column
+
     def required_input_contract(self) -> dict[str, RebalanceInputContract]:
         return {
             "execution_bars": RebalanceInputContract(

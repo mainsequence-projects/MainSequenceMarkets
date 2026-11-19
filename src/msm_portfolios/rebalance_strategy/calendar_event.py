@@ -6,34 +6,21 @@ from typing import Literal
 import pandas as pd
 from pydantic import Field
 
-from metatables import TimeIndexTableRef, TimeIndexTableUpdater
-from msm_portfolios.rebalance_strategy.base import RebalanceInputContract
 from msm_portfolios.rebalance_strategy.immediate_signal import ImmediateSignal
 
 
 class CalendarEventSignal(ImmediateSignal):
-    """Execute the latest eligible signal at explicitly published calendar events."""
+    """Rebalance to the latest signal at explicitly published calendar events.
+
+    The strategy's moment is each selected open or close, shifted by
+    ``event_offset``; its target is the latest signal at or before that moment.
+    Each asset then trades at its first observed price at or after the earliest
+    moment and strictly after that signal (ADR 0058). The calendar fields, the
+    ``calendar_events`` dependency and its checks are inherited from
+    ``ImmediateSignal``.
+    """
 
     timing_mode: Literal["calendar_event"] = "calendar_event"
-    calendar_events_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
-        ...,
-        description=(
-            "Published time-indexed calendar-event dependency. Its observation timestamps "
-            "are the unshifted persisted events; the required fields identify calendar, "
-            "session, event type, and local session date."
-        ),
-    )
-    calendar_identifier: str = Field(
-        ...,
-        min_length=1,
-        description="Calendar identifier selected from the declared event dependency.",
-        examples=["XNYS", "CRYPTO_24_7"],
-    )
-    session_label: str = Field(
-        "regular",
-        min_length=1,
-        description="Persisted calendar session label eligible for execution.",
-    )
     rebalance_event: Literal["market_open", "market_close"] = "market_close"
     event_offset: dt.timedelta = Field(
         default=dt.timedelta(0),
@@ -46,28 +33,6 @@ class CalendarEventSignal(ImmediateSignal):
         le=6,
         description="Local session weekday selected when cadence is weekly.",
     )
-    signal_selection: Literal["latest_at_or_before_event"] = "latest_at_or_before_event"
-
-    def declared_dependencies(
-        self,
-    ) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
-        return {"calendar_events": self.calendar_events_instance}
-
-    def required_input_contract(self) -> dict[str, RebalanceInputContract]:
-        return {
-            "calendar_events": RebalanceInputContract(
-                index_names=(
-                    "time_index",
-                    "calendar_identifier",
-                    "session_label",
-                    "event_type",
-                ),
-                required_columns=("local_date",),
-            )
-        }
-
-    def target_selection_mode(self) -> Literal["latest_at_or_before"]:
-        return "latest_at_or_before"
 
     def dependency_window(
         self,

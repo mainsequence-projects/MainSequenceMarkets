@@ -1,0 +1,62 @@
+"""``update_model`` statements on PostgreSQL, the hosted dialect (MainSequenceMarkets#87).
+
+Skipped unless ``MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL`` names a disposable
+``markets_*`` database on localhost; see ``test_postgresql_account_registration``.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from msm.models import AssetCategoryTable, SignalMetadataTable
+from msm.repositories.crud import create_model, update_model
+from msm_portfolios.services.portfolio_datasets import unregister_signal_dataset
+from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
+    _scalar_rows,
+    postgresql_markets,
+)
+
+
+def test_unregister_signal_clears_the_binding(postgresql_markets) -> None:  # noqa: F811
+    engine, context, _operations = postgresql_markets
+    create_model(
+        context,
+        model=SignalMetadataTable,
+        values={"signal_uid": "momentum", "meta_table_uid": "signal-instance"},
+    )
+
+    removed = unregister_signal_dataset(context, signal_uid="momentum")
+
+    assert removed is not None and removed.signal_meta_table_uid == "signal-instance"
+    assert _scalar_rows(
+        engine, "SELECT signal_uid, meta_table_uid FROM ms_markets__signalmetadata"
+    ) == [("momentum", None)]
+    assert unregister_signal_dataset(context, signal_uid="momentum") is None
+
+
+def test_none_clears_a_json_column_to_sql_null(postgresql_markets) -> None:  # noqa: F811
+    engine, context, _operations = postgresql_markets
+    row = create_model(
+        context,
+        model=AssetCategoryTable,
+        values={
+            "unique_identifier": "core",
+            "display_name": "Core",
+            "description": "Core holdings",
+            "metadata_json": {"source": "desk"},
+        },
+    )["rows"][0]
+
+    update_model(
+        context,
+        model=AssetCategoryTable,
+        uid=row["uid"],
+        values={"description": None, "metadata_json": None},
+    )
+
+    assert _scalar_rows(
+        engine,
+        "SELECT display_name, description, metadata_json IS NULL FROM ms_markets__assetcategory",
+    ) == [("Core", None, True)]
+    with pytest.raises(ValueError, match="cannot set display_name to NULL"):
+        update_model(context, model=AssetCategoryTable, uid=row["uid"], values={"display_name": None})

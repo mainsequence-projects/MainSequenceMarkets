@@ -23,6 +23,7 @@ from sqlalchemy import (
     inspect,
     literal,
     literal_column,
+    null,
     or_,
     select,
     union_all,
@@ -1038,16 +1039,18 @@ def build_update_model_operation(
     values: Mapping[str, Any],
     returning: bool = True,
 ) -> MetaTableCompiledSQLOperation:
+    """Compile an UPDATE that writes exactly ``values`` to the row ``uid`` of ``model``.
+
+    Every value given is written: ``None`` sets the column to ``NULL``. A caller
+    with "``None`` leaves the column unchanged" semantics drops those keys before
+    calling. ``values`` must name at least one column, and ``None`` is refused for
+    a column that is ``NOT NULL``; both raise ``ValueError`` before anything is sent.
+    """
+
     statement = (
         update(model)
         .where(_model_identity_attribute(model) == uid)
-        .values(
-            _model_value_mapping(
-                model,
-                mirror_renamed_columns(model, values),
-                include_none=False,
-            )
-        )
+        .values(_model_set_clause(model, uid, mirror_renamed_columns(model, values)))
     )
     if returning:
         statement = statement.returning(model)
@@ -1104,17 +1107,31 @@ def delete_model(
     )
 
 
-def _model_value_mapping(
+def _model_value_mapping(model: type[MarketsBase], values: Mapping[str, Any]) -> dict[Any, Any]:
+    return {_model_attribute(model, key): value for key, value in values.items()}
+
+
+def _model_set_clause(
     model: type[MarketsBase],
+    uid: uuid.UUID | str,
     values: Mapping[str, Any],
-    *,
-    include_none: bool = True,
 ) -> dict[Any, Any]:
-    return {
-        _model_attribute(model, key): value
-        for key, value in values.items()
-        if include_none or value is not None
-    }
+    if not values:
+        raise ValueError(f"Update of {model.__name__} {uid!s} names no column to set.")
+    clause: dict[Any, Any] = {}
+    for key, value in values.items():
+        attribute = _model_attribute(model, key)
+        if value is None:
+            column = _model_column_property(model, key).columns[0]
+            if not column.nullable:
+                raise ValueError(
+                    f"Update of {model.__name__} {uid!s} cannot set {attribute.key} to NULL; "
+                    "the column is NOT NULL."
+                )
+            # SQL NULL, also for JSON columns, which would otherwise store JSON 'null'.
+            value = null()
+        clause[attribute] = value
+    return clause
 
 
 def _filtered_model_select(

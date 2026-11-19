@@ -56,6 +56,8 @@ Recommended sections:
 - [0055. Calendars As Rules And Exceptions](0055-calendars-as-rules-and-exceptions.md)
 - [0056. Asset Trading Calendar Link](0056-asset-trading-calendar-link.md)
 - [0057. Asset Calendar Links In Bulk And At Registration](0057-asset-calendar-links-in-bulk-and-at-registration.md)
+- [0058. Trade At The Next Observed Price](0058-trade-at-the-next-observed-price.md)
+- [0059. Portfolio Currency, FX, Cash Limits And Drifting Weights](0059-portfolio-currency-fx-and-drifting-weights.md)
 
 ## Command Center Decisions
 

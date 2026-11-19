@@ -44,6 +44,7 @@ from msm_portfolios.time_index.portfolios.storage import (
 from msm_portfolios.models import portfolio_sqlalchemy_models
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
+    observed_prices,
     InstrumentExecutionSpec,
     ProportionalExecutionCostModel,
     TargetWeightExecutionModel,
@@ -51,6 +52,8 @@ from msm_portfolios.rebalance_strategy import (
 )
 
 from examples.msm_portfolios.portfolio_cashflows_and_fx_valuation_example import (
+    CALENDAR_EVENTS_TABLE,
+    always_open_calendar_events,
     build_example,
 )
 from examples.msm_portfolios.portfolio_custom_cashflow_model_example import (
@@ -83,6 +86,38 @@ def _source(update_hash: str) -> _Source:
     return source
 
 
+def always_open_strategy(**kwargs) -> ImmediateSignal:
+    """An ImmediateSignal on CRYPTO_24_7: every rebalance is at its signal's time."""
+    return ImmediateSignal(
+        calendar_events_instance=CALENDAR_EVENTS_TABLE,
+        calendar_identifier="CRYPTO_24_7",
+        **kwargs,
+    )
+
+
+def recorded_fills_of(
+    strategy: ImmediateSignal,
+    signals: pd.DataFrame,
+    prices: pd.DataFrame,
+    *,
+    first: str,
+    published_until: str,
+) -> pd.DataFrame:
+    """Record the fills PortfolioRebalance would: each asset at its next observed price."""
+    return strategy.build_transitions(
+        start=pd.Timestamp(first, tz="UTC"),
+        end=pd.Timestamp(published_until),
+        signal_observations=signals,
+        observed_inputs={
+            "calendar_events": always_open_calendar_events(
+                first, published_until=published_until
+            )
+        },
+        previous_state=None,
+        fill_prices=observed_prices(prices, price_column="price"),
+    )
+
+
 def _legacy_build_configuration() -> PortfolioBuildConfiguration:
     signal = object.__new__(SignalWeights)
     signal.update_hash = "signal"
@@ -90,10 +125,11 @@ def _legacy_build_configuration() -> PortfolioBuildConfiguration:
     signal.signal_configuration = {"kind": "legacy-test-signal"}
     return PortfolioBuildConfiguration(
         valuation_source_instance=_source("valuation"),
+        valuation_asset_identifier="USD",
         execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.0),
         backtesting_weights_configuration=BacktestingWeightsConfig(
             signal_weights_instance=signal,
-            rebalance_strategy_instance=ImmediateSignal(),
+            rebalance_strategy_instance=always_open_strategy(),
         ),
     )
 
@@ -110,7 +146,6 @@ def test_legacy_build_configuration_omits_disabled_accounting_field() -> None:
 def test_enabled_accounting_configuration_is_hash_bearing() -> None:
     build = _legacy_build_configuration()
     build.accounting_configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         position_valuation_model_instance=MarketPriceValuationModel(),
@@ -122,7 +157,6 @@ def test_enabled_accounting_configuration_is_hash_bearing() -> None:
 def test_accounting_configuration_rejects_external_execution_ingress() -> None:
     with pytest.raises(ValidationError, match="execution_fact_source_instance"):
         PortfolioAccountingConfiguration(
-            valuation_asset_identifier="USD",
             initial_nav=1_000.0,
             initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
             position_valuation_model_instance=MarketPriceValuationModel(),
@@ -131,15 +165,14 @@ def test_accounting_configuration_rejects_external_execution_ingress() -> None:
 
 
 def test_unconfigured_rebalance_strategy_keeps_legacy_serialized_shape() -> None:
-    payload = ImmediateSignal().model_dump(mode="json")
+    payload = always_open_strategy().model_dump()
 
     assert "execution_model_instance" not in payload
     assert "execution_cost_model_instances" not in payload
 
 
 def test_portfolio_engine_configuration_serializes_its_runtime_dependencies() -> None:
-    build = _legacy_build_configuration()
-    strategy = ImmediateSignal(
+    strategy = always_open_strategy(
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=(
                 InstrumentExecutionSpec(
@@ -158,18 +191,18 @@ def test_portfolio_engine_configuration_serializes_its_runtime_dependencies() ->
     )
     payload = PortfolioEngineConfiguration(
         portfolio_identifier="position-aware",
+        valuation_asset_identifier="USD",
         accounting_configuration=PortfolioAccountingConfiguration(
-            valuation_asset_identifier="USD",
             initial_nav=1_000.0,
             initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
             position_valuation_model_instance=MarketPriceValuationModel(),
         ),
-        signal_weights_instance=(build.backtesting_weights_configuration.signal_weights_instance),
+        portfolio_rebalance_instance=_source("portfolio-rebalance"),
         rebalance_strategy_instance=strategy,
     ).model_dump(mode="json")
 
     assert payload["portfolio_identifier"] == "position-aware"
-    assert payload["signal_weights_instance"]
+    assert payload["portfolio_rebalance_instance"]["update_hash"] == "portfolio-rebalance"
     assert payload["rebalance_strategy_instance"]
     assert payload["rebalance_strategy_instance"]["config"]["execution_model_instance"]
     rebuilt = ConfigRebuilder().rebuild(payload["rebalance_strategy_instance"]["config"])
@@ -226,7 +259,7 @@ def test_post_entitlement_entry_receives_no_dividend() -> None:
         ],
     )
     signals = pd.DataFrame(
-        [("2026-01-04T10:00:00Z", "late-entry", "STOCK", 0.1)],
+        [("2026-01-04T09:00:00Z", "late-entry", "STOCK", 0.1)],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
     ).set_index(["time_index", "signal_uid", "asset_identifier"])
     dividends = pd.DataFrame(
@@ -256,7 +289,6 @@ def test_post_entitlement_entry_receives_no_dividend() -> None:
         ],
     )
     configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=100.0,
         initial_state_time_index="2026-01-02T10:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(
@@ -264,7 +296,7 @@ def test_post_entitlement_entry_receives_no_dividend() -> None:
         ),
         lifecycle_event_model_instances=(DividendCashFlowModel(),),
     )
-    strategy = ImmediateSignal(
+    strategy = always_open_strategy(
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=(
                 InstrumentExecutionSpec(
@@ -283,9 +315,15 @@ def test_post_entitlement_entry_receives_no_dividend() -> None:
     accounting = PortfolioEngine.calculate_backtest(
         portfolio_identifier="late-entry",
         accounting_configuration=configuration,
+        valuation_asset_identifier="USD",
         rebalance_strategy=strategy,
-        signal_observations=signals,
-        rebalance_inputs={},
+        rebalance_state=recorded_fills_of(
+            strategy,
+            signals,
+            prices,
+            first="2026-01-02",
+            published_until="2026-01-05T10:00:00Z",
+        ),
         valuation_observations=prices,
         lifecycle_inputs={"msm.dividend_cash_flow": {"dividends": dividends}},
     )
@@ -299,28 +337,33 @@ def test_post_entitlement_entry_receives_no_dividend() -> None:
 
 def test_missing_fx_is_a_hard_error() -> None:
     configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=100.0,
         initial_state_time_index="2026-01-01T00:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(),
     )
     signals = pd.DataFrame(
-        [("2026-01-02T00:00:00Z", "missing-fx", "EUR-STOCK", 0.1)],
+        [("2026-01-01T23:00:00Z", "missing-fx", "EUR-STOCK", 0.1)],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
     ).set_index(["time_index", "signal_uid", "asset_identifier"])
     prices = pd.DataFrame(
         [
             {
-                "time_index": "2026-01-02T00:00:00Z",
+                "time_index": time_index,
                 "asset_identifier": "EUR-STOCK",
                 "price": 10.0,
                 "price_asset_identifier": "EUR",
-                "source_revision": "p1",
+                "source_revision": revision,
             }
+            # The decision sizes from the last price before the signal; the fill
+            # trades at the next one.
+            for time_index, revision in (
+                ("2026-01-01T22:00:00Z", "p0"),
+                ("2026-01-02T00:00:00Z", "p1"),
+            )
         ]
     )
 
-    strategy = ImmediateSignal(
+    strategy = always_open_strategy(
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=(
                 InstrumentExecutionSpec(
@@ -341,43 +384,48 @@ def test_missing_fx_is_a_hard_error() -> None:
         PortfolioEngine.calculate_backtest(
             portfolio_identifier="missing-fx",
             accounting_configuration=configuration,
+            valuation_asset_identifier="USD",
             rebalance_strategy=strategy,
-            signal_observations=signals,
-            rebalance_inputs={},
+            rebalance_state=recorded_fills_of(
+                strategy,
+                signals,
+                prices,
+                first="2026-01-01",
+                published_until="2026-01-02T00:00:00Z",
+            ),
             valuation_observations=prices,
         )
 
 
-def test_unchanged_zero_target_requires_neither_terms_nor_a_mark() -> None:
+def test_an_unheld_zero_target_records_no_fill() -> None:
+    """Nothing to hold and nothing to sell: no price, terms or mark is needed."""
     signals = pd.DataFrame(
-        [("2026-01-02T00:00:00Z", "zero", "UNHELD", 0.0)],
+        [("2026-01-01T23:00:00Z", "zero", "UNHELD", 0.0)],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
     ).set_index(["time_index", "signal_uid", "asset_identifier"])
-    configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
-        initial_nav=100.0,
-        initial_state_time_index="2026-01-01T00:00:00Z",
-        position_valuation_model_instance=MarketPriceValuationModel(),
-    )
-    strategy = ImmediateSignal(
+    strategy = always_open_strategy(
         execution_model_instance=TargetWeightExecutionModel(instrument_specs=())
     )
+    prices = pd.DataFrame(
+        [("2026-01-02T00:00:00Z", "UNHELD", 10.0, "USD", "p1")],
+        columns=[
+            "time_index",
+            "asset_identifier",
+            "price",
+            "price_asset_identifier",
+            "source_revision",
+        ],
+    )
 
-    ledger = PortfolioEngine.calculate_backtest(
-        portfolio_identifier="zero-target",
-        accounting_configuration=configuration,
-        rebalance_strategy=strategy,
-        signal_observations=signals,
-        rebalance_inputs={},
-        valuation_observations=pd.DataFrame(),
-    ).ledger
+    state = recorded_fills_of(
+        strategy,
+        signals,
+        prices,
+        first="2026-01-01",
+        published_until="2026-01-02T00:00:00Z",
+    )
 
-    zero_execution = ledger[ledger["event_type"] == "execution"]
-    assert set(zero_execution["record_kind"]) == {
-        "execution_progress",
-        "valuation_summary",
-    }
-    assert signals.reset_index().iloc[0]["asset_identifier"] == "UNHELD"
+    assert state.empty
 
 
 def test_full_retry_is_deterministic_and_publishes_no_duplicate_tail() -> None:
@@ -423,6 +471,8 @@ def test_simulated_cost_is_applied_once_and_identifiers_ignore_signal_row_order(
     )
     prices = pd.DataFrame(
         [
+            ("2026-01-01T22:00:00Z", "A", 100.0, "USD", "a-price-0"),
+            ("2026-01-01T22:00:00Z", "B", 50.0, "USD", "b-price-0"),
             ("2026-01-02T00:00:00Z", "A", 100.0, "USD", "a-price-1"),
             ("2026-01-02T00:00:00Z", "B", 50.0, "USD", "b-price-1"),
         ],
@@ -435,16 +485,15 @@ def test_simulated_cost_is_applied_once_and_identifiers_ignore_signal_row_order(
         ],
     )
     signal_rows = [
-        ("2026-01-02T00:00:00Z", "ordered", "A", 0.5),
-        ("2026-01-02T00:00:00Z", "ordered", "B", 0.25),
+        ("2026-01-01T23:00:00Z", "ordered", "A", 0.5),
+        ("2026-01-01T23:00:00Z", "ordered", "B", 0.25),
     ]
     configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-01-01T00:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(),
     )
-    strategy = ImmediateSignal(
+    strategy = always_open_strategy(
         execution_model_instance=TargetWeightExecutionModel(
             instrument_specs=tuple(
                 InstrumentExecutionSpec(
@@ -471,9 +520,15 @@ def test_simulated_cost_is_applied_once_and_identifiers_ignore_signal_row_order(
         return PortfolioEngine.calculate_backtest(
             portfolio_identifier="cost-and-order",
             accounting_configuration=configuration,
+            valuation_asset_identifier="USD",
             rebalance_strategy=strategy,
-            signal_observations=signals,
-            rebalance_inputs={},
+            rebalance_state=recorded_fills_of(
+                strategy,
+                signals,
+                prices,
+                first="2026-01-01",
+                published_until="2026-01-02T00:00:00Z",
+            ),
             valuation_observations=prices,
         ).ledger
 
@@ -516,7 +571,7 @@ def test_linear_perpetual_funding_precedes_sizing_without_notional_cash() -> Non
     ].sum() == pytest.approx(-120.0)
 
 
-def test_strategy_execution_price_and_revision_drive_partial_execution() -> None:
+def test_recorded_bar_price_and_its_revision_drive_partial_execution() -> None:
     signals = pd.DataFrame(
         [("2026-01-02T09:00:00Z", "time-weighted", "STOCK", 1.0)],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
@@ -561,19 +616,27 @@ def test_strategy_execution_price_and_revision_drive_partial_execution() -> None
         ),
     )
     configuration = PortfolioAccountingConfiguration(
-        valuation_asset_identifier="USD",
         initial_nav=1_000.0,
         initial_state_time_index="2026-01-02T08:00:00Z",
         position_valuation_model_instance=MarketPriceValuationModel(),
     )
 
     def calculate(execution_bars):
+        state = strategy.build_transitions(
+            start=pd.Timestamp("2026-01-02T08:00:00Z"),
+            end=pd.Timestamp("2026-01-02T23:00:00Z"),
+            signal_observations=signals,
+            observed_inputs={
+                "execution_bars": execution_bars.set_index(["time_index", "asset_identifier"])
+            },
+            previous_state=None,
+        )
         return PortfolioEngine.calculate_backtest(
             portfolio_identifier="time-weighted-price",
             accounting_configuration=configuration,
+            valuation_asset_identifier="USD",
             rebalance_strategy=strategy,
-            signal_observations=signals,
-            rebalance_inputs={"execution_bars": execution_bars},
+            rebalance_state=state,
             valuation_observations=prices,
         ).ledger
 
@@ -588,16 +651,11 @@ def test_strategy_execution_price_and_revision_drive_partial_execution() -> None
     assert summary["recognized_pnl"] == pytest.approx(100.0)
 
     revised_bars = bars.copy()
-    revised_bars.loc[revised_bars["source_revision"] == "bar-2", "source_revision"] = (
-        "bar-2-corrected"
-    )
+    revised_bars.loc[revised_bars["source_revision"] == "bar-2", "close"] = 81.0
     revised_ledger = calculate(revised_bars)
-    assert (
-        position_rows.iloc[-1]["source_revision"]
-        != revised_ledger[revised_ledger["record_kind"] == "position_delta"].iloc[-1][
-            "source_revision"
-        ]
-    )
+    revised_position = revised_ledger[revised_ledger["record_kind"] == "position_delta"].iloc[-1]
+    assert revised_position["price"] == pytest.approx(81.0)
+    assert position_rows.iloc[-1]["source_revision"] != revised_position["source_revision"]
 
 
 def test_ledger_storage_and_model_graph_are_additive() -> None:

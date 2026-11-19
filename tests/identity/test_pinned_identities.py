@@ -280,8 +280,9 @@ PINNED_SIGNAL_UIDS = {
 }
 
 PINNED_PORTFOLIO_CONFIGURATION_HASHES = {
-    "library_signal_weights": "f952e2a6b3cfd73fd350f747d9b28eaa",
-    "library_fixed_weights": "da0cf7e91fbdd7a6225c823c992e34c3",
+    # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
+    "library_signal_weights": "616ead637f8817cec74796e71f2f462d",
+    "library_fixed_weights": "c0dfbe7c17eb03571e1c4b4234f17369",
 }
 
 PINNED_UPDATE_HASHES = {
@@ -301,26 +302,28 @@ PINNED_NESTED_SIGNAL_UIDS = {
 }
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
-    "interpolated_prices_valuation": "4ea19e0e2eb0aa504cf795b79524e2c6",
+    # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
+    "interpolated_prices_valuation": "88a9857661fa5030c9d01318aea565c9",
     # Execution windows are datetime.time values, which hash as ISO strings.
-    "time_weighted_rebalance": "878f466cbb3c0d7c7cd807769eea0ea1",
-    "volume_participation_rebalance": "6c81dcd53cd19338933140ba6543375a",
-    "trailing_average_daily_volume_rebalance": "134b49b83d79333d73c8ef6772627017",
+    "time_weighted_rebalance": "16873d7471f38d9601da7788431dd82e",
+    "volume_participation_rebalance": "acc17a70c739cc44a016e068b7e9b719",
+    "trailing_average_daily_volume_rebalance": "b92d246bd419001f616069b9c5d76595",
 }
 
 PINNED_STRATEGY_REVISIONS = {
-    "immediate_signal": "7b25ad849fae481a6d9eadb127b6ec3c53c6717a0ff527d9242ca371823a34ac",
+    # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
+    "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
-        "5fb439bc64593e44e5ea399a8903f0fc4de4fa71e80897d6a84864d125cddb67"
+        "f63423115cd1fc4f0df7f36912273b38255d22401f4cbe7871f1c0450a330bc4"
     ),
     "time_weighted_on_interpolated_prices": (
-        "bdfd05cd41f40a138e77888ec15342eb22f2cfcb0a149539c51f05ef80e47325"
+        "1ff25f595962174dcfc44c89d84a63cb2a43f91950ec8b75997a0b811e78ad90"
     ),
     "volume_participation_on_interpolated_prices": (
-        "0af1d91c0620b9fd4105b091105c0cc164306412a6ac3a13d9ec309ce7b439a9"
+        "a088881916ba836cba16cfd74db5521e4d124a0ca00551b537883ec70c03c857"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "e3eda5bb7990340e97aab0ad1d232cc9a93f717a041a5eeabd666904c9c90488"
+        "7430287870933446263c449078dec322922ca5ef611f9bc4e7f933d0c648a08f"
     ),
 }
 
@@ -402,6 +405,13 @@ SIGNALS: dict[str, Callable[[], SignalWeights]] = {
 }
 
 
+def _immediate_signal() -> ImmediateSignal:
+    return ImmediateSignal(
+        calendar_events_instance=_source("calendar-events"),
+        calendar_identifier="XNYS",
+    )
+
+
 def _portfolio_configuration(
     signal: SignalWeights,
     *,
@@ -411,10 +421,11 @@ def _portfolio_configuration(
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=valuation_source or _source("valuation"),
+            valuation_asset_identifier="USD",
             execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.0),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal,
-                rebalance_strategy_instance=rebalance_strategy or ImmediateSignal(),
+                rebalance_strategy_instance=rebalance_strategy or _immediate_signal(),
             ),
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="pinned-identity"),
@@ -503,7 +514,7 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
 }
 
 STRATEGIES: dict[str, Callable[[dict[str, Any]], Any]] = {
-    "immediate_signal": lambda updaters: ImmediateSignal(),
+    "immediate_signal": lambda updaters: _immediate_signal(),
     "liquidity_constrained_on_asset_snapshot": lambda updaters: LiquidityConstrained(
         liquidity_source_instance=updaters["asset_snapshot"]
     ),
