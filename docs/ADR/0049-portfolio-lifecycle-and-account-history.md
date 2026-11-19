@@ -292,7 +292,7 @@ ADR 0029's 3.5.0 amendment). Decision 4's rule for virtual funds is now checked
 only in `apply_account_virtual_fund_allocation_plan`; the 3.2.0 note's check "in
 the Markets API route" went with the route.
 
-### 2026-11-19: issue 93
+### 2026-11-19: 4.1.0, issue 93
 
 The delete routes removed the weights and values with two
 `TimeIndexMetaTable.delete_after_date` calls, each its own MetaTables request,
@@ -341,7 +341,7 @@ and the portfolio survived without its weights and values
   per portfolio in `statistics_not_refreshed`. The call is removed once
   MetaTables#117 is fixed.
 
-### 2026-11-19: `Portfolio.delete` is refused
+### 2026-11-19: 4.1.0, `Portfolio.delete` is refused
 
 After issue 93 the same call still did two different things. Through
 `msm.client`, the row router ran the routes' service, so `Portfolio.delete`
