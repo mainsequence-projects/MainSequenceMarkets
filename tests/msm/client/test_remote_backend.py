@@ -391,49 +391,31 @@ def test_account_delete_conflicts_and_missing_accounts_come_back_typed(monkeypat
     assert Account.delete(uuid.uuid4()) is None
 
 
-def test_portfolio_delete_runs_the_portfolio_delete_and_conflicts_come_back_typed(
-    monkeypatch, remote
-) -> None:
-    """`POST /rows/portfolio/delete/` runs the delete with its datasets (issue 93)."""
+def test_portfolio_delete_is_refused_remotely_as_the_runtime_refuses_it(monkeypatch, remote) -> None:
+    """`POST /rows/portfolio/delete/` answers 501 and runs no delete; only the portfolio
+    routes delete a portfolio, with its datasets (ADR 0049)."""
 
+    from msm.api.base import delete_refusal
     from msm.api.portfolios import Portfolio
-    from msm.api.remote import MarketsConflictError
-    from msm_portfolios.services import PortfolioDeleteConflictError
-
-    uid = str(uuid.uuid4())
-    deleted_rows = {"weights": 2, "values": 2, "rebalance_state": 1, "analytics": 0,
-                    "event_ledger": 3, "state": 1, "cash_flows": 0}
-    monkeypatch.setattr(
-        "apps.v1.services.portfolios._get_delete_runtime",
-        lambda: SimpleNamespace(context=SimpleNamespace(timeout=None)),
-    )
+    from msm.api.remote import MarketsOperationUnsupported
 
     def delete_portfolio_record(context, *, uid):
-        return {
-            "detail": "Portfolio 'p' deleted with its datasets.",
-            "uid": str(uid),
-            "unique_identifier": "p",
-            "deleted_count": 1,
-            "deleted_rows": deleted_rows,
-        }
+        remote.calls.append(("delete_portfolio_record", {"uid": str(uid)}))
 
     monkeypatch.setattr(
         "msm_portfolios.services.delete_portfolio_record", delete_portfolio_record, raising=False
     )
-    assert Portfolio.delete(uid)["deleted_rows"] == deleted_rows
-
-    def refused(context, *, uid):
-        raise PortfolioDeleteConflictError("Portfolio 'p' cannot be deleted; nothing was deleted.")
-
-    monkeypatch.setattr("msm_portfolios.services.delete_portfolio_record", refused, raising=False)
-    with pytest.raises(MarketsConflictError, match="nothing was deleted"):
-        Portfolio.delete(uid)
-
     monkeypatch.setattr(
-        "msm_portfolios.services.delete_portfolio_record", lambda context, *, uid: None, raising=False
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: remote.calls.append(("delete", {"uid": uid})),
     )
-    with pytest.raises(LookupError):
-        Portfolio.delete(uid)
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        Portfolio.delete(uuid.uuid4())
+
+    assert str(refused.value) == delete_refusal(Portfolio)
+    assert "DELETE /api/v1/portfolio/{uid}/" in str(refused.value)
+    assert remote.calls == []
 
 
 def test_currency_get_or_create_runs_remotely_and_conflicts_come_back_typed(monkeypatch, remote) -> None:
@@ -486,6 +468,8 @@ def test_rows_describe_their_remote_operations(remote) -> None:
     assert {"delete", "bulk_delete"} <= account_operations
     fund_operations = {operation["name"] for operation in described["virtual-fund"]["operations"]}
     assert "delete" not in fund_operations
+    portfolio_operations = {operation["name"] for operation in described["portfolio"]["operations"]}
+    assert "delete" not in portfolio_operations
 
 
 def test_provider_row_classes_keep_the_runtime_backend(remote) -> None:

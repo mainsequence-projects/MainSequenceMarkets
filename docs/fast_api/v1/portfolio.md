@@ -489,6 +489,9 @@ Deletes the portfolio with its rows in its seven Markets datasets, in one
 MetaTables transaction
 ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md),
 [issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)).
+This route and [Bulk Delete Portfolios](#bulk-delete-portfolios) are the only
+portfolio deletes: `Portfolio.delete` raises `MarketsOperationUnsupported`
+under both backends, and `POST /api/v1/rows/portfolio/delete/` answers `501`.
 Each dataset references `Portfolio.unique_identifier` with `RESTRICT`:
 
 | `deleted_rows` key | Storage | Contract |

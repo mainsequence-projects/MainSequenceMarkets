@@ -38,12 +38,10 @@ from .crud import (
 )
 from .portfolios import (
     build_create_portfolio_operation,
-    build_delete_portfolio_operation,
     build_get_portfolio_by_unique_identifier_operation,
     build_search_portfolios_operation,
     build_update_portfolio_operation,
     create_portfolio,
-    delete_portfolio,
     get_portfolio_by_unique_identifier,
     search_portfolios,
     update_portfolio,
@@ -57,7 +55,6 @@ __all__ = [
     "build_create_portfolio_operation",
     "build_delete_account_operation",
     "build_delete_model_operation",
-    "build_delete_portfolio_operation",
     "build_get_account_by_unique_identifier_operation",
     "build_get_model_by_uid_operation",
     "build_get_model_by_unique_identifier_operation",
@@ -76,7 +73,6 @@ __all__ = [
     "create_portfolio",
     "delete_account",
     "delete_model",
-    "delete_portfolio",
     "execute_markets_operation",
     "get_account_by_unique_identifier",
     "get_model_by_uid",

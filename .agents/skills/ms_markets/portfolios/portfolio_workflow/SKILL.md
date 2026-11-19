@@ -113,7 +113,9 @@ referenced. Retire it instead:
   rows name it, or while another application's table with a `RESTRICT` key to
   it holds rows of it; that application deletes its rows first.
   `POST /api/v1/portfolio/bulk-delete/preflight/` reports the rows per dataset
-  and every blocker.
+  and every blocker. These routes are the only portfolio delete:
+  `Portfolio.delete` raises `MarketsOperationUnsupported` under both backends
+  and deletes nothing; a test double for it should refuse the same way.
 
 ## Portfolio Group Boundary
 

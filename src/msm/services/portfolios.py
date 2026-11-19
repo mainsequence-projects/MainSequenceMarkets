@@ -31,10 +31,6 @@ def update_portfolio(context: MarketsRepositoryContext, **kwargs: Any) -> dict[s
     return portfolio_repository.update_portfolio(context, **kwargs)
 
 
-def delete_portfolio(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
-    return portfolio_repository.delete_portfolio(context, **kwargs)
-
-
 def create_portfolio_group(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
     return portfolio_repository.create_portfolio_group(context, **kwargs)
 
@@ -424,7 +420,6 @@ __all__ = [
     "bulk_delete_portfolio_groups",
     "create_portfolio",
     "create_portfolio_group",
-    "delete_portfolio",
     "delete_portfolio_group",
     "delete_portfolio_group_membership",
     "delete_portfolio_group_membership_by_pair",

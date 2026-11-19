@@ -1,8 +1,8 @@
 """Delete portfolios with their own datasets (ADR 0049, issue 93).
 
-`DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and the remote
-`POST /api/v1/rows/portfolio/delete/` run these functions, and
-`POST /api/v1/portfolio/bulk-delete/preflight/` reports what they would do.
+`DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/` run these
+functions, and `POST /api/v1/portfolio/bulk-delete/preflight/` reports what they would
+do. No row class method runs them: `Portfolio.delete` is refused under both backends.
 
 A portfolio is deleted with its rows in its seven Markets datasets (weights, values,
 rebalance state, analytics, event ledger, state and cash flows) in one MetaTables

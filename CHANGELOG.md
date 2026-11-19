@@ -7,6 +7,21 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking: `Portfolio.delete`.** It raises `MarketsOperationUnsupported` under both
+  backends and deletes nothing, and `POST /api/v1/rows/portfolio/delete/` answers `501`
+  with the same text. Through `msm.client` it ran the portfolio routes' delete; under the
+  runtime backend it deleted only the portfolio row, none of its seven datasets, and the
+  first `RESTRICT` key from any of them refused it. Core `msm` cannot run the full delete,
+  which lives in `msm_portfolios`
+  ([ADR 0019](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0019-msm-portfolios-package-boundary/)).
+  Delete a portfolio through `DELETE /api/v1/portfolio/{uid}/` or
+  `POST /api/v1/portfolio/bulk-delete/`
+  ([ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
+- **`msm.services.delete_portfolio`, `msm.repositories.delete_portfolio` and
+  `msm.repositories.build_delete_portfolio_operation`**, unused one-row portfolio deletes.
+
 ### Fixed
 
 - **Breaking: a portfolio is deleted with all its datasets in one transaction, or not at

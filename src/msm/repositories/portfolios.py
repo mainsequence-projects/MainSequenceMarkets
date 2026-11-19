@@ -268,30 +268,6 @@ def update_portfolio(
     )
 
 
-def build_delete_portfolio_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    statement = delete(PortfolioTable).where(PortfolioTable.uid == uid)
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
-
-
-def delete_portfolio(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_portfolio_operation(context, uid=uid),
-        context=context,
-    )
-
-
 def build_create_portfolio_group_operation(
     context: MarketsRepositoryContext,
     *,
@@ -720,7 +696,6 @@ def list_portfolio_groups_for_portfolio(
 __all__ = [
     "build_create_portfolio_operation",
     "build_create_portfolio_group_operation",
-    "build_delete_portfolio_operation",
     "build_delete_portfolio_group_membership_by_pair_operation",
     "build_delete_portfolio_group_membership_operation",
     "build_delete_portfolio_group_operation",
@@ -738,7 +713,6 @@ __all__ = [
     "build_upsert_portfolio_group_operation",
     "create_portfolio",
     "create_portfolio_group",
-    "delete_portfolio",
     "delete_portfolio_group",
     "delete_portfolio_group_membership",
     "delete_portfolio_group_membership_by_pair",

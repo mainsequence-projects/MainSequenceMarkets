@@ -1274,6 +1274,8 @@ retired, an exclusive end, and is null while it is live
   its rows in its seven datasets with the row, in one transaction, and is
   refused while account history or another application's table references it
   ([Delete Portfolio](../../../fast_api/v1/portfolio.md#delete-portfolio)).
+  Only the Markets API's portfolio routes delete a portfolio; `Portfolio.delete`
+  raises `MarketsOperationUnsupported` under both backends.
 
 ## Portfolio Construction And Account Virtual-Fund Allocation Boundary
 

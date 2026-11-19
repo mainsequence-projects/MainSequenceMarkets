@@ -45,7 +45,13 @@ def _validate_payload(
 
 
 class Portfolio(MarketsMetaTableRow):
-    """Typed portfolio identity and runtime configuration row."""
+    """Typed portfolio identity and runtime configuration row.
+
+    ``delete`` raises ``MarketsOperationUnsupported`` under both backends and deletes
+    nothing. A portfolio is deleted with its rows in its seven datasets, which belong
+    to the portfolio package that core ``msm`` does not import (ADR 0019), so only the
+    Markets API's portfolio routes delete it (ADR 0049).
+    """
 
     __table__: ClassVar[type[PortfolioTable]] = PortfolioTable
     __required_tables__: ClassVar[list[type[Any]]] = [
@@ -56,6 +62,11 @@ class Portfolio(MarketsMetaTableRow):
         PortfolioTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+    __delete_refusal__: ClassVar[str | None] = (
+        "a portfolio is deleted with its rows in its seven datasets, in one transaction, "
+        "only through the Markets API: DELETE /api/v1/portfolio/{uid}/ or "
+        "POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
+    )
 
     unique_identifier: str
     calendar_uid: uuid.UUID

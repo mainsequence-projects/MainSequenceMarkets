@@ -340,3 +340,38 @@ and the portfolio survived without its weights and values
   failed call leaves the delete in place, is logged as an error, and is reported
   per portfolio in `statistics_not_refreshed`. The call is removed once
   MetaTables#117 is fixed.
+
+### 2026-11-19: `Portfolio.delete` is refused
+
+After issue 93 the same call still did two different things. Through
+`msm.client`, the row router ran the routes' service, so `Portfolio.delete`
+deleted the portfolio with its seven datasets. Under the runtime backend it was
+the inherited `MarketsMetaTableRow.delete`: one `DELETE` of the portfolio row,
+which removed none of the datasets and was refused by the first `RESTRICT` key
+from any of them. ADR 0050 rejected that split for `Account` ("Keep The Runtime
+Delete As A One-Row Delete").
+
+`Account` closed it by running its delete service under both backends.
+`Portfolio` cannot: the row class is in core `msm`, while the delete service and
+the seven dataset storages are in `msm_portfolios`, which core `msm` does not
+import ([ADR 0019](0019-msm-portfolios-package-boundary.md)). A hook that
+`msm_portfolios` fills when it is imported would keep that rule, but the runtime
+`Portfolio.delete` would then depend on what the process had imported.
+Applications other than the Markets deployment and the producers of Markets
+tables already reach portfolios through the Markets API (ADR 0047).
+
+- `Portfolio` sets `__delete_refusal__`, as the account-history rows do (the
+  3.4.2 note). `Portfolio.delete` raises `MarketsOperationUnsupported` under both
+  backends, before any runtime call, and names the two routes below. The remote
+  `POST /api/v1/rows/portfolio/delete/`, which the context lists among the
+  routes that delete portfolios, answers `501` with the same text: the row
+  router no longer has a service delete for `portfolio`, and `GET /api/v1/rows/`
+  no longer lists `delete` for it.
+- `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
+  are the only portfolio deletes; this change does not alter them. The single
+  delete answers `404` for a missing portfolio and `409` when a reference
+  refuses it; the bulk delete answers `409` naming each portfolio that is
+  missing or refused.
+- The unused one-row helpers `msm.services.delete_portfolio`,
+  `msm.repositories.delete_portfolio` and
+  `msm.repositories.build_delete_portfolio_operation` are removed.
