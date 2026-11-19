@@ -130,6 +130,26 @@ repositories, time-index table updaters, and row APIs. The split is recorded in
 [ADR 0008](ADR/0008-metatable-table-and-api-model-split.md) and should guide new
 MetaTable-facing APIs unless a more specific ADR overrides it.
 
+## The boundary rule: Markets reads only its own tables
+
+ms-markets is the base other applications and libraries build on, so it knows nothing about
+them. Markets reads and writes only the tables its own migrations create. It never takes a
+table uid, name or namespace from a caller or from a registry row and reads what it names.
+
+Data crosses the boundary in two ways, and no third:
+
+- **Publish.** An application sends rows to a Markets operation, such as
+  `AccountHoldingsSnapshots.publish`. Markets stores them in its own table and serves them.
+- **Keep.** An application keeps data in its own tables and serves it itself. Markets holds
+  nothing about it.
+
+A producer therefore never grants Markets access to its tables, and an application that
+extends ms-markets builds on its primitives and recipes instead of asking Markets to reach
+into it. The rule and its consequences are
+[ADR 0060](ADR/0060-producers-publish-markets-reads-only-its-own-tables.md). Until that ADR
+is implemented, the portfolio dataset catalog, `include=` and the paths its "Not Decided
+Here" section lists still break the rule; new code must not add to them.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — install and a first example.

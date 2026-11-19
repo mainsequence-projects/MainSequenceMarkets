@@ -1,0 +1,340 @@
+# 0060. Producers Publish, Markets Reads Only Its Own Tables
+
+## Status
+
+Accepted (2026-11-19). The owner decided the rule (decision 1), that each published row is
+stored once, in Markets' tables (decision 2), and that ms-markets ships the primitives and
+recipes a producer needs (decisions 3, 5 and 6). The names and signatures below are proposed
+and are settled at implementation. Nothing in this ADR is implemented.
+
+- It supersedes decision 5 of
+  [ADR 0047](0047-markets-api-application-boundary.md) (contract instances read through a
+  Markets catalog) and withdraws the grant of its decision 4 (`include` hydration of a
+  provider's sidecar). Decisions 1 to 3 of ADR 0047 stand, and this ADR implements the
+  `managed_by` field its decision 4 names.
+- It replaces the request of
+  [issue #98](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/98):
+  Markets does not read a provider's table as the caller, because it does not read it at all.
+- It changes the delete notes of [ADR 0049](0049-portfolio-lifecycle-and-account-history.md)
+  and [ADR 0050](0050-account-deletion.md) where they count rows in another application's
+  table.
+- [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md)
+  (proposed) already records orders and trades this way: a recorder writes Markets' tables
+  through the API.
+
+## Context
+
+### What ADR 0047 decision 5 built
+
+A producer (any application that computes signals or portfolios) keeps its own *contract
+instances* of `SignalWeightsTS`, `PortfolioWeightsTS` and `PortfoliosTS`, binds the engine
+to them with `output_table=`, and registers their table uids in a Markets catalog
+(`PortfolioDatasetAvailabilityTable`, `SignalMetadata.meta_table_uid`). Markets then reads
+those tables as its own workload User:
+
+- registration and reconciliation look the tables up, check them against the contract and
+  count their rows;
+- the read routes (`GET /portfolio/values/`, `/portfolio/weights/`,
+  `/portfolio/{uid}/signals_weights/` and the per-portfolio forms) read them by uid;
+- `include=` on the by-uid lookups reads any sidecar table whose uid the caller names;
+- the portfolio delete counts the portfolio's rows in them and refuses when it cannot.
+
+### Why that is the wrong direction
+
+- **The core depends on its extensions.** Markets works only while each producer grants its
+  workload `data_viewer`. MetaTables keeps a grant to another repository with people (its
+  ADR 0029), so a person repeats it in every Environment, and a missing grant fails the
+  producer's own registration.
+- **Markets is a confused deputy.** Anyone who may call a read route reads the producer's
+  table with Markets' grant. Two routes take the table uid from the caller.
+- **Deletes reason about rows Markets does not own.** A table Markets cannot read blocks the
+  delete.
+- **The platform offers no way out.** Issue #98 asked for Markets to read as the caller.
+  Checked on 2026-11-19 against `mainsequence` 9.0.40 and MetaTables 0.1.71: an application
+  cannot call another application for its caller, a workload is never a requester, and
+  MetaTables refuses requester calls on the routes these reads use. It would also multiply
+  the grants: every reader would need one on every producer.
+- **The pattern spreads.** ms-markets is the base other libraries build on. A base that
+  reaches into its dependents teaches every library above it to do the same.
+
+### What the engine reads back
+
+Each engine node continues a run from rows already written. With the three series stored only
+in Markets, these reads come from Markets:
+
+| Node | Reads of published series |
+| --- | --- |
+| `SignalWeights` and its subclasses | its own progress per signal and asset, its last observation, interpolation windows |
+| `PortfolioRebalance` | the signal-weights window and the last weights before it |
+| `PortfolioWeights` | its own last row per portfolio (the seed of `price_before`) |
+| `PortfoliosUpdater` | the weights window and seed, its own last `close` |
+
+Progress comes today from MetaTables' update record of the bound output table
+(`update_statistics.index_progress`). Rebalance state, calendar events, the event ledger and
+prices are read from tables the producer keeps.
+
+### Markets already has the pattern
+
+`AccountHoldingsSnapshots.publish`, `AssetSnapshots.publish`, `registerAccount` and
+`addAccountTargetPositions` take rows from an application and write Markets' own tables, in
+one bounded, idempotent call. Portfolios are the part that diverged: no operation writes a
+signal-weights, portfolio-weights or portfolio-values row except an updater bound to a table.
+
+### What a producer writes by hand today
+
+Every producer repeats the same routines around the engine: validate and publish weights and
+create the signal's metadata on first publication; refuse an observation at or before the
+last one; read a signal's first and last observation and its latest observations; read a
+portfolio's value history and its weights as of a time; build and run the node chain in
+order; register and reconcile after each run; delete its series in the order the foreign
+keys demand; move history between tables. None of it is specific to the producer.
+
+## Decision
+
+### 1. Markets reads and writes only its own tables (owner)
+
+Markets touches only tables that its own migrations create. No route, row operation,
+service, Job or command of ms-markets takes a table uid, name or namespace from a caller or
+from a registry row and reads, counts, checks or deletes what it names.
+
+Data crosses the boundary of ms-markets in two ways, and no third:
+
+- **Publish.** An application sends rows to a Markets operation. Markets stores them in its
+  own table and serves them. The rows are Markets' from then on.
+- **Keep.** An application keeps data in its own tables and serves or shares it itself.
+  Markets holds nothing about it.
+
+An endpoint belongs to Markets only if it would exist with no producer but Markets itself.
+Publish and read operations pass: they serve any producer, Markets' own Jobs included. A
+catalog of someone else's tables, a check of their shape or a count of their rows does not.
+
+ms-markets names no dependent anywhere: not in code, configuration, documentation or tests.
+
+### 2. A published row is stored once, in Markets' tables (owner)
+
+`SignalWeightsStorage`, `PortfolioWeightsStorage` and `PortfoliosStorage` are the only store
+of signal weights, portfolio weights and portfolio values of a registered signal or
+portfolio. A producer has no table for them and keeps no copy.
+
+A producer keeps, in its own namespace, what only it needs: prices, engine state (rebalance
+state, calendar events, event ledger), and its own tables.
+
+Publishing shares the rows with everyone who may read Markets. A producer that must not
+share a portfolio does not register it in Markets.
+
+### 3. Series operations are the primitive
+
+Each published series gets a row class in `msm_portfolios.api`, dispatched like every other
+row class: compiled SQL on the core table under the `runtime` backend, and
+`POST /api/v1/rows/{resource}/{operation}/` under `remote`. Proposed names:
+`SignalWeightsSeries` (`signal-weights`), `PortfolioWeightsSeries` (`portfolio-weights`) and
+`PortfolioValuesSeries` (`portfolio-values`).
+
+| Operation | What it does |
+| --- | --- |
+| `publish(key, rows)` | Writes rows of one signal or portfolio in one transaction. A row equal to the stored one is skipped; a different row for a stored key refuses the call and writes nothing. Bounded per call; the answer counts written and skipped rows. |
+| `window(keys, start, end, columns)` | Rows of several keys in a time range, paged. |
+| `last(keys, at, by)` | The last row at or before `at`, per key and optionally per asset. |
+| `bounds(keys)` | First time, last time and row count per key. |
+| `assets(key)` | Every asset a signal or portfolio has ever had a row for. |
+| `delete_after(key, time)` | Deletes one key's rows after a time, so a producer can restate them. |
+
+- `publish` on signal weights keeps today's rules of `ApplicationWeights.publish`: times are
+  timezone-aware, weights are finite numbers, assets are registered, an asset dropped since
+  the last observation is written at 0, and an observation at or before the last stored one
+  is refused. The rules run in Markets, so every producer gets them.
+- The existing read routes keep their paths and answers and read the core tables only.
+- `publish` and `delete_after` are registry writes: `registry_write` records who made them.
+
+### 4. Only a row's manager publishes to it
+
+`SignalMetadataTable` and `PortfolioTable` gain `managed_by`: the application that created
+the row, recorded from the acting identity of the create call. `publish`, `delete_after` and
+the row's delete are refused with 403 for any other caller. An Organization admin may
+reassign it.
+
+A row created before this ADR has no manager and accepts no publish until a person assigns
+one (decision 9).
+
+### 5. The engine writes and reads published series through those operations
+
+- `SignalWeights` and its subclasses, `PortfolioWeights` and `PortfoliosUpdater` write with
+  `publish` and read with `window`, `last` and `bounds`. `output_table=` on the signal nodes
+  and on `PortfoliosUpdater`, and `weights_output_table=`, are removed, with no alias.
+- A node's progress is the series itself (`bounds`, `last`), not an update record of a bound
+  table. Running the same window twice writes nothing the second time.
+- Private state keeps its tables: `rebalance_output_table=`, the calendar-events
+  `output_table=` and the event-ledger table stay, built by the factories of decision 7.
+- The same code runs inside the Markets deployment under the `runtime` backend, so Markets
+  is one more producer and has no path of its own.
+
+### 6. Recipes: what a producer reuses instead of writing
+
+ms-markets ships these as functions in `msm_portfolios.recipes` (proposed), built only on
+decisions 3 and 5. Each works under both backends.
+
+| Recipe | What it does | Routine it replaces in a producer |
+| --- | --- | --- |
+| `publish_signal_weights` | Creates the signal's metadata on its first publication, publishes the observations, answers the count, the assets and the first and last time. | Normalizing observations, the not-after-last guard, the metadata upsert, binding the signal to a table. |
+| `signal_history` | First and last observation of many signals in one call; the latest N observations as a time by asset matrix. | Hand-compiled SQL over its signal-weights table. |
+| `portfolio_history` | A portfolio's values newest first, with the total count. | Hand-compiled SQL over its values table. |
+| `weights_as_of` | Each portfolio's latest weights at or before a time, for several portfolios. | Hand-compiled SQL over its weights table. |
+| `portfolio_preflight` | Why a portfolio cannot run yet, for example a signal with no observation. | Its own read of the signal's bounds before each run. |
+| `run_portfolio` | Runs one portfolio's chain in order (prices, calendar events, rebalance, weights, values) from the signal's first observation, creates or updates the `Portfolio` row, publishes, and answers what was written and whether a first rebalance happened. | Building the node graph, ordering the runs, scoping the signal's progress, registering and reconciling afterwards. |
+| `end_signal` | Deletes a signal's weights and its metadata in one Markets call. | Deleting its observations, then unbinding and deleting the metadata. |
+| `delete_private_series` | Deletes a producer's private rows of given portfolios, calendars or accounts in the order their keys demand, before the registry delete. | Its own ordered deletes. |
+
+The producer supplies what is its own: the price source, the private state tables, the
+strategy and calendar configuration, and its eligibility rules (which assets or owners it
+accepts) before it calls a recipe.
+
+### 7. Private contract instances stay, and Markets never looks at them
+
+`configured_portfolio_rebalance_state_storage`, `configured_portfolio_calendar_events_storage`,
+`configured_portfolio_event_ledger_storage` and `configured_time_index_instance` stay: a
+producer builds its private state tables with them, in its own namespace, migrated by its own
+provider. `configured_signal_weights_storage`, `configured_portfolio_weights_storage` and
+`configured_portfolios_storage` are removed with the instances they built.
+
+A private table may reference a registry row with a physical foreign key and declares its
+delete action. The key points from the dependent to the core and is the only coupling
+between them. Markets does not discover, count or name such a table:
+
+- a registry delete deletes Markets' own rows and lets the database apply every key;
+- a `RESTRICT` key that refuses answers 409 with the database's message;
+- the application that owns the referencing rows deletes them first (`delete_private_series`).
+
+### 8. What is removed
+
+Removed everywhere, with no alias, flag or compatibility path:
+
+- `PortfolioDatasetAvailabilityTable` and `SignalMetadataTable.meta_table_uid`, by a
+  revision;
+- `PortfolioDatasets`, `msm_portfolios.services.portfolio_datasets`, and the routes
+  `registerPortfolioDatasets`, `reconcilePortfolioDatasets` and `getPortfolioDatasets`;
+- the `TimeIndexTableRef` path of `msm_portfolios.services.portfolio_reads`;
+- `provider_owned_table_uid`, `PROVIDER_TABLE_DELETE_GUIDANCE`,
+  `PortfolioDatasetOwnershipError`, `SignalDatasetOwnershipError` and `retained_datasets`;
+- the foreign-table checks of `msm_portfolios.services.portfolio_deletion`
+  (`ForeignPortfolioTable`, `_catalogued_instances`, `_count_foreign_rows`);
+- `apps/v1/services/includes.py`, the `include` parameter and the `includes` field of the
+  four by-uid lookups. A consumer reads a sidecar from the application that owns it;
+- `PortfolioSeriesMove` and `SignalSeriesMove`, which end by registering a catalog row.
+  `copy_time_index_rows` and `TableSeriesMove` stay: an operator copies rows between two
+  tables with the operator's own access, and Markets takes no part.
+
+### 9. Existing history and existing rows move on demand
+
+Nothing here runs by itself. A person runs each step when they choose:
+
+- `msm series publish` (proposed) reads a producer's instance with the operator's own access
+  and publishes its rows through decision 3, key by key, then compares `bounds` with the
+  source. It changes nothing in the source.
+- `msm registry assign-manager` (proposed) sets `managed_by` on rows created before this ADR.
+- The producer drops its instance tables in a later revision of its own, after the publish
+  is verified.
+
+### 10. The rule is documented and tested
+
+- `docs/concepts.md` states decision 1 as a rule of the library, and the ms-markets skills
+  under `.agents/skills/ms_markets/` teach publish and recipes instead of instances and
+  grants.
+- The pages that describe the catalog are rewritten with the implementation:
+  `docs/knowledge/msm_portfolios/portfolios/index.md`, `docs/knowledge/msm/client/index.md`,
+  `docs/fast_api/v1/portfolio.md`, `portfolio_signal_metadata.md`, `accounts.md`,
+  `assets.md`, `indexes.md`, `rows.md`, and the grants table of `docs/releasing.md`.
+- One test fails the build when code under `apps/v1` or a library service resolves a
+  MetaTables table by anything but one of ms-markets' own model classes.
+
+## What changes for a producer
+
+| Step | Before | After |
+| --- | --- | --- |
+| Tables it migrates | Instances of the three series, plus private state | Private state only |
+| Publishing weights | `ApplicationWeights.publish` on its instance, metadata upsert, `register_signal` | `publish_signal_weights` |
+| Running a portfolio | Node graph bound with `output_table=`, then `register` and `reconcile` | `run_portfolio` |
+| Reading its own history | SQL over its instances | `signal_history`, `portfolio_history`, `weights_as_of` |
+| Access it gives Markets | `data_viewer` on its instances, by a person, per Environment | None |
+| Deleting a portfolio | Its three series and its state, then the portfolio | Its private state, then the portfolio; Markets deletes the series |
+| Ending a signal | Its observations, the catalog binding, the metadata | `end_signal` |
+
+## Not Decided Here
+
+These read tables Markets does not own and break decision 1 until each is decided. The
+direction is the same: the rows are published, or Markets takes no part.
+
+- **Index values.** `configured_index_values_storage` builds a producer's table, and the
+  Index dataset routes, `reconcile_dataset_availability` and the Index delete impact find and
+  read it.
+- **Formula sources.** An Index formula pins source tables by uid
+  ([ADR 0037](0037-index-formula-and-custom-calculation-framework.md)); the preview routes
+  read whatever uid a caller sends.
+- **Pricing market-data sets.** A set binds curves and fixings to a storage table by uid
+  ([ADR 0035](0035-pricing-curve-identity-and-market-data-curve-bindings.md)); the pricing
+  routes read it and the curve delete counts its rows.
+- **Related tables.** `list_related_meta_tables` lists, and for an Index counts, tables of
+  every namespace Markets can see.
+
+Also open:
+
+- Whether rebalance state, calendar events and the event ledger get a publish operation.
+  They stay private until a Markets route needs them.
+- Orders and trades: the recorder of the execution engine ADR is their publish path.
+- What replaces the update pointers on `PortfolioTable` (`portfolio_table_update_uid`,
+  `portfolio_weights_table_update_uid`, `signal_weights_table_update_uid`). They name
+  MetaTables update records of a bound table, which a publishing node does not have.
+- Visibility of a published portfolio per Team. Today every reader of Markets sees it.
+
+## Rejected Alternatives
+
+### Markets reads a producer's table as the caller (issue #98)
+
+It needs a platform call that does not exist, cannot carry a workload, and gives each reader
+a grant on each producer. The core would still know its dependents' tables.
+
+### Readers read the producer's table themselves
+
+Markets would hold only a pointer. Every library above ms-markets would fan out across
+producers and need a grant from each, and no single place would serve a portfolio.
+
+### Each producer serves its series from its own API
+
+Every producer would deploy the same routes, upgrade in step to keep them identical, and
+run a second access policy beside MetaTables' grants.
+
+### Keep the instance and also publish
+
+The rows would be stored twice, and the producer's copy would be a second source of truth.
+
+### Give producers a write role on the core tables
+
+A role on a table covers every row of it, so one producer could change another's rows, and
+the grant is again a person's step in each Environment.
+
+## Consequences
+
+- No grant, namespace or command exists for the sake of Markets reading a producer. A
+  producer needs only what it already has: access to the Markets API.
+- One place serves every registered portfolio, whoever computed it. A library above
+  ms-markets reads it with one call and one grant.
+- A producer's run depends on the Markets API for its reads and writes of the three series.
+  A run that stops is resumed from the series, and a repeated publish writes nothing.
+- Published rows are visible to every reader of Markets.
+- MetaTables records the Markets workload as the writer of a published row. The producer is
+  in Markets' registry-write record and in `managed_by`.
+- Producers stop writing the routines of decision 6. A change to them ships once.
+- The engine nodes of the three series no longer extend an updater bound to a table. That is
+  the largest change of this ADR.
+- The work of ADR 0047 decision 5 is reversed: the catalog, the contract check, the
+  reconciliation and the catalog-aware deletes.
+
+## Not Verified
+
+- The cost of a run whose series reads and writes go through the API, and of publishing a
+  long history. No measurement was made.
+- That `bounds` and `last` can replace every use of `update_statistics` in the signal nodes,
+  including the per-asset progress `_signal_asset_start_date` reads.
+- How Markets names the managing application of a workload caller. MetaTables resolves a
+  workload's branch through the platform; Markets has no such code today.
+- That no consumer depends on `include=` or on the dataset catalog routes. Their callers
+  outside this repository were not searched.

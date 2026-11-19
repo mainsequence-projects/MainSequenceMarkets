@@ -9,6 +9,11 @@ table roles (`owner`, `editor`, `data_writer`, `data_viewer`, `metadata_viewer`)
 replace the Reader and Writer vocabulary used below; the grant boundaries this
 ADR draws are unchanged by that rename, and implementation uses the role names.
 
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) (2026-11-19)
+supersedes decision 5 and withdraws the grant of decision 4: producers publish their
+series to Markets, and Markets reads no table of another application. The text below is
+kept as the record of what was built.
+
 Migration path step 1 is implemented on `development` except per-service
 ownership and Team scoping policy, which is still open (see "Implementation
 notes" at the end). Steps 2 to 4 are not implemented.

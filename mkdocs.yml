@@ -141,6 +141,7 @@ nav:
       - Asset Calendar Links In Bulk And At Registration: ADR/0057-asset-calendar-links-in-bulk-and-at-registration.md
       - Trade At The Next Observed Price: ADR/0058-trade-at-the-next-observed-price.md
       - Portfolio Currency, FX And Drifting Weights: ADR/0059-portfolio-currency-fx-and-drifting-weights.md
+      - Producers Publish, Markets Reads Only Its Own Tables: ADR/0060-producers-publish-markets-reads-only-its-own-tables.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
