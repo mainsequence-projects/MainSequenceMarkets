@@ -6,7 +6,10 @@ Implementation status: implemented on development for 0.1.60. SQLite is tested i
 process, both on a source's own connection and on the local runtime's borrowed request
 transaction. The PostgreSQL path has not been run: its end-to-end test is written but
 skips without the disposable cluster of `scripts/test_postgresql.py`. MySQL and SQL
-Server refuse statement lists.
+Server refuse statement lists. The amendment on time-index statistics (2026-11-19) is
+implemented for 0.1.69 and tested the same way: SQLite in process, PostgreSQL not run.
+The amendment on SQLite parameters (2026-11-19) is implemented for 0.1.71 and tested in
+process and through the local API.
 
 Owner: MetaTables API, with the Python client.
 
@@ -119,6 +122,94 @@ error, so each needs its own design.
 or `DELETE` and the dialect is SQLite, MySQL or SQL Server. It inspects the SQLAlchemy
 object, so the error comes at compile time instead of a syntax error from the database.
 
+### Writes keep time-index statistics (amended 2026-11-19)
+
+Issue: [MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117).
+
+A time-index table's stored statistics (`index_stats`) tell its updaters where to
+resume: each coordinate's latest time. The chunk insert and `delete-after-date`
+replace them with a rebuild from the table's rows. Compiled SQL left them alone, so a
+list that deleted every row of a coordinate kept that coordinate's progress; when the
+coordinate was written again, its updater resumed after the deleted rows and never
+wrote the history before them.
+
+Now every compiled write, a statement list or a write through `execute-operation`,
+rebuilds the statistics of each time-index table it changed, with the function the
+chunk insert and the tail delete use. Inserts and updates are covered with deletes.
+
+**Which tables.** A request names no tables (ADR 0007), so the API asks the engine,
+before the commit, what the transaction wrote; it never reads the SQL:
+
+- **PostgreSQL:** the relations the transaction holds in `ROW EXCLUSIVE` mode, from
+  `pg_locks`. `INSERT`, `UPDATE`, `DELETE` and `MERGE` take that lock on their target,
+  a hypertable's statement on the hypertable itself, and a foreign key's action on
+  the table it changes. One query per write.
+- **SQLite:** the engine authorizer, which SQLite asks about every table a statement
+  writes as it compiles it, foreign-key actions included.
+
+Both report the tables a write could change, so a table can be rebuilt when no row
+of it changed. The API keeps those that are active time-index tables of the DataSource
+and skips a table whose stored statistics are empty: nothing stored can be stale, and
+its first chunk insert builds them. A table written only through compiled SQL usually
+keeps none, so its writes pay no rebuild. Reads ask nothing.
+
+**When.** On the local runtime the tables and the catalog share the request's SQLite
+transaction: the rebuild reads the uncommitted rows and commits with them.
+
+On PostgreSQL the rebuild runs after the physical commit, as the caller's database
+identity in a read-only transaction, while it holds the table's catalog row lock; each
+table commits on its own. Inside the physical transaction a rebuild would need the
+`SHARE ROW EXCLUSIVE` lock the chunk insert takes before it writes. A list can only
+take it after its statements hold `ROW EXCLUSIVE`, so two lists writing one table
+would deadlock; without it, the rebuild can miss a concurrent list's commit and then
+overwrite newer statistics. Every statistics writer holds the catalog row lock while
+it rebuilds and stores, so a rebuild after the commit sees every commit before it.
+Until it finishes, the stored statistics still describe the rows before the write.
+
+**A rebuild never fails the write.** A write's response carries `index_statistics`:
+each rebuilt table's UID with `rebuilt`, or with why its statistics stayed as they were:
+
+- `too_many_index_coordinates`: more than 10,000 coordinates, the limit of every
+  rebuild. The chunk insert refuses its whole write instead. A compiled write does
+  not, because tables written only through compiled SQL grow past the limit, one
+  coordinate per account and asset or per position set, and refusing would break
+  writes that work today.
+- `not_readable`: the caller cannot read the table, which only a foreign key's action
+  lets it write.
+- `reconciliation_required`: the rebuild or the catalog write failed after the write
+  committed. The chunk insert answers 503 here, because its receipt makes a retry
+  safe; a list has no receipt, and an error would invite running its statements twice.
+
+A table left unchanged is corrected by its next rebuild: a chunk insert, a
+`delete-after-date`, or a later compiled write.
+
+### SQLite statements bind by position (amended 2026-11-19)
+
+Issue: [MetaTables#121](https://github.com/mainsequence-projects/MetaTables/issues/121).
+
+A statement list near SQLite's 32,766-value limit ran past its deadline before it read a
+row. SQLite numbers each named parameter by searching the names before it, so preparing a
+statement takes time quadratic in its values, and CPython's `sqlite3` searches again to
+bind a dict. A 26,212-value statement took 6.4 s of CPU to prepare; with `?` it took
+milliseconds.
+
+SQLite uses the `qmark` paramstyle, as SQL Server does. The client compiles plain `?`
+placeholders and sends the values as a list in order, repeating a value wherever the
+statement uses its parameter again, and the API binds them by position. The runtime
+context reports `qmark` for SQLite, and the API refuses a SQLite statement in any other
+paramstyle with `compiled_sql_dialect_mismatch`.
+
+- Numbered placeholders (`?NNN`, `:1`) are not enough: on CPython 3.12 and later,
+  binding by position still looks up each parameter's name, and a numbered parameter has
+  one.
+- Rewriting named placeholders to `?` in the API was rejected. The API submits caller
+  SQL unchanged (ADR 0007), and a rewrite needs a scanner that skips string literals,
+  quoted identifiers and comments.
+- A client and an API of different versions disagree on SQLite's paramstyle. A SQLite
+  runtime is always local and normally runs from the client's own installation, so they
+  differ only when a local API runs from another one. The client then says to install
+  the API's version; an older client gets `compiled_sql_dialect_mismatch`.
+
 ## Alternatives
 
 - **Several statements in one SQL string.** The API would have to split the text,
@@ -127,6 +218,12 @@ object, so the error comes at compile time instead of a syntax error from the da
 - **A route for each client's write.** Ties the API to one client's tables.
 - **Guards as SQL that raises.** SQLite raises only inside triggers, and the caller
   could not tell the failure from a database error.
+- **The client names the tables a list writes.** The compiler could read them from
+  the SQLAlchemy objects, but not from text SQL or a foreign key's action, and a
+  client that names none leaves the statistics stale again.
+- **A statistics refresh the client calls after the commit.** That is what clients
+  did with `delete-after-date`: one more request per table, and a failure between
+  the two requests leaves the statistics stale.
 
 ## Consequences
 
@@ -136,3 +233,11 @@ object, so the error comes at compile time instead of a syntax error from the da
   `compiled_sql_transaction_ended`.
 - The API holds one write transaction for up to the whole time limit, as a long single
   statement already can.
+- A compiled write that changes a time-index table with stored statistics pays one
+  whole-table `GROUP BY` per such table, as each chunk insert does; on PostgreSQL it
+  runs after the commit, within the request's deadline.
+- Clients no longer refresh statistics after a compiled write. One that must not go
+  on with stale statistics checks `index_statistics` for an outcome other than
+  `rebuilt`.
+- MySQL and SQL Server cannot report what a write changed: a compiled write there
+  leaves statistics as before.

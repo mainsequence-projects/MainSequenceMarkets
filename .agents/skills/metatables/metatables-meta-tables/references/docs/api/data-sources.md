@@ -215,7 +215,8 @@ grants still fails. See
 [ADR 0007](../adr/api/0007-database-enforced-table-access.md#sqlite) and
 [ADR 0016](../adr/api/0016-impact-preflight.md).
 
-MySQL uses `pyformat` parameters and SQL Server uses ordered `qmark` parameters.
+MySQL uses `pyformat` parameters and SQL Server uses ordered `qmark` parameters, as
+SQLite does since 0.1.71 ([ADR 0026](../adr/api/0026-atomic-statement-lists.md#sqlite-statements-bind-by-position-amended-2026-11-19)).
 Both share the normal compiled SQL endpoint and limits. SQL Server upserts use a
 parameterized `MERGE` with `HOLDLOCK`; MySQL uses `ON DUPLICATE KEY UPDATE`.
 Timescale extension operations check the installed extension in the selected

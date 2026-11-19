@@ -143,15 +143,24 @@ and this project follows versioned releases.
   `None` as `NULL`. The account-group, asset, portfolio-metadata, signal-metadata and
   rebalance-strategy-metadata helpers leave a field passed as `None` unchanged; a call that
   leaves every field unchanged raises `ValueError`.
-- **Requires MetaTables 0.1.69 or later, which rebuilds a table's update statistics after
-  a compiled-SQL write.** `mainsequence-metatable>=0.1.69,<0.2` (was `>=0.1.66`). The
-  portfolio and account deletes are statement lists of plain deletes. MetaTables 0.1.69
-  rebuilds the stored update statistics of each time-index table such a write changes, so
-  a portfolio, or an account's orders, trades and order events, written again under a
-  deleted one's identifier do not resume from its last time index
-  ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). The
-  lock and `requirements.txt`, which hosted images install, select 0.1.69; no other locked
-  package changes.
+- **Requires MetaTables 0.1.71 or later.** `mainsequence-metatable>=0.1.71,<0.2` (was
+  `>=0.1.66`), for two of its fixes:
+  - **0.1.69 rebuilds a table's update statistics after a compiled-SQL write.** The
+    portfolio and account deletes are statement lists of plain deletes. MetaTables rebuilds
+    the stored update statistics of each time-index table such a write changes, so a
+    portfolio, or an account's orders, trades and order events, written again under a
+    deleted one's identifier do not resume from its last time index
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
+  - **0.1.71 binds SQLite statements by position.** SQLite numbers each named parameter by
+    searching the names before it, so preparing a statement took time quadratic in its
+    values. On SQLite, `bulk_upsert_model` sends 7,000 `Asset` rows in two batches, and
+    the first batch's statements bind up to 26,212 values. Its three-statement transaction
+    needed 15.6 s of CPU and ran past MetaTables' 15 s deadline; with 0.1.71 it takes
+    0.08 s ([issue 97](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/97),
+    [MetaTables#121](https://github.com/mainsequence-projects/MetaTables/issues/121)).
+
+  The lock and `requirements.txt`, which hosted images install, select 0.1.71; no other
+  locked package changes.
 
 ### Added
 

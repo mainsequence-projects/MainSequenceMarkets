@@ -55,6 +55,7 @@ These methods and paths are mounted by the current application. See the [OpenAPI
 | GET | `/meta-tables/{uid}/access/me/` | Table Access Me | 200 |
 | GET | `/namespaces/` | List Namespaces | 200 |
 | POST | `/namespaces/` | Create Namespace | 201 |
+| POST | `/namespaces/branch-access/` | Declare Branch Access Route | 200 |
 | GET | `/namespaces/{namespace_uid}/` | Retrieve Namespace | 200 |
 | PATCH | `/namespaces/{namespace_uid}/` | Patch Namespace | 200 |
 | GET | `/namespaces/{namespace_uid}/access-map/` | Namespace Access Map | 200 |

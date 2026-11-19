@@ -89,7 +89,7 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
     runtime = RuntimeContext(
         git_source=None,
         dialect="sqlite",
-        paramstyle="named",
+        paramstyle="qmark",
         data_source={"uid": str(source.uid)},
         default_schema="main",
     )

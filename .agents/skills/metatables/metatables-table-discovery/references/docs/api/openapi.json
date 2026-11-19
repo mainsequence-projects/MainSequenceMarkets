@@ -155,6 +155,22 @@
         "title": "BatchDetailsPatch",
         "type": "object"
       },
+      "BranchAccessDeclaration": {
+        "additionalProperties": false,
+        "description": "The roles of the caller's own branch, by namespace name (ADR 0029).",
+        "properties": {
+          "roles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "title": "Roles",
+            "type": "object"
+          }
+        },
+        "title": "BranchAccessDeclaration",
+        "type": "object"
+      },
       "CascadeRequest": {
         "properties": {
           "confirm_cascade_delete": {
@@ -2392,7 +2408,8 @@
           "principal_kind": {
             "enum": [
               "user",
-              "team"
+              "team",
+              "branch"
             ],
             "title": "Principal Kind",
             "type": "string"
@@ -3174,7 +3191,8 @@
           "principal_kind": {
             "enum": [
               "user",
-              "team"
+              "team",
+              "branch"
             ],
             "title": "Principal Kind",
             "type": "string"
@@ -7581,6 +7599,46 @@
           }
         },
         "summary": "Create Namespace",
+        "tags": [
+          "Namespaces"
+        ]
+      }
+    },
+    "/namespaces/branch-access/": {
+      "post": {
+        "description": "A migration declares the roles of every workload on its own branch (ADR 0029).\n\nThe request never names a branch: the API uses the caller's. Each role is at most the\ncaller's own role on the namespace, never ``owner``; the caller needs ``tables.create``.\nThe declaration replaces the branch's previous one; ``explicit`` bindings are kept.",
+        "operationId": "declare_branch_access_route_namespaces_branch_access__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchAccessDeclaration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Branch Access Route",
         "tags": [
           "Namespaces"
         ]

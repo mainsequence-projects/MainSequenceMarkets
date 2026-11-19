@@ -59,24 +59,61 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
    exist yet is created by that registration, and the Job gets `editor` on it.
    Nothing is created by hand and no Organization admin is needed: do not tell the
    user to create the namespace before the push.
-4. **Grant the other workloads, and an owner.** Follow "Give the Job access" in
-   `docs/client/deploy-application-migrations.md`, in each Environment. A person who
-   manages the Job in the platform manages the namespace's access: they grant
-   `data_writer` to resources that only read and write rows, in the namespace's Access
-   panel (find a workload by its Job or release name) or with `grant_role` and its
-   `workload_user_uid`. Until then those resources' requests are refused; they succeed
-   on the next request after the grant, with no redeployment, so do not redeploy or
-   change code for that. They also grant `owner` to themselves or to a Team they belong
-   to, so the namespace keeps an owner when the Job is recreated: their authority
-   follows the workload User that created the namespace, and a recreated Job runs as a
-   new one. Managing the Job gives no access to the namespace's tables until they grant
-   themselves a role. A Team holding the roles with the workloads as members is
-   optional; it saves granting again when a Job or release is recreated.
+4. **Give the other workloads their roles through the branch.** Declare
+   `branch_access` on the provider, one role per namespace the application's
+   resources use (ADR 0029). In a scaffolded provider it is an argument of the
+   builder call (client 0.1.70 and later; 0.1.69 accepts it only on
+   `AlembicMetaTableMigration`):
 
-   Step 4 is the person's action, made in MetaTables, not in the repository. Tell the
-   user the step; with their explicit go-ahead you may run `grant_role` from their
-   session against the target Environment. Never put grants in the migration Job:
-   workloads are refused. If the namespace name is already taken, the first run stops
+   ```python
+   # ledger/migrations/access.py: one constant for every provider of the repository
+   BRANCH_ACCESS = {"orders": "editor"}
+
+   # ledger/migrations/__init__.py
+   migration = build_metatable_migration_provider(
+       ...,
+       branch_access=BRANCH_ACCESS,
+   )
+   ```
+
+   A new provider gets it from `metatables migrations scaffold --branch-access
+   orders=editor`. Never set `migration.branch_access` after construction: that skips
+   the checks that refuse `owner` and unknown roles before anything is sent.
+
+   After each finalization the Job declares those roles for every workload of its own
+   code repository branch: the FastAPI, Agents and other Jobs deployed from the same
+   workflow file. They have the role on their first request in every Environment, and
+   a renamed or recreated Job or release keeps it. Nobody grants anything. Each role is
+   at most the Job's own (`editor` on a namespace it created) and never `owner`. The
+   declaration replaces the previous one, so a namespace removed from `branch_access`
+   loses the branch's role at the next migration. With several providers in one
+   repository, give each the same `branch_access` from one constant: a provider whose
+   mapping differs from one an earlier provider sent in the same run fails with
+   `BranchAccessConflict` before sending, because it would remove the other's
+   namespaces. A refused namespace fails the Job with `BranchAccessRefused` after
+   finalization; its message says who to ask. A local run by a developer declares
+   nothing and continues.
+
+   Every workload of a branch gets the same role. When one resource of the branch must
+   not hold another's role, leave that namespace out of `branch_access` and use hand
+   grants instead.
+
+5. **Grant an owner, and anyone outside the branch.** This is a person's action in
+   MetaTables, in each Environment; follow "Give the Job access" in
+   `docs/client/deploy-application-migrations.md`. A person who manages the Job in the
+   platform manages the namespace's access: they grant `owner` to themselves or to a
+   Team they belong to, so the namespace keeps an owner when the Job is recreated:
+   their authority follows the workload User that created the namespace, and a
+   recreated Job runs as a new one. Managing the Job gives no access to the
+   namespace's tables until they grant themselves a role. People, Teams and another
+   repository's workloads get roles only this way: an owner grants another
+   repository's branch with `grant_role(<branch_uid>, "data_viewer",
+   principal_kind="branch")`, once per Environment, and its workloads keep the role
+   through renames. A grant takes effect on the next request, with no redeployment.
+
+   Tell the user step 5; with their explicit go-ahead you may run `grant_role` from
+   their session against the target Environment. Never put `grant_role` calls in the
+   migration Job: workloads are refused by the access routes. If the namespace name is already taken, the first run stops
    with `namespace_access_required`; an owner grants the Job `editor`, or the
    application uses another namespace. A namespace created before ADR 0024 has no
    owner until an Organization admin grants one. Recommend one namespace per
@@ -105,7 +142,8 @@ Rules:
   only membership. Do not run the Job as an Organization admin to get around a
   refusal.
 - The Job needs `editor` on every namespace the provider's tables declare; resources
-  that only read and write rows need `data_writer`.
+  that only read and write rows need `data_writer`. `branch_access` gives them that
+  role through the branch.
 
 ## Namespaces of a table
 
@@ -183,7 +221,9 @@ table in it; a table's role for a caller is the strongest across its namespaces.
 
    Always pass `--module` and `--alembic-version-table-name`. Without them the
    scaffold creates a top-level `migrations` module and the shared
-   `public.alembic_version` table.
+   `public.alembic_version` table. Pass `--branch-access NAMESPACE=ROLE` for each
+   namespace the application's workloads use (step 4 of the recommended workflow);
+   without it the provider carries a comment showing where `branch_access` goes.
 
    `--namespace` names the provider: its migration namespace, its revisions folder
    `versions/<namespace>/` and the catalog namespace of its Alembic version table.
@@ -338,6 +378,19 @@ Read `docs/operations/recovery-and-observability.md`.
   namespaces and the other tables are finalized. An owner of that namespace grants the
   Job `editor`, then the Job is re-run. With `last_namespace`, the code no longer
   declares the only namespace the table is in: keep one on the model.
+- If a Job or FastAPI of the application suddenly sees no tables after a deploy, and
+  the application does not declare `branch_access`, a Job or release key was probably
+  renamed in the workflow file: the platform recreated it with a new workload User
+  that holds no role. A Job that reads "no table" as "nothing to do" then reports
+  success and does nothing. Check with the namespace's explain,
+  `GET /namespaces/<uid>/access/explain/?action=tables.get_data&user_uid=<workload_user_uid>`:
+  no source applies. Fix: declare `branch_access` (step 4) and run the migration; a
+  person grants the new workload User only as a stopgap.
+- If the Job fails with `BranchAccessRefused`, finalization succeeded and only the
+  declaration was refused. `namespace_access_required`: the Job lacks `tables.create`
+  on that namespace; an owner grants the Job `editor` once, and the branch binding
+  then covers its replacements. `role_above_caller`: declare a role at most the Job's
+  own. `namespace_not_found`: no table registered into that name yet; fix the name.
 - If reservation fails otherwise, compare provider scope and physical identities
   before changing code. Do not create a second catalog row for the same table.
 - If Alembic succeeds but finalization fails, physical DDL may already be

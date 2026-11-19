@@ -59,9 +59,11 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # `IN` lists and as text, which the snapshot writes need on a SQLite DataSource, and
     # 0.1.64 waits out a MetaTables API rollout during discovery (MetaTables#108), which the
     # migration Job needs when it overlaps one, 0.1.66 is the first client of an API where
-    # a table can be in several namespaces; an older client is refused by that API, and 0.1.69
+    # a table can be in several namespaces; an older client is refused by that API, 0.1.69
     # rebuilds a time-index table's stored statistics after a compiled-SQL write changes it
-    # (MetaTables#117), which the account and portfolio deletes rely on.
+    # (MetaTables#117), which the account and portfolio deletes rely on, and 0.1.71 binds
+    # SQLite compiled SQL by position (MetaTables#121), so preparing a bulk upsert's statements
+    # no longer takes time quadratic in their values.
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -70,7 +72,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.63") not in requirement.specifier
     assert Version("0.1.65") not in requirement.specifier
     assert Version("0.1.68") not in requirement.specifier
-    assert Version("0.1.69") in requirement.specifier
+    assert Version("0.1.70") not in requirement.specifier
+    assert Version("0.1.71") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

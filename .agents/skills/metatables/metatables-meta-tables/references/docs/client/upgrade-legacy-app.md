@@ -118,7 +118,7 @@ operation = compile_repository_statement(
     dialect="sqlite",
 )
 assert operation.data_source_uid == context.data_source_uid
-assert operation.statement.parameters == {"name_1": "Savings"}
+assert operation.statement.parameters == ["Savings"]  # SQLite binds by position
 assert operation.limits.max_rows == 25
 assert operation.limits.statement_timeout_ms == 2000
 ```

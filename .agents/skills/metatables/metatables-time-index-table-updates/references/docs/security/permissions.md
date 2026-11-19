@@ -24,9 +24,11 @@ Organization admin status comes from the platform through the SDK.
 | Every action on every namespace and table, data included | No | Yes |
 
 Workload Users are not `member`s: they never create tables outside a namespace and
-never grant or revoke roles. A workload creates a namespace only by registering a table
-into a free name, and then holds `editor` on it. They use the roles granted to them or
-to their Teams.
+never grant or revoke roles through the access routes. A workload creates a namespace
+only by registering a table into a free name, and then holds `editor` on it. They use
+the roles granted to them, their Teams and their code repository branch. A migration
+Job changes only its own branch's `declared` bindings, through finalization
+([ADR 0029](../adr/api/0029-roles-for-a-branchs-workloads.md)).
 
 In Local mode the operator, the SDK identity running the local API, is the admin of
 that runtime for every row above, whatever their platform admin flag: the SQLite file,
@@ -69,9 +71,11 @@ table-level bindings.
 | `tables.get_access`: see who has access and its history | No | No | No | Yes | Yes |
 | `tables.set_access`: grant and revoke roles | No | No | No | No | Yes |
 
-Principals: every role can be granted to people, workload Users and Teams, except
-`owner`, which goes to people and Teams only. A principal holds at most one role on an
-object; its access is the strongest of its own, its Teams' and its namespaces' roles.
+Principals: every role can be granted to people, workload Users, Teams and code
+repository branches, except `owner`, which goes to people and Teams only. A branch's role
+applies to every workload declared on it. A principal holds at most one role on an
+object; its access is the strongest of its own, its Teams', its branch's and its
+namespaces' roles.
 Without any binding there is no access.
 
 ## Operations involving several resources
