@@ -14,6 +14,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioDatasetReconcileRequest,
     PortfolioDatasetRegistrationRequest,
     PortfolioDatasetState,
+    PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     PortfolioWeightsDeleteResponse,
@@ -21,7 +22,6 @@ from apps.v1.schemas.portfolios import (
     PortfolioWithIncludes,
 )
 from msm.api.http import (
-    BulkDeletePreflightResponse,
     TabularFrameResponse,
     build_tabular_field,
     build_tabular_frame,
@@ -503,7 +503,7 @@ def _json_uid(value: Any) -> str | None:
 
 @registry_write("portfolio", "delete")
 def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
-    runtime = _get_runtime()
+    runtime = _get_delete_runtime()
     deleted = _delete_portfolio_record(runtime.context, uid=uid)
     if not deleted:
         return None
@@ -525,44 +525,17 @@ def delete_portfolio_weights(
 
 @registry_write("portfolio", "bulk-delete")
 def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
-    runtime = _get_runtime()
+    runtime = _get_delete_runtime()
     response = _bulk_delete_portfolio_records(runtime.context, uids=uids)
     return PortfolioBulkDeleteResponse.model_validate(response)
 
 
-def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightResponse:
-    runtime = _get_runtime()
-    target_uids = list(dict.fromkeys(uids))
-    matched_count = 0
-    blockers: list[str] = []
-    warnings: list[str] = []
-    for uid in target_uids:
-        exists, resource_blockers, resource_warnings = _portfolio_delete_preflight_item(
-            runtime.context,
-            uid=uid,
-        )
-        if not exists:
-            blockers.append(f"Portfolio {uid} was not found.")
-            continue
-        matched_count += 1
-        blockers.extend(f"Portfolio {uid}: {blocker}" for blocker in resource_blockers)
-        warnings.extend(f"Portfolio {uid}: {warning}" for warning in resource_warnings)
-    impact = _portfolio_delete_impact()
-    blockers.extend(impact.blockers)
+def preflight_bulk_delete_portfolios(*, uids: list[str]) -> PortfolioDeletePreflightResponse:
+    """Run the delete's checks for the selection without deleting (issue 93)."""
 
-    allowed = bool(target_uids) and not blockers
-    detail = (
-        f"{matched_count} portfolio{' is' if matched_count == 1 else 's are'} ready for deletion."
-        if allowed
-        else "The portfolio selection cannot be deleted as submitted."
-    )
-    return BulkDeletePreflightResponse(
-        allowed=allowed,
-        detail=detail,
-        matched_count=matched_count,
-        blockers=blockers,
-        warnings=[*warnings, *impact.warnings],
-        impact=impact.impact,
+    runtime = _get_delete_runtime()
+    return PortfolioDeletePreflightResponse.model_validate(
+        _preflight_bulk_delete_portfolio_records(runtime.context, uids=uids)
     )
 
 
@@ -585,6 +558,29 @@ def _get_runtime():
             "VirtualFund",
         ],
         row_model_name="GET /api/v1/portfolio/",
+    )
+
+
+def _get_delete_runtime():
+    """The runtime with every table the portfolio delete reads or deletes from."""
+
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
+
+    return resolve_apps_v1_portfolio_runtime(
+        models=[
+            "Portfolio",
+            "PortfolioDatasetAvailability",
+            "PortfolioWeightsStorage",
+            "PortfoliosStorage",
+            "PortfolioRebalanceStateStorage",
+            "PortfolioAnalyticsStorage",
+            "PortfolioEventLedgerStorage",
+            "PortfolioStateStorage",
+            "PortfolioCashFlowsStorage",
+            "TargetPositionsStorage",
+            "VirtualFund",
+        ],
+        row_model_name="DELETE /api/v1/portfolio/{uid}/",
     )
 
 
@@ -642,38 +638,10 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     return bulk_delete_portfolio_records(context, **kwargs)
 
 
-def _portfolio_delete_impact():
-    from msm.models import PortfolioTable
-    from msm.services import delete_rows_impact
+def _preflight_bulk_delete_portfolio_records(context, **kwargs):
+    from msm_portfolios.services import preflight_bulk_delete_portfolio_records
 
-    return delete_rows_impact(PortfolioTable)
-
-
-def _portfolio_delete_preflight_item(
-    context,
-    *,
-    uid: str,
-) -> tuple[bool, list[str], list[str]]:
-    from msm_portfolios.services import public_api
-
-    existing = public_api._get_portfolio_row(context, uid=uid)
-    if existing is None:
-        return False, [], []
-    portfolio = public_api._build_portfolio_row(existing)
-    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
-    portfolio_identifier = str(portfolio.get("unique_identifier") or "")
-    blockers = public_api._portfolio_delete_blockers(context, portfolio_uid=portfolio_uid)
-    retained = public_api._retained_portfolio_datasets(
-        public_api._portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
-        portfolio_uid=portfolio_uid,
-        portfolio_identifier=portfolio_identifier,
-    )
-    warnings = [
-        f"its {item['dataset']} rows in table {item['meta_table_uid']} stay in place; "
-        "the application that owns that table deletes them."
-        for item in retained
-    ]
-    return True, blockers, warnings
+    return preflight_bulk_delete_portfolio_records(context, **kwargs)
 
 
 def _validate_portfolio_row(row: object) -> Portfolio:

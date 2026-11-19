@@ -34,17 +34,20 @@ Both reference the portfolio with `RESTRICT`:
 
 The portfolio's own datasets (weights, values, rebalance state, analytics and
 the engine's ledger, state and cash flows) reference `Portfolio.unique_identifier`
-with `RESTRICT`. The delete routes remove its weights and values first.
+with `RESTRICT`. The delete routes remove all seven with the portfolio row, in one
+transaction (amended 2026-11-19, issue 93; see the implementation notes).
 
 `Portfolio` has no lifecycle state. A portfolio that should no longer be used
 can be left as it is, in which case it stays selectable as an account target and
 its updaters keep computing it, or it can be deleted. Deleting it is blocked
 while any account's history names it, which is the protection the `RESTRICT`
-references exist for. Three routes delete portfolios:
+references exist for. Four routes delete portfolios:
 
-- `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
-  delete the portfolio's weights and values and refuse while target rows or
-  virtual funds reference it.
+- `DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and
+  the remote `POST /api/v1/rows/portfolio/delete/` delete the portfolio with its
+  rows in its seven datasets, in one transaction, and refuse while target rows or
+  virtual funds reference it, or while another application's table holds rows
+  that reference it (amended 2026-11-19, issue 93).
 - `POST /api/v1/portfolio/bulk-cascade-delete/` deletes every account's target
   rows and virtual funds for the portfolio, current targets included, without
   checking them, and then deletes the portfolio.
@@ -288,3 +291,38 @@ The Markets API allocation route is removed
 ADR 0029's 3.5.0 amendment). Decision 4's rule for virtual funds is now checked
 only in `apply_account_virtual_fund_allocation_plan`; the 3.2.0 note's check "in
 the Markets API route" went with the route.
+
+### 2026-11-19: issue 93
+
+The delete routes removed the weights and values with two
+`TimeIndexMetaTable.delete_after_date` calls, each its own MetaTables request,
+and then deleted the portfolio row. The checks before them counted only virtual
+funds and target rows. A `RESTRICT` key from any of the five other datasets, or
+from another application's instance, refused the row afterwards with a `409`,
+and the portfolio survived without its weights and values
+([issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)).
+
+- **One transaction.** `msm_portfolios.repositories.portfolio_deletion` deletes
+  the portfolio's rows in all seven datasets and then the row, as one MetaTables
+  statement list (MetaTables ADR 0026), as the account delete does (ADR 0050).
+  The last statement deletes the row only while it still has the
+  `unique_identifier` read before and no virtual fund or target row names it,
+  and must delete exactly one row. A portfolio that vanished in between answers
+  `404`; one renamed, or named by account history in between, answers `409`.
+  Nothing is deleted either way. The `delete_after_date` calls are gone.
+- **Checks first.** One read counts, per portfolio, its rows in each dataset and
+  the virtual funds and target rows that name it. A table outside those whose
+  `RESTRICT` key references the portfolio, listed by MetaTables' delete impact or
+  named by the catalog as an instance another application owns, gets one
+  read-only count. It refuses the delete while it holds rows of the portfolio,
+  or when it cannot be checked, as for curves
+  ([#59](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/59)).
+  Markets sends it no statement (ADR 0050 decision 2). Such rows used to stay in
+  place and be listed in `retained_datasets`; that field is gone.
+- **Same checks in the preflight.** `POST /api/v1/portfolio/bulk-delete/preflight/`
+  runs them and reports each portfolio's `row_counts` and blockers. The bulk
+  delete deletes each portfolio in its own transaction, as the account bulk
+  delete does.
+- **Update statistics.** `delete_after_date` also rebuilt the update statistics
+  MetaTables stores for each table. The statement list does not, as the account
+  delete does not, so the deleted portfolio's progress stays listed there.

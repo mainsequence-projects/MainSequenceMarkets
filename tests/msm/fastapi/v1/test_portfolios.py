@@ -599,28 +599,36 @@ def test_get_portfolio_values_frame_returns_404_when_missing(monkeypatch) -> Non
     assert "missing-portfolio" in response.json()["detail"]
 
 
+def _deleted_portfolio(uid: str) -> dict[str, object]:
+    return {
+        "detail": "Portfolio 'example-sleeve' deleted with its datasets.",
+        "uid": uid,
+        "unique_identifier": "example-sleeve",
+        "deleted_count": 1,
+        "deleted_rows": {
+            "weights": 3,
+            "values": 2,
+            "rebalance_state": 1,
+            "analytics": 0,
+            "event_ledger": 4,
+            "state": 2,
+            "cash_flows": 1,
+        },
+    }
+
+
 def test_delete_portfolio_returns_success(monkeypatch) -> None:
+    uid = str(uuid.uuid4())
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.delete_portfolio",
-        lambda uid: {
-            "detail": "Portfolio deleted.",
-            "deleted_count": 1,
-            "deleted_weights_count": 3,
-            "deleted_values_count": 2,
-        },
+        lambda uid: _deleted_portfolio(uid),
     )
 
     client = TestClient(app)
-    response = client.delete(f"/api/v1/portfolio/{uuid.uuid4()}/")
+    response = client.delete(f"/api/v1/portfolio/{uid}/")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "detail": "Portfolio deleted.",
-        "deleted_count": 1,
-        "deleted_weights_count": 3,
-        "deleted_values_count": 2,
-        "retained_datasets": [],
-    }
+    assert response.json() == _deleted_portfolio(uid)
 
 
 def test_delete_portfolio_returns_404_when_missing(monkeypatch) -> None:
@@ -707,6 +715,10 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
     deleted_uid = uuid.uuid4()
     failed_uid = uuid.uuid4()
     captured: dict[str, object] = {}
+    refusal = (
+        "Portfolio 'protected-sleeve' cannot be deleted; nothing was deleted. 1 virtual fund "
+        "target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
+    )
 
     def fake_bulk_delete_portfolios(**kwargs):
         from apps.v1.schemas.portfolios import PortfolioBulkDeleteResponse
@@ -714,16 +726,10 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
         captured.update(kwargs)
         return PortfolioBulkDeleteResponse.model_validate(
             {
-                "detail": "Deleted 1 portfolio; 1 portfolio could not be deleted.",
+                "detail": "Deleted 1 portfolio with its datasets. 1 could not be deleted.",
                 "deleted_count": 1,
-                "deleted_weights_count": 3,
-                "deleted_values_count": 2,
-                "failed": [
-                    {
-                        "uid": str(failed_uid),
-                        "reason": "Portfolio is referenced by target positions.",
-                    }
-                ],
+                "deleted": [_deleted_portfolio(str(deleted_uid))],
+                "failed": [{"uid": str(failed_uid), "detail": refusal}],
             }
         )
 
@@ -756,25 +762,30 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
     assert response.status_code == 409
     assert response.json() == {
         "detail": (
-            "Deleted 1 portfolio; 1 portfolio could not be deleted. "
-            f"Failed: {failed_uid}: Portfolio is referenced by target positions."
+            "Deleted 1 portfolio with its datasets. 1 could not be deleted. "
+            f"Failed: {failed_uid}: {refusal}"
         )
     }
     assert captured == {"uids": [str(deleted_uid), str(failed_uid)]}
 
 
 def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) -> None:
-    deleted_uid = uuid.uuid4()
+    deleted_uid = str(uuid.uuid4())
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_preflight(**kwargs):
+        calls.append(("preflight", kwargs["uids"]))
+        return {"allowed": True, "matched_count": 1, "blockers": [], "warnings": []}
 
     def fake_bulk_delete_portfolios(**kwargs):
         from apps.v1.schemas.portfolios import PortfolioBulkDeleteResponse
 
+        calls.append(("delete", kwargs["uids"]))
         return PortfolioBulkDeleteResponse.model_validate(
             {
-                "detail": "Deleted 1 portfolio.",
+                "detail": "Deleted 1 portfolio with its datasets.",
                 "deleted_count": 1,
-                "deleted_weights_count": 3,
-                "deleted_values_count": 2,
+                "deleted": [_deleted_portfolio(deleted_uid)],
                 "failed": [],
             }
         )
@@ -785,32 +796,53 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
     )
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
-        lambda **kwargs: {
-            "allowed": True,
-            "matched_count": len(kwargs["uids"]),
-            "blockers": [],
-            "warnings": [],
-        },
+        fake_preflight,
     )
 
     client = TestClient(app)
     response = client.post(
         "/api/v1/portfolio/bulk-delete/",
         json={
-            "selection": {"mode": "explicit", "uids": [str(deleted_uid)]},
+            "selection": {"mode": "explicit", "uids": [deleted_uid]},
             "options": {},
         },
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "detail": "Deleted 1 portfolio.",
+        "detail": "Deleted 1 portfolio with its datasets.",
         "deleted_count": 1,
-        "deleted_weights_count": 3,
-        "deleted_values_count": 2,
-        "retained_datasets": [],
+        "deleted": [_deleted_portfolio(deleted_uid)],
         "failed": [],
     }
+    assert calls == [("preflight", [deleted_uid]), ("delete", [deleted_uid])]
+
+
+def test_bulk_delete_portfolios_refuses_a_blocked_selection(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
+        lambda **kwargs: {
+            "allowed": False,
+            "matched_count": 1,
+            "blockers": [
+                "Portfolio 'example-sleeve': 1 virtual fund target it "
+                "(VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
+            ],
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
+        "apps.v1.routers.portfolios.bulk_delete_portfolios",
+        lambda **kwargs: pytest.fail("a blocked selection must not be deleted"),
+    )
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio/bulk-delete/",
+        json={"selection": {"mode": "explicit", "uids": [str(uuid.uuid4())]}, "options": {}},
+    )
+
+    assert response.status_code == 409
+    assert "VirtualFundTable.target_portfolio_uid" in response.json()["detail"]
 
 
 def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -> None:
@@ -821,14 +853,12 @@ def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -
 
         return PortfolioBulkDeleteResponse.model_validate(
             {
-                "detail": "No portfolios were deleted; 1 portfolio deletion failed.",
+                "detail": "No portfolios were deleted. 1 could not be deleted.",
                 "deleted_count": 0,
-                "deleted_weights_count": 0,
-                "deleted_values_count": 0,
                 "failed": [
                     {
                         "uid": str(failed_uid),
-                        "reason": "Portfolio was not found.",
+                        "detail": f"Portfolio {failed_uid} was not found.",
                     }
                 ],
             }
@@ -860,8 +890,8 @@ def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -
     assert response.status_code == 409
     assert response.json() == {
         "detail": (
-            "No portfolios were deleted; 1 portfolio deletion failed. "
-            f"Failed: {failed_uid}: Portfolio was not found."
+            "No portfolios were deleted. 1 could not be deleted. "
+            f"Failed: {failed_uid}: Portfolio {failed_uid} was not found."
         )
     }
 
@@ -997,21 +1027,16 @@ def test_portfolio_values_frame_service_maps_source_frame(monkeypatch) -> None:
 
 
 def test_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
-    portfolio_uid = uuid.uuid4()
+    portfolio_uid = str(uuid.uuid4())
     runtime = SimpleNamespace(context=object())
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("apps.v1.services.portfolios._get_runtime", lambda: runtime)
+    monkeypatch.setattr("apps.v1.services.portfolios._get_delete_runtime", lambda: runtime)
 
     def fake_delete_portfolio_record(context, **kwargs):
         captured["context"] = context
         captured.update(kwargs)
-        return {
-            "detail": "Portfolio deleted.",
-            "deleted_count": 1,
-            "deleted_weights_count": 5,
-            "deleted_values_count": 6,
-        }
+        return _deleted_portfolio(portfolio_uid)
 
     monkeypatch.setattr(
         "apps.v1.services.portfolios._delete_portfolio_record",
@@ -1020,18 +1045,52 @@ def test_delete_portfolio_service_maps_source_response(monkeypatch) -> None:
 
     from apps.v1.services.portfolios import delete_portfolio
 
-    response = delete_portfolio(uid=str(portfolio_uid))
+    response = delete_portfolio(uid=portfolio_uid)
 
     assert response is not None
-    assert response.model_dump() == {
-        "detail": "Portfolio deleted.",
-        "deleted_count": 1,
-        "deleted_weights_count": 5,
-        "deleted_values_count": 6,
-        "retained_datasets": [],
-    }
+    assert response.model_dump() == _deleted_portfolio(portfolio_uid)
     assert captured["context"] is runtime.context
-    assert captured["uid"] == str(portfolio_uid)
+    assert captured["uid"] == portfolio_uid
+
+
+def test_portfolio_preflight_service_returns_each_portfolio(monkeypatch) -> None:
+    portfolio_uid = str(uuid.uuid4())
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+    monkeypatch.setattr("apps.v1.services.portfolios._get_delete_runtime", lambda: runtime)
+
+    def fake_preflight(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "allowed": True,
+            "detail": "1 portfolio is ready for deletion with its datasets.",
+            "matched_count": 1,
+            "blockers": [],
+            "warnings": [],
+            "impact": None,
+            "portfolios": [
+                {
+                    "uid": portfolio_uid,
+                    "unique_identifier": "example-sleeve",
+                    "row_counts": _deleted_portfolio(portfolio_uid)["deleted_rows"],
+                    "blockers": [],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.portfolios._preflight_bulk_delete_portfolio_records",
+        fake_preflight,
+    )
+
+    from apps.v1.services.portfolios import preflight_bulk_delete_portfolios
+
+    response = preflight_bulk_delete_portfolios(uids=[portfolio_uid])
+
+    assert response.portfolios[0].row_counts == _deleted_portfolio(portfolio_uid)["deleted_rows"]
+    assert response.model_dump()["detail"] == "1 portfolio is ready for deletion with its datasets."
+    assert captured == {"context": runtime.context, "uids": [portfolio_uid]}
 
 
 def test_delete_portfolio_weights_service_maps_source_response(monkeypatch) -> None:
@@ -1073,118 +1132,6 @@ def test_delete_portfolio_weights_service_maps_source_response(monkeypatch) -> N
     assert captured["context"] is runtime.context
     assert captured["uid"] == str(portfolio_uid)
     assert captured["weights_date"] == weights_date
-
-
-def test_public_delete_portfolio_blocks_virtual_fund_references(monkeypatch) -> None:
-    portfolio = _portfolio_row()
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._get_portfolio_row",
-        lambda context, uid: portfolio,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._virtual_fund_reference_count",
-        lambda context, portfolio_uid: 1,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._target_position_reference_count",
-        lambda context, portfolio_uid: 0,
-    )
-
-    from msm_portfolios.services.public_api import (
-        PortfolioDeleteConflictError,
-        delete_portfolio_record,
-    )
-
-    with pytest.raises(PortfolioDeleteConflictError, match="virtual funds"):
-        delete_portfolio_record(object(), uid=str(portfolio["uid"]))
-
-
-def test_public_delete_portfolio_blocks_target_position_references(monkeypatch) -> None:
-    portfolio = _portfolio_row()
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._get_portfolio_row",
-        lambda context, uid: portfolio,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._virtual_fund_reference_count",
-        lambda context, portfolio_uid: 0,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._target_position_reference_count",
-        lambda context, portfolio_uid: 3,
-    )
-
-    from msm_portfolios.services.public_api import (
-        PortfolioDeleteConflictError,
-        delete_portfolio_record,
-    )
-
-    with pytest.raises(
-        PortfolioDeleteConflictError,
-        match="TargetPositionsStorage\\.portfolio_uid",
-    ):
-        delete_portfolio_record(object(), uid=str(portfolio["uid"]))
-
-
-def test_public_delete_portfolio_reports_deleted_weights(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._portfolio_dataset_tables",
-        lambda context, portfolio_identifier: None,
-    )
-    portfolio = _portfolio_row()
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._get_portfolio_row",
-        lambda context, uid: portfolio,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._raise_if_portfolio_delete_is_blocked",
-        lambda context, **kwargs: captured.update({"blocked_check": kwargs}),
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._delete_portfolio_weight_rows",
-        lambda context, **kwargs: captured.update({"delete_weights": kwargs}) or 4,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._delete_portfolio_value_rows",
-        lambda context, **kwargs: captured.update({"delete_values": kwargs}) or 5,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_portfolio_operation",
-        lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-op",
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {
-            "rows": [
-                {
-                    "uid": portfolio["uid"],
-                }
-            ]
-        },
-    )
-
-    from msm_portfolios.services.public_api import delete_portfolio_record
-
-    response = delete_portfolio_record(object(), uid=str(portfolio["uid"]))
-
-    assert response == {
-        "detail": "Portfolio deleted.",
-        "deleted_count": 1,
-        "deleted_weights_count": 4,
-        "deleted_values_count": 5,
-        "retained_datasets": [],
-    }
-    assert captured["compile"]["portfolio_uid"] == uuid.UUID(str(portfolio["uid"]))
-    assert captured["delete_weights"] == {
-        "portfolio_identifier": "example-sleeve",
-        "after_date": None,
-    }
-    assert captured["delete_values"] == {
-        "portfolio_identifier": "example-sleeve",
-        "after_date": None,
-    }
 
 
 def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(monkeypatch) -> None:
@@ -1338,36 +1285,6 @@ def test_public_signal_weights_frame_requires_signal_updater(monkeypatch) -> Non
 
     with pytest.raises(ValueError, match="signal_weights_table_update_uid"):
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
-
-
-def test_public_delete_portfolio_operation_deletes_identity_only(monkeypatch) -> None:
-    portfolio_uid = uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_compile(statement, **kwargs):
-        captured["statement"] = statement
-        captured.update(kwargs)
-        return "compiled-delete-op"
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-
-    from msm_portfolios.services.public_api import _compile_delete_portfolio_operation
-
-    operation = _compile_delete_portfolio_operation(
-        object(),
-        portfolio_uid=portfolio_uid,
-    )
-
-    statement_text = str(captured["statement"]).lower()
-    assert operation == "compiled-delete-op"
-    assert captured["operation"] == "delete"
-    assert "portfolio_scope" in statement_text
-    assert "deleted_weights" not in statement_text
-    assert "deleted_values" not in statement_text
-    assert "delete from" in statement_text
 
 
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:

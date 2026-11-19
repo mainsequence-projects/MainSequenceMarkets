@@ -106,6 +106,14 @@ referenced. Retire it instead:
   target search hide it unless `include_retired=true`, and the portfolio
   updaters write nothing dated at or after `retired_at`.
 - Delete a portfolio only when nothing references it.
+  `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
+  delete it with its rows in its seven datasets (weights, values, rebalance
+  state, analytics, event ledger, state, cash flows), in one transaction. They
+  refuse with `409`, deleting nothing, while virtual funds or account target
+  rows name it, or while another application's table with a `RESTRICT` key to
+  it holds rows of it; that application deletes its rows first.
+  `POST /api/v1/portfolio/bulk-delete/preflight/` reports the rows per dataset
+  and every blocker.
 
 ## Portfolio Group Boundary
 

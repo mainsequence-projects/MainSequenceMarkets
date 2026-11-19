@@ -13,6 +13,7 @@ from apps.v1.schemas.portfolios import (
     PortfolioDatasetReconcileRequest,
     PortfolioDatasetRegistrationRequest,
     PortfolioDatasetState,
+    PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     Portfolio,
@@ -49,7 +50,6 @@ from msm.api.http import (
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
     BulkActionExecutionRequest,
-    BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
     TabularFrameResponse,
@@ -60,6 +60,15 @@ from msm.api.http import (
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 logger = logging.getLogger(__name__)
+
+_PORTFOLIO_DELETE_DESCRIPTION = (
+    "Each portfolio is deleted with its rows in its seven datasets (weights, values, "
+    "rebalance state, analytics, event ledger, state and cash flows) in one transaction, "
+    "or not at all (ADR 0049, issue 93); `deleted_rows` counts them per dataset. It is "
+    "refused with 409 while virtual funds or account target rows name the portfolio, or "
+    "while a table of another application whose RESTRICT key references it holds rows of "
+    "it or cannot be checked. Markets sends that table no statement."
+)
 
 
 @router.get(
@@ -348,8 +357,9 @@ def get_portfolio_datasets_route(uid: str) -> PortfolioDatasetState | None:
     response_model=PortfolioBulkDeleteResponse,
     summary="Bulk delete portfolios",
     description=(
-        "Delete multiple portfolio identity rows by uid. Rows referenced by protected "
-        "tables are reported in `failed` and are not silently removed."
+        "Delete the selected portfolios. " + _PORTFOLIO_DELETE_DESCRIPTION + " The route runs "
+        "the preflight first and answers 409 when it reports a blocker; then each portfolio "
+        "is deleted in its own transaction, and 409 lists any that could not be deleted."
     ),
     operation_id="bulkDeletePortfolios",
     responses={
@@ -373,7 +383,7 @@ def bulk_delete_portfolio_rows(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkDeletePreflightResponse.model_validate(
+    preflight = PortfolioDeletePreflightResponse.model_validate(
         preflight_bulk_delete_portfolios(uids=uids)
     )
     if not preflight.allowed:
@@ -386,8 +396,6 @@ def bulk_delete_portfolio_rows(
             extra={
                 "failed": [failure.model_dump(mode="json") for failure in response.failed],
                 "deleted_count": response.deleted_count,
-                "deleted_weights_count": response.deleted_weights_count,
-                "deleted_values_count": response.deleted_values_count,
             },
         )
         raise HTTPException(status_code=409, detail=detail)
@@ -396,12 +404,14 @@ def bulk_delete_portfolio_rows(
 
 @router.post(
     "/bulk-delete/preflight/",
-    response_model=BulkDeletePreflightResponse,
+    response_model=PortfolioDeletePreflightResponse,
     summary="Preflight portfolio bulk deletion",
     description=(
-        "Reauthorize an explicit portfolio selection and report missing rows, protected "
-        "references and the tables the delete reaches through foreign-key cascades, "
-        "without deleting data."
+        "Run the delete's checks for an explicit portfolio selection without deleting: per "
+        "portfolio the rows each of its seven datasets would lose (`portfolios[].row_counts`) "
+        "and its blockers (account history that names it, and tables of other applications "
+        "whose RESTRICT keys reference it and that hold rows of it or cannot be checked), "
+        "missing portfolios, and the MetaTables delete impact."
     ),
     operation_id="preflightBulkDeletePortfolios",
     openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
@@ -412,18 +422,20 @@ def preflight_portfolio_bulk_delete(
         BulkActionExecutionRequest,
         Body(description="Command Center bulk-action execution request to preflight."),
     ],
-) -> BulkDeletePreflightResponse:
+) -> PortfolioDeletePreflightResponse:
     try:
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return BulkDeletePreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
+    return PortfolioDeletePreflightResponse.model_validate(
+        preflight_bulk_delete_portfolios(uids=uids)
+    )
 
 
 def _portfolio_bulk_delete_error_detail(response: PortfolioBulkDeleteResponse) -> str:
-    failed_reasons = "; ".join(f"{failure.uid}: {failure.reason}" for failure in response.failed)
-    if failed_reasons:
-        return f"{response.detail} Failed: {failed_reasons}"
+    failed_details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
+    if failed_details:
+        return f"{response.detail} Failed: {failed_details}"
     return response.detail
 
 
@@ -803,12 +815,7 @@ def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
     "/{uid}/",
     response_model=PortfolioDeleteResponse,
     summary="Delete portfolio",
-    description=(
-        "Delete one portfolio identity row. The route returns 409 when protected "
-        "rows, such as account target-position history, still reference the portfolio. "
-        "Values and weights catalogued in tables another application owns stay in place "
-        "and are listed in retained_datasets."
-    ),
+    description="Delete one portfolio. " + _PORTFOLIO_DELETE_DESCRIPTION,
     operation_id="deletePortfolio",
     status_code=status.HTTP_200_OK,
     responses={
@@ -818,7 +825,10 @@ def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
         },
         409: {
             "model": ErrorResponse,
-            "description": "The portfolio is referenced by protected rows.",
+            "description": (
+                "Account history or another application's table references the portfolio. "
+                "Nothing was deleted."
+            ),
         },
     },
 )

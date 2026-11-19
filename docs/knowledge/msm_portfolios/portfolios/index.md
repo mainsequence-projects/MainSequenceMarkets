@@ -1270,7 +1270,10 @@ retired, an exclusive end, and is null while it is live
   only the empty window up to the boundary; `PortfolioEngine` replays up to it.
   The storage tables do not enforce the boundary, so a direct table write
   bypasses it.
-- A portfolio is deleted only when nothing references it.
+- A portfolio is deleted only when nothing references it. The delete removes
+  its rows in its seven datasets with the row, in one transaction, and is
+  refused while account history or another application's table references it
+  ([Delete Portfolio](../../../fast_api/v1/portfolio.md#delete-portfolio)).
 
 ## Portfolio Construction And Account Virtual-Fund Allocation Boundary
 

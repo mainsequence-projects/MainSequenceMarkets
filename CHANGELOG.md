@@ -7,6 +7,37 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Breaking: a portfolio is deleted with all its datasets in one transaction, or not at
+  all.** `DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and the
+  remote `POST /api/v1/rows/portfolio/delete/` deleted the portfolio's weights and values
+  with two `delete_after_date` requests and then the portfolio row. A `RESTRICT` key from
+  its rebalance state, analytics, event ledger, state or cash flows, or from another
+  application's instance, then refused the row with a `409` that the preflight had not
+  predicted, and the portfolio survived without its weights and values
+  ([issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)). The
+  delete now removes the portfolio's rows in all seven datasets and then the row as one
+  MetaTables statement list, in one transaction; the last statement is guarded, so a
+  portfolio that vanished in between answers `404` and one renamed in between `409`.
+  - Before anything is sent, it is refused while virtual funds or account target rows
+    name the portfolio (ADR 0049), or while a table of another application whose
+    `RESTRICT` key references the portfolio holds rows of it or cannot be checked. Those
+    tables come from MetaTables' delete impact and from the catalog's instances; each gets
+    one read-only count. Markets never deletes their rows: they used to stay in place,
+    listed in `retained_datasets`, and now refuse the delete, as for curves (issue 59).
+  - The `409` names the table and key that refused, or carries the database's message,
+    which on PostgreSQL names the constraint.
+  - `POST /api/v1/portfolio/bulk-delete/preflight/` runs the same checks, with one read
+    for the whole selection, and returns `portfolios`: each portfolio's `row_counts` per
+    dataset and its `blockers`.
+  - Responses: `deleted_rows`, the rows per dataset, replaces `deleted_weights_count`,
+    `deleted_values_count` and `retained_datasets`, and the response names the deleted
+    portfolio's `uid` and `unique_identifier`. The bulk delete returns `deleted`, one entry
+    per portfolio, and `failed[].detail` instead of `failed[].reason`, as the account bulk
+    delete does. Each portfolio is deleted in its own transaction.
+  - The Markets API binds the five other dataset tables at startup.
+
 ## [4.1.0] - 2026-11-19
 
 ### Changed

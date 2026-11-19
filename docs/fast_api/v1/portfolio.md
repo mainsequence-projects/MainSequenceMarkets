@@ -485,66 +485,81 @@ and `reinstate_portfolio(...)` call them.
 DELETE /api/v1/portfolio/{uid}/
 ```
 
-Deletes the portfolio identity row plus historical `PortfolioWeightsStorage`
-and `PortfoliosStorage` rows resolved through:
+Deletes the portfolio with its rows in its seven Markets datasets, in one
+MetaTables transaction
+([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md),
+[issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)).
+Each dataset references `Portfolio.unique_identifier` with `RESTRICT`:
 
-```text
-Portfolio.uid
-  -> Portfolio.unique_identifier
-  -> PortfolioWeightsStorage.portfolio_identifier
-  -> PortfoliosStorage.portfolio_identifier
-```
+| `deleted_rows` key | Storage | Contract |
+|---|---|---|
+| `weights` | `PortfolioWeightsStorage` | `PortfolioWeightsTS` |
+| `values` | `PortfoliosStorage` | `PortfoliosTS` |
+| `rebalance_state` | `PortfolioRebalanceStateStorage` | `PortfolioRebalanceStateTS` |
+| `analytics` | `PortfolioAnalyticsStorage` | `PortfolioAnalyticsTS` |
+| `event_ledger` | `PortfolioEventLedgerStorage` | `PortfolioEventLedgerTS` |
+| `state` | `PortfolioStateStorage` | `PortfolioStateTS` |
+| `cash_flows` | `PortfolioCashFlowsStorage` | `PortfolioCashFlowsTS` |
+
+The statements delete the portfolio's rows in each dataset and then the
+portfolio row, in that order. The last one deletes the row only while it still
+has the `unique_identifier` read before and no virtual fund or account target
+row names it. If any statement fails, nothing is deleted. The catalog row
+(`PortfolioDatasetAvailabilityTable`) and the portfolio's group memberships go
+with the row through their own `CASCADE` keys. `PortfolioMetadataTable` rows
+are not deleted.
 
 Returns:
 
 ```json
 {
-  "detail": "Portfolio deleted.",
+  "detail": "Portfolio 'example-sleeve' deleted with its datasets.",
+  "uid": "portfolio-uid",
+  "unique_identifier": "example-sleeve",
   "deleted_count": 1,
-  "deleted_weights_count": 4,
-  "deleted_values_count": 4,
-  "retained_datasets": []
+  "deleted_rows": {
+    "weights": 4,
+    "values": 4,
+    "rebalance_state": 2,
+    "analytics": 0,
+    "event_ledger": 6,
+    "state": 3,
+    "cash_flows": 1
+  }
 }
 ```
 
-If protected rows, such as virtual funds or account target-position history,
-reference the portfolio, the route returns 409 and does not delete the
-portfolio. No route removes that history: retire the portfolio instead
-([Retire Portfolio](#retire-portfolio)).
+`deleted_rows` counts the portfolio's rows in each dataset just before the
+delete ran.
 
-When the Markets catalog (`PortfolioDatasetAvailabilityTable`, ADR 0047) places
-the portfolio's values or weights in a contract instance another application
-owns, Markets does not delete that table's rows: only the owning application
-writes or deletes them. The route still deletes the portfolio row, its catalog
-row and any rows left in the core tables, and lists each table it left in
-place:
+Before it sends anything, the route checks what would refuse the delete. It
+answers `409`, deletes nothing and names the table and key that refuse it when:
 
-```json
-{
-  "detail": "Portfolio deleted. Rows in 1 table another application owns were left in place; see retained_datasets.",
-  "deleted_count": 1,
-  "deleted_weights_count": 0,
-  "deleted_values_count": 0,
-  "retained_datasets": [
-    {
-      "portfolio_uid": "portfolio-uid",
-      "portfolio_identifier": "example-sleeve",
-      "dataset": "values",
-      "meta_table_uid": "provider-values-table-uid"
-    }
-  ]
-}
-```
+- **account history names the portfolio:** virtual funds
+  (`VirtualFundTable.target_portfolio_uid`) or account target rows
+  (`TargetPositionsStorage.portfolio_uid`). No route removes that history:
+  retire the portfolio instead ([Retire Portfolio](#retire-portfolio)).
+- **another application's table references it:** a table outside these
+  Markets tables whose `RESTRICT` key references the portfolio holds rows of it,
+  for example a provider's `PortfoliosTS` or `PortfolioEventLedgerTS` instance
+  ([ADR 0047](../../ADR/0047-markets-api-application-boundary.md)). Markets
+  never deletes rows in such a table: the application that owns it deletes them
+  first. The route checks every table that MetaTables' delete impact lists with
+  such a key, and every instance the catalog names for the portfolio, with one
+  read-only count per table. It also refuses when it cannot check one, for
+  example a table the caller cannot view.
 
-The deleted counts cover the core tables only. A catalog row that names the
-core table itself counts as core. `POST /api/v1/portfolio/bulk-delete/preflight/`
-reports each retained table as a warning before the delete, and the bulk delete
-returns the same `retained_datasets` list.
+The database applies the same keys when the statements run. A key the checks
+could not see, for example while MetaTables' impact is unavailable, refuses the
+whole transaction: the route answers `409` with the database's message, which on
+PostgreSQL names the constraint, and nothing is deleted. A portfolio that no
+longer exists when the delete runs answers `404`; one renamed in between
+answers `409`.
 
-Storage cleanup uses each storage table's
-`TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)` API, scoped
-by `Portfolio.unique_identifier`. The delete route does not delete
-`PortfolioMetadataTable` rows.
+The statements are plain deletes. Unlike
+`TimeIndexMetaTable.delete_after_date`, they do not rebuild the update
+statistics MetaTables stores for each table, so the deleted portfolio's
+progress stays listed there. The account delete behaves the same way.
 
 ## Delete Portfolio Weights
 
@@ -582,29 +597,75 @@ names the table. Delete those rows through the application that owns the table.
 ## Bulk Delete Portfolios
 
 ```text
+POST /api/v1/portfolio/bulk-delete/preflight/
 POST /api/v1/portfolio/bulk-delete/
 ```
 
-Request:
+Both take the Command Center bulk-action request with explicit uids:
 
 ```json
 {
-  "uids": ["portfolio-uid-1", "portfolio-uid-2"]
+  "selection": {"mode": "explicit", "uids": ["portfolio-uid-1", "portfolio-uid-2"]},
+  "options": {}
 }
 ```
 
-Response:
+The preflight runs the delete's checks without deleting: one read counts every
+selected portfolio's rows per dataset and the account history that names it,
+and each table of another application with a `RESTRICT` key to portfolios is
+counted once for the whole selection. It returns the MetaTables impact, the
+blockers, and per portfolio the rows the delete removes:
 
 ```json
 {
-  "detail": "Deleted 1 portfolio; 1 portfolio could not be deleted.",
-  "deleted_count": 1,
-  "deleted_weights_count": 4,
-  "failed": [
+  "allowed": false,
+  "detail": "The portfolio selection cannot be deleted as submitted.",
+  "matched_count": 2,
+  "blockers": [
+    "Portfolio 'protected-sleeve': 1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
+  ],
+  "warnings": [
+    "Account history is kept for as long as the account exists (ADR 0049); retire the portfolio instead."
+  ],
+  "impact": null,
+  "portfolios": [
     {
-      "uid": "protected-portfolio-uid",
-      "reason": "Portfolio is referenced by target positions."
+      "uid": "portfolio-uid-1",
+      "unique_identifier": "example-sleeve",
+      "row_counts": {"weights": 4, "values": 4, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0},
+      "blockers": []
+    },
+    {
+      "uid": "portfolio-uid-2",
+      "unique_identifier": "protected-sleeve",
+      "row_counts": {"weights": 2, "values": 2, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0},
+      "blockers": ["1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."]
     }
   ]
 }
 ```
+
+The bulk delete runs the preflight and answers `409` when it reports a blocker.
+Otherwise it deletes each portfolio as `DELETE /api/v1/portfolio/{uid}/` does,
+each in its own transaction, and returns every deleted portfolio:
+
+```json
+{
+  "detail": "Deleted 1 portfolio with its datasets.",
+  "deleted_count": 1,
+  "deleted": [
+    {
+      "detail": "Portfolio 'example-sleeve' deleted with its datasets.",
+      "uid": "portfolio-uid-1",
+      "unique_identifier": "example-sleeve",
+      "deleted_count": 1,
+      "deleted_rows": {"weights": 4, "values": 4, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0}
+    }
+  ],
+  "failed": []
+}
+```
+
+A portfolio refused after the preflight, for example by a reference written in
+between, is listed in `failed` with its `detail`, and the route answers `409`
+naming it. The other portfolios are still deleted.

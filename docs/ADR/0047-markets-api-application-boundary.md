@@ -374,8 +374,10 @@ Implemented in `msm_portfolios.time_index.contract_instances`,
   instances only.
 - Deletes respect the catalog. Markets does not delete rows in a table another
   application owns: weight and signal-weight deletes return 409 for such a
-  portfolio, and portfolio and signal deletes remove the Markets rows and list
-  the instances they left in place in `retained_datasets`. The pricing-curve
+  portfolio, and signal deletes remove the Markets rows and list the instances
+  they left in place in `retained_datasets`. The portfolio delete returns 409
+  while such an instance, or any other table whose `RESTRICT` key references the
+  portfolio, holds rows of it (#93, ADR 0049's 2026-11-19 note). The pricing-curve
   delete's `delete_values` cleans only `DiscountCurvesStorage`; a provider's
   discount-curve instance bound through a market-data set keeps the `RESTRICT`
   key on `curve_identifier`, so while it holds rows of the curve the preflight

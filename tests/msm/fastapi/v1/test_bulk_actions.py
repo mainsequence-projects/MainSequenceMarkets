@@ -61,19 +61,23 @@ def test_bulk_action_discovery_uses_sdk_contract(
 
 
 @pytest.mark.parametrize(
-    ("path", "monkeypatch_target"),
+    ("path", "monkeypatch_target", "resource_fields"),
     [
         (
             "/api/v1/asset-category/bulk-delete/preflight/",
             "apps.v1.routers.asset_categories.preflight_bulk_delete_asset_categories",
+            {},
         ),
         (
             "/api/v1/portfolio/bulk-delete/preflight/",
             "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
+            # Each portfolio's rows per dataset and blockers (issue 93).
+            {"portfolios": []},
         ),
         (
             "/api/v1/portfolio-group/bulk-delete/preflight/",
             "apps.v1.routers.portfolio_groups.preflight_bulk_delete_portfolio_groups",
+            {},
         ),
     ],
 )
@@ -81,6 +85,7 @@ def test_bulk_action_preflight_preserves_blockers(
     monkeypatch,
     path: str,
     monkeypatch_target: str,
+    resource_fields: dict,
 ) -> None:
     resource_uid = uuid.uuid4()
     monkeypatch.setattr(
@@ -112,6 +117,7 @@ def test_bulk_action_preflight_preserves_blockers(
         "warnings": [],
         "impact": None,
         "domain_context": {"resource_uid": str(resource_uid)},
+        **resource_fields,
     }
 
 
@@ -275,18 +281,33 @@ def test_portfolio_group_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
 
 def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
     portfolio_uid = str(uuid.uuid4())
+    blocker = (
+        "1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
+    )
     monkeypatch.setattr(
         portfolios,
-        "_get_runtime",
+        "_get_delete_runtime",
         lambda: SimpleNamespace(context=object()),
     )
     monkeypatch.setattr(
         portfolios,
-        "_portfolio_delete_preflight_item",
-        lambda context, uid: (True, ["VirtualFundTable references this portfolio."], []),
-    )
-    monkeypatch.setattr(
-        portfolios, "_portfolio_delete_impact", lambda: DeleteRowsImpact(impact=None)
+        "_preflight_bulk_delete_portfolio_records",
+        lambda context, uids: {
+            "allowed": False,
+            "detail": "The portfolio selection cannot be deleted as submitted.",
+            "matched_count": 1,
+            "blockers": [f"Portfolio 'example-sleeve': {blocker}"],
+            "warnings": [],
+            "impact": None,
+            "portfolios": [
+                {
+                    "uid": uids[0],
+                    "unique_identifier": "example-sleeve",
+                    "row_counts": {"weights": 2, "values": 2},
+                    "blockers": [blocker],
+                }
+            ],
+        },
     )
 
     result = portfolios.preflight_bulk_delete_portfolios(uids=[portfolio_uid])
@@ -295,9 +316,17 @@ def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "allowed": False,
         "detail": "The portfolio selection cannot be deleted as submitted.",
         "matched_count": 1,
-        "blockers": [f"Portfolio {portfolio_uid}: VirtualFundTable references this portfolio."],
+        "blockers": [f"Portfolio 'example-sleeve': {blocker}"],
         "warnings": [],
         "impact": None,
+        "portfolios": [
+            {
+                "uid": portfolio_uid,
+                "unique_identifier": "example-sleeve",
+                "row_counts": {"weights": 2, "values": 2},
+                "blockers": [blocker],
+            }
+        ],
     }
 
 
