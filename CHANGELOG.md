@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-19
+
 ### Changed
 
 - **Breaking: a trade happens only at a price observed at the trade's time.** A rebalance
