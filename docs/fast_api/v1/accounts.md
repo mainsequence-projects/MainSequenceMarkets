@@ -109,15 +109,26 @@ direct account snapshots and virtual-fund-grouped views.
     target rows, holdings sets with their rows, then the account
   - only Markets tables receive statements. A table in another namespace loses
     rows only through its own foreign key: a `CASCADE` key deletes them with
-    their parent, and the response lists that table in
-    `other_namespace_cascades`; a `RESTRICT` key refuses the whole delete. Rows
-    with no key, such as order events in a provider's copy of the events
-    storage, stay
+    their parent, and a `RESTRICT` key refuses the whole delete. Rows with no
+    key, such as order events in a provider's copy of the events storage, stay
+  - `delete_portfolios=true` (query parameter, `false` by default) also deletes,
+    in the same transaction and with all their data, the portfolios that the
+    account's virtual funds or target rows name and that nothing else uses: their
+    rows in the seven portfolio datasets, their catalog row, their group
+    memberships, then the portfolio. A portfolio is kept when another account's
+    virtual fund or target rows name it, or when its catalog places its values or
+    weights in another application's table. When another application's table
+    holds a portfolio's rows under a `RESTRICT` key, the transaction deletes
+    nothing and a second one deletes the account alone; the portfolios are kept
   - returns `deleted_rows`, the Markets rows per table counted just before the
-    delete ran
-  - `404` when the uid is unknown; `409` when a key refuses the delete,
-    including orders of other accounts that name its order managers or virtual
-    funds of other accounts allocated from its holdings sets; nothing is deleted
+    delete ran, `deleted_portfolios` (each with its `deleted_rows` per dataset)
+    and `kept_portfolios` (each with its `reason`)
+  - one delete sends MetaTables one read and one transaction, and asks for no
+    impact; both run with MetaTables' longest deadline, 60 seconds
+  - `404` when the uid is unknown; `409` when a key refuses the account's
+    delete, including orders of other accounts that name its order managers or
+    virtual funds of other accounts allocated from its holdings sets; nothing is
+    deleted. On PostgreSQL the `409` names the constraint that refused
   - there is no delete for a single virtual fund, target allocation, position
     set or holdings set: an account's history is kept for as long as the account
     exists ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
@@ -128,10 +139,22 @@ direct account snapshots and virtual-fund-grouped views.
     tables in other namespaces it reaches (`other_namespace_cascades`,
     `other_namespace_restricts`). Markets cannot count rows in those tables, so
     they are warnings, not blockers
+  - with `options: {"delete_portfolios": true}`, each account also lists the
+    portfolios its delete would remove (`accounts[].portfolios`, with their
+    `row_counts` per dataset) and keep (`accounts[].kept_portfolios`, with the
+    `reason`); a warning names each. Each account is read as if it were deleted
+    alone
+  - one read per account; MetaTables' impact is asked for once and reused for
+    five minutes
 - `POST /api/v1/account/bulk-delete/`
   - runs the preflight, answers `409` when it reports a blocker, then deletes
     each account as `DELETE /api/v1/account/{uid}/` does, each in its own
-    transaction; `409` lists any account that could not be deleted
+    transaction, in the order selected; `409` lists any account that could not
+    be deleted
+  - `options: {"delete_portfolios": true}` applies the option to every account.
+    A portfolio that only selected accounts use goes with the last of them. Any
+    other option, or a value that is not a boolean, answers `400`
+  - asks MetaTables for the impact at most once, in its preflight
   - the same identities that may delete a portfolio may delete an account; both
     routes are registry writes that record the acting identity
 - `GET /api/v1/account/{uid}/summary/`

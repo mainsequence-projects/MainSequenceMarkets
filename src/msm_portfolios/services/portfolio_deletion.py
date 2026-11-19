@@ -30,14 +30,11 @@ from typing import Any
 from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.api.http import TableImpact, TableImpactNode
+from msm.repositories.account_deletion import ACCOUNT_HISTORY_REFERENCES
 from msm.repositories.base import MarketsRepositoryContext
 from msm.storage_instances import PROVIDER_TABLE_DELETE_GUIDANCE, provider_owned_table_uid
 from msm_portfolios.repositories import portfolio_deletion as portfolio_deletion_repository
-from msm_portfolios.repositories.portfolio_deletion import (
-    ACCOUNT_HISTORY_REFERENCES,
-    PORTFOLIO_DATASET_TABLES,
-)
-from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage, PortfolioWeightsStorage
+from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 
 logger = _mainsequence_logger.bind(sub_application="markets", component="portfolio_deletion")
 
@@ -62,9 +59,8 @@ _HISTORY_BLOCKERS = {
 }
 _CONTRACT_KEY = ("portfolio_identifier", "unique_identifier")
 """The key every portfolio contract instance copies from the contract (ADR 0047)."""
-_CATALOGUED_DATASETS = (
-    ("values_meta_table_uid", PortfoliosStorage),
-    ("weights_meta_table_uid", PortfolioWeightsStorage),
+_CATALOGUED_DATASETS = tuple(
+    (table.catalog_column, table.model) for table in PORTFOLIO_DATASET_TABLES if table.catalog_column
 )
 _CONFLICT_MARKERS = ("foreign key", "violates", "referenced", "restrict", "constraint")
 _COUNT_CHUNK = 500

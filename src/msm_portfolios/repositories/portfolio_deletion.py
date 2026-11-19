@@ -14,11 +14,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import String, Uuid, bindparam, delete, func, literal, select
+from sqlalchemy import String, Uuid, bindparam, delete, func, select
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
-from msm.models import PortfolioDatasetAvailabilityTable, PortfolioTable, VirtualFundTable
+from msm.models import PortfolioDatasetAvailabilityTable, PortfolioTable
+from msm.repositories.account_deletion import ACCOUNT_HISTORY_REFERENCES, account_history_reference
 from msm.repositories.base import (
     MarketsCompiledWrite,
     MarketsRepositoryContext,
@@ -29,53 +30,14 @@ from msm.repositories.base import (
     resolve_markets_sql_target,
     with_max_rows,
 )
-from msm.time_index.accounts.storage import TargetPositionsStorage
-from msm_portfolios.time_index.portfolios.storage import (
-    PortfolioAnalyticsStorage,
-    PortfolioCashFlowsStorage,
-    PortfolioEventLedgerStorage,
-    PortfolioRebalanceStateStorage,
-    PortfoliosStorage,
-    PortfolioStateStorage,
-    PortfolioWeightsStorage,
-)
+from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 
 PORTFOLIO_DELETE_GUARD = "portfolio"
 """Guard label of the last statement: the portfolio row, with the identifier read before."""
 
-
-@dataclass(frozen=True)
-class PortfolioDatasetTable:
-    """One of the portfolio's own Markets datasets, keyed by ``portfolio_identifier``."""
-
-    key: str
-    model: type[Any]
-
-    @property
-    def table_name(self) -> str:
-        return str(self.model.__table__.name)
-
-
-PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
-    PortfolioDatasetTable("weights", PortfolioWeightsStorage),
-    PortfolioDatasetTable("values", PortfoliosStorage),
-    PortfolioDatasetTable("rebalance_state", PortfolioRebalanceStateStorage),
-    PortfolioDatasetTable("analytics", PortfolioAnalyticsStorage),
-    PortfolioDatasetTable("event_ledger", PortfolioEventLedgerStorage),
-    PortfolioDatasetTable("state", PortfolioStateStorage),
-    PortfolioDatasetTable("cash_flows", PortfolioCashFlowsStorage),
+CATALOG_TABLE_KEYS = tuple(
+    table.catalog_column for table in PORTFOLIO_DATASET_TABLES if table.catalog_column
 )
-"""The seven Markets tables whose ``RESTRICT`` key on ``Portfolio.unique_identifier`` the
-delete clears, in the order its statements run."""
-
-ACCOUNT_HISTORY_REFERENCES: tuple[tuple[str, type[Any], str], ...] = (
-    ("virtual_funds", VirtualFundTable, "target_portfolio_uid"),
-    ("target_positions", TargetPositionsStorage, "portfolio_uid"),
-)
-"""Account history that references ``Portfolio.uid`` with ``RESTRICT``: the delete never
-removes it, so any such row refuses the delete (ADR 0049 decision 1)."""
-
-CATALOG_TABLE_KEYS = ("values_meta_table_uid", "weights_meta_table_uid")
 """The catalog columns that can place the portfolio's values or weights in an instance."""
 
 
@@ -96,17 +58,6 @@ def _scope(uid: uuid.UUID | str, unique_identifier: str) -> _PortfolioScope:
     if not identifier:
         raise ValueError("Deleting a portfolio requires its unique_identifier.")
     return _PortfolioScope(uid=uuid.UUID(str(uid)), unique_identifier=identifier)
-
-
-def _history_reference(model: type[Any], column: str) -> Any:
-    """Whether a row of ``model`` names the portfolio row the statement deletes."""
-
-    return (
-        select(literal(1))
-        .select_from(model)
-        .where(getattr(model, column) == PortfolioTable.uid)
-        .exists()
-    )
 
 
 def portfolio_delete_statements(
@@ -133,7 +84,7 @@ def portfolio_delete_statements(
         .where(PortfolioTable.unique_identifier == scope.portfolio_identifier())
     )
     for _key, model, column in ACCOUNT_HISTORY_REFERENCES:
-        portfolio_row = portfolio_row.where(~_history_reference(model, column))
+        portfolio_row = portfolio_row.where(~account_history_reference(model, column))
     statements.append(
         GuardedStatement(
             portfolio_row.returning(PortfolioTable.uid, PortfolioTable.unique_identifier),
@@ -283,11 +234,8 @@ def _string_or_none(value: Any) -> str | None:
 
 
 __all__ = [
-    "ACCOUNT_HISTORY_REFERENCES",
     "CATALOG_TABLE_KEYS",
-    "PORTFOLIO_DATASET_TABLES",
     "PORTFOLIO_DELETE_GUARD",
-    "PortfolioDatasetTable",
     "build_count_portfolio_delete_rows_operation",
     "build_delete_portfolio_operation",
     "count_portfolio_delete_rows",

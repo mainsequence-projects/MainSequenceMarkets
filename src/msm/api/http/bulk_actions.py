@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -167,8 +168,13 @@ def build_bulk_delete_action(
     preflight_endpoint: str,
     confirmation_title: str,
     confirmation_warning: str,
+    options: Sequence[BulkActionOption] = (),
 ) -> BulkActionDefinition:
-    """Build the standard explicit-selection destructive action descriptor."""
+    """Build the standard explicit-selection destructive action descriptor.
+
+    ``options`` are the action's declared options; its routes read their values with
+    `bulk_action_option_values`.
+    """
 
     return BulkActionDefinition(
         id=action_id,
@@ -184,18 +190,45 @@ def build_bulk_delete_action(
             button_label=label,
             warning=confirmation_warning,
         ),
-        options=[],
+        options=list(options),
     )
 
 
-def explicit_uuid_selection(request: BulkActionExecutionRequest) -> list[str]:
-    """Validate and normalize an explicit UUID-only bulk selection."""
+def bulk_action_option_values(
+    request: BulkActionExecutionRequest,
+    options: Sequence[BulkActionOption] = (),
+) -> dict[str, Any]:
+    """The request's value of each declared option, or its default.
+
+    An option the action does not declare, or a value of the wrong type, is refused.
+    """
+
+    declared = {option.key: option for option in options}
+    unsupported = sorted(key for key in request.options if key not in declared)
+    if unsupported:
+        raise ValueError(f"This bulk action does not support options: {', '.join(unsupported)}.")
+    values: dict[str, Any] = {}
+    for key, option in declared.items():
+        value = request.options.get(key, option.default)
+        if option.type == "boolean" and not isinstance(value, bool):
+            raise ValueError(f"Bulk-action option {key!r} must be true or false.")
+        values[key] = value
+    return values
+
+
+def explicit_uuid_selection(
+    request: BulkActionExecutionRequest,
+    *,
+    options: Sequence[BulkActionOption] = (),
+) -> list[str]:
+    """Validate and normalize an explicit UUID-only bulk selection.
+
+    The request may carry only the action's declared ``options``.
+    """
 
     if not isinstance(request.selection, BulkActionExplicitSelection):
         raise ValueError("This bulk action supports only explicit UID selection.")
-    if request.options:
-        unsupported = ", ".join(sorted(request.options))
-        raise ValueError(f"This bulk action does not support options: {unsupported}.")
+    bulk_action_option_values(request, options)
 
     normalized: list[str] = []
     for resource_id in request.selection.uids:
@@ -231,5 +264,6 @@ __all__ = [
     "BulkDeletePreflightResponse",
     "blocked_preflight_detail",
     "build_bulk_delete_action",
+    "bulk_action_option_values",
     "explicit_uuid_selection",
 ]

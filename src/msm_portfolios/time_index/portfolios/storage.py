@@ -22,6 +22,7 @@ from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets import AssetTable
 from msm.models.calendars import CalendarTable
 from msm.models.portfolios import PortfolioTable
+from msm.portfolio_datasets import PortfolioDatasetTable, register_portfolio_dataset_tables
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.time_index.constants import (
     PORTFOLIO_IDENTIFIER_DIMENSION,
@@ -1098,7 +1099,25 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
+    PortfolioDatasetTable("weights", PortfolioWeightsStorage, catalog_column="weights_meta_table_uid"),
+    PortfolioDatasetTable("values", PortfoliosStorage, catalog_column="values_meta_table_uid"),
+    PortfolioDatasetTable("rebalance_state", PortfolioRebalanceStateStorage),
+    PortfolioDatasetTable("analytics", PortfolioAnalyticsStorage),
+    PortfolioDatasetTable("event_ledger", PortfolioEventLedgerStorage),
+    PortfolioDatasetTable("state", PortfolioStateStorage),
+    PortfolioDatasetTable("cash_flows", PortfolioCashFlowsStorage),
+)
+"""The portfolio's own Markets datasets, keyed by ``portfolio_identifier`` with a
+``RESTRICT`` key on ``Portfolio.unique_identifier``, in the order a delete clears them.
+Registered with core ``msm`` so the account delete can delete a portfolio with them
+(ADR 0019, issue 91)."""
+
+register_portfolio_dataset_tables(PORTFOLIO_DATASET_TABLES)
+
+
 __all__ = [
+    "PORTFOLIO_DATASET_TABLES",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
     "PortfolioAnalyticsStorage",
     "PortfolioCashFlowsStorage",

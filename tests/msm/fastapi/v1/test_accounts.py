@@ -2769,7 +2769,8 @@ def _deleted(uid: str, **values) -> dict:
         "unique_identifier": "a",
         "deleted_count": 1,
         "deleted_rows": {"orders": 2, "holdings": 3},
-        "other_namespace_cascades": ["provider.account-sidecar"],
+        "deleted_portfolios": [],
+        "kept_portfolios": [],
         **values,
     }
 
@@ -2778,25 +2779,61 @@ def test_delete_account_returns_what_it_deleted(monkeypatch) -> None:
     from apps.v1.schemas.accounts import AccountDeleteResponse
 
     uid = str(uuid.uuid4())
-    monkeypatch.setattr(
-        "apps.v1.routers.accounts.delete_account",
-        lambda *, uid: AccountDeleteResponse.model_validate(_deleted(uid)),
-    )
+    calls: list[bool] = []
+
+    def delete(*, uid, delete_portfolios=False):
+        calls.append(delete_portfolios)
+        return AccountDeleteResponse.model_validate(_deleted(uid))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", delete)
 
     response = TestClient(app).delete(f"/api/v1/account/{uid}/")
 
     assert response.status_code == 200
     assert response.json() == _deleted(uid)
+    assert calls == [False]
+
+
+def test_delete_account_with_its_portfolios_reports_what_it_deleted_and_kept(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import AccountDeleteResponse
+
+    uid, deleted_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
+    portfolios = {
+        "detail": "Account 'a' deleted with its history and 1 portfolio. 1 portfolio it used was kept.",
+        "deleted_portfolios": [
+            {"uid": deleted_uid, "unique_identifier": "sleeve", "deleted_rows": {"weights": 4, "values": 2}}
+        ],
+        "kept_portfolios": [
+            {
+                "uid": kept_uid,
+                "unique_identifier": "shared",
+                "reason": "1 virtual fund of other accounts targets it.",
+            }
+        ],
+    }
+    calls: list[bool] = []
+
+    def delete(*, uid, delete_portfolios=False):
+        calls.append(delete_portfolios)
+        return AccountDeleteResponse.model_validate(_deleted(uid, **portfolios))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", delete)
+
+    response = TestClient(app).delete(f"/api/v1/account/{uid}/?delete_portfolios=true")
+
+    assert response.status_code == 200
+    assert response.json() == _deleted(uid, **portfolios)
+    assert calls == [True]
 
 
 def test_delete_account_answers_404_409_and_400(monkeypatch) -> None:
     from msm.services import AccountDeleteConflictError
 
     client = TestClient(app)
-    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", lambda *, uid: None)
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", lambda *, uid, delete_portfolios: None)
     assert client.delete(f"/api/v1/account/{uuid.uuid4()}/").status_code == 404
 
-    def refused(*, uid):
+    def refused(*, uid, delete_portfolios):
         raise AccountDeleteConflictError("Account 'a' cannot be deleted; nothing was deleted.")
 
     monkeypatch.setattr("apps.v1.routers.accounts.delete_account", refused)
@@ -2804,15 +2841,15 @@ def test_delete_account_answers_404_409_and_400(monkeypatch) -> None:
     assert response.status_code == 409
     assert response.json() == {"detail": "Account 'a' cannot be deleted; nothing was deleted."}
 
-    def invalid(*, uid):
+    def invalid(*, uid, delete_portfolios):
         raise ValueError("badly formed hexadecimal UUID string")
 
     monkeypatch.setattr("apps.v1.routers.accounts.delete_account", invalid)
     assert client.delete("/api/v1/account/not-a-uid/").status_code == 400
 
 
-def _selection(*uids) -> dict:
-    return {"selection": {"mode": "explicit", "uids": [str(uid) for uid in uids]}, "options": {}}
+def _selection(*uids, **options) -> dict:
+    return {"selection": {"mode": "explicit", "uids": [str(uid) for uid in uids]}, "options": options}
 
 
 def _preflight(**values):
@@ -2827,14 +2864,14 @@ def test_bulk_delete_accounts_runs_after_an_allowed_preflight(monkeypatch) -> No
     from apps.v1.schemas.accounts import AccountBulkDeleteResponse
 
     uid = str(uuid.uuid4())
-    calls: list[tuple[str, list[str]]] = []
+    calls: list[tuple[str, list[str], bool]] = []
 
-    def preflight(*, uids):
-        calls.append(("preflight", uids))
+    def preflight(*, uids, delete_portfolios):
+        calls.append(("preflight", uids, delete_portfolios))
         return _preflight()
 
-    def bulk_delete(*, uids):
-        calls.append(("delete", uids))
+    def bulk_delete(*, uids, delete_portfolios):
+        calls.append(("delete", uids, delete_portfolios))
         return AccountBulkDeleteResponse.model_validate(
             {"detail": "Deleted 1 account with their history.", "deleted_count": 1, "deleted": [_deleted(uid)]}
         )
@@ -2842,21 +2879,50 @@ def test_bulk_delete_accounts_runs_after_an_allowed_preflight(monkeypatch) -> No
     monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", preflight)
     monkeypatch.setattr("apps.v1.routers.accounts.bulk_delete_accounts", bulk_delete)
 
-    response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uid))
+    client = TestClient(app)
+    response = client.post("/api/v1/account/bulk-delete/", json=_selection(uid))
+    with_portfolios = client.post("/api/v1/account/bulk-delete/", json=_selection(uid, delete_portfolios=True))
 
-    assert response.status_code == 200
+    assert response.status_code == 200 and with_portfolios.status_code == 200
     assert response.json()["deleted"][0]["deleted_rows"] == {"orders": 2, "holdings": 3}
-    assert calls == [("preflight", [uid]), ("delete", [uid])]
+    assert "other_namespace_cascades" not in response.json()
+    assert calls == [
+        ("preflight", [uid], False),
+        ("delete", [uid], False),
+        ("preflight", [uid], True),
+        ("delete", [uid], True),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("options", "detail"),
+    [
+        ({"cascade": True}, "does not support options: cascade"),
+        ({"delete_portfolios": "yes"}, "'delete_portfolios' must be true or false"),
+    ],
+)
+def test_bulk_delete_accounts_refuses_an_undeclared_or_mistyped_option(monkeypatch, options, detail) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda **kwargs: pytest.fail("an invalid option must be refused first"),
+    )
+    client = TestClient(app)
+
+    for path in ("/api/v1/account/bulk-delete/", "/api/v1/account/bulk-delete/preflight/"):
+        response = client.post(path, json=_selection(uuid.uuid4(), **options))
+
+        assert response.status_code == 400
+        assert detail in response.json()["detail"]
 
 
 def test_bulk_delete_accounts_refuses_a_blocked_selection(monkeypatch) -> None:
     monkeypatch.setattr(
         "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
-        lambda *, uids: _preflight(allowed=False, blockers=["Account 'a': 1 orders of other accounts name its order managers (ON DELETE RESTRICT)."]),
+        lambda *, uids, delete_portfolios: _preflight(allowed=False, blockers=["Account 'a': 1 orders of other accounts name its order managers (ON DELETE RESTRICT)."]),
     )
     monkeypatch.setattr(
         "apps.v1.routers.accounts.bulk_delete_accounts",
-        lambda *, uids: pytest.fail("a blocked selection must not be deleted"),
+        lambda *, uids, delete_portfolios: pytest.fail("a blocked selection must not be deleted"),
     )
 
     response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uuid.uuid4()))
@@ -2869,10 +2935,13 @@ def test_bulk_delete_accounts_answers_409_when_an_account_fails(monkeypatch) -> 
     from apps.v1.schemas.accounts import AccountBulkDeleteResponse
 
     uid = str(uuid.uuid4())
-    monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", lambda *, uids: _preflight())
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda *, uids, delete_portfolios: _preflight(),
+    )
     monkeypatch.setattr(
         "apps.v1.routers.accounts.bulk_delete_accounts",
-        lambda *, uids: AccountBulkDeleteResponse.model_validate(
+        lambda *, uids, delete_portfolios: AccountBulkDeleteResponse.model_validate(
             {
                 "detail": "No accounts were deleted. 1 could not be deleted.",
                 "failed": [{"uid": uid, "detail": "Account 'a' cannot be deleted; nothing was deleted."}],
@@ -2890,20 +2959,41 @@ def test_bulk_delete_accounts_answers_409_when_an_account_fails(monkeypatch) -> 
 
 
 def test_bulk_delete_preflight_reports_counts_and_other_namespaces(monkeypatch) -> None:
-    uid = str(uuid.uuid4())
-    monkeypatch.setattr(
-        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
-        lambda *, uids: _preflight(
-            accounts=[{"uid": uid, "unique_identifier": "a", "row_counts": {"orders": 2}, "blockers": []}],
+    uid, portfolio_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
+    calls: list[bool] = []
+
+    def preflight(*, uids, delete_portfolios):
+        calls.append(delete_portfolios)
+        return _preflight(
+            accounts=[
+                {
+                    "uid": uid,
+                    "unique_identifier": "a",
+                    "row_counts": {"orders": 2},
+                    "blockers": [],
+                    "portfolios": [
+                        {"uid": portfolio_uid, "unique_identifier": "sleeve", "row_counts": {"weights": 4}}
+                    ],
+                    "kept_portfolios": [
+                        {"uid": kept_uid, "unique_identifier": "shared", "reason": "Another account uses it."}
+                    ],
+                }
+            ],
             other_namespace_cascades=["provider.account-sidecar"],
             other_namespace_restricts=["provider.orders"],
-        ),
-    )
+        )
 
-    response = TestClient(app).post("/api/v1/account/bulk-delete/preflight/", json=_selection(uid))
+    monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", preflight)
+
+    response = TestClient(app).post(
+        "/api/v1/account/bulk-delete/preflight/", json=_selection(uid, delete_portfolios=True)
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["accounts"][0]["row_counts"] == {"orders": 2}
+    assert body["accounts"][0]["portfolios"][0]["row_counts"] == {"weights": 4}
+    assert body["accounts"][0]["kept_portfolios"][0]["reason"] == "Another account uses it."
     assert body["other_namespace_cascades"] == ["provider.account-sidecar"]
     assert body["other_namespace_restricts"] == ["provider.orders"]
+    assert calls == [True]

@@ -191,7 +191,12 @@ class Account(MarketsMetaTableRow):
         return super().update(uid, values)
 
     @classmethod
-    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any] | None:
+    def delete(
+        cls,
+        uid: uuid.UUID | str,
+        *,
+        delete_portfolios: bool = False,
+    ) -> dict[str, Any] | None:
         """Delete the account with its whole history, in one transaction (ADR 0050).
 
         Removes its orders, trades and their order events, order managers, virtual
@@ -201,14 +206,26 @@ class Account(MarketsMetaTableRow):
         `RESTRICT` key there refuses the delete. Returns `None` when the account does
         not exist and raises `AccountDeleteConflictError` when a key refuses it. The
         same call does the same under the runtime and the remote backend.
+
+        With ``delete_portfolios=True`` the same transaction also deletes, with all
+        their data, the portfolios the account's virtual funds or target rows name and
+        nothing else uses. The answer lists them in ``deleted_portfolios``, and in
+        ``kept_portfolios``, with the reason, those that another account uses, whose
+        values or weights another application's table holds, or whose delete a foreign
+        key refuses; then the account is deleted alone.
         """
 
         from msm.services import delete_account
 
-        return delete_account(cls._active_context(), uid=uid)
+        return delete_account(cls._active_context(), uid=uid, delete_portfolios=delete_portfolios)
 
     @classmethod
-    def bulk_delete(cls, *, uids: Sequence[uuid.UUID | str]) -> dict[str, Any]:
+    def bulk_delete(
+        cls,
+        *,
+        uids: Sequence[uuid.UUID | str],
+        delete_portfolios: bool = False,
+    ) -> dict[str, Any]:
         """Delete each account as `delete` does, each in its own transaction.
 
         Accounts that are missing or refused are listed in `failed`; the others are
@@ -217,7 +234,11 @@ class Account(MarketsMetaTableRow):
 
         from msm.services import bulk_delete_accounts
 
-        return bulk_delete_accounts(cls._active_context(), uids=[str(uid) for uid in uids])
+        return bulk_delete_accounts(
+            cls._active_context(),
+            uids=[str(uid) for uid in uids],
+            delete_portfolios=delete_portfolios,
+        )
 
     def pretty_print_positions(
         self,

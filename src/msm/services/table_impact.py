@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +17,18 @@ IMPACT_UNAVAILABLE_WARNING = (
     "MetaTables could not report which tables this delete reaches through foreign keys. "
     "The database still applies every foreign-key action when the rows are deleted."
 )
+
+IMPACT_CACHE_SECONDS = 300.0
+"""How long one table's delete impact is reused before MetaTables is asked again.
+
+Computing it takes MetaTables seconds per table. It depends on the table and the keys
+into it, not on the request: the Markets API reaches MetaTables as one workload identity
+(ADR 0047). A key or grant changed in MetaTables shows in the preflight within this
+time; the database applies the current keys whenever rows are deleted (issue 91).
+"""
+
+_impact_cache: dict[str, tuple[float, TableImpact]] = {}
+_impact_cache_lock = threading.Lock()
 
 # What a foreign-key action does to the referencing rows, by MetaTables edge effect.
 _REFERENCING_ROW_OUTCOMES = {
@@ -46,7 +60,9 @@ def delete_rows_impact(model: type[Any]) -> DeleteRowsImpact:
     Each foreign-key action the delete triggers (cascades, SET NULL, SET DEFAULT)
     becomes a warning, and each reason MetaTables gives for refusing the delete
     becomes a blocker. The impact is advisory: the database enforces the same rules
-    when the rows are deleted, so an unavailable impact only adds a warning.
+    when the rows are deleted, so an unavailable impact only adds a warning. An impact
+    MetaTables returned is reused for `IMPACT_CACHE_SECONDS` per table; a failure is
+    not kept.
     """
 
     meta_table = model.get_meta_table()
@@ -54,9 +70,7 @@ def delete_rows_impact(model: type[Any]) -> DeleteRowsImpact:
         logger.warning("MetaTables delete impact skipped: model is not bound", model=model.__name__)
         return DeleteRowsImpact(impact=None, warnings=[IMPACT_UNAVAILABLE_WARNING])
     try:
-        impact = TableImpact.model_validate(
-            meta_table.get_impact(action="delete_rows").model_dump(mode="json")
-        )
+        impact = _table_impact(meta_table)
     except Exception:
         logger.exception("MetaTables delete impact failed", model=model.__name__)
         return DeleteRowsImpact(impact=None, warnings=[IMPACT_UNAVAILABLE_WARNING])
@@ -78,6 +92,32 @@ def delete_rows_impact(model: type[Any]) -> DeleteRowsImpact:
         warnings=list(dict.fromkeys(warnings)),
         blockers=blockers,
     )
+
+
+def clear_delete_rows_impact_cache() -> None:
+    """Forget every reused impact, so the next preflight asks MetaTables again."""
+
+    with _impact_cache_lock:
+        _impact_cache.clear()
+
+
+def _table_impact(meta_table: Any) -> TableImpact:
+    """MetaTables' delete impact for ``meta_table``, reused per table uid for a while."""
+
+    table_uid = str(getattr(meta_table, "uid", None) or "")
+    now = time.monotonic()
+    if table_uid:
+        with _impact_cache_lock:
+            cached = _impact_cache.get(table_uid)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+    impact = TableImpact.model_validate(
+        meta_table.get_impact(action="delete_rows").model_dump(mode="json")
+    )
+    if table_uid:
+        with _impact_cache_lock:
+            _impact_cache[table_uid] = (now + IMPACT_CACHE_SECONDS, impact)
+    return impact
 
 
 def _foreign_key_warning(edge: TableImpactEdge, nodes: dict[str, TableImpactNode]) -> str:
@@ -123,8 +163,10 @@ def _label(node: TableImpactNode | None, *, sentence_start: bool = False) -> str
 
 
 __all__ = [
+    "IMPACT_CACHE_SECONDS",
     "IMPACT_UNAVAILABLE_WARNING",
     "DeleteRowsImpact",
+    "clear_delete_rows_impact_cache",
     "delete_rows_impact",
     "impact_node_label",
 ]

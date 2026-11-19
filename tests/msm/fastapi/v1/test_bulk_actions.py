@@ -58,6 +58,21 @@ def test_bulk_action_discovery_uses_sdk_contract(
     assert action["endpoint"] == endpoint
     assert action["preflight_endpoint"] == preflight_endpoint
     assert action["selection_modes"] == ["explicit"]
+    # Only the account delete declares an option: its portfolios (issue 91).
+    expected_options = (
+        [
+            {
+                "key": "delete_portfolios",
+                "type": "boolean",
+                "default": False,
+                "label": "Also delete their portfolios",
+                "description": action["options"][0]["description"],
+            }
+        ]
+        if action_id == "bulk-delete-accounts"
+        else []
+    )
+    assert action["options"] == expected_options
 
 
 @pytest.mark.parametrize(

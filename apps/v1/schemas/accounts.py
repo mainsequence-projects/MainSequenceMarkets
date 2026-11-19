@@ -157,6 +157,43 @@ class AccountTargetAllocationCandidate(BaseModel):
 
 AccountDeletedRows = dict[str, int]
 
+_PORTFOLIO_DATASET_ROWS = (
+    "per dataset: weights, values, rebalance_state, analytics, event_ledger, state and "
+    "cash_flows"
+)
+
+
+class AccountDeletedPortfolio(BaseModel):
+    """A portfolio deleted with the account, with all its data (issue 91)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    unique_identifier: str
+    deleted_rows: AccountDeletedRows = Field(
+        default_factory=dict,
+        description=(
+            f"The portfolio's rows deleted with it, {_PORTFOLIO_DATASET_ROWS}. Counted "
+            "just before the delete ran."
+        ),
+    )
+
+
+class AccountKeptPortfolio(BaseModel):
+    """A portfolio the account's history named that its delete kept (issue 91)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    unique_identifier: str
+    reason: str = Field(
+        description=(
+            "Why it stays: account history of another account references it, the catalog "
+            "places its values or weights in another application's table, a foreign key "
+            "refused its delete, or it changed while the account was being deleted."
+        )
+    )
+
 
 class AccountDeleteResponse(BaseModel):
     """One account deleted with its history (ADR 0050)."""
@@ -171,16 +208,24 @@ class AccountDeleteResponse(BaseModel):
         default_factory=dict,
         description=(
             "Markets rows deleted with the account, per table: order_events, trades, "
-            "orders, order_managers, virtual_fund_holdings, virtual_fund_holdings_sets, "
-            "virtual_funds, target_positions, position_sets, target_allocations, holdings "
-            "and holdings_sets. Counted just before the delete ran."
+            "orders, order_managers, allocation_lines, virtual_fund_holdings, "
+            "virtual_fund_holdings_sets, virtual_funds, target_positions, position_sets, "
+            "target_allocations, holdings and holdings_sets. Counted just before the "
+            "delete ran."
         ),
     )
-    other_namespace_cascades: list[str] = Field(
+    deleted_portfolios: list[AccountDeletedPortfolio] = Field(
         default_factory=list,
         description=(
-            "Tables in other namespaces whose own CASCADE keys delete their rows that "
-            "reference the account or its rows. Markets sends them no statement."
+            "With delete_portfolios: the portfolios deleted in the same transaction, "
+            "which the account's virtual funds or target rows named and nothing else used."
+        ),
+    )
+    kept_portfolios: list[AccountKeptPortfolio] = Field(
+        default_factory=list,
+        description=(
+            "With delete_portfolios: the portfolios the account's history named that "
+            "stay, each with the reason."
         ),
     )
 
@@ -201,7 +246,19 @@ class AccountBulkDeleteResponse(BaseModel):
     deleted_count: int = 0
     deleted: list[AccountDeleteResponse] = Field(default_factory=list)
     failed: list[AccountDeleteFailure] = Field(default_factory=list)
-    other_namespace_cascades: list[str] = Field(default_factory=list)
+
+
+class AccountDeletePreflightPortfolio(BaseModel):
+    """A portfolio the account's delete would remove with it (issue 91)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    unique_identifier: str
+    row_counts: AccountDeletedRows = Field(
+        default_factory=dict,
+        description=f"The portfolio's rows the delete would remove, {_PORTFOLIO_DATASET_ROWS}.",
+    )
 
 
 class AccountDeletePreflightItem(BaseModel):
@@ -214,6 +271,17 @@ class AccountDeletePreflightItem(BaseModel):
         description="Markets rows the delete would remove, per table.",
     )
     blockers: list[str] = Field(default_factory=list)
+    portfolios: list[AccountDeletePreflightPortfolio] = Field(
+        default_factory=list,
+        description=(
+            "With delete_portfolios: the portfolios the delete would remove with the "
+            "account, as if it were deleted alone."
+        ),
+    )
+    kept_portfolios: list[AccountKeptPortfolio] = Field(
+        default_factory=list,
+        description="With delete_portfolios: the portfolios its history names that stay, and why.",
+    )
 
 
 def _bulk_delete_preflight_response() -> type[BaseModel]:

@@ -24,16 +24,14 @@ from sqlalchemy.sql.util import find_tables
 
 from msm.models import PortfolioTable
 from msm_portfolios.repositories import portfolio_deletion as repository
-from msm_portfolios.repositories.portfolio_deletion import (
-    PORTFOLIO_DATASET_TABLES,
-    portfolio_delete_statements,
-)
+from msm_portfolios.repositories.portfolio_deletion import portfolio_delete_statements
 from msm_portfolios.services import (
     PortfolioDeleteConflictError,
     bulk_delete_portfolio_records,
     delete_portfolio_record,
     preflight_bulk_delete_portfolio_records,
 )
+from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.msm.repositories.test_sqlite_snapshot_writes import (
     WHEN,
     _account,

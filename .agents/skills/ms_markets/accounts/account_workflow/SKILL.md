@@ -122,6 +122,13 @@ Rules:
   `POST /api/v1/account/bulk-delete/preflight/`. Markets sends deletes only to its own
   tables; another application's table loses rows only through its own `CASCADE` key,
   and its `RESTRICT` key refuses the delete.
+- To remove an account together with the portfolios only it used, pass
+  `delete_portfolios=True` (`?delete_portfolios=true`, or the bulk action's
+  `delete_portfolios` option); it is off by default. The same transaction deletes each
+  portfolio its virtual funds or target rows name, with all its data, unless another
+  account uses it or another application's table holds its data; the answer lists
+  `deleted_portfolios` and `kept_portfolios` with the reason. Don't delete those
+  portfolios one by one afterwards.
 - A connector registers a brokerage account, and syncs its holdings, with one call:
   `MarketsClient.register_account(...)` (`POST /api/v1/account/registration/`, ADR
   0051). In one transaction it creates the missing asset types, assets and cash currency

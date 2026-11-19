@@ -24,6 +24,7 @@ from .bulk_actions import (
     BulkDeletePreflightResponse,
     blocked_preflight_detail,
     build_bulk_delete_action,
+    bulk_action_option_values,
     explicit_uuid_selection,
 )
 from .collections import (
@@ -170,6 +171,7 @@ __all__ = [
     "build_resource_discovery_spec",
     "build_tabular_field",
     "build_tabular_frame",
+    "bulk_action_option_values",
     "conflict",
     "dependency_unavailable",
     "explicit_uuid_selection",

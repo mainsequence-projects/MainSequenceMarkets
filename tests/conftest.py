@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 
 import jwt
@@ -88,6 +89,21 @@ def pytest_configure(config: pytest.Config) -> None:
     CallerAssertionVerifier.from_environment = classmethod(  # type: ignore[method-assign]
         lambda cls, **_: GATEWAY_CALLER_ASSERTIONS
     )
+
+
+@pytest.fixture(autouse=True)
+def fresh_delete_rows_impacts():
+    """Each test asks MetaTables for its own delete impacts (`msm.services.table_impact`
+    reuses one per table for a while)."""
+
+    def clear() -> None:
+        module = sys.modules.get("msm.services.table_impact")
+        if module is not None:
+            module.clear_delete_rows_impact_cache()
+
+    clear()
+    yield
+    clear()
 
 
 @pytest.fixture

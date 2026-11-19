@@ -9,6 +9,12 @@ Builds on [ADR 0049](0049-portfolio-lifecycle-and-account-history.md) decision 1
 [ADR 0047](0047-markets-api-application-boundary.md): the account gets delete
 routes, and the row router runs `Account`'s own `delete`.
 
+Amended 2026-11-19 by
+[issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91):
+a delete sends one read and one transaction and asks MetaTables for no impact
+(decisions 3 and 5), and it can delete the account's portfolios too (decision 9).
+See the implementation notes.
+
 ## Context
 
 An `Account` is the root of its history. These keys reference it, directly or
@@ -99,12 +105,14 @@ remove that history, and it does not exist.
    - A `CASCADE` key deletes the referencing rows with their parent: a sidecar
      on `Account.uid` goes with the account, and rows in instances of the
      holdings, target-position and virtual-fund holdings storages go with their
-     sets. The preflight warns about each such table, and the delete response
-     lists them.
+     sets. The preflight warns about each such table. (Amended 2026-11-19: the
+     delete response no longer lists them, because the delete no longer asks
+     MetaTables for its impact.)
    - A `RESTRICT` key refuses the whole delete, for example a provider's orders
      or trades instance that still holds rows for the account. The preflight
-     reports the table as a blocker, and the delete answers `409` naming it. The
-     provider deletes those rows through its own application first.
+     warns about the table, and the delete answers `409` with the database's
+     message, which on PostgreSQL names the constraint. The provider deletes
+     those rows through its own application first.
 
 4. **The same delete on both backends.** `Account.delete(uid)` and a new
    `Account.bulk_delete(uids=...)` call the service. Under the runtime backend
@@ -118,7 +126,11 @@ remove that history, and it does not exist.
    remove, the tables in other namespaces it reaches, and what blocks it. It
    builds on `msm.services.table_impact.delete_rows_impact`, as the asset-category,
    portfolio and portfolio-group preflights do. The database enforces the same
-   keys when the rows are deleted, so the preflight is advisory.
+   keys when the rows are deleted, so the preflight is advisory. (Amended
+   2026-11-19: only the preflight asks MetaTables for the impact, which takes
+   MetaTables seconds per table, and `delete_rows_impact` reuses an answer for
+   the same table for five minutes. The impact depends on the table, not on the
+   caller: the Markets API reaches MetaTables as one workload identity, ADR 0047.)
 
 6. **Routes.** Following the asset-category and portfolio deletes:
    - `DELETE /api/v1/account/{uid}/`;
@@ -141,6 +153,30 @@ remove that history, and it does not exist.
    unused `delete_account_target_allocation`, `delete_position_set` and
    `delete_virtual_fund` helpers are removed, with their repository
    counterparts.
+
+9. **The account's portfolios, on request** (added 2026-11-19, issue 91). Every
+   entry point takes `delete_portfolios`, off by default: `Account.delete` and
+   `Account.bulk_delete` (and so `POST /api/v1/rows/account/delete/`), the
+   `delete_portfolios` query parameter of `DELETE /api/v1/account/{uid}/`, and
+   the `delete_portfolios` option of the bulk-delete action and its preflight.
+   With it, the same transaction also deletes the portfolios that the account's
+   virtual funds or target rows name and that nothing references once the
+   account's history is gone, with all their data, as the portfolio delete
+   removes it (ADR 0049, issue 93): their rows in the seven datasets, then the
+   portfolio, whose catalog row and group memberships go by `CASCADE`. A
+   portfolio is kept, and the answer says why, when:
+   - account history of another account references it: a virtual fund of
+     another account targets it, or target rows outside this account's position
+     sets name it. Account history is never rewritten (ADR 0049 decision 1);
+   - the catalog places its values or weights in a table another application
+     owns (ADR 0047). Markets never deletes rows there, and the portfolio row
+     cannot go while they exist;
+   - a key of a table the read cannot see, such as an uncatalogued instance
+     another application owns, refuses its delete. Then the transaction deletes
+     nothing, and a second one deletes the account alone.
+
+   The portfolios are never deleted without the account, and a refused portfolio
+   never keeps the account from being deleted.
 
 ## Rejected Alternatives
 
@@ -179,6 +215,21 @@ For an account that would leave a partly deleted history whenever a later step
 is refused, for example by a `RESTRICT` key in another namespace. One
 transaction leaves either the whole account or nothing.
 
+### Delete The Account's Portfolios In Their Own Requests
+
+The account delete could be followed by one portfolio delete per orphaned
+portfolio. Each is its own read and transaction, so a delete of an account with
+several portfolios would again take many MetaTables requests, the cost issue 91
+removes, and a failure between them leaves the portfolios without the account
+that used them and without a record of why. One transaction answers what was
+deleted and what was kept.
+
+### A Separate Operation For The Account And Its Portfolios
+
+A second delete operation would duplicate the account delete's routes, row
+operation and preflight. An option on the existing delete keeps one code path,
+and the default keeps the portfolios, as before.
+
 ### An Ownership Or Admin Check
 
 Accounts have no owner column, and admission to the Markets API is decided by
@@ -205,6 +256,10 @@ the two registry deletes behave differently with no ms-markets rule behind it.
   namespaces: its cascade walk follows every table's declared cascade targets,
   and it adds a `restrict` edge for each registered key that targets a table the
   delete reaches. Tables the caller cannot view appear as opaque nodes.
+- (Added 2026-11-19, issue 91.) An account and the portfolios only it used can go
+  in one request. A portfolio another account, a virtual fund of another account
+  or another application's table uses stays with all its data, and the answer
+  says why. Without the option nothing changes for portfolios.
 
 ## Implementation Notes
 
@@ -248,3 +303,61 @@ the two registry deletes behave differently with no ms-markets rule behind it.
   generic row path, wrapped in `registry_write("account", "delete")` and
   `registry_write("account", "bulk_delete")`. The HTTP routes use
   `registry_write("account", "delete")` and `("account", "bulk-delete")`.
+
+### 2026-11-19: issue 91
+
+Deleting an account through the Markets API took minutes: each step was its own
+MetaTables request, about 2 s per statement and about 14 s per delete impact.
+The delete read the account and then counted its rows, and asked for the impact;
+the bulk delete asked for it in its preflight and again to delete
+([issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91)).
+
+- **One read.** `read_account_delete` replaces `count_account_delete_rows` and
+  the separate account read. One `SELECT` from the account by uid answers whether
+  it exists, its rows per table and the rows of other accounts that block it.
+  Every count is a subquery on the bound account uid alone (the account's
+  identifier is read in the same statement), so the database runs each once
+  whatever the number of result rows. With `delete_portfolios` there is one row
+  per portfolio the account's virtual funds or target rows name, with the account
+  history of other accounts that references it, its catalog row's values and
+  weights instances, and its rows in each dataset.
+- **One transaction.** The list is the 14 statements of the 3.3.0 note, then,
+  with portfolios to delete, one `DELETE` per dataset for all of them and the
+  portfolio `DELETE`: at most 22 of the 32 statements MetaTables allows. Each
+  portfolio statement keeps only the portfolios no virtual fund or target row
+  references, which, after the account's own history is gone, means no other
+  account's. MetaTables checks a statement's row guard right after it runs, not
+  only on the last statement, and rolls everything back on a miss, so the
+  account's guard (exactly the account read before) still guards from the
+  middle of the list. The last statement is guarded to delete every portfolio
+  read as deletable and returns them; a portfolio referenced in between stops
+  it, and the account is then deleted alone.
+- **Refusals.** A key the read cannot see refuses the whole list. Markets then
+  sends the account's 14 statements alone; if a key refuses those too, it is the
+  account's own and `409` says so with nothing deleted. With no portfolio to
+  delete, one delete is one read and one transaction; with a refused portfolio,
+  one read and two transactions.
+- **Deadline.** The read and the transaction run with MetaTables' longest
+  deadline, 60 s (`msm.repositories.base.with_delete_deadline`), instead of its
+  15 s default, which covers the whole list. With
+  portfolios, the read counts and the transaction deletes each portfolio's rows in
+  all seven datasets: millions of rows for a portfolio with years of daily weights
+  over hundreds of assets.
+- **Core and the portfolio package.** Core `msm` does not import `msm_portfolios`
+  (ADR 0019). `msm.portfolio_datasets` holds the registry of the datasets keyed
+  by `Portfolio.unique_identifier`, which
+  `msm_portfolios.time_index.portfolios.storage` fills when it defines the seven
+  storages; each registration is checked against the model's actual foreign key.
+  `ACCOUNT_HISTORY_REFERENCES` and the `NOT EXISTS` condition built from it moved
+  from `msm_portfolios.repositories.portfolio_deletion` to
+  `msm.repositories.account_deletion`, so both deletes use the same definition.
+  The Markets API's account delete runtime includes the portfolio tables.
+- **No impact in the delete.** `delete_account` and `bulk_delete_accounts` no
+  longer ask MetaTables for the account table's impact, and their responses no
+  longer carry `other_namespace_cascades`; the preflight still does. The `409`
+  carries the database's message without the list of tables from the impact.
+  `POST /api/v1/account/bulk-delete/` asks for the impact once, in its preflight,
+  and a preflight within five minutes reuses it.
+- **Bulk.** Each account is still deleted in its own transaction, in the order
+  selected, so a portfolio only selected accounts use goes with the last of
+  them. The preflight reads each account as if it were deleted alone.

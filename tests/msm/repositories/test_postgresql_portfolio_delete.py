@@ -16,8 +16,8 @@ import sqlalchemy as sa
 
 from msm.models import PortfolioTable
 from msm_portfolios.repositories import portfolio_deletion as repository
-from msm_portfolios.repositories.portfolio_deletion import PORTFOLIO_DATASET_TABLES
 from msm_portfolios.services import PortfolioDeleteConflictError, delete_portfolio_record
+from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
     postgresql_markets,
 )
