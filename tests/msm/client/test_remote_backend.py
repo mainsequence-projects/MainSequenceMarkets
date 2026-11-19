@@ -358,14 +358,14 @@ def test_account_history_rows_refuse_delete_as_the_runtime_does(
 
 def test_account_delete_runs_the_cascading_delete_remotely(monkeypatch, remote) -> None:
     uid = str(uuid.uuid4())
-    calls: list[tuple[str, Any, bool]] = []
+    calls: list[tuple[str, Any]] = []
 
-    def delete_account(context, *, uid, delete_portfolios=False):
-        calls.append(("delete", str(uid), delete_portfolios))
+    def delete_account(context, *, uid):
+        calls.append(("delete", str(uid)))
         return {"detail": "deleted", "uid": str(uid), "deleted_count": 1, "deleted_rows": {"orders": 2}}
 
-    def bulk_delete_accounts(context, *, uids, delete_portfolios=False):
-        calls.append(("bulk_delete", list(uids), delete_portfolios))
+    def bulk_delete_accounts(context, *, uids):
+        calls.append(("bulk_delete", list(uids)))
         return {"detail": "deleted", "deleted_count": len(uids), "deleted": [], "failed": []}
 
     monkeypatch.setattr("msm.services.delete_account", delete_account, raising=False)
@@ -373,33 +373,21 @@ def test_account_delete_runs_the_cascading_delete_remotely(monkeypatch, remote) 
 
     assert Account.delete(uid)["deleted_rows"] == {"orders": 2}
     assert Account.bulk_delete(uids=[uid])["deleted_count"] == 1
-    # The option travels with the call (issue 91).
-    assert Account.delete(uid, delete_portfolios=True)["deleted_count"] == 1
-    assert Account.bulk_delete(uids=[uid], delete_portfolios=True)["deleted_count"] == 1
-    assert calls == [
-        ("delete", uid, False),
-        ("bulk_delete", [uid], False),
-        ("delete", uid, True),
-        ("bulk_delete", [uid], True),
-    ]
+    assert calls == [("delete", uid), ("bulk_delete", [uid])]
 
 
 def test_account_delete_conflicts_and_missing_accounts_come_back_typed(monkeypatch, remote) -> None:
     from msm.api.remote import MarketsConflictError
     from msm.services import AccountDeleteConflictError
 
-    def refused(context, *, uid, delete_portfolios=False):
+    def refused(context, *, uid):
         raise AccountDeleteConflictError("Account 'a' cannot be deleted; nothing was deleted.")
 
     monkeypatch.setattr("msm.services.delete_account", refused, raising=False)
     with pytest.raises(MarketsConflictError, match="nothing was deleted"):
         Account.delete(uuid.uuid4())
 
-    monkeypatch.setattr(
-        "msm.services.delete_account",
-        lambda context, *, uid, delete_portfolios=False: None,
-        raising=False,
-    )
+    monkeypatch.setattr("msm.services.delete_account", lambda context, *, uid: None, raising=False)
     assert Account.delete(uuid.uuid4()) is None
 
 

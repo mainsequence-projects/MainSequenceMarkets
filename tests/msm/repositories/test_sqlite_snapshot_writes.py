@@ -50,13 +50,21 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
 
     ``prepare(engine)`` runs after the migration and before the execution identity is
     built, so tables it creates are readable and writable by the identity. Every SQL
-    text sent to the backend is recorded in ``statements``; ``backend`` is MetaTables'
-    backend for the file, for operations other than SQL.
+    text sent to the backend is recorded in ``statements``.
+
+    ``keep_statistics(*models)`` stores the update statistics of those time-index tables
+    in ``index_stats``, by table name, as a table that keeps statistics has them in the
+    catalog. After each write the harness does what MetaTables' route does after a
+    compiled-SQL write (MetaTables#117): it rebuilds, with MetaTables' own
+    ``rebuild_index_statistics``, the statistics of each written table that keeps them.
     """
+
+    from dataclasses import replace
 
     from mainsequence.code_repository_context import GitCodeRepositorySourceContext
     from metatables.api.backend.backends.access import ExecutionIdentity
     from metatables.api.backend.backends.contracts import SQLExecutionError
+    from metatables.api.backend.backends.operations import rebuild_index_statistics
     from metatables.api.backend.backends.registry import backend_for
     from metatables.api.backend.integrations.local_workspace import select_local_workspace
 
@@ -88,33 +96,63 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
     monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
 
     statements: list[str] = []
+    index_stats: dict[str, dict] = {}
+    kept: dict[str, type] = {}
+
+    def rebuild(model) -> None:
+        stats = rebuild_index_statistics(
+            source=replace(source, execution_identity=identity),
+            physical_schema=None,
+            physical_table_name=model.__table__.name,
+            time_index_name=model.__time_index_name__,
+            identity_dimensions=tuple(model.__index_names__[1:]),
+        )
+        # An emptied table keeps no statistics, as the route stores them.
+        index_stats[model.__table__.name] = stats if stats["_GLOBAL_"]["max"] is not None else {}
+
+    def keep_statistics(*models) -> None:
+        for model in models:
+            kept[model.__table__.name] = model
+            rebuild(model)
+
+    def refreshed(result: dict) -> dict:
+        # The route takes the written relations off the result and rebuilds each written
+        # time-index table that keeps statistics; nothing stored cannot be stale.
+        for _schema, name in result.pop("written_relations", None) or ():
+            if name in kept and index_stats.get(name):
+                rebuild(kept[name])
+        return result
 
     def execute_operation(cls, operation, *, timeout=None):
         wire = MetaTableCompiledSQLOperation.model_validate_json(operation.model_dump_json())
         statements.append(wire.statement.sql)
-        return backend.sql.execute(
-            identity=identity,
-            sql_text=wire.statement.sql,
-            operation=wire.operation,
-            parameters=wire.statement.parameters,
-            parameter_types=wire.statement.parameter_types,
-            **wire.limits.model_dump(include={"max_rows", "offset", "statement_timeout_ms"}),
+        return refreshed(
+            backend.sql.execute(
+                identity=identity,
+                sql_text=wire.statement.sql,
+                operation=wire.operation,
+                parameters=wire.statement.parameters,
+                parameter_types=wire.statement.parameter_types,
+                **wire.limits.model_dump(include={"max_rows", "offset", "statement_timeout_ms"}),
+            )
         )
 
     def execute_transaction(cls, transaction, *, timeout=None):
         wire = MetaTableCompiledSQLTransaction.model_validate_json(transaction.model_dump_json())
         statements.extend(statement.sql for statement in wire.statements)
         try:
-            return backend.sql.execute_transaction(
-                identity=identity,
-                operation=wire.operation,
-                statements=[
-                    statement.model_dump(
-                        include={"sql", "parameters", "parameter_types", "expect_rows", "label"}
-                    )
-                    for statement in wire.statements
-                ],
-                **wire.limits.model_dump(include={"max_rows", "offset", "statement_timeout_ms"}),
+            return refreshed(
+                backend.sql.execute_transaction(
+                    identity=identity,
+                    operation=wire.operation,
+                    statements=[
+                        statement.model_dump(
+                            include={"sql", "parameters", "parameter_types", "expect_rows", "label"}
+                        )
+                        for statement in wire.statements
+                    ],
+                    **wire.limits.model_dump(include={"max_rows", "offset", "statement_timeout_ms"}),
+                )
             )
         except SQLExecutionError as error:
             # The route answers 409 and the client raises this (MetaTables ADR 0026).
@@ -134,7 +172,8 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
         engine=engine,
         context=MarketsRepositoryContext(),
         statements=statements,
-        backend=backend,
+        index_stats=index_stats,
+        keep_statistics=keep_statistics,
     )
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -28,31 +29,18 @@ PROVIDER_TABLE = "provider_ns__portfoliosts__copy"
 PROVIDER_CONSTRAINT = "fk_provider_ns_portfoliosts_copy_portfolio"
 
 
-class _DatasetTable:
-    """A bound dataset storage; records each statistics refresh with the requests before it."""
-
-    def __init__(self, key: str, uid: str, refreshes: list, operations: list) -> None:
-        self.key, self.uid, self.refreshes, self.operations = key, uid, refreshes, operations
-
-    def delete_after_date(self, after_date, *, dimension_filters, timeout=None):
-        self.refreshes.append(
-            (self.key, list(dimension_filters["portfolio_identifier"]), after_date, list(self.operations))
-        )
-        return {"deleted_count": 0}
-
-
 @pytest.fixture
 def markets(postgresql_markets, monkeypatch):  # noqa: F811
+    from metatables import TimeIndexMetaTable
+
+    def refuse_delete_after_date(self, *args, **kwargs):
+        raise AssertionError("The portfolio delete must not call delete_after_date.")
+
+    monkeypatch.setattr(TimeIndexMetaTable, "delete_after_date", refuse_delete_after_date)
     monkeypatch.setattr(PortfolioTable, "get_meta_table", classmethod(lambda cls: None))
     engine, context, operations = postgresql_markets
-    refreshes: list = []
-    for number, table in enumerate(PORTFOLIO_DATASET_TABLES, start=1):
-        bound = _DatasetTable(table.key, f"0a0a0a0a-0000-4000-8000-00000000000{number}", refreshes, operations)
-        monkeypatch.setattr(
-            table.model, "get_time_index_meta_table", classmethod(lambda cls, bound=bound: bound)
-        )
     _insert(engine, "ms_markets__asset", unique_identifier="AAA")
-    return engine, context, operations, refreshes
+    return engine, context, operations
 
 
 def _insert(engine, table_name: str, **values) -> dict:
@@ -131,8 +119,8 @@ def _exists(engine, portfolio: uuid.UUID) -> bool:
     return bool(_count(engine, "SELECT count(*) FROM ms_markets__portfolio WHERE uid = :uid", uid=portfolio))
 
 
-def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets) -> None:
-    engine, context, operations, refreshes = markets
+def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets, monkeypatch) -> None:
+    engine, context, operations = markets
     portfolio, identifier = _portfolio(engine)
     _datasets(engine, identifier)
     other, other_identifier = _portfolio(engine)
@@ -141,8 +129,7 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets) -> 
         engine,
         "ms_markets__portfoliodatasetavailability",
         portfolio_uid=portfolio,
-        # The core values table: no other application's table to check.
-        values_meta_table_uid="0a0a0a0a-0000-4000-8000-000000000002",
+        values_meta_table_uid="0a0a0a0a-0000-4000-8000-000000000001",
         weights_meta_table_uid=None,
         signal_meta_table_uid=None,
         population_state="unavailable",
@@ -154,15 +141,16 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets) -> 
     _insert(engine, "ms_markets__portfoliogroupmembership", portfolio_group_uid=group["uid"], portfolio_uid=portfolio)
     operations.clear()
 
+    from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage
+
+    # The catalog names the core values table: no other application's table to check.
+    core = SimpleNamespace(uid="0a0a0a0a-0000-4000-8000-000000000001")
+    monkeypatch.setattr(PortfoliosStorage, "get_time_index_meta_table", classmethod(lambda cls: core))
+
     deleted = delete_portfolio_record(context, uid=portfolio)
 
     assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
-    assert deleted["statistics_not_refreshed"] == []
     assert operations == ["read", "transaction"]
-    # Each dataset's statistics are rebuilt once, after the transaction, deleting nothing.
-    assert refreshes == [
-        (key, [identifier], "9999-12-31T00:00:00+00:00", ["read", "transaction"]) for key in DATASETS
-    ]
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
     assert _count(engine, "SELECT count(*) FROM ms_markets__portfoliodatasetavailability") == 0
@@ -172,7 +160,7 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets) -> 
 
 
 def test_a_restrict_key_of_another_application_refuses_everything_and_is_named(markets) -> None:
-    engine, context, operations, refreshes = markets
+    engine, context, operations = markets
     portfolio, identifier = _portfolio(engine)
     _datasets(engine, identifier)
     with engine.begin() as connection:
@@ -193,13 +181,12 @@ def test_a_restrict_key_of_another_application_refuses_everything_and_is_named(m
     # MetaTables' impact is unavailable here, so the database refuses the last statement.
     assert PROVIDER_CONSTRAINT in str(refused.value)
     assert operations == ["read", "transaction", "read"]
-    assert refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
 
 def test_account_history_written_in_between_stops_the_guard(markets, monkeypatch) -> None:
-    engine, context, _operations, refreshes = markets
+    engine, context, _operations = markets
     portfolio, identifier = _portfolio(engine)
     _datasets(engine, identifier)
     count = repository.count_portfolio_delete_rows
@@ -218,6 +205,5 @@ def test_account_history_written_in_between_stops_the_guard(markets, monkeypatch
     with pytest.raises(PortfolioDeleteConflictError, match=r"VirtualFundTable\.target_portfolio_uid"):
         delete_portfolio_record(context, uid=portfolio)
 
-    assert refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}

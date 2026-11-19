@@ -2769,7 +2769,6 @@ def _deleted(uid: str, **values) -> dict:
         "unique_identifier": "a",
         "deleted_count": 1,
         "deleted_rows": {"orders": 2, "holdings": 3},
-        "statistics_not_refreshed": [],
         "deleted_portfolios": [],
         "kept_portfolios": [],
         **values,
@@ -2801,14 +2800,8 @@ def test_delete_account_with_its_portfolios_reports_what_it_deleted_and_kept(mon
     uid, deleted_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
     portfolios = {
         "detail": "Account 'a' deleted with its history and 1 portfolio. 1 portfolio it used was kept.",
-        "statistics_not_refreshed": ["orders"],
         "deleted_portfolios": [
-            {
-                "uid": deleted_uid,
-                "unique_identifier": "sleeve",
-                "deleted_rows": {"weights": 4, "values": 2},
-                "statistics_not_refreshed": ["values"],
-            }
+            {"uid": deleted_uid, "unique_identifier": "sleeve", "deleted_rows": {"weights": 4, "values": 2}}
         ],
         "kept_portfolios": [
             {
@@ -2831,6 +2824,55 @@ def test_delete_account_with_its_portfolios_reports_what_it_deleted_and_kept(mon
     assert response.status_code == 200
     assert response.json() == _deleted(uid, **portfolios)
     assert calls == [True]
+
+
+def test_the_delete_services_run_the_portfolio_package_delete_with_the_option(monkeypatch) -> None:
+    """Core deletes the account alone; `msm_portfolios` owns the delete with its portfolios."""
+
+    from apps.v1.services import accounts as account_service
+
+    uid = str(uuid.uuid4())
+    calls: list[tuple[str, str]] = []
+    answers = {
+        "delete_account": lambda kwargs: _deleted(kwargs["uid"]),
+        "bulk_delete_accounts": lambda kwargs: {"detail": "Deleted.", "deleted_count": 0},
+        "preflight_bulk_delete_accounts": lambda kwargs: {
+            "allowed": True,
+            "matched_count": 0,
+            "blockers": [],
+            "warnings": [],
+        },
+    }
+
+    def recorded(name, answer):
+        def run(context, **kwargs):
+            calls.append((name, context))
+            return answer(kwargs)
+
+        return run
+
+    monkeypatch.setattr(account_service, "_get_delete_runtime", lambda: SimpleNamespace(context="runtime"))
+    for name, answer in answers.items():
+        monkeypatch.setattr(f"msm.services.{name}", recorded(name, answer), raising=False)
+        monkeypatch.setattr(
+            f"msm_portfolios.services.{name}_with_portfolios",
+            recorded(f"{name}_with_portfolios", answer),
+            raising=False,
+        )
+
+    for delete_portfolios in (False, True):
+        account_service.delete_account(uid=uid, delete_portfolios=delete_portfolios)
+        account_service.bulk_delete_accounts(uids=[uid], delete_portfolios=delete_portfolios)
+        account_service.preflight_bulk_delete_accounts(uids=[uid], delete_portfolios=delete_portfolios)
+
+    assert calls == [
+        ("delete_account", "runtime"),
+        ("bulk_delete_accounts", "runtime"),
+        ("preflight_bulk_delete_accounts", "runtime"),
+        ("delete_account_with_portfolios", "runtime"),
+        ("bulk_delete_accounts_with_portfolios", "runtime"),
+        ("preflight_bulk_delete_accounts_with_portfolios", "runtime"),
+    ]
 
 
 def test_delete_account_answers_404_409_and_400(monkeypatch) -> None:

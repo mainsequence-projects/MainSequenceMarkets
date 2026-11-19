@@ -14,10 +14,6 @@ transaction, or not at all. Two kinds of reference refuse it before anything is 
   the portfolio, such as a provider's contract instance, while it holds rows of the
   portfolio or when Markets cannot check it. Markets never deletes rows in another
   application's table (ADR 0047, ADR 0050 decision 2).
-
-After the transaction commits, MetaTables rebuilds the stored update statistics of
-each dataset table that lost rows, so a portfolio re-created under the same identifier
-starts from scratch instead of at the deleted portfolio's last time index.
 """
 
 from __future__ import annotations
@@ -189,9 +185,7 @@ def delete_portfolio_record(
     Returns ``None`` when the portfolio does not exist. Raises
     `PortfolioDeleteConflictError` when account history or another application's table
     references it; then nothing is deleted. ``deleted_rows`` counts the rows per
-    dataset just before the delete ran. After the transaction commits, the stored
-    update statistics of each dataset table that lost rows are rebuilt; the datasets
-    whose statistics could not be are listed in ``statistics_not_refreshed``.
+    dataset just before the delete ran.
     """
 
     portfolio_uid = _canonical_uid(uid)
@@ -199,8 +193,7 @@ def delete_portfolio_record(
     planned = _plan(context, [portfolio_uid], impact=impact).get(portfolio_uid)
     if planned is None or not _delete_planned(context, planned, impact=impact):
         return None
-    not_refreshed = _refresh_statistics(context, [planned])
-    return _deleted_response(planned, not_refreshed[planned.uid])
+    return _deleted_response(planned)
 
 
 def bulk_delete_portfolio_records(
@@ -211,9 +204,7 @@ def bulk_delete_portfolio_records(
     """Delete each portfolio with its datasets, each in its own transaction.
 
     One read counts every selected portfolio. A portfolio that is missing or refused is
-    reported in ``failed`` and the others are still deleted. After the transactions,
-    each dataset table that lost rows has its stored update statistics rebuilt once,
-    for every portfolio the request deleted.
+    reported in ``failed`` and the others are still deleted.
     """
 
     target_uids = _unique_uids(uids)
@@ -232,7 +223,6 @@ def bulk_delete_portfolio_records(
             failed.append({"uid": uid, "detail": f"Portfolio {uid} was not found."})
             continue
         deleted.append(planned)
-    not_refreshed = _refresh_statistics(context, deleted)
     count = len(deleted)
     if count == 0:
         detail = "No portfolios were deleted."
@@ -243,17 +233,10 @@ def bulk_delete_portfolio_records(
         )
     if failed:
         detail += f" {len(failed)} could not be deleted."
-    stale = [
-        table.key
-        for table in PORTFOLIO_DATASET_TABLES
-        if any(table.key in keys for keys in not_refreshed.values())
-    ]
-    if stale:
-        detail += f" {_not_refreshed_text(stale)}"
     return {
         "detail": detail,
         "deleted_count": count,
-        "deleted": [_deleted_response(item, not_refreshed[item.uid]) for item in deleted],
+        "deleted": [_deleted_response(item) for item in deleted],
         "failed": failed,
     }
 
@@ -354,17 +337,13 @@ def _delete_planned(
     return True
 
 
-def _deleted_response(planned: _PlannedDelete, not_refreshed: Sequence[str]) -> dict[str, Any]:
-    detail = f"{planned.label} deleted with its datasets."
-    if not_refreshed:
-        detail += f" {_not_refreshed_text(not_refreshed)}"
+def _deleted_response(planned: _PlannedDelete) -> dict[str, Any]:
     return {
-        "detail": detail,
+        "detail": f"{planned.label} deleted with its datasets.",
         "uid": planned.uid,
         "unique_identifier": planned.unique_identifier,
         "deleted_count": 1,
         "deleted_rows": dict(planned.row_counts),
-        "statistics_not_refreshed": list(not_refreshed),
     }
 
 
@@ -390,36 +369,6 @@ def _restrict_hint(impact: PortfolioDeleteImpact) -> str:
 def _is_delete_conflict(exc: Exception) -> bool:
     text = str(exc).lower()
     return any(marker in text for marker in _CONFLICT_MARKERS)
-
-
-# Update statistics -----------------------------------------------------------------------
-
-
-def _refresh_statistics(
-    context: MarketsRepositoryContext,
-    deleted: Sequence[_PlannedDelete],
-) -> dict[str, list[str]]:
-    """Rebuild MetaTables' stored update statistics of each dataset table that lost rows.
-
-    Once per table, after every transaction of the request, scoped to the deleted
-    identifiers (`msm.services.update_statistics`, MetaTables#117). A failure does not
-    undo the delete: the answer lists, per deleted portfolio uid, the datasets whose
-    statistics were not refreshed.
-    """
-
-    from msm.services.update_statistics import refresh_portfolio_dataset_statistics
-
-    not_refreshed = refresh_portfolio_dataset_statistics(
-        {item.unique_identifier: item.row_counts for item in deleted},
-        timeout=context.timeout,
-    )
-    return {item.uid: not_refreshed[item.unique_identifier] for item in deleted}
-
-
-def _not_refreshed_text(datasets: Sequence[str]) -> str:
-    from msm.services.update_statistics import statistics_not_refreshed_text
-
-    return statistics_not_refreshed_text(datasets)
 
 
 # The checks ------------------------------------------------------------------------------

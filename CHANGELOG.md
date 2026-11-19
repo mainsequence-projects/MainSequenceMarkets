@@ -143,6 +143,15 @@ and this project follows versioned releases.
   `None` as `NULL`. The account-group, asset, portfolio-metadata, signal-metadata and
   rebalance-strategy-metadata helpers leave a field passed as `None` unchanged; a call that
   leaves every field unchanged raises `ValueError`.
+- **Requires MetaTables 0.1.69 or later, which rebuilds a table's update statistics after
+  a compiled-SQL write.** `mainsequence-metatable>=0.1.69,<0.2` (was `>=0.1.66`). The
+  portfolio and account deletes are statement lists of plain deletes. MetaTables 0.1.69
+  rebuilds the stored update statistics of each time-index table such a write changes, so
+  a portfolio, or an account's orders, trades and order events, written again under a
+  deleted one's identifier do not resume from its last time index
+  ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). The
+  lock and `requirements.txt`, which hosted images install, select 0.1.69; no other locked
+  package changes.
 
 ### Added
 
@@ -201,17 +210,6 @@ and this project follows versioned releases.
     listed in `retained_datasets`, and now refuse the delete, as for curves (issue 59).
   - The `409` names the table and key that refused, or carries the database's message,
     which on PostgreSQL names the constraint.
-  - After the transaction commits, the delete rebuilds MetaTables' stored update statistics
-    of each dataset table that lost rows. The plain deletes leave the deleted portfolio's
-    last time index there until the next insert into the table
-    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). A portfolio re-created under the same identifier
-    whose updater wrote first would have started from it. The delete calls
-    `delete_after_date` once per table, scoped to the deleted identifiers, with a cutoff
-    later than any row, so the call deletes nothing. Each call locks the table in
-    `SHARE ROW EXCLUSIVE` mode and scans it whole under a 45-second statement timeout. A
-    rebuild that fails is logged as an error and named in the response's
-    `statistics_not_refreshed`; the delete stands. The call goes once MetaTables#117 is
-    fixed.
   - `POST /api/v1/portfolio/bulk-delete/preflight/` runs the same checks, with one read
     for the whole selection, and returns `portfolios`: each portfolio's `row_counts` per
     dataset and its `blockers`.
@@ -233,8 +231,7 @@ and this project follows versioned releases.
     MetaTables for its impact: only `POST /api/v1/account/bulk-delete/preflight/` does,
     and `POST /api/v1/account/bulk-delete/` asks at most once, in its preflight. The
     read and the transaction run with MetaTables' longest deadline, 60 s.
-  - `delete_portfolios`, off by default, on `Account.delete`, `Account.bulk_delete` (and
-    so `POST /api/v1/rows/account/delete/`), as a query parameter of
+  - `delete_portfolios`, off by default, as a query parameter of
     `DELETE /api/v1/account/{uid}/` and as an option of the account bulk-delete action,
     which its discovery now advertises: the same transaction also deletes, with all
     their data, the portfolios that the account's virtual funds or target rows name and
@@ -245,6 +242,14 @@ and this project follows versioned releases.
     account alone. The response lists `deleted_portfolios`, with their `deleted_rows`
     per dataset, and `kept_portfolios`, with the `reason`; the preflight lists
     `accounts[].portfolios` and `accounts[].kept_portfolios`, and a warning for each.
+  - In Python, `msm_portfolios.services.delete_account_with_portfolios`,
+    `bulk_delete_accounts_with_portfolios` and their preflights
+    (`preflight_account_delete_with_portfolios`,
+    `preflight_bulk_delete_accounts_with_portfolios`) do the same with a runtime's
+    context; `Account.delete` and `Account.bulk_delete` delete the account alone. The
+    portfolio package owns this delete: core `msm` does not import it (ADR 0019), so it
+    composes the account read and statements `msm.repositories.account_deletion`
+    exposes with its own.
   - Breaking: the responses of `DELETE /api/v1/account/{uid}/` and
     `POST /api/v1/account/bulk-delete/`, and of `Account.delete` and
     `Account.bulk_delete`, no longer carry `other_namespace_cascades`; the preflight
@@ -256,25 +261,9 @@ and this project follows versioned releases.
   - `msm.services.table_impact.delete_rows_impact` reuses MetaTables' answer for the same
     table for five minutes (`IMPACT_CACHE_SECONDS`), for every bulk-delete preflight;
     `clear_delete_rows_impact_cache` forgets it.
-  - `msm.portfolio_datasets` holds the datasets keyed by `Portfolio.unique_identifier`,
-    which `msm_portfolios.time_index.portfolios.storage` registers with
-    `PORTFOLIO_DATASET_TABLES`, so core `msm` deletes them without importing
-    `msm_portfolios` (ADR 0019). `ACCOUNT_HISTORY_REFERENCES` moved to
-    `msm.repositories.account_deletion`.
   - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
     accepts the options an action declares, and `bulk_action_option_values` reads them;
     an undeclared option or a value of the wrong type answers `400`.
-  - After the transaction commits, the delete rebuilds MetaTables' stored update
-    statistics of each table that lost rows and whose rows an account re-created under
-    the same `unique_identifier` would publish again (orders, trades, order events), and
-    of each portfolio dataset table that lost rows, once per table for a bulk delete
-    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
-    Without it, the updater run would drop the orders, trades and events such an account
-    publishes again, at or before the deleted ones' last times, without an error. A
-    failed rebuild does not undo the delete: the answer lists the tables in
-    `statistics_not_refreshed`, for the account and for each deleted portfolio.
-    `msm.services.update_statistics` holds the rebuild, and the portfolio delete calls it
-    too.
 - **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
   `update_model` dropped each `None` it was given, so clearing
   `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL

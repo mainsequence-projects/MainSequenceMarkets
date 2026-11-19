@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import datetime
-from typing import ClassVar
+from dataclasses import dataclass
+from typing import Any, ClassVar
 
 from sqlalchemy import (
     BigInteger,
@@ -22,7 +23,6 @@ from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets import AssetTable
 from msm.models.calendars import CalendarTable
 from msm.models.portfolios import PortfolioTable
-from msm.portfolio_datasets import PortfolioDatasetTable, register_portfolio_dataset_tables
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.time_index.constants import (
     PORTFOLIO_IDENTIFIER_DIMENSION,
@@ -1099,6 +1099,24 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+@dataclass(frozen=True)
+class PortfolioDatasetTable:
+    """One of the portfolio's own Markets datasets, keyed by ``portfolio_identifier``.
+
+    ``catalog_column`` names the ``PortfolioDatasetAvailability`` column that can place
+    the portfolio's rows in another application's instance of the table instead
+    (ADR 0047). Markets never deletes rows there.
+    """
+
+    key: str
+    model: type[Any]
+    catalog_column: str | None = None
+
+    @property
+    def table_name(self) -> str:
+        return str(self.model.__table__.name)
+
+
 PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
     PortfolioDatasetTable("weights", PortfolioWeightsStorage, catalog_column="weights_meta_table_uid"),
     PortfolioDatasetTable("values", PortfoliosStorage, catalog_column="values_meta_table_uid"),
@@ -1109,16 +1127,13 @@ PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
     PortfolioDatasetTable("cash_flows", PortfolioCashFlowsStorage),
 )
 """The portfolio's own Markets datasets, keyed by ``portfolio_identifier`` with a
-``RESTRICT`` key on ``Portfolio.unique_identifier``, in the order a delete clears them.
-Registered with core ``msm`` so the account delete can delete a portfolio with them
-(ADR 0019, issue 91)."""
-
-register_portfolio_dataset_tables(PORTFOLIO_DATASET_TABLES)
+``RESTRICT`` key on ``Portfolio.unique_identifier``, in the order a delete clears them."""
 
 
 __all__ = [
     "PORTFOLIO_DATASET_TABLES",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
+    "PortfolioDatasetTable",
     "PortfolioAnalyticsStorage",
     "PortfolioCashFlowsStorage",
     "PortfolioCalendarEventsStorage",

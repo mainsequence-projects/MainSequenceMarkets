@@ -177,14 +177,6 @@ class AccountDeletedPortfolio(BaseModel):
             "just before the delete ran."
         ),
     )
-    statistics_not_refreshed: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Datasets, keyed as in deleted_rows, whose stored MetaTables update statistics "
-            "could not be rebuilt after the delete committed. Until they are, they still "
-            "list the portfolio's last time index."
-        ),
-    )
 
 
 class AccountKeptPortfolio(BaseModel):
@@ -220,16 +212,6 @@ class AccountDeleteResponse(BaseModel):
             "virtual_fund_holdings_sets, virtual_funds, target_positions, position_sets, "
             "target_allocations, holdings and holdings_sets. Counted just before the "
             "delete ran."
-        ),
-    )
-    statistics_not_refreshed: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Tables, keyed as in deleted_rows, whose stored MetaTables update statistics "
-            "could not be rebuilt after the delete committed: orders, trades or "
-            "order_events. The account is deleted; until they are rebuilt, an account "
-            "re-created under the same unique_identifier would have the rows it publishes "
-            "again filtered by the deleted account's last time indexes."
         ),
     )
     deleted_portfolios: list[AccountDeletedPortfolio] = Field(

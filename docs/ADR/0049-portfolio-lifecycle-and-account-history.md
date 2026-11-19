@@ -325,21 +325,11 @@ and the portfolio survived without its weights and values
   delete does.
 - **Update statistics.** `delete_after_date` also rebuilt the update statistics
   MetaTables stores for each table (`index_stats`), and the portfolio updaters
-  resume from a portfolio's entry there. The statement list's plain deletes do
-  not touch them ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). Every insert into the table
-  rebuilds them, so a stale entry lasts until the next write by any updater. It
-  matters when a portfolio re-created under the same identifier is the first
-  writer. So, after the transaction commits, the delete calls
-  `delete_after_date` once on each dataset table that lost rows, scoped to the
-  deleted identifiers and with a cutoff later than any row. It deletes nothing,
-  not even rows a re-created portfolio wrote since, and MetaTables replaces the
-  table's statistics with ones rebuilt from its rows. `set-last-update-index-time`
-  would not do: it merges into the stored statistics and keeps the deleted
-  entry. Each call locks the table in `SHARE ROW EXCLUSIVE` mode and scans it
-  whole under a 45-second statement timeout, so it can fail on a large table. A
-  failed call leaves the delete in place, is logged as an error, and is reported
-  per portfolio in `statistics_not_refreshed`. The call is removed once
-  MetaTables#117 is fixed.
+  resume from a portfolio's entry there. After a statement list commits,
+  MetaTables rebuilds the statistics of each time-index table the list changed
+  ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
+  `mainsequence-metatable` 0.1.69, which ms-markets requires), so a portfolio
+  re-created under the same identifier starts from scratch.
 - **Deadline.** MetaTables runs a compiled read, and a statement list as a whole
   (MetaTables ADR 0026), under a deadline of 15 seconds by default. The read that
   counts a delete's rows, for the delete and for the preflight, and the

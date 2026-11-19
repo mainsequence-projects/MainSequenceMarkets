@@ -173,14 +173,6 @@ class PortfolioDeleteResponse(BaseModel):
             "just before the delete ran."
         ),
     )
-    statistics_not_refreshed: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Datasets, keyed as in deleted_rows, whose stored MetaTables update statistics "
-            "could not be rebuilt after the delete committed. The portfolio is deleted; "
-            "until those statistics are rebuilt, they still list its last time index."
-        ),
-    )
 
 
 class PortfolioDeleteFailure(BaseModel):

@@ -154,12 +154,17 @@ remove that history, and it does not exist.
    `delete_virtual_fund` helpers are removed, with their repository
    counterparts.
 
-9. **The account's portfolios, on request** (added 2026-11-19, issue 91). Every
-   entry point takes `delete_portfolios`, off by default: `Account.delete` and
-   `Account.bulk_delete` (and so `POST /api/v1/rows/account/delete/`), the
-   `delete_portfolios` query parameter of `DELETE /api/v1/account/{uid}/`, and
-   the `delete_portfolios` option of the bulk-delete action and its preflight.
-   With it, the same transaction also deletes the portfolios that the account's
+9. **The account's portfolios, on request** (added 2026-11-19, issue 91). The
+   portfolio package owns this delete, because the portfolio datasets live there
+   and core `msm` does not import it (ADR 0019): `msm_portfolios.services`
+   exposes `delete_account_with_portfolios`, `bulk_delete_accounts_with_portfolios`
+   and their preflights, which take a runtime's context. The account routes run
+   them when `delete_portfolios` is set, off by default: the query parameter of
+   `DELETE /api/v1/account/{uid}/`, and the option of the bulk-delete action and
+   its preflight. `Account.delete` and `Account.bulk_delete` delete the account
+   alone, under both backends; nothing refuses. The delete composes core's
+   account read and statements with the portfolios' own, so the same
+   transaction also deletes the portfolios that the account's
    virtual funds or target rows name and that nothing references once the
    account's history is gone, with all their data, as the portfolio delete
    removes it (ADR 0049, issue 93): their rows in the seven datasets, then the
@@ -224,11 +229,20 @@ removes, and a failure between them leaves the portfolios without the account
 that used them and without a record of why. One transaction answers what was
 deleted and what was kept.
 
-### A Separate Operation For The Account And Its Portfolios
+### A Separate Route For The Account And Its Portfolios
 
-A second delete operation would duplicate the account delete's routes, row
-operation and preflight. An option on the existing delete keeps one code path,
-and the default keeps the portfolios, as before.
+A second delete route would duplicate the account delete's routes and preflight.
+The account routes take an option, off by default, which keeps the portfolios as
+before. In Python the delete with portfolios is its own function in
+`msm_portfolios`, because core `msm` cannot import the portfolio datasets
+(ADR 0019); `Account.delete` keeps deleting the account alone.
+
+### A Registry Of Portfolio Datasets In Core
+
+Core could keep a list of the portfolio datasets that the portfolio package fills
+when it is imported, so that `Account.delete` could take the option. The delete
+would then depend on what the process had imported, the hook ADR 0049 rejected
+for `Portfolio.delete`, and would have to refuse when nothing was registered.
 
 ### An Ownership Or Admin Check
 
@@ -336,7 +350,7 @@ the bulk delete asked for it in its preflight and again to delete
   sends the account's 14 statements alone; if a key refuses those too, it is the
   account's own and `409` says so with nothing deleted. With no portfolio to
   delete, one delete is one read and one transaction; with a refused portfolio,
-  one read and two transactions. The statistics rebuilds below follow either.
+  one read and two transactions.
 - **Deadline.** The read and the transaction run with MetaTables' longest
   deadline, 60 s (`msm.repositories.base.with_delete_deadline`), instead of its
   15 s default, which covers the whole list. With
@@ -344,14 +358,17 @@ the bulk delete asked for it in its preflight and again to delete
   all seven datasets: millions of rows for a portfolio with years of daily weights
   over hundreds of assets.
 - **Core and the portfolio package.** Core `msm` does not import `msm_portfolios`
-  (ADR 0019). `msm.portfolio_datasets` holds the registry of the datasets keyed
-  by `Portfolio.unique_identifier`, which
-  `msm_portfolios.time_index.portfolios.storage` fills when it defines the seven
-  storages; each registration is checked against the model's actual foreign key.
-  `ACCOUNT_HISTORY_REFERENCES` and the `NOT EXISTS` condition built from it moved
-  from `msm_portfolios.repositories.portfolio_deletion` to
-  `msm.repositories.account_deletion`, so both deletes use the same definition.
-  The Markets API's account delete runtime includes the portfolio tables.
+  (ADR 0019), so the delete with portfolios lives in
+  `msm_portfolios.repositories.account_portfolio_deletion` and
+  `msm_portfolios.services.account_portfolio_deletion`. It extends core's read,
+  `account_delete_read_statement`, with the portfolio columns, and appends its
+  statements to core's `account_delete_statements`. It runs the transaction
+  through core's `run_account_delete`, tells a vanished account from a renamed one
+  with `account_delete_refused`, and answers through `account_deleted_response`,
+  so both deletes check and answer the same way.
+  `ACCOUNT_HISTORY_REFERENCES` and the `NOT EXISTS` condition built from it are
+  core's, so both deletes and the portfolio delete use the same definition. The
+  Markets API's account delete runtime includes the portfolio tables.
 - **No impact in the delete.** `delete_account` and `bulk_delete_accounts` no
   longer ask MetaTables for the account table's impact, and their responses no
   longer carry `other_namespace_cascades`; the preflight still does. The `409`
@@ -361,24 +378,12 @@ the bulk delete asked for it in its preflight and again to delete
 - **Bulk.** Each account is still deleted in its own transaction, in the order
   selected, so a portfolio only selected accounts use goes with the last of
   them. The preflight reads each account as if it were deleted alone.
-- **Update statistics.** Plain deletes leave the progress MetaTables stores per
-  time-index table (`index_stats`) as it was until the next insert into the table
-  rebuilds it ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)),
-  and an updater run drops every row it publishes at or before the stored last time
-  of its coordinates (`UpdateStatistics.filter_df_by_latest_value`). An account
+- **Update statistics.** An updater run drops every row it publishes at or before
+  the last time MetaTables stores for its coordinates. After a statement list
+  commits, MetaTables rebuilds the stored statistics of each time-index table the
+  list changed
+  ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
+  `mainsequence-metatable` 0.1.69, which ms-markets requires). So an account
   re-created under the same `unique_identifier`, whose connector publishes its
-  orders again before anything else writes to those tables, would lose them without
-  an error. So after the transactions of a request commit,
-  `msm.services.update_statistics` rebuilds, once per table, the statistics of the
-  tables that lost rows and whose coordinates can come back: orders and trades,
-  scoped to the deleted accounts' identifiers, and order events, keyed only by the
-  broker's order identifier and scoped by the cutoff alone; and, with
-  `delete_portfolios`, each portfolio dataset table, scoped to the deleted
-  portfolios' identifiers, as the portfolio delete does (ADR 0049, issue 93, which
-  now calls the same function). Holdings, virtual-fund holdings, target rows and
-  allocation lines are keyed by uids that are new for every account and snapshot,
-  so no stale entry can match them, and they are not rebuilt. Each rebuild is a
-  `delete_after_date` call with a cutoff later than any row, which deletes nothing.
-  A failure does not undo the delete: it is logged, and the answer lists the table
-  in `statistics_not_refreshed`, for the account or for each deleted portfolio. The
-  rebuild goes once MetaTables#117 is fixed.
+  orders, trades and events again, and a portfolio re-created under a deleted
+  one's identifier start from scratch.

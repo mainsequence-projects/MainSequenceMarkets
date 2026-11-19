@@ -179,8 +179,8 @@ persistent temporary failures also stop startup. Normal requests do not use this
 ### Upgrading the migration client
 
 The project requires `mainsequence>=9.0.31,<10` and
-`mainsequence-metatable>=0.1.66,<0.2`; `uv.lock` and `requirements.txt` select
-`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.67. Move the SDK and the
+`mainsequence-metatable>=0.1.69,<0.2`; `uv.lock` and `requirements.txt` select
+`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.69. Move the SDK and the
 client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.60
 and later require SDK 9.0.31 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
 which raise on the request identity's Teams. After changing the dependency, run

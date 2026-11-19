@@ -6,16 +6,11 @@ A portfolio is deleted with its rows in its seven datasets in one transaction, o
 all. Tables of another application are created with `provider_ns__` names after the
 execution identity; no statement Markets sends names them. MetaTables' impact, table
 reads and read-only queries are served from the same file where a test needs them.
-
-Each dataset storage is bound to a table whose `delete_after_date` runs the local
-backend's own tail delete and keeps the statistics it rebuilds, as MetaTables'
-delete-after-date route stores them in `index_stats`.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import uuid
 
 import pytest
@@ -66,63 +61,20 @@ PROVIDER_TABLES = (
 )
 
 
-class _DatasetTable:
-    """A dataset storage's TimeIndexMetaTable, served by MetaTables' local SQLite backend.
-
-    ``delete_after_date`` runs the backend's own tail delete, which rebuilds the
-    table's statistics from its rows, and keeps them, as the route stores them in
-    ``index_stats``. Each call is recorded as (dataset, identifiers, rows deleted).
-    """
-
-    def __init__(self, markets, table) -> None:
-        self.markets, self.table = markets, table
-        self.uid = f"core-{table.key}"
-
-    def delete_after_date(self, after_date, *, dimension_filters, timeout=None):
-        if self.table.key in self.markets.failing:
-            raise TimeoutError("The rebuild exceeded MetaTables' 45 s statement timeout.")
-        model = self.table.model
-        snapshot = self.markets.backend.tables.delete_tail(
-            physical_schema=None,
-            physical_table_name=model.__table__.name,
-            time_index_name=model.__time_index_name__,
-            identity_dimensions=tuple(model.__index_names__[1:]),
-            after_date=after_date,
-            dimension_filters=dimension_filters,
-            index_coordinates=None,
-            dimension_range_map=None,
-        )
-        self.markets.index_stats[self.table.key] = snapshot.multi_index_stats or {}
-        self.markets.refreshes.append(
-            (self.table.key, list(dimension_filters["portfolio_identifier"]), snapshot.deleted_count)
-        )
-        return {"deleted_count": snapshot.deleted_count, "table_empty": snapshot.table_empty}
-
-
 @pytest.fixture
 def markets(tmp_path, monkeypatch):
-    """The harness, with no MetaTables impact and every dataset storage bound."""
+    """The harness, with no MetaTables impact and no delete-after-date call allowed."""
 
+    from metatables import TimeIndexMetaTable
+
+    def refuse_delete_after_date(self, *args, **kwargs):
+        raise AssertionError("The portfolio delete must not call delete_after_date.")
+
+    monkeypatch.setattr(TimeIndexMetaTable, "delete_after_date", refuse_delete_after_date)
     monkeypatch.setattr(PortfolioTable, "get_meta_table", classmethod(lambda cls: None))
     markets = make_sqlite_markets(tmp_path, monkeypatch)
-    markets.refreshes, markets.index_stats, markets.failing, markets.tables = [], {}, set(), {}
-    for table in PORTFOLIO_DATASET_TABLES:
-        bound = markets.tables[table.key] = _DatasetTable(markets, table)
-        monkeypatch.setattr(
-            table.model, "get_time_index_meta_table", classmethod(lambda cls, bound=bound: bound)
-        )
     _asset(markets.engine, "AAA")
     return markets
-
-
-def _progress(markets, key: str) -> dict:
-    """The progress MetaTables stores for one dataset, rebuilt from its rows now."""
-
-    markets.tables[key].delete_after_date(
-        "9999-12-31T00:00:00+00:00", dimension_filters={"portfolio_identifier": ["-"]}
-    )
-    markets.refreshes.pop()
-    return markets.index_stats[key].get("index_progress", {})
 
 
 # Data ------------------------------------------------------------------------------------
@@ -371,7 +323,6 @@ def test_the_portfolio_is_deleted_with_its_rows_in_each_dataset(markets, key: st
     portfolio, identifier = _portfolio_with(engine, key)
     _dataset_row(engine, key, identifier, when=WHEN + dt.timedelta(days=1))
     other, other_identifier = _portfolio_with(engine, key)
-    assert {identifier, other_identifier} <= set(_progress(markets, key))
 
     preflight = _preflight(markets, portfolio)
     deleted = delete_portfolio_record(markets.context, uid=portfolio)
@@ -384,17 +335,11 @@ def test_the_portfolio_is_deleted_with_its_rows_in_each_dataset(markets, key: st
         "unique_identifier": identifier,
         "deleted_count": 1,
         "deleted_rows": preflight["row_counts"],
-        "statistics_not_refreshed": [],
     }
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier)[key] == 1
-    # Only the table that lost rows is refreshed, after the transaction: it deletes nothing.
-    assert markets.refreshes == [(key, [identifier], 0)]
-    # The stored progress no longer lists the deleted identifier; the other one stays.
-    progress = markets.index_stats[key]["index_progress"]
-    assert identifier not in progress and other_identifier in progress
 
 
 def test_all_seven_datasets_go_in_one_transaction_with_the_portfolio(markets, monkeypatch) -> None:
@@ -421,9 +366,6 @@ def test_all_seven_datasets_go_in_one_transaction_with_the_portfolio(markets, mo
     deleted = delete_portfolio_record(markets.context, uid=str(portfolio))
 
     assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
-    assert deleted["statistics_not_refreshed"] == []
-    assert markets.refreshes == [(key, [identifier], 0) for key in DATASETS]
-    assert all(stats == {} for stats in markets.index_stats.values())  # every table is empty
     assert len(queries) == 1 and PROVIDER_VALUES_TABLE in queries[0]
     assert len(_deletes(markets)) == len(DATASETS) + 1
     assert not any("provider_ns__" in sql for sql in markets.statements)
@@ -451,6 +393,26 @@ def test_the_read_and_the_transaction_run_under_the_delete_deadline(markets, mon
 
     assert sent == [("select", 60_000), ("delete", 60_000)]
     assert not _exists(markets.engine, portfolio)
+
+
+def test_the_deleted_portfolio_leaves_the_stored_statistics(markets) -> None:
+    """MetaTables rebuilds the statistics of each dataset table the statement list
+    changes (MetaTables#117), so a portfolio re-created under the deleted one's
+    identifier starts from scratch."""
+
+    engine = markets.engine
+    portfolio, identifier = _portfolio_with(engine, *DATASETS)
+    _other, other_identifier = _portfolio_with(engine, *DATASETS)
+    markets.keep_statistics(*(table.model for table in PORTFOLIO_DATASET_TABLES))
+    for table in PORTFOLIO_DATASET_TABLES:
+        progress = markets.index_stats[table.table_name]["index_progress"]
+        assert {identifier, other_identifier} <= set(progress)
+
+    assert delete_portfolio_record(markets.context, uid=portfolio)["uid"] == str(portfolio)
+
+    for table in PORTFOLIO_DATASET_TABLES:
+        progress = markets.index_stats[table.table_name]["index_progress"]
+        assert identifier not in progress and other_identifier in progress
 
 
 def test_a_missing_portfolio_deletes_nothing(markets) -> None:
@@ -487,7 +449,6 @@ def test_a_virtual_fund_blocks_the_delete_and_nothing_is_deleted(markets) -> Non
     assert blocker in str(refused.value) and "nothing was deleted" in str(refused.value)
     assert "retire the portfolio" in str(refused.value)
     assert _deletes(markets) == []
-    assert markets.refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
@@ -508,7 +469,6 @@ def test_an_account_target_row_blocks_the_delete_and_nothing_is_deleted(markets)
         "ON DELETE RESTRICT)."
     ]
     assert _deletes(markets) == []
-    assert markets.refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
@@ -541,7 +501,6 @@ def test_a_catalogued_instance_holding_rows_blocks_the_delete(markets, monkeypat
     assert label in str(refused.value)
     assert "delete them through the application that owns the table" in str(refused.value)
     assert _deletes(markets) == []
-    assert markets.refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
     assert _count(engine, PROVIDER_VALUES_TABLE) == 1
@@ -580,8 +539,6 @@ def test_a_restrict_key_from_the_impact_blocks_while_its_table_holds_rows(market
     # One query for the whole selection; the weights table is Markets' own.
     assert len(queries) == 3 and all(PROVIDER_LEDGER_TABLE in sql for sql in queries)
     assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
-    # Only the clean portfolio's delete refreshed anything.
-    assert markets.refreshes == [(key, [clean_identifier], 0) for key in DATASETS]
     assert not _exists(engine, clean) and set(_dataset_rows(engine, clean_identifier).values()) == {0}
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
@@ -652,7 +609,6 @@ def test_a_table_that_cannot_be_checked_blocks_the_delete(markets, monkeypatch, 
     assert len(preflight["blockers"]) == 1 and preflight["blockers"][0].startswith(expected)
     assert "could not be checked" in preflight["blockers"][0]
     assert _deletes(markets) == []
-    assert markets.refreshes == []
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
 
@@ -672,7 +628,6 @@ def test_a_restrict_key_the_checks_cannot_see_refuses_the_whole_delete(markets) 
     assert preflight["allowed"] is True
     assert "FOREIGN KEY constraint failed" in str(refused.value)
     assert len(_deletes(markets)) == len(DATASETS) + 1
-    assert markets.refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
     assert _count(engine, PROVIDER_VALUES_TABLE) == 1
@@ -706,7 +661,6 @@ def test_account_history_written_in_between_stops_the_guard(markets, monkeypatch
         delete_portfolio_record(markets.context, uid=portfolio)
 
     assert len(_deletes(markets)) == len(DATASETS) + 1
-    assert markets.refreshes == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
@@ -724,7 +678,6 @@ def test_a_portfolio_deleted_in_between_is_not_found(markets, monkeypatch) -> No
     _between(monkeypatch, remove)
 
     assert delete_portfolio_record(markets.context, uid=portfolio) is None
-    assert markets.refreshes == []
 
 
 def test_a_portfolio_renamed_in_between_is_kept(markets, monkeypatch) -> None:
@@ -743,7 +696,6 @@ def test_a_portfolio_renamed_in_between_is_kept(markets, monkeypatch) -> None:
     with pytest.raises(PortfolioDeleteConflictError, match="changed while it was being deleted"):
         delete_portfolio_record(markets.context, uid=portfolio)
     assert _identifier(engine, portfolio) == "renamed"
-    assert markets.refreshes == []
 
 
 # Bulk ------------------------------------------------------------------------------------
@@ -774,57 +726,6 @@ def test_bulk_delete_deletes_each_portfolio_and_reports_the_rest(markets) -> Non
     assert not _exists(engine, first) and set(_dataset_rows(engine, first_identifier).values()) == {0}
     assert _exists(engine, blocked)
     assert _dataset_rows(engine, blocked_identifier) == {key: 1 for key in DATASETS}
-    assert markets.refreshes == [(key, [first_identifier], 0) for key in DATASETS]
-
-
-def test_bulk_delete_refreshes_each_table_once_for_the_portfolios_it_deleted(markets) -> None:
-    engine = markets.engine
-    first, first_identifier = _portfolio_with(engine, "weights", "values")
-    second, second_identifier = _portfolio_with(engine, "values", "state")
-    blocked, blocked_identifier = _portfolio_with(engine, *DATASETS)
-    _virtual_fund(engine, blocked)
-
-    result = bulk_delete_portfolio_records(markets.context, uids=[first, second, blocked])
-
-    assert [item["uid"] for item in result["deleted"]] == [str(first), str(second)]
-    assert [item["statistics_not_refreshed"] for item in result["deleted"]] == [[], []]
-    assert markets.refreshes == [
-        ("weights", [first_identifier], 0),
-        ("values", [first_identifier, second_identifier], 0),
-        ("state", [second_identifier], 0),
-    ]
-    for key in ("weights", "values", "state"):
-        progress = markets.index_stats[key]["index_progress"]
-        assert first_identifier not in progress and second_identifier not in progress
-        assert blocked_identifier in progress
-
-
-def test_a_refresh_failure_still_reports_the_delete_and_names_the_dataset(markets, caplog) -> None:
-    engine = markets.engine
-    portfolio, identifier = _portfolio_with(engine, "weights", "values")
-    other, _ = _portfolio_with(engine, "values")
-    markets.failing.add("values")
-
-    with caplog.at_level(logging.ERROR):
-        deleted = delete_portfolio_record(markets.context, uid=portfolio)
-        result = bulk_delete_portfolio_records(markets.context, uids=[other])
-
-    assert deleted["statistics_not_refreshed"] == ["values"]
-    assert deleted["detail"] == (
-        f"Portfolio {identifier!r} deleted with its datasets. MetaTables could not refresh the "
-        "stored update statistics of values; see statistics_not_refreshed."
-    )
-    assert deleted["deleted_rows"] == {key: {"weights": 1, "values": 1}.get(key, 0) for key in DATASETS}
-    assert not _exists(engine, portfolio) and set(_dataset_rows(engine, identifier).values()) == {0}
-    assert result["deleted"][0]["statistics_not_refreshed"] == ["values"]
-    assert result["detail"].endswith(
-        "MetaTables could not refresh the stored update statistics of values; "
-        "see statistics_not_refreshed."
-    )
-    assert not _exists(engine, other)
-    assert [key for key, _identifiers, _deleted in markets.refreshes] == ["weights"]
-    errors = [record for record in caplog.records if record.levelno >= logging.ERROR]
-    assert len(errors) == 2 and all("could not refresh" in record.getMessage() for record in errors)
 
 
 def test_the_preflight_counts_match_what_the_delete_removes(markets) -> None:

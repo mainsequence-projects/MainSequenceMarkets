@@ -1,12 +1,11 @@
-"""The account delete with its portfolios on PostgreSQL, the hosted dialect (issue 91).
+"""The account delete, alone and with its portfolios, on PostgreSQL (issue 91).
 
 Set ``MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL`` to an empty, disposable ``markets_*``
 database on localhost to run these tests; they are skipped otherwise. The statements run
 through psycopg as the MetaTables API binds them, a statement list in one transaction with
 a row guard checked after each statement (see ``test_postgresql_account_registration``).
-The account's guarded statement sits in the middle of the list when portfolios follow it.
-The tables whose update statistics the delete rebuilds are bound to a table that records
-each rebuild among the requests.
+The account's guarded statement sits in the middle of the list when the portfolios'
+statements, which `msm_portfolios` adds, follow it.
 """
 
 from __future__ import annotations
@@ -21,7 +20,9 @@ from msm.models import AccountTable
 from msm.repositories.accounts import replace_account_target_positions_snapshot
 from msm.services import AccountDeleteConflictError, delete_account
 from msm.services.accounts import deletion
-from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
+from msm_portfolios.repositories import account_portfolio_deletion as portfolio_repository
+from msm_portfolios.services import delete_account_with_portfolios
+from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
     postgresql_markets,
@@ -43,17 +44,6 @@ ACCOUNT_STATEMENTS = 14
 PORTFOLIO_STATEMENTS = len(DATASETS) + 1
 
 
-class _RecordingTable:
-    """A bound time-index storage; records each statistics rebuild among the requests."""
-
-    def __init__(self, key: str, operations: list) -> None:
-        self.key, self.operations, self.uid = key, operations, f"core-{key}"
-
-    def delete_after_date(self, after_date, *, dimension_filters=None, timeout=None):
-        self.operations.append(f"refresh:{self.key}")
-        return {"deleted_count": 0}
-
-
 @pytest.fixture
 def markets(postgresql_markets, monkeypatch):  # noqa: F811
     def no_impact():
@@ -62,15 +52,6 @@ def markets(postgresql_markets, monkeypatch):  # noqa: F811
     monkeypatch.setattr(deletion, "account_delete_impact", no_impact)
     monkeypatch.setattr(AccountTable, "get_meta_table", classmethod(lambda cls: None))
     engine, context, operations = postgresql_markets
-    bound = {
-        "order_events": OrderEventsStorage,
-        "trades": TradesStorage,
-        "orders": OrdersStorage,
-        **{table.key: table.model for table in PORTFOLIO_DATASET_TABLES},
-    }
-    for key, model in bound.items():
-        table = _RecordingTable(key, operations)
-        monkeypatch.setattr(model, "get_time_index_meta_table", classmethod(lambda cls, table=table: table))
     _insert(engine, "ms_markets__asset", unique_identifier="AAA")
     return engine, context, operations
 
@@ -122,17 +103,11 @@ def test_the_account_and_its_portfolios_go_in_one_transaction(markets) -> None:
     account = _account(engine, context, portfolio)
     operations.clear()
 
-    deleted = delete_account(context, uid=account, delete_portfolios=True)
+    deleted = delete_account_with_portfolios(context, uid=account)
 
-    # The account had no orders, trades or events: only the datasets are rebuilt, after the commit.
-    assert operations == ["read", "transaction", *(f"refresh:{key}" for key in DATASETS)]
+    assert operations == ["read", "transaction"]
     assert deleted["deleted_portfolios"] == [
-        {
-            "uid": str(portfolio),
-            "unique_identifier": identifier,
-            "deleted_rows": {key: 1 for key in DATASETS},
-            "statistics_not_refreshed": [],
-        }
+        {"uid": str(portfolio), "unique_identifier": identifier, "deleted_rows": {key: 1 for key in DATASETS}}
     ]
     assert deleted["kept_portfolios"] == []
     assert deleted["deleted_rows"]["virtual_funds"] == 1
@@ -161,7 +136,7 @@ def test_a_restrict_key_of_another_application_keeps_the_portfolio_and_names_it(
         )
     operations.clear()
 
-    deleted = delete_account(context, uid=account, delete_portfolios=True)
+    deleted = delete_account_with_portfolios(context, uid=account)
 
     # The first transaction deleted nothing; the second deleted the account alone.
     assert operations == ["read", "transaction", "transaction"]
@@ -179,7 +154,7 @@ def test_the_accounts_guard_in_the_middle_of_the_list_stops_everything(markets, 
     portfolio, identifier = _portfolio(engine)
     _datasets(engine, identifier)
     account = _account(engine, context, portfolio)
-    read = deletion.account_deletion_repository.read_account_delete
+    read = portfolio_repository.read_account_with_portfolios
 
     def read_then_rename(context, **kwargs):
         result = read(context, **kwargs)
@@ -190,11 +165,11 @@ def test_the_accounts_guard_in_the_middle_of_the_list_stops_everything(markets, 
             )
         return result
 
-    monkeypatch.setattr(deletion.account_deletion_repository, "read_account_delete", read_then_rename)
+    monkeypatch.setattr(portfolio_repository, "read_account_with_portfolios", read_then_rename)
     operations.clear()
 
     with pytest.raises(AccountDeleteConflictError, match="changed while it was being deleted"):
-        delete_account(context, uid=account, delete_portfolios=True)
+        delete_account_with_portfolios(context, uid=account)
 
     # The read, the refused transaction, and the read that tells a rename from a delete.
     assert operations == ["read", "transaction", "read"]
@@ -212,28 +187,28 @@ def test_a_portfolio_referenced_in_between_stops_its_guard_and_the_account_goes_
     _datasets(engine, identifier)
     account = _account(engine, context, portfolio)
     other = _insert(engine, "ms_markets__account", is_paper=True, account_is_active=True)
-    read = deletion.account_deletion_repository.read_account_delete
+    read = portfolio_repository.read_account_with_portfolios
 
     def read_then_reference(context, **kwargs):
         result = read(context, **kwargs)
         _insert(engine, "ms_markets__virtualfund", account_uid=other["uid"], target_portfolio_uid=portfolio)
         return result
 
-    monkeypatch.setattr(deletion.account_deletion_repository, "read_account_delete", read_then_reference)
+    monkeypatch.setattr(portfolio_repository, "read_account_with_portfolios", read_then_reference)
     operations.clear()
 
-    deleted = delete_account(context, uid=account, delete_portfolios=True)
+    deleted = delete_account_with_portfolios(context, uid=account)
 
     assert operations == ["read", "transaction", "transaction"]
     assert deleted["kept_portfolios"] == [
-        {"uid": str(portfolio), "unique_identifier": identifier, "reason": deletion.PORTFOLIO_CHANGED_REASON}
+        {"uid": str(portfolio), "unique_identifier": identifier, "reason": PORTFOLIO_CHANGED_REASON}
     ]
     assert _accounts(engine) == 1  # the other account
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 
 
-def test_the_accounts_order_trade_and_event_tables_are_rebuilt_after_the_transaction(markets) -> None:
+def test_the_account_alone_goes_with_its_orders_trades_and_events(markets) -> None:
     engine, context, operations = markets
     portfolio, _identifier = _portfolio(engine)
     account = _account(engine, context, portfolio)
@@ -266,11 +241,12 @@ def test_the_accounts_order_trade_and_event_tables_are_rebuilt_after_the_transac
 
     deleted = delete_account(context, uid=account)
 
-    assert operations == ["read", "transaction", "refresh:order_events", "refresh:trades", "refresh:orders"]
+    assert operations == ["read", "transaction"]
     assert {key: deleted["deleted_rows"][key] for key in ("orders", "trades", "order_events")} == {
         "orders": 1,
         "trades": 1,
         "order_events": 1,
     }
-    assert deleted["statistics_not_refreshed"] == []
     assert _accounts(engine) == 0
+    # The portfolio its history named stays, with its row.
+    assert _exists(engine, portfolio)
