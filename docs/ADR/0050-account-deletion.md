@@ -304,7 +304,7 @@ the two registry deletes behave differently with no ms-markets rule behind it.
   `registry_write("account", "bulk_delete")`. The HTTP routes use
   `registry_write("account", "delete")` and `("account", "bulk-delete")`.
 
-### 2026-11-19: issue 91
+### 2026-11-19: 4.1.0, issue 91
 
 Deleting an account through the Markets API took minutes: each step was its own
 MetaTables request, about 2 s per statement and about 14 s per delete impact.

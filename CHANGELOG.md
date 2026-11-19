@@ -7,63 +7,6 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-### Fixed
-
-- **Breaking: an account delete sends MetaTables one read and one transaction, and can
-  delete the account's portfolios with it.** Deleting an account through the Markets API
-  took minutes: each step was its own MetaTables request, about 2 s per statement and
-  about 14 s for each delete impact, and the delete read the account, counted its rows
-  and asked for the impact
-  ([issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91),
-  [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)).
-  - One read answers whether the account exists, its rows per table and the rows of
-    other accounts that block it; one transaction deletes it. The delete no longer asks
-    MetaTables for its impact: only `POST /api/v1/account/bulk-delete/preflight/` does,
-    and `POST /api/v1/account/bulk-delete/` asks at most once, in its preflight. The
-    read and the transaction run with MetaTables' longest deadline, 60 s.
-  - `delete_portfolios`, off by default, on `Account.delete`, `Account.bulk_delete` (and
-    so `POST /api/v1/rows/account/delete/`), as a query parameter of
-    `DELETE /api/v1/account/{uid}/` and as an option of the account bulk-delete action,
-    which its discovery now advertises: the same transaction also deletes, with all
-    their data, the portfolios that the account's virtual funds or target rows name and
-    nothing else uses. A portfolio stays when another account's virtual fund or target
-    rows name it, or when its catalog places its values or weights in another
-    application's table. When another application's table holds a portfolio's rows
-    under a `RESTRICT` key, the transaction deletes nothing and a second one deletes the
-    account alone. The response lists `deleted_portfolios`, with their `deleted_rows`
-    per dataset, and `kept_portfolios`, with the `reason`; the preflight lists
-    `accounts[].portfolios` and `accounts[].kept_portfolios`, and a warning for each.
-  - Breaking: the responses of `DELETE /api/v1/account/{uid}/` and
-    `POST /api/v1/account/bulk-delete/`, and of `Account.delete` and
-    `Account.bulk_delete`, no longer carry `other_namespace_cascades`; the preflight
-    still reports it with `other_namespace_restricts`. A `409` carries the database's
-    message without the list of tables from the impact.
-  - Breaking for library code: `msm.repositories.account_deletion.read_account_delete`
-    and `build_read_account_delete_operation` replace `count_account_delete_rows` and
-    `build_count_account_delete_rows_operation`.
-  - `msm.services.table_impact.delete_rows_impact` reuses MetaTables' answer for the same
-    table for five minutes (`IMPACT_CACHE_SECONDS`), for every bulk-delete preflight;
-    `clear_delete_rows_impact_cache` forgets it.
-  - `msm.portfolio_datasets` holds the datasets keyed by `Portfolio.unique_identifier`,
-    which `msm_portfolios.time_index.portfolios.storage` registers with
-    `PORTFOLIO_DATASET_TABLES`, so core `msm` deletes them without importing
-    `msm_portfolios` (ADR 0019). `ACCOUNT_HISTORY_REFERENCES` moved to
-    `msm.repositories.account_deletion`.
-  - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
-    accepts the options an action declares, and `bulk_action_option_values` reads them;
-    an undeclared option or a value of the wrong type answers `400`.
-  - After the transaction commits, the delete rebuilds MetaTables' stored update
-    statistics of each table that lost rows and whose rows an account re-created under
-    the same `unique_identifier` would publish again (orders, trades, order events), and
-    of each portfolio dataset table that lost rows, once per table for a bulk delete
-    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
-    Without it, the updater run would drop the orders, trades and events such an account
-    publishes again, at or before the deleted ones' last times, without an error. A
-    failed rebuild does not undo the delete: the answer lists the tables in
-    `statistics_not_refreshed`, for the account and for each deleted portfolio.
-    `msm.services.update_statistics` holds the rebuild, and the portfolio delete calls it
-    too.
-
 ## [4.1.0] - 2026-11-19
 
 ### Changed
@@ -275,6 +218,60 @@ and this project follows versioned releases.
     per portfolio, and `failed[].detail` instead of `failed[].reason`, as the account bulk
     delete does. Each portfolio is deleted in its own transaction.
   - The Markets API binds the five other dataset tables at startup.
+- **Breaking: an account delete sends MetaTables one read and one transaction, and can
+  delete the account's portfolios with it.** Deleting an account through the Markets API
+  took minutes: each step was its own MetaTables request, about 2 s per statement and
+  about 14 s for each delete impact, and the delete read the account, counted its rows
+  and asked for the impact
+  ([issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91),
+  [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)).
+  - One read answers whether the account exists, its rows per table and the rows of
+    other accounts that block it; one transaction deletes it. The delete no longer asks
+    MetaTables for its impact: only `POST /api/v1/account/bulk-delete/preflight/` does,
+    and `POST /api/v1/account/bulk-delete/` asks at most once, in its preflight. The
+    read and the transaction run with MetaTables' longest deadline, 60 s.
+  - `delete_portfolios`, off by default, on `Account.delete`, `Account.bulk_delete` (and
+    so `POST /api/v1/rows/account/delete/`), as a query parameter of
+    `DELETE /api/v1/account/{uid}/` and as an option of the account bulk-delete action,
+    which its discovery now advertises: the same transaction also deletes, with all
+    their data, the portfolios that the account's virtual funds or target rows name and
+    nothing else uses. A portfolio stays when another account's virtual fund or target
+    rows name it, or when its catalog places its values or weights in another
+    application's table. When another application's table holds a portfolio's rows
+    under a `RESTRICT` key, the transaction deletes nothing and a second one deletes the
+    account alone. The response lists `deleted_portfolios`, with their `deleted_rows`
+    per dataset, and `kept_portfolios`, with the `reason`; the preflight lists
+    `accounts[].portfolios` and `accounts[].kept_portfolios`, and a warning for each.
+  - Breaking: the responses of `DELETE /api/v1/account/{uid}/` and
+    `POST /api/v1/account/bulk-delete/`, and of `Account.delete` and
+    `Account.bulk_delete`, no longer carry `other_namespace_cascades`; the preflight
+    still reports it with `other_namespace_restricts`. A `409` carries the database's
+    message without the list of tables from the impact.
+  - Breaking for library code: `msm.repositories.account_deletion.read_account_delete`
+    and `build_read_account_delete_operation` replace `count_account_delete_rows` and
+    `build_count_account_delete_rows_operation`.
+  - `msm.services.table_impact.delete_rows_impact` reuses MetaTables' answer for the same
+    table for five minutes (`IMPACT_CACHE_SECONDS`), for every bulk-delete preflight;
+    `clear_delete_rows_impact_cache` forgets it.
+  - `msm.portfolio_datasets` holds the datasets keyed by `Portfolio.unique_identifier`,
+    which `msm_portfolios.time_index.portfolios.storage` registers with
+    `PORTFOLIO_DATASET_TABLES`, so core `msm` deletes them without importing
+    `msm_portfolios` (ADR 0019). `ACCOUNT_HISTORY_REFERENCES` moved to
+    `msm.repositories.account_deletion`.
+  - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
+    accepts the options an action declares, and `bulk_action_option_values` reads them;
+    an undeclared option or a value of the wrong type answers `400`.
+  - After the transaction commits, the delete rebuilds MetaTables' stored update
+    statistics of each table that lost rows and whose rows an account re-created under
+    the same `unique_identifier` would publish again (orders, trades, order events), and
+    of each portfolio dataset table that lost rows, once per table for a bulk delete
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
+    Without it, the updater run would drop the orders, trades and events such an account
+    publishes again, at or before the deleted ones' last times, without an error. A
+    failed rebuild does not undo the delete: the answer lists the tables in
+    `statistics_not_refreshed`, for the account and for each deleted portfolio.
+    `msm.services.update_statistics` holds the rebuild, and the portfolio delete calls it
+    too.
 - **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
   `update_model` dropped each `None` it was given, so clearing
   `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL
