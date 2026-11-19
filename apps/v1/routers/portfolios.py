@@ -37,6 +37,7 @@ from apps.v1.services.portfolios import (
     get_portfolios_weights_frame,
     list_portfolio_account_targets,
     list_portfolios,
+    plan_bulk_delete_portfolios,
     preflight_bulk_delete_portfolios,
     reconcile_portfolio_dataset_catalog,
     register_portfolio_dataset_catalog,
@@ -359,7 +360,8 @@ def get_portfolio_datasets_route(uid: str) -> PortfolioDatasetState | None:
     description=(
         "Delete the selected portfolios. " + _PORTFOLIO_DELETE_DESCRIPTION + " The route runs "
         "the preflight first and answers 409 when it reports a blocker; then each portfolio "
-        "is deleted in its own transaction, and 409 lists any that could not be deleted."
+        "is deleted in its own transaction with the preflight's counts, so the selection is "
+        "counted once, and 409 lists any that could not be deleted."
     ),
     operation_id="bulkDeletePortfolios",
     responses={
@@ -383,12 +385,12 @@ def bulk_delete_portfolio_rows(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = PortfolioDeletePreflightResponse.model_validate(
-        preflight_bulk_delete_portfolios(uids=uids)
-    )
+    # One counting read: the deletes reuse the preflight's plan (issue 96).
+    plan = plan_bulk_delete_portfolios(uids=uids)
+    preflight = PortfolioDeletePreflightResponse.model_validate(plan.preflight())
     if not preflight.allowed:
         raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
-    response = bulk_delete_portfolios(uids=uids)
+    response = bulk_delete_portfolios(uids=uids, plan=plan)
     if response.failed:
         detail = _portfolio_bulk_delete_error_detail(response)
         logger.warning(

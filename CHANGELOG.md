@@ -161,6 +161,29 @@ and this project follows versioned releases.
 
   The lock and `requirements.txt`, which hosted images install, select 0.1.71; no other
   locked package changes.
+- **The six other portfolio datasets have an index that leads with the portfolio**
+  (Alembic revision 0031). `PortfoliosStorage`, `PortfolioRebalanceStateStorage`,
+  `PortfolioAnalyticsStorage`, `PortfolioEventLedgerStorage`, `PortfolioStateStorage` and
+  `PortfolioCashFlowsStorage` gain `(portfolio_identifier, time_index)`, the index revision
+  0026 gave `PortfolioWeightsStorage`
+  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+  Counting, reading and deleting one portfolio's rows reads that portfolio's rows instead
+  of the whole table, and so does the `RESTRICT` check when a portfolio row is deleted.
+  Apply the migration. On an ordinary table it builds the index in the upgrade's
+  transaction, during which writes to the table wait (2 to 3 s for tables of 6.3 million
+  rows). On a TimescaleDB DataSource, where these tables are hypertables, it builds each
+  index one chunk per transaction (`timescaledb.transaction_per_chunk`), outside the
+  upgrade's transaction, so it holds a few locks at a time whatever the number of chunks:
+  on 8,030 chunks across the six tables, at PostgreSQL's default
+  `max_locks_per_transaction = 64`, it took 32 s and held at most 22 locks, where one
+  transaction ran out of shared memory. An upgrade stopped part way can be run again: it
+  finishes or rebuilds what it left. Dropping a hypertable's index, which the downgrade and
+  the upgrade after an interrupted build do, takes about two locks per chunk of that table
+  in one transaction, because TimescaleDB 2.22 opens every chunk to drop it (4,010 locks
+  for 2,005 chunks). Instances built with `configured_portfolios_storage`,
+  `configured_portfolio_rebalance_state_storage` and
+  `configured_portfolio_event_ledger_storage` declare the same index; **a provider adds it
+  to its existing instances in a revision of its own**.
 
 ### Added
 
@@ -273,6 +296,22 @@ and this project follows versioned releases.
   - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
     accepts the options an action declares, and `bulk_action_option_values` reads them;
     an undeclared option or a value of the wrong type answers `400`.
+- **A portfolio delete's counting read no longer reads whole tables, and the bulk delete
+  counts its selection once.** The read counted each dataset with a subquery per selected
+  portfolio, and six of the seven dataset tables had no index that leads with
+  `portfolio_identifier`, so each count read its table in full, once per portfolio; the
+  account delete's read with `delete_portfolios` did the same, and
+  `POST /api/v1/portfolio/bulk-delete/` ran the read twice
+  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+  - Revision 0031 gives those six tables the index (see Changed), so each count reads only
+    its portfolio's rows. For five portfolios of 2,520 days on 500 assets the read took
+    0.43 s instead of 1.51 s, and for a portfolio with 0.4 % of the rows 9 ms instead of
+    0.27 s (PostgreSQL 17, pages in memory; ADR 0049's issue 96 note has the rest).
+  - `POST /api/v1/portfolio/bulk-delete/` counts its selection once: it deletes by its
+    preflight's plan (`msm_portfolios.services.plan_portfolio_deletes`, which returns a
+    `PortfolioDeletePlan`, and `bulk_delete_portfolio_records(..., plan=...)`). A
+    portfolio referenced after that read is still refused by its guarded statement or by
+    a `RESTRICT` key.
 - **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
   `update_model` dropped each `None` it was given, so clearing
   `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL

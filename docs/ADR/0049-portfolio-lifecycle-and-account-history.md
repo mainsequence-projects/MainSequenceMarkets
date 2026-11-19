@@ -347,7 +347,113 @@ and the portfolio survived without its weights and values
   and 20.8 and 23.1 seconds for all five. Its count subqueries are correlated:
   PostgreSQL runs them once per portfolio, and only the weights table has an
   index that leads with `portfolio_identifier`, so the read scans each of the six
-  other dataset tables once per portfolio.
+  other dataset tables once per portfolio. The 4.1.0, issue 96 note gives those six
+  tables an index that leads with `portfolio_identifier`, so each count reads only
+  its portfolio's rows.
+
+### 2026-11-19: 4.1.0, issue 96
+
+The read that counts a portfolio delete's rows counts each dataset with a subquery
+on the portfolio row, which PostgreSQL runs once per selected portfolio. Six of the
+seven dataset tables had no index that leads with `portfolio_identifier`, so each
+of those counts read its table in full: the read grew with the number of portfolios
+times the size of the tables (the "Deadline" bullet above). The account delete's
+read with its portfolios ([ADR 0050](0050-account-deletion.md)) counts the same
+way, and `POST /api/v1/portfolio/bulk-delete/` ran the read twice: in its preflight,
+and again to delete
+([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+
+- **Series indexes.** Revision `0031` gives the six other dataset tables (values,
+  rebalance state, analytics, event ledger, state and cash flows) the
+  `(portfolio_identifier, time_index)` index that revision `0026` gave the weights
+  table, and the storage models declare it as the weights model does, so the
+  contract instances built from them copy it. A count, read or delete of one
+  portfolio's rows then reads that portfolio's rows instead of the whole table, and
+  so does the `RESTRICT` check of the portfolio row's delete.
+- **Per-portfolio counts.** Both reads keep their count per portfolio row. A read
+  that grouped each dataset once for the whole selection
+  (`GROUP BY portfolio_identifier`) was built and measured first. Without the
+  indexes it avoided reading each table once per portfolio; with them, the
+  per-portfolio counts read the same index entries (about 13,000 buffers for five
+  portfolios) and took less time, 0.43 s against 0.94 s for five portfolios with the
+  pages in memory, because the grouped read hashes every row it counts. The grouped
+  read was dropped.
+- **One read per bulk delete.** `msm_portfolios.services.plan_portfolio_deletes`
+  runs the delete's checks once and returns a `PortfolioDeletePlan`, whose
+  `preflight()` is the preflight's report; `bulk_delete_portfolio_records(...,
+  plan=...)` deletes by it. The route plans once, answers `409` from that report,
+  and deletes by the same plan, so each portfolio's `deleted_rows` are its
+  preflight `row_counts`. The delete is as safe as before: a reference written
+  after the read stops that portfolio's transaction at its guarded statement, or
+  a `RESTRICT` key refuses it, and only then is that portfolio read again, to
+  name what refused it.
+- **The migration on ordinary tables.** The upgrade builds the index inside its
+  transaction, as `0026` did: a `SHARE` lock on each table until the upgrade
+  commits, so writes to the table wait and reads do not. On the tables measured
+  below it took 2.3 to 3.2 seconds with their pages in memory, and 6.8 to 15.5
+  seconds on PostgreSQL 16 on the busy workstation.
+- **The migration on hypertables.** A TimescaleDB DataSource makes these tables
+  hypertables, one chunk per week of data by default. Built in one transaction, an
+  index on a hypertable takes about two locks per chunk until the transaction ends:
+  with 505 chunks per table (ten years) the six indexes held 6,087 locks, and with
+  8,030 chunks across the six tables the upgrade failed with `out of shared memory`
+  at `max_locks_per_transaction = 64`, PostgreSQL's default, and rolled back.
+  Revision `0031` therefore builds a hypertable's index with
+  `timescaledb.transaction_per_chunk`, which TimescaleDB runs one chunk per
+  transaction and refuses inside a transaction block, so the migration runs it in
+  Alembic's `autocommit_block()`, after committing what the upgrade did before. The
+  build holds a few locks at a time whatever the number of chunks, and writes wait
+  only on the chunk being indexed. On the same 8,030 chunks at the default 64, the
+  upgrade took 32 s and held at most 22 locks; in one transaction, with the limit
+  raised to 256, it had taken 5.6 s.
+- **Interrupted and repeated.** A per-chunk build that stops part way leaves the
+  hypertable's index invalid, with the chunks built so far indexed; nothing links
+  those chunk indexes to it in TimescaleDB 2.22's catalog. The upgrade skips a
+  valid index; otherwise it drops each chunk's index on the series columns in its
+  own transaction, then the hypertable's index, and builds again. The indexes on
+  ordinary tables are created only if missing. So an upgrade stopped at any point
+  can be run again. On the 8,030 chunks, an upgrade stopped after 5 s, with 979 of
+  the values table's 1,005 chunks indexed, left the revision at `0030` and that
+  index invalid; run again, it finished in 50 s with all six indexes valid on every
+  chunk. The downgrade drops a hypertable's chunk indexes one at a time too, 88 s
+  for the 8,030. The builds run without a statement timeout and restore the
+  session's own afterwards, so a role's default timeout cannot cut a long build
+  short.
+- **Dropping a hypertable's index.** TimescaleDB 2.22 drops a hypertable's index in
+  one transaction, and opens every chunk of the table and every index on it to find
+  the chunk indexes to drop, even when none is left: here about two locks per
+  chunk, and no statement drops it chunk by chunk. Revision `0031` drops one only in
+  the downgrade and in the upgrade after an interrupted build, once the chunk
+  indexes are gone, so that drop only reads the chunks. The migration's session
+  peaked at 1,986 locks in the upgrade after the interruption and at 4,010 in the
+  downgrade: two for each chunk of the 1,005-chunk table and of a 2,005-chunk
+  table. At 64 this server's lock table is sized for 9,344 locks (64 for each of
+  its 146 backends), so by that count a table would need about 4,600 chunks, 88
+  years at one chunk a week, before its drop could not fit on an otherwise idle
+  server; the build stays at a few locks.
+
+Measured on PostgreSQL 17.6 (the TimescaleDB 2.22 image, ordinary tables, pages in
+memory, idle machine) with five portfolios of 2,520 days on 500 assets and one of
+50 days (0.4 % of the rows); the weights and rebalance state tables hold 6.3 million
+rows each. Medians of six runs for the reads, of two for the big deletes and six for
+the small one. Before is `development` without the indexes; the reads' SQL is the
+same before and after.
+
+| Operation | Before | 4.1.0 |
+| --- | ---: | ---: |
+| Portfolio delete read, one portfolio | 0.47 s | 0.10 s |
+| Portfolio delete read, five portfolios | 1.51 s | 0.43 s |
+| Portfolio delete read, the small portfolio | 0.27 s | 9 ms |
+| Account delete read, one portfolio | 0.43 s | 0.11 s |
+| Account delete read, five portfolios | 1.67 s | 0.43 s |
+| Delete transaction, one portfolio | 4.8 s | 3.5 s |
+| Delete transaction, the small portfolio | 0.38 s | 28 ms |
+| Delete transactions, five portfolios | 21 s | 22 s |
+
+The read for five portfolios touched 586,635 buffers before and 12,821 after. The
+five big deletes remove about 2.6 million rows each, which takes the same time
+either way (20.6 and 21.4 s before, 15.8 and 28.0 s after). The bulk delete runs
+the read once instead of twice.
 
 ### 2026-11-19: 4.1.0, `Portfolio.delete` is refused
 

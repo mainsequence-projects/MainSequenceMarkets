@@ -99,6 +99,77 @@ def _datasets(engine, identifier: str) -> None:
         _insert(engine, table_name, time_index=WHEN, portfolio_identifier=identifier, **assets)
 
 
+def _rows_in(engine, identifier: str, **rows: int) -> None:
+    """``rows[key]`` rows of the portfolio in dataset ``key``, one a day."""
+
+    for key, count in rows.items():
+        assets = {
+            foreign_key["constrained_columns"][0]: "AAA"
+            for foreign_key in sa.inspect(engine).get_foreign_keys(DATASETS[key])
+            if foreign_key["referred_table"] == "ms_markets__asset"
+        }
+        for day in range(count):
+            _insert(
+                engine,
+                DATASETS[key],
+                time_index=WHEN + dt.timedelta(days=day),
+                portfolio_identifier=identifier,
+                **assets,
+            )
+
+
+def explain(engine, operation) -> list:
+    """PostgreSQL's plan for a compiled read with sequential scans priced out (``FORMAT JSON``).
+
+    The read is bound as MetaTables binds it. With ``enable_seqscan`` off the planner
+    takes any usable index even on the tests' few rows, so the plan shows whether one
+    exists for the read's conditions.
+    """
+
+    from metatables.api.backend.backends.restricted_sql import parameters_for
+
+    statement = operation.statement
+    values = parameters_for(statement.parameters, statement.parameter_types, "postgresql")
+    with engine.connect() as connection:
+        connection.exec_driver_sql("SET enable_seqscan = off")
+        return connection.exec_driver_sql(f"EXPLAIN (FORMAT JSON) {statement.sql}", values).scalar_one()
+
+
+def dataset_reads(plan: list) -> dict[str, list[str]]:
+    """How the plan reads each dataset table: per plan node that reads it, the index it uses.
+
+    ``None`` stands for a node that reads the table without an index.
+    """
+
+    reads: dict[str, list[str]] = {table_name: [] for table_name in DATASETS.values()}
+
+    def visit(node: dict) -> None:
+        if node.get("Relation Name") in reads:
+            index = node.get("Index Name") or next(
+                (
+                    child.get("Index Name")
+                    for child in node.get("Plans", ())
+                    if child.get("Node Type") == "Bitmap Index Scan"
+                ),
+                None,
+            )
+            reads[node["Relation Name"]].append(index)
+        for child in node.get("Plans", ()):
+            visit(child)
+
+    visit(plan[0]["Plan"])
+    return reads
+
+
+def series_indexes() -> dict[str, list[str]]:
+    """Per dataset table, its index that leads with ``portfolio_identifier``, once."""
+
+    return {
+        table.table_name: [index.name for index in table.model.__table__.indexes if not index.unique]
+        for table in PORTFOLIO_DATASET_TABLES
+    }
+
+
 def _dataset_rows(engine, identifier: str) -> dict[str, int]:
     with engine.connect() as connection:
         return {
@@ -207,3 +278,38 @@ def test_account_history_written_in_between_stops_the_guard(markets, monkeypatch
 
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
+
+
+def test_one_read_counts_several_portfolios_in_each_dataset(markets) -> None:
+    engine, context, operations = markets
+    first, first_identifier = _portfolio(engine)
+    _rows_in(engine, first_identifier, weights=2, rebalance_state=1)
+    second, second_identifier = _portfolio(engine)
+    _rows_in(engine, second_identifier, values=3, state=1, cash_flows=2)
+    empty, _empty_identifier = _portfolio(engine)
+    _other, other_identifier = _portfolio(engine)
+    _datasets(engine, other_identifier)  # Not selected: none of its rows is counted.
+    operations.clear()
+
+    counted = repository.count_portfolio_delete_rows(context, uids=[first, second, empty, uuid.uuid4()])
+
+    assert operations == ["read"]
+    assert {uid: {key: row[key] for key in DATASETS} for uid, row in counted.items()} == {
+        str(first): {key: {"weights": 2, "rebalance_state": 1}.get(key, 0) for key in DATASETS},
+        str(second): {key: {"values": 3, "state": 1, "cash_flows": 2}.get(key, 0) for key in DATASETS},
+        str(empty): {key: 0 for key in DATASETS},
+    }
+
+
+def test_each_count_reads_the_portfolios_rows_through_the_series_index(markets) -> None:
+    engine, context, _operations = markets
+    portfolios = []
+    for _ in range(3):
+        portfolio, identifier = _portfolio(engine)
+        _datasets(engine, identifier)
+        portfolios.append(portfolio)
+
+    plan = explain(engine, repository.build_count_portfolio_delete_rows_operation(context, uids=portfolios))
+
+    # Each dataset count reads the portfolio's rows through the series index (issue 96).
+    assert dataset_reads(plan) == series_indexes()

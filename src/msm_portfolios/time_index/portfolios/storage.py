@@ -228,6 +228,10 @@ class PortfolioRebalanceStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase
         "target intent, and asset. Rows record target activation, partial execution, "
         "remaining weight, observed execution capacity, and strategy-owned restart state."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -413,6 +417,10 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "portfolio_identifier). Stores close, return, calculated close, and close "
         "timestamp for canonical portfolio value series."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", PORTFOLIO_IDENTIFIER_DIMENSION]
 
@@ -487,6 +495,10 @@ class PortfolioAnalyticsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "and analysis_identifier. Each time_index is the actual final canonical "
         "portfolio observation selected for the analytical period."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -581,6 +593,10 @@ class PortfolioEventLedgerStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "Versioned portfolio accounting event records. Complete event envelopes and "
         "typed economic records support deterministic restart and corrected replay."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -909,6 +925,10 @@ class PortfolioStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
     __metatable_identifier__ = "PortfolioStateTS"
     __metatable_description__ = "Ledger-derived valued portfolio state by stable state identity."
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -1019,6 +1039,10 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Ledger-derived settled portfolio cash movements with event lineage."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",

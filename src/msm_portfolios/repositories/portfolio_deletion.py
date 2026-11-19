@@ -151,7 +151,9 @@ def build_count_portfolio_delete_rows_operation(
 
     Per portfolio it returns ``uid``, ``unique_identifier``, the catalog's
     ``values_meta_table_uid`` and ``weights_meta_table_uid``, the rows in each of the
-    seven datasets, and the account-history rows that block the delete.
+    seven datasets, and the account-history rows that block the delete. Each count runs
+    per portfolio row and reads only that portfolio's rows, through the dataset's
+    ``(portfolio_identifier, time_index)`` index (revisions 0026 and 0031, issue 96).
     """
 
     portfolio_uids = [uuid.UUID(str(uid)) for uid in uids]

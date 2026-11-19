@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -24,6 +25,7 @@ from msm_portfolios.services import (
     PortfolioDeleteConflictError,
     bulk_delete_portfolio_records,
     delete_portfolio_record,
+    plan_portfolio_deletes,
     preflight_bulk_delete_portfolio_records,
 )
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
@@ -38,6 +40,7 @@ from tests.msm.repositories.test_sqlite_snapshot_writes import (
     _rows,
     _write_target,
     make_sqlite_markets,
+    table_reads,
 )
 
 DATASETS = {table.key: table.table_name for table in PORTFOLIO_DATASET_TABLES}
@@ -745,3 +748,140 @@ def test_the_preflight_counts_match_what_the_delete_removes(markets) -> None:
     assert {item["uid"]: item["deleted_rows"] for item in result["deleted"]} == counts
     removed = {key: totals_before[key] - _count(engine, name) for key, name in DATASETS.items()}
     assert removed == {key: sum(item[key] for item in counts.values()) for key in DATASETS}
+
+
+# The counting read and the bulk delete (issue 96) ----------------------------------------
+
+
+def _counted(portfolio: uuid.UUID, identifier: str, **rows: int) -> dict:
+    """What `count_portfolio_delete_rows` answers for one portfolio with ``rows`` per key."""
+
+    return {
+        "uid": str(portfolio),
+        "unique_identifier": identifier,
+        **{key: None for key in repository.CATALOG_TABLE_KEYS},
+        **{key: rows.get(key, 0) for key in (*DATASETS, "virtual_funds", "target_positions")},
+    }
+
+
+def _reads(markets) -> list[str]:
+    return [sql for sql in markets.statements if sql.lstrip().upper().startswith("SELECT")]
+
+
+def test_one_read_counts_each_selected_portfolio_in_each_dataset(markets) -> None:
+    engine = markets.engine
+    first, first_identifier = _portfolio_with(engine, "weights", "values")
+    _catalog(engine, first, values=PROVIDER_VALUES_UID)
+    second, second_identifier = _portfolio_with(engine, "values", "event_ledger", "cash_flows")
+    _dataset_row(engine, "values", second_identifier, when=WHEN + dt.timedelta(days=1))
+    _virtual_fund(engine, second)
+    empty, empty_identifier = _portfolio_with(engine)
+    _portfolio_with(engine, *DATASETS)  # Not selected: none of its rows is counted.
+    missing = uuid.uuid4()
+    markets.statements.clear()
+
+    counted = repository.count_portfolio_delete_rows(
+        markets.context, uids=[first, second, empty, missing]
+    )
+
+    assert len(markets.statements) == 1
+    catalogued = counted[str(first)]["values_meta_table_uid"]
+    assert uuid.UUID(catalogued) == uuid.UUID(PROVIDER_VALUES_UID)
+    assert counted == {
+        str(first): {
+            **_counted(first, first_identifier, weights=1, values=1),
+            "values_meta_table_uid": catalogued,
+        },
+        str(second): _counted(
+            second, second_identifier, values=2, event_ledger=1, cash_flows=1, virtual_funds=1
+        ),
+        str(empty): _counted(empty, empty_identifier),
+    }
+
+
+def series_index(table) -> str:
+    """The dataset's index that leads with ``portfolio_identifier`` (revisions 0026, 0031)."""
+
+    (name,) = [index.name for index in table.model.__table__.indexes if not index.unique]
+    return name
+
+
+def test_each_count_reads_the_portfolios_rows_through_the_series_index(markets) -> None:
+    portfolios = [_portfolio_with(markets.engine, *DATASETS)[0] for _ in range(3)]
+
+    reads = table_reads(
+        markets.engine,
+        repository.build_count_portfolio_delete_rows_operation(markets.context, uids=portfolios),
+        DATASETS.values(),
+    )
+
+    # Each dataset count is one index search on the portfolio, never a scan of the table:
+    # its cost follows the portfolio's rows, not the table's (issue 96).
+    for table in PORTFOLIO_DATASET_TABLES:
+        (step,) = reads[table.table_name]
+        assert step.startswith("SEARCH") and series_index(table) in step, step
+        assert "(portfolio_identifier=?)" in step, step
+
+
+def test_the_bulk_delete_route_counts_the_selection_once(markets, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from apps.v1.main import app
+    from apps.v1.services import portfolios as portfolio_service
+
+    engine = markets.engine
+    first, first_identifier = _portfolio_with(engine, *DATASETS)
+    second, second_identifier = _portfolio_with(engine, "values")
+    monkeypatch.setattr(
+        portfolio_service, "_get_delete_runtime", lambda: SimpleNamespace(context=markets.context)
+    )
+    markets.statements.clear()
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio/bulk-delete/",
+        json={"selection": {"mode": "explicit", "uids": [str(first), str(second)]}, "options": {}},
+    )
+
+    assert response.status_code == 200, response.text
+    assert {item["uid"]: item["deleted_rows"] for item in response.json()["deleted"]} == {
+        str(first): {key: 1 for key in DATASETS},
+        str(second): {key: int(key == "values") for key in DATASETS},
+    }
+    # The preflight's read, then one transaction per portfolio.
+    assert len(_reads(markets)) == 1
+    assert len(_deletes(markets)) == 2 * (len(DATASETS) + 1)
+    assert not _exists(engine, first) and set(_dataset_rows(engine, first_identifier).values()) == {0}
+    assert not _exists(engine, second) and set(_dataset_rows(engine, second_identifier).values()) == {0}
+
+
+def test_deleting_by_an_earlier_plan_still_refuses_a_portfolio_referenced_since(markets) -> None:
+    engine = markets.engine
+    kept, kept_identifier = _portfolio_with(engine, *DATASETS)
+    gone, gone_identifier = _portfolio_with(engine, *DATASETS)
+    plan = plan_portfolio_deletes(markets.context, uids=[kept, gone])
+    assert plan.preflight()["allowed"] is True
+    _virtual_fund(engine, kept)
+    markets.statements.clear()
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[kept, gone], plan=plan)
+
+    # The guarded statement stops the kept portfolio's transaction; only then is it read
+    # again, to name what refuses it. The selection is not counted again.
+    assert [item["uid"] for item in result["failed"]] == [str(kept)]
+    assert "VirtualFundTable.target_portfolio_uid" in result["failed"][0]["detail"]
+    assert [item["uid"] for item in result["deleted"]] == [str(gone)]
+    assert len(_reads(markets)) == 1
+    assert _exists(engine, kept) and _dataset_rows(engine, kept_identifier) == {key: 1 for key in DATASETS}
+    assert not _exists(engine, gone) and set(_dataset_rows(engine, gone_identifier).values()) == {0}
+
+
+def test_a_plan_for_another_selection_is_refused(markets) -> None:
+    first, _ = _portfolio_with(markets.engine)
+    second, _ = _portfolio_with(markets.engine)
+    plan = plan_portfolio_deletes(markets.context, uids=[first])
+
+    with pytest.raises(ValueError, match="another portfolio selection"):
+        bulk_delete_portfolio_records(markets.context, uids=[first, second], plan=plan)
+
+    assert _deletes(markets) == []
+    assert _exists(markets.engine, first) and _exists(markets.engine, second)

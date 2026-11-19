@@ -512,6 +512,12 @@ row names it. If any statement fails, nothing is deleted. The catalog row
 with the row through their own `CASCADE` keys. `PortfolioMetadataTable` rows
 are not deleted.
 
+Each dataset table has an index that leads with `portfolio_identifier`
+(Alembic revision 0026 for the weights, 0031 for the six others), so the delete's
+statements, the read that counts its rows and the portfolio row's `RESTRICT`
+checks read the portfolio's own rows, not the whole tables
+([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+
 Returns:
 
 ```json
@@ -618,8 +624,11 @@ Both take the Command Center bulk-action request with explicit uids:
 The preflight runs the delete's checks without deleting: one read counts every
 selected portfolio's rows per dataset and the account history that names it,
 and each table of another application with a `RESTRICT` key to portfolios is
-counted once for the whole selection. It returns the MetaTables impact, the
-blockers, and per portfolio the rows the delete removes:
+counted once for the whole selection. Each count reads only that portfolio's
+rows, through its dataset's index on `(portfolio_identifier, time_index)`
+([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+It returns the MetaTables impact, the blockers, and per portfolio the rows the
+delete removes:
 
 ```json
 {
@@ -652,7 +661,9 @@ blockers, and per portfolio the rows the delete removes:
 
 The bulk delete runs the preflight and answers `409` when it reports a blocker.
 Otherwise it deletes each portfolio as `DELETE /api/v1/portfolio/{uid}/` does,
-each in its own transaction, and returns every deleted portfolio:
+each in its own transaction, with the preflight's checks: the request counts the
+selection once, and each portfolio's `deleted_rows` are its preflight
+`row_counts`. It returns every deleted portfolio:
 
 ```json
 {

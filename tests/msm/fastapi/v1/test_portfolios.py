@@ -711,6 +711,24 @@ def test_delete_portfolio_weights_returns_404_when_missing(monkeypatch) -> None:
     assert "missing-portfolio" in response.json()["detail"]
 
 
+class _DeletePlan:
+    """A stand-in for the service's delete plan: the checks run once, with their report."""
+
+    def __init__(
+        self, uids: list[str], *, allowed: bool = True, blockers: tuple[str, ...] = ()
+    ) -> None:
+        self.uids = uids
+        self.report = {
+            "allowed": allowed,
+            "matched_count": len(uids),
+            "blockers": list(blockers),
+            "warnings": [],
+        }
+
+    def preflight(self) -> dict[str, object]:
+        return dict(self.report)
+
+
 def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
     deleted_uid = uuid.uuid4()
     failed_uid = uuid.uuid4()
@@ -733,19 +751,17 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
             }
         )
 
+    plans: list[_DeletePlan] = []
+
+    def fake_plan(**kwargs):
+        plans.append(_DeletePlan(kwargs["uids"]))
+        return plans[-1]
+
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
         fake_bulk_delete_portfolios,
     )
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
-        lambda **kwargs: {
-            "allowed": True,
-            "matched_count": len(kwargs["uids"]),
-            "blockers": [],
-            "warnings": [],
-        },
-    )
+    monkeypatch.setattr("apps.v1.routers.portfolios.plan_bulk_delete_portfolios", fake_plan)
 
     client = TestClient(app)
     response = client.post(
@@ -766,21 +782,24 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
             f"Failed: {failed_uid}: {refusal}"
         )
     }
-    assert captured == {"uids": [str(deleted_uid), str(failed_uid)]}
+    (plan,) = plans
+    assert captured == {"uids": [str(deleted_uid), str(failed_uid)], "plan": plan}
 
 
 def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) -> None:
+    # The route runs the checks once and deletes by them (issue 96).
     deleted_uid = str(uuid.uuid4())
-    calls: list[tuple[str, list[str]]] = []
+    plan = _DeletePlan([deleted_uid])
+    calls: list[tuple[str, list[str], object]] = []
 
-    def fake_preflight(**kwargs):
-        calls.append(("preflight", kwargs["uids"]))
-        return {"allowed": True, "matched_count": 1, "blockers": [], "warnings": []}
+    def fake_plan(**kwargs):
+        calls.append(("plan", kwargs["uids"], None))
+        return plan
 
     def fake_bulk_delete_portfolios(**kwargs):
         from apps.v1.schemas.portfolios import PortfolioBulkDeleteResponse
 
-        calls.append(("delete", kwargs["uids"]))
+        calls.append(("delete", kwargs["uids"], kwargs["plan"]))
         return PortfolioBulkDeleteResponse.model_validate(
             {
                 "detail": "Deleted 1 portfolio with its datasets.",
@@ -794,9 +813,10 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
         fake_bulk_delete_portfolios,
     )
+    monkeypatch.setattr("apps.v1.routers.portfolios.plan_bulk_delete_portfolios", fake_plan)
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
-        fake_preflight,
+        lambda **kwargs: pytest.fail("the bulk delete must not run the preflight a second time"),
     )
 
     client = TestClient(app)
@@ -815,21 +835,20 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
         "deleted": [_deleted_portfolio(deleted_uid)],
         "failed": [],
     }
-    assert calls == [("preflight", [deleted_uid]), ("delete", [deleted_uid])]
+    assert calls == [("plan", [deleted_uid], None), ("delete", [deleted_uid], plan)]
 
 
 def test_bulk_delete_portfolios_refuses_a_blocked_selection(monkeypatch) -> None:
     monkeypatch.setattr(
-        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
-        lambda **kwargs: {
-            "allowed": False,
-            "matched_count": 1,
-            "blockers": [
+        "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
+        lambda **kwargs: _DeletePlan(
+            kwargs["uids"],
+            allowed=False,
+            blockers=(
                 "Portfolio 'example-sleeve': 1 virtual fund target it "
-                "(VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
-            ],
-            "warnings": [],
-        },
+                "(VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT).",
+            ),
+        ),
     )
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.bulk_delete_portfolios",
@@ -869,13 +888,8 @@ def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -
         fake_bulk_delete_portfolios,
     )
     monkeypatch.setattr(
-        "apps.v1.routers.portfolios.preflight_bulk_delete_portfolios",
-        lambda **kwargs: {
-            "allowed": True,
-            "matched_count": len(kwargs["uids"]),
-            "blockers": [],
-            "warnings": [],
-        },
+        "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
+        lambda **kwargs: _DeletePlan(kwargs["uids"]),
     )
 
     client = TestClient(app)

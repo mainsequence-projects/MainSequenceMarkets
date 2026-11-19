@@ -92,7 +92,10 @@ table's owner.
 Execution repeats preflight immediately before invoking domain deletion. A
 blocked selection returns HTTP `409` and does not call the delete service. The
 underlying delete operation still performs its own conflict checks, protecting
-against authorization or reference changes between preflight and execution.
+against authorization or reference changes between preflight and execution. The
+portfolio bulk delete deletes by its preflight's counts instead of reading them
+again; each portfolio's guarded statement and the database's `RESTRICT` keys
+refuse a portfolio whose references changed in between.
 
 Request validation errors return `422`. Unsupported modes or options return
 `400`. A preflight that discovers missing or protected rows returns `200` with

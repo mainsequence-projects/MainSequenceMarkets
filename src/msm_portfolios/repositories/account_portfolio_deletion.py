@@ -139,7 +139,9 @@ def build_read_account_with_portfolios_operation(
     """One read: core's account read, with one row per portfolio its history names.
 
     Per portfolio: the account history of other accounts that references it, its
-    catalog row's values and weights instances, and its rows in each dataset.
+    catalog row's values and weights instances, and its rows in each dataset. Each
+    dataset count reads only that portfolio's rows, through the dataset's
+    ``(portfolio_identifier, time_index)`` index (revisions 0026 and 0031, issue 96).
     """
 
     filters = account_history_filters(uid)

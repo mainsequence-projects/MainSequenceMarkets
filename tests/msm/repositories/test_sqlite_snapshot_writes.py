@@ -177,6 +177,29 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
     )
 
 
+def table_reads(engine, operation, table_names) -> dict[str, list[str]]:
+    """The steps of SQLite's plan for a compiled read that read each of ``table_names``.
+
+    One detail per step, such as ``SEARCH t USING COVERING INDEX ix (a=?)`` for an index
+    search or ``SCAN t`` for a full scan. The read is bound as MetaTables binds it.
+    """
+
+    import re
+
+    from metatables.api.backend.backends.restricted_sql import parameters_for
+
+    statement = operation.statement
+    values = parameters_for(statement.parameters, statement.parameter_types, "sqlite")
+    if isinstance(values, list):
+        # Positional SQL (MetaTables 0.1.71 and later): one parameter set, not a list of them.
+        values = tuple(values)
+    with engine.connect() as connection:
+        plan = connection.exec_driver_sql(f"EXPLAIN QUERY PLAN {statement.sql}", values).all()
+    return {
+        name: [row[3] for row in plan if re.search(rf"\b{name}\b", row[3])] for name in table_names
+    }
+
+
 def _insert(engine, table_name: str, **values) -> dict:
     """Insert one row, filling required columns the test does not care about."""
 

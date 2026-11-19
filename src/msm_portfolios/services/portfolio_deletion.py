@@ -122,6 +122,62 @@ class _PlannedDelete:
         }
 
 
+@dataclass(frozen=True)
+class PortfolioDeletePlan:
+    """The delete's checks for one portfolio selection, run once.
+
+    One counting read for every portfolio in ``uids``, MetaTables' impact, and each table
+    of another application checked once. ``portfolios`` holds each existing portfolio by
+    uid. `preflight` reports the plan, and `bulk_delete_portfolio_records` can delete by
+    it, so `POST /api/v1/portfolio/bulk-delete/` counts its selection once (issue 96).
+    Deleting by a plan made earlier is safe: when a portfolio's references change in
+    between, its transaction's guarded statement or a ``RESTRICT`` key still refuses it.
+    """
+
+    uids: tuple[str, ...]
+    impact: PortfolioDeleteImpact
+    portfolios: Mapping[str, _PlannedDelete]
+
+    def preflight(self) -> dict[str, Any]:
+        """What deleting the selection removes and what blocks it."""
+
+        portfolios: list[dict[str, Any]] = []
+        blockers: list[str] = []
+        history_blocked = foreign_blocked = False
+        for uid in self.uids:
+            planned = self.portfolios.get(uid)
+            if planned is None:
+                blockers.append(f"Portfolio {uid} was not found.")
+                continue
+            portfolios.append(planned.preflight())
+            blockers.extend(f"{planned.label}: {blocker}" for blocker in planned.blockers)
+            history_blocked = history_blocked or bool(planned.history_blockers)
+            foreign_blocked = foreign_blocked or bool(planned.foreign_blockers)
+        blockers.extend(self.impact.blockers)
+        warnings = list(self.impact.warnings)
+        if history_blocked:
+            warnings.append(ACCOUNT_HISTORY_GUIDANCE)
+        if foreign_blocked:
+            warnings.append(PROVIDER_TABLE_DELETE_GUIDANCE)
+        allowed = bool(self.uids) and not blockers
+        matched = len(portfolios)
+        detail = (
+            f"{matched} portfolio{' is' if matched == 1 else 's are'} ready for deletion with "
+            f"{'its' if matched == 1 else 'their'} datasets."
+            if allowed
+            else "The portfolio selection cannot be deleted as submitted."
+        )
+        return {
+            "allowed": allowed,
+            "detail": detail,
+            "matched_count": matched,
+            "blockers": blockers,
+            "warnings": warnings,
+            "impact": self.impact.impact,
+            "portfolios": portfolios,
+        }
+
+
 def portfolio_delete_impact(
     *,
     timeout: int | float | tuple[float, float] | None = None,
@@ -196,24 +252,49 @@ def delete_portfolio_record(
     return _deleted_response(planned)
 
 
-def bulk_delete_portfolio_records(
+def plan_portfolio_deletes(
     context: MarketsRepositoryContext,
     *,
     uids: Sequence[uuid.UUID | str],
-) -> dict[str, Any]:
-    """Delete each portfolio with its datasets, each in its own transaction.
+) -> PortfolioDeletePlan:
+    """Run the delete's checks for the selection once, without deleting.
 
-    One read counts every selected portfolio. A portfolio that is missing or refused is
-    reported in ``failed`` and the others are still deleted.
+    One read counts every selected portfolio, whatever their number (issue 96).
     """
 
     target_uids = _unique_uids(uids)
     impact = portfolio_delete_impact(timeout=context.timeout)
-    plan = _plan(context, target_uids, impact=impact)
+    return PortfolioDeletePlan(
+        uids=tuple(target_uids),
+        impact=impact,
+        portfolios=_plan(context, target_uids, impact=impact),
+    )
+
+
+def bulk_delete_portfolio_records(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str],
+    plan: PortfolioDeletePlan | None = None,
+) -> dict[str, Any]:
+    """Delete each portfolio with its datasets, each in its own transaction.
+
+    One read counts every selected portfolio, unless ``plan`` is the plan
+    `plan_portfolio_deletes` made for these ``uids``; then the delete counts nothing
+    again. A portfolio that is missing or refused is reported in ``failed`` and the
+    others are still deleted.
+    """
+
+    target_uids = _unique_uids(uids)
+    if plan is None:
+        plan = plan_portfolio_deletes(context, uids=target_uids)
+    elif list(plan.uids) != target_uids:
+        raise ValueError("The delete plan was made for another portfolio selection.")
+    impact = plan.impact
     deleted: list[_PlannedDelete] = []
     failed: list[dict[str, str]] = []
     for uid in target_uids:
-        planned = plan.get(uid)
+        planned = plan.portfolios.get(uid)
         try:
             done = planned is not None and _delete_planned(context, planned, impact=impact)
         except PortfolioDeleteConflictError as exc:
@@ -253,44 +334,7 @@ def preflight_bulk_delete_portfolio_records(
     change in between.
     """
 
-    target_uids = _unique_uids(uids)
-    impact = portfolio_delete_impact(timeout=context.timeout)
-    plan = _plan(context, target_uids, impact=impact)
-    portfolios: list[dict[str, Any]] = []
-    blockers: list[str] = []
-    history_blocked = foreign_blocked = False
-    for uid in target_uids:
-        planned = plan.get(uid)
-        if planned is None:
-            blockers.append(f"Portfolio {uid} was not found.")
-            continue
-        portfolios.append(planned.preflight())
-        blockers.extend(f"{planned.label}: {blocker}" for blocker in planned.blockers)
-        history_blocked = history_blocked or bool(planned.history_blockers)
-        foreign_blocked = foreign_blocked or bool(planned.foreign_blockers)
-    blockers.extend(impact.blockers)
-    warnings = list(impact.warnings)
-    if history_blocked:
-        warnings.append(ACCOUNT_HISTORY_GUIDANCE)
-    if foreign_blocked:
-        warnings.append(PROVIDER_TABLE_DELETE_GUIDANCE)
-    allowed = bool(target_uids) and not blockers
-    matched = len(portfolios)
-    detail = (
-        f"{matched} portfolio{' is' if matched == 1 else 's are'} ready for deletion with "
-        f"{'its' if matched == 1 else 'their'} datasets."
-        if allowed
-        else "The portfolio selection cannot be deleted as submitted."
-    )
-    return {
-        "allowed": allowed,
-        "detail": detail,
-        "matched_count": matched,
-        "blockers": blockers,
-        "warnings": warnings,
-        "impact": impact.impact,
-        "portfolios": portfolios,
-    }
+    return plan_portfolio_deletes(context, uids=uids).preflight()
 
 
 # The delete ------------------------------------------------------------------------------
@@ -687,8 +731,10 @@ __all__ = [
     "ForeignPortfolioTable",
     "PortfolioDeleteConflictError",
     "PortfolioDeleteImpact",
+    "PortfolioDeletePlan",
     "bulk_delete_portfolio_records",
     "delete_portfolio_record",
+    "plan_portfolio_deletes",
     "portfolio_delete_impact",
     "preflight_bulk_delete_portfolio_records",
 ]

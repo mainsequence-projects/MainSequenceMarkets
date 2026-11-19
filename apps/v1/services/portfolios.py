@@ -524,10 +524,23 @@ def delete_portfolio_weights(
 
 
 @registry_write("portfolio", "bulk-delete")
-def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
+def bulk_delete_portfolios(*, uids: list[str], plan: Any = None) -> PortfolioBulkDeleteResponse:
+    """Delete the selection; with ``plan`` from `plan_bulk_delete_portfolios`, by its checks."""
+
     runtime = _get_delete_runtime()
-    response = _bulk_delete_portfolio_records(runtime.context, uids=uids)
+    response = _bulk_delete_portfolio_records(runtime.context, uids=uids, plan=plan)
     return PortfolioBulkDeleteResponse.model_validate(response)
+
+
+def plan_bulk_delete_portfolios(*, uids: list[str]) -> Any:
+    """Run the delete's checks for the selection once (issue 96).
+
+    The plan's ``preflight()`` is the preflight report, and `bulk_delete_portfolios`
+    deletes by the plan without counting the selection again.
+    """
+
+    runtime = _get_delete_runtime()
+    return _plan_portfolio_deletes(runtime.context, uids=uids)
 
 
 def preflight_bulk_delete_portfolios(*, uids: list[str]) -> PortfolioDeletePreflightResponse:
@@ -642,6 +655,12 @@ def _preflight_bulk_delete_portfolio_records(context, **kwargs):
     from msm_portfolios.services import preflight_bulk_delete_portfolio_records
 
     return preflight_bulk_delete_portfolio_records(context, **kwargs)
+
+
+def _plan_portfolio_deletes(context, **kwargs):
+    from msm_portfolios.services import plan_portfolio_deletes
+
+    return plan_portfolio_deletes(context, **kwargs)
 
 
 def _validate_portfolio_row(row: object) -> Portfolio:

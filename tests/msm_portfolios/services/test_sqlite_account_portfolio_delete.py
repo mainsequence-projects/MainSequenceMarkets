@@ -7,6 +7,7 @@ from `tests/msm/repositories/test_sqlite_account_delete.py`.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from types import SimpleNamespace
 
@@ -43,6 +44,7 @@ from tests.msm.repositories.test_sqlite_account_delete import (
     _impact_unavailable,
     _insert,
     _order,
+    _portfolio_identifier,
     _portfolio_position,
     _portfolio_with_data,
     _progress,
@@ -51,6 +53,8 @@ from tests.msm.repositories.test_sqlite_account_delete import (
     _write_target,
     make_account_markets,
 )
+from tests.msm.repositories.test_sqlite_snapshot_writes import WHEN, _portfolio, table_reads
+from tests.msm_portfolios.services.test_sqlite_portfolio_delete import series_index
 
 PORTFOLIO_TABLES = {
     *DATASETS.values(),
@@ -184,6 +188,70 @@ def test_a_portfolio_only_named_by_the_accounts_targets_goes_too(sqlite_markets)
     assert {item["uid"] for item in deleted["deleted_portfolios"]} == {str(funded), str(targeted)}
     assert not _exists(engine, funded) and not _exists(engine, targeted)
     assert set(_dataset_rows(engine, targeted_identifier).values()) == {0}
+
+
+def _portfolio_rows(engine, **rows: int) -> tuple[uuid.UUID, str]:
+    """A portfolio with ``rows[key]`` rows in dataset ``key``, one a day."""
+
+    portfolio = _portfolio(engine)
+    identifier = _portfolio_identifier(engine, portfolio)
+    for key, count in rows.items():
+        assets = {
+            foreign_key["constrained_columns"][0]: "AAA"
+            for foreign_key in sa.inspect(engine).get_foreign_keys(DATASETS[key])
+            if foreign_key["referred_table"] == "ms_markets__asset"
+        }
+        for day in range(count):
+            _insert(
+                engine,
+                DATASETS[key],
+                time_index=WHEN + dt.timedelta(days=day),
+                portfolio_identifier=identifier,
+                **assets,
+            )
+    return portfolio, identifier
+
+
+def test_one_read_counts_each_named_portfolio_in_each_dataset(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    funded, funded_identifier = _portfolio_rows(engine, weights=1, values=2)
+    targeted, targeted_identifier = _portfolio_rows(engine, event_ledger=1, cash_flows=3)
+    empty, empty_identifier = _portfolio_rows(engine)
+    _history(sqlite_markets, account, funded, also_targets=(targeted, empty))
+    _portfolio_with_data(engine)  # No account names it: none of its rows is counted.
+    sqlite_markets.requests.clear()
+
+    read = repository.read_account_with_portfolios(sqlite_markets.context, uid=account)
+
+    assert sqlite_markets.requests == ["read"]
+    assert {item["uid"]: item["row_counts"] for item in read["portfolios"]} == {
+        str(funded): {key: {"weights": 1, "values": 2}.get(key, 0) for key in DATASETS},
+        str(targeted): {key: {"event_ledger": 1, "cash_flows": 3}.get(key, 0) for key in DATASETS},
+        str(empty): {key: 0 for key in DATASETS},
+    }
+    assert sorted(item["unique_identifier"] for item in read["portfolios"]) == sorted(
+        [funded_identifier, targeted_identifier, empty_identifier]
+    )
+
+
+def test_each_count_reads_the_portfolios_rows_through_the_series_index(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    portfolios = [_portfolio_with_data(engine)[0] for _ in range(3)]
+    _history(sqlite_markets, account, portfolios[0], also_targets=tuple(portfolios[1:]))
+
+    reads = table_reads(
+        engine,
+        repository.build_read_account_with_portfolios_operation(sqlite_markets.context, uid=account),
+        DATASETS.values(),
+    )
+
+    # Each dataset count is one index search on the portfolio, never a scan (issue 96).
+    for table in PORTFOLIO_DATASET_TABLES:
+        (step,) = reads[table.table_name]
+        assert step.startswith("SEARCH") and series_index(table) in step, step
+        assert "(portfolio_identifier=?)" in step, step
 
 
 def test_an_account_without_portfolios_is_deleted_alone(sqlite_markets) -> None:

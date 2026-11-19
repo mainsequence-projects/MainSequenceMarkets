@@ -34,6 +34,10 @@ from tests.msm.repositories.test_postgresql_portfolio_delete import (
     _exists,
     _insert,
     _portfolio,
+    _rows_in,
+    dataset_reads,
+    explain,
+    series_indexes,
 )
 
 WHEN = dt.datetime(2026, 11, 10, 15, 30, tzinfo=dt.UTC)
@@ -250,3 +254,28 @@ def test_the_account_alone_goes_with_its_orders_trades_and_events(markets) -> No
     assert _accounts(engine) == 0
     # The portfolio its history named stays, with its row.
     assert _exists(engine, portfolio)
+
+
+def test_the_read_counts_each_portfolio_through_the_series_index(markets) -> None:
+    engine, context, operations = markets
+    funded, funded_identifier = _portfolio(engine)
+    _rows_in(engine, funded_identifier, weights=2, values=1)
+    targeted, targeted_identifier = _portfolio(engine)
+    _rows_in(engine, targeted_identifier, event_ledger=3)
+    empty, _empty_identifier = _portfolio(engine)
+    _other, other_identifier = _portfolio(engine)
+    _datasets(engine, other_identifier)  # No account names it: none of its rows is counted.
+    account = _account(engine, context, funded, targeted, empty)
+    operations.clear()
+
+    read = portfolio_repository.read_account_with_portfolios(context, uid=account)
+    plan = explain(engine, portfolio_repository.build_read_account_with_portfolios_operation(context, uid=account))
+
+    assert operations == ["read"]
+    assert {item["uid"]: item["row_counts"] for item in read["portfolios"]} == {
+        str(funded): {key: {"weights": 2, "values": 1}.get(key, 0) for key in DATASETS},
+        str(targeted): {key: {"event_ledger": 3}.get(key, 0) for key in DATASETS},
+        str(empty): {key: 0 for key in DATASETS},
+    }
+    # Each dataset count reads the portfolio's rows through the series index (issue 96).
+    assert dataset_reads(plan) == series_indexes()
