@@ -394,10 +394,6 @@ def _is_delete_conflict(exc: Exception) -> bool:
 
 # Update statistics -----------------------------------------------------------------------
 
-_STATISTICS_REFRESH_CUTOFF = "9999-12-31T00:00:00+00:00"
-"""A ``delete_after_date`` cutoff later than any stored row, so the refresh deletes
-nothing, not even rows a portfolio re-created under the same identifier wrote since."""
-
 
 def _refresh_statistics(
     context: MarketsRepositoryContext,
@@ -405,55 +401,25 @@ def _refresh_statistics(
 ) -> dict[str, list[str]]:
     """Rebuild MetaTables' stored update statistics of each dataset table that lost rows.
 
-    The delete's statements are plain deletes, which leave the progress MetaTables
-    stores for each table (``index_stats``) as it was (MetaTables#117): the deleted
-    identifiers keep their last time index until the next insert into the table
-    rebuilds it, and a portfolio re-created under the same identifier whose updater
-    writes first would resume from it. ``TimeIndexMetaTable.delete_after_date``
-    rebuilds the table's statistics from its rows and replaces the stored ones. It
-    runs once per table, after every transaction of the request, scoped to the
-    deleted identifiers, with a cutoff that matches no row.
-    ``set-last-update-index-time`` would not do: it merges into the stored statistics
-    and keeps the deleted entries. Remove this once MetaTables#117 is fixed.
-
-    A failure, such as the rebuild exceeding MetaTables' statement timeout on a
-    large table, does not undo the delete. It is logged, and the answer lists, per
-    deleted portfolio uid, the datasets whose statistics were not refreshed.
+    Once per table, after every transaction of the request, scoped to the deleted
+    identifiers (`msm.services.update_statistics`, MetaTables#117). A failure does not
+    undo the delete: the answer lists, per deleted portfolio uid, the datasets whose
+    statistics were not refreshed.
     """
 
-    not_refreshed: dict[str, list[str]] = {item.uid: [] for item in deleted}
-    for table in PORTFOLIO_DATASET_TABLES:
-        affected = [item for item in deleted if item.row_counts.get(table.key, 0) > 0]
-        if not affected:
-            continue
-        identifiers = [item.unique_identifier for item in affected]
-        try:
-            meta_table = table.model.get_time_index_meta_table()
-            if meta_table is None:
-                raise RuntimeError(
-                    f"{table.model.__name__} is not attached to a backend TimeIndexMetaTable."
-                )
-            meta_table.delete_after_date(
-                _STATISTICS_REFRESH_CUTOFF,
-                dimension_filters={"portfolio_identifier": identifiers},
-                timeout=context.timeout,
-            )
-        except Exception:
-            logger.exception(
-                "Portfolio delete could not refresh a dataset table's update statistics",
-                dataset=table.key,
-                portfolio_identifiers=identifiers,
-            )
-            for item in affected:
-                not_refreshed[item.uid].append(table.key)
-    return not_refreshed
+    from msm.services.update_statistics import refresh_portfolio_dataset_statistics
+
+    not_refreshed = refresh_portfolio_dataset_statistics(
+        {item.unique_identifier: item.row_counts for item in deleted},
+        timeout=context.timeout,
+    )
+    return {item.uid: not_refreshed[item.unique_identifier] for item in deleted}
 
 
 def _not_refreshed_text(datasets: Sequence[str]) -> str:
-    return (
-        "MetaTables could not refresh the stored update statistics of "
-        f"{', '.join(datasets)}; see statistics_not_refreshed."
-    )
+    from msm.services.update_statistics import statistics_not_refreshed_text
+
+    return statistics_not_refreshed_text(datasets)
 
 
 # The checks ------------------------------------------------------------------------------

@@ -336,7 +336,7 @@ the bulk delete asked for it in its preflight and again to delete
   sends the account's 14 statements alone; if a key refuses those too, it is the
   account's own and `409` says so with nothing deleted. With no portfolio to
   delete, one delete is one read and one transaction; with a refused portfolio,
-  one read and two transactions.
+  one read and two transactions. The statistics rebuilds below follow either.
 - **Deadline.** The read and the transaction run with MetaTables' longest
   deadline, 60 s (`msm.repositories.base.with_delete_deadline`), instead of its
   15 s default, which covers the whole list. With
@@ -361,3 +361,24 @@ the bulk delete asked for it in its preflight and again to delete
 - **Bulk.** Each account is still deleted in its own transaction, in the order
   selected, so a portfolio only selected accounts use goes with the last of
   them. The preflight reads each account as if it were deleted alone.
+- **Update statistics.** Plain deletes leave the progress MetaTables stores per
+  time-index table (`index_stats`) as it was until the next insert into the table
+  rebuilds it ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)),
+  and an updater run drops every row it publishes at or before the stored last time
+  of its coordinates (`UpdateStatistics.filter_df_by_latest_value`). An account
+  re-created under the same `unique_identifier`, whose connector publishes its
+  orders again before anything else writes to those tables, would lose them without
+  an error. So after the transactions of a request commit,
+  `msm.services.update_statistics` rebuilds, once per table, the statistics of the
+  tables that lost rows and whose coordinates can come back: orders and trades,
+  scoped to the deleted accounts' identifiers, and order events, keyed only by the
+  broker's order identifier and scoped by the cutoff alone; and, with
+  `delete_portfolios`, each portfolio dataset table, scoped to the deleted
+  portfolios' identifiers, as the portfolio delete does (ADR 0049, issue 93, which
+  now calls the same function). Holdings, virtual-fund holdings, target rows and
+  allocation lines are keyed by uids that are new for every account and snapshot,
+  so no stale entry can match them, and they are not rebuilt. Each rebuild is a
+  `delete_after_date` call with a cutoff later than any row, which deletes nothing.
+  A failure does not undo the delete: it is logged, and the answer lists the table
+  in `statistics_not_refreshed`, for the account or for each deleted portfolio. The
+  rebuild goes once MetaTables#117 is fixed.

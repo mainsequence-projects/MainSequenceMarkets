@@ -351,7 +351,10 @@ _ACCOUNT_DELETE_DESCRIPTION = (
     "the answer lists them in `deleted_portfolios`, and in `kept_portfolios`, with the "
     "reason, those another account uses, whose values or weights another application's "
     "table holds, or whose delete a foreign key refuses (then the account is deleted "
-    "alone). One delete sends MetaTables one read and one transaction."
+    "alone). One delete sends MetaTables one read and one transaction; after it commits, "
+    "the stored update statistics of the order, trade and event tables and portfolio "
+    "datasets that lost rows are rebuilt, and `statistics_not_refreshed` lists any that "
+    "could not be."
 )
 _ACCOUNT_DELETE_OPTIONS = (ACCOUNT_DELETE_PORTFOLIOS_OPTION,)
 

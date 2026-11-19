@@ -125,6 +125,16 @@ direct account snapshots and virtual-fund-grouped views.
     and `kept_portfolios` (each with its `reason`)
   - one delete sends MetaTables one read and one transaction, and asks for no
     impact; both run with MetaTables' longest deadline, 60 seconds
+  - after the transaction commits, MetaTables rebuilds the stored update
+    statistics of each table that lost rows and whose rows an account re-created
+    under the same `unique_identifier` would publish again (orders, trades and
+    order events), and of each portfolio dataset table that lost rows: one
+    `delete_after_date` call per table that deletes nothing
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
+    Each call scans its table under MetaTables' statement timeout and can time out
+    on a large table. A failure does not undo the delete: `statistics_not_refreshed`
+    lists the tables, keyed as in `deleted_rows`, for the account and for each
+    deleted portfolio, and `detail` says so
   - `404` when the uid is unknown; `409` when a key refuses the account's
     delete, including orders of other accounts that name its order managers or
     virtual funds of other accounts allocated from its holdings sets; nothing is
@@ -154,7 +164,8 @@ direct account snapshots and virtual-fund-grouped views.
   - `options: {"delete_portfolios": true}` applies the option to every account.
     A portfolio that only selected accounts use goes with the last of them. Any
     other option, or a value that is not a boolean, answers `400`
-  - asks MetaTables for the impact at most once, in its preflight
+  - asks MetaTables for the impact at most once, in its preflight, and rebuilds
+    each table's update statistics once, after every account's transaction
   - the same identities that may delete a portfolio may delete an account; both
     routes are registry writes that record the acting identity
 - `GET /api/v1/account/{uid}/summary/`

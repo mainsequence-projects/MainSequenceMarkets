@@ -18,6 +18,13 @@ the answer says why, when account history of another account references it (ADR 
 when the catalog places its values or weights in a table another application owns
 (ADR 0047), or when a foreign key refuses its delete; then the transaction deletes
 nothing, and a second one deletes the account alone.
+
+After the transactions of a request commit, MetaTables rebuilds the stored update
+statistics of each table whose identity coordinates an account re-created under the
+same ``unique_identifier`` publishes again (its orders, trades and order events), and
+of each portfolio dataset table that lost rows (`msm.services.update_statistics`,
+MetaTables#117). A failed rebuild does not undo the delete; the answer lists it in
+``statistics_not_refreshed``.
 """
 
 from __future__ import annotations
@@ -27,6 +34,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from mainsequence.logconf import logger as _mainsequence_logger
 from metatables import MetaTableTransactionGuardError
 
 from msm.api.http import TableImpact, TableImpactNode
@@ -36,8 +44,11 @@ from msm.repositories.account_deletion import (
     ACCOUNT_PORTFOLIOS_GUARD,
 )
 from msm.repositories.base import MarketsRepositoryContext
+from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 
 from .core import get_account_by_uid
+
+logger = _mainsequence_logger.bind(sub_application="markets", component="account_deletion")
 
 
 class AccountDeleteConflictError(ValueError):
@@ -77,6 +88,18 @@ PORTFOLIO_CHANGED_REASON = (
     "Check the portfolio and delete it on its own."
 )
 _CONFLICT_MARKERS = ("foreign key", "violates", "referenced", "restrict", "constraint")
+_REPUBLISHED_HISTORY: tuple[tuple[str, type[Any], str | None], ...] = (
+    ("order_events", OrderEventsStorage, None),
+    ("trades", TradesStorage, "account_identifier"),
+    ("orders", OrdersStorage, "account_identifier"),
+)
+"""The account's time-index tables whose stored progress an account re-created under the
+same ``unique_identifier`` can run into: their identity is the account identifier or the
+broker's order and trade identifiers, which its connector publishes again. Each entry
+names the dimension that scopes the rebuild to the deleted account; order events have
+none, so their rebuild is scoped by its cutoff alone. Holdings, virtual-fund holdings,
+target rows and allocation lines are keyed by uids that are new for every account and
+snapshot, so no stale entry can match them."""
 
 
 def account_delete_impact() -> AccountDeleteImpact:
@@ -183,6 +206,59 @@ def preflight_account_delete(
     }
 
 
+@dataclass
+class _DeletedAccount:
+    """One account whose transaction committed, before its statistics are refreshed."""
+
+    plan: dict[str, Any]
+    portfolios: list[dict[str, Any]]
+    kept: list[dict[str, str]]
+    statistics_not_refreshed: list[str] = field(default_factory=list)
+    portfolio_statistics_not_refreshed: dict[str, list[str]] = field(default_factory=dict)
+
+    def stale(self) -> list[str]:
+        """Every table key whose statistics were not refreshed, account tables first."""
+
+        keys = list(self.statistics_not_refreshed)
+        for portfolio in self.portfolios:
+            keys.extend(self.portfolio_statistics_not_refreshed.get(portfolio["unique_identifier"], []))
+        return list(dict.fromkeys(keys))
+
+    def response(self) -> dict[str, Any]:
+        label = _label(self.plan)
+        detail = f"{label} deleted with its history"
+        if self.portfolios:
+            detail += f" and {_count(len(self.portfolios), 'portfolio')}"
+        detail += "."
+        if self.kept:
+            detail += (
+                f" {_count(len(self.kept), 'portfolio')} it used "
+                f"{'was' if len(self.kept) == 1 else 'were'} kept."
+            )
+        if self.stale():
+            detail += f" {_not_refreshed_text(self.stale())}"
+        return {
+            "detail": detail,
+            "uid": self.plan["uid"],
+            "unique_identifier": self.plan["unique_identifier"],
+            "deleted_count": 1,
+            "deleted_rows": dict(self.plan["row_counts"]),
+            "statistics_not_refreshed": list(self.statistics_not_refreshed),
+            "deleted_portfolios": [
+                {
+                    "uid": portfolio["uid"],
+                    "unique_identifier": portfolio["unique_identifier"],
+                    "deleted_rows": dict(portfolio["row_counts"]),
+                    "statistics_not_refreshed": list(
+                        self.portfolio_statistics_not_refreshed.get(portfolio["unique_identifier"], [])
+                    ),
+                }
+                for portfolio in self.portfolios
+            ],
+            "kept_portfolios": list(self.kept),
+        }
+
+
 def delete_account(
     context: MarketsRepositoryContext,
     *,
@@ -196,73 +272,16 @@ def delete_account(
     nothing is deleted. ``deleted_rows`` counts the Markets rows per table just before
     the delete ran. With ``delete_portfolios``, ``deleted_portfolios`` lists the
     portfolios deleted with it and their rows per dataset, and ``kept_portfolios`` the
-    portfolios its history named that stay, with the reason.
+    portfolios its history named that stay, with the reason. After the transaction
+    commits, the stored update statistics of the tables that lost rows are rebuilt;
+    ``statistics_not_refreshed`` lists those that could not be.
     """
 
-    plan = preflight_account_delete(context, uid=uid, delete_portfolios=delete_portfolios)
-    if plan is None:
+    deleted = _delete_one(context, uid=uid, delete_portfolios=delete_portfolios)
+    if deleted is None:
         return None
-    label = _label(plan)
-    if plan["blockers"]:
-        raise AccountDeleteConflictError(f"{label} cannot be deleted: {' '.join(plan['blockers'])}")
-    portfolios = plan["portfolios"]
-    kept = list(plan["kept_portfolios"])
-    try:
-        result = _delete(context, plan, portfolios)
-    except MetaTableTransactionGuardError as exc:
-        if exc.label != ACCOUNT_PORTFOLIOS_GUARD:
-            raise
-        # A portfolio was referenced or removed in between; nothing was deleted.
-        kept.extend(_kept(portfolio, PORTFOLIO_CHANGED_REASON) for portfolio in portfolios)
-        portfolios = []
-        result = _delete(context, plan, portfolios)
-    except AccountDeleteConflictError as exc:
-        if not portfolios:
-            raise
-        # A key the read could not see, such as one from another application's table,
-        # refused the transaction, which deleted nothing. Delete the account alone: if a
-        # key refuses that too, it is the account's own and nothing is deleted.
-        refused = str(exc.__cause__ or exc)
-        result = _delete(context, plan, [])
-        kept.extend(
-            _kept(
-                portfolio,
-                f"A foreign key refused its delete, so the account was deleted alone: {refused}",
-            )
-            for portfolio in portfolios
-        )
-        portfolios = []
-    if not result.get("rows"):
-        # The account's guard stopped the list: the account vanished or was renamed in
-        # between. Nothing was deleted.
-        if not get_account_by_uid(context, uid=uuid.UUID(plan["uid"])).get("rows"):
-            return None
-        raise AccountDeleteConflictError(
-            f"{label} changed while it was being deleted; nothing was deleted. Retry the delete."
-        )
-    deleted_portfolios = [
-        {
-            "uid": portfolio["uid"],
-            "unique_identifier": portfolio["unique_identifier"],
-            "deleted_rows": dict(portfolio["row_counts"]),
-        }
-        for portfolio in portfolios
-    ]
-    detail = f"{label} deleted with its history"
-    if deleted_portfolios:
-        detail += f" and {_count(len(deleted_portfolios), 'portfolio')}"
-    detail += "."
-    if kept:
-        detail += f" {_count(len(kept), 'portfolio')} it used {'was' if len(kept) == 1 else 'were'} kept."
-    return {
-        "detail": detail,
-        "uid": plan["uid"],
-        "unique_identifier": plan["unique_identifier"],
-        "deleted_count": 1,
-        "deleted_rows": plan["row_counts"],
-        "deleted_portfolios": deleted_portfolios,
-        "kept_portfolios": kept,
-    }
+    _refresh_statistics(context, [deleted])
+    return deleted.response()
 
 
 def bulk_delete_accounts(
@@ -275,36 +294,42 @@ def bulk_delete_accounts(
 
     An account that is missing or refused is reported in `failed` and the others are
     still deleted. Accounts go in the order given, so a portfolio that only selected
-    accounts use goes with the last of them.
+    accounts use goes with the last of them. After the transactions, each table that
+    lost rows has its stored update statistics rebuilt once, for every account and
+    portfolio the request deleted.
     """
 
-    deleted: list[dict[str, Any]] = []
+    done: list[_DeletedAccount] = []
     failed: list[dict[str, str]] = []
     for uid in _unique_uids(uids):
         try:
-            result = delete_account(context, uid=uid, delete_portfolios=delete_portfolios)
+            deleted = _delete_one(context, uid=uid, delete_portfolios=delete_portfolios)
         except AccountDeleteConflictError as exc:
             failed.append({"uid": uid, "detail": str(exc)})
             continue
-        if result is None:
+        if deleted is None:
             failed.append({"uid": uid, "detail": f"Account {uid} was not found."})
             continue
-        deleted.append(result)
-    count = len(deleted)
+        done.append(deleted)
+    _refresh_statistics(context, done)
+    count = len(done)
     if count == 0:
         detail = "No accounts were deleted."
     else:
         detail = f"Deleted {_count(count, 'account')} with {'its' if count == 1 else 'their'} history"
-        portfolio_count = sum(len(item["deleted_portfolios"]) for item in deleted)
+        portfolio_count = sum(len(item.portfolios) for item in done)
         if portfolio_count:
             detail += f" and {_count(portfolio_count, 'portfolio')}"
         detail += "."
     if failed:
         detail += f" {len(failed)} could not be deleted."
+    stale = list(dict.fromkeys(key for item in done for key in item.stale()))
+    if stale:
+        detail += f" {_not_refreshed_text(stale)}"
     return {
         "detail": detail,
         "deleted_count": count,
-        "deleted": deleted,
+        "deleted": [item.response() for item in done],
         "failed": failed,
     }
 
@@ -368,6 +393,125 @@ def preflight_bulk_delete_accounts(
         "other_namespace_cascades": list(impact.other_namespace_cascades),
         "other_namespace_restricts": list(impact.other_namespace_restricts),
     }
+
+
+def _delete_one(
+    context: MarketsRepositoryContext,
+    *,
+    uid: uuid.UUID | str,
+    delete_portfolios: bool,
+) -> _DeletedAccount | None:
+    """Read and delete one account, and its portfolios on request; ``None`` without it."""
+
+    plan = preflight_account_delete(context, uid=uid, delete_portfolios=delete_portfolios)
+    if plan is None:
+        return None
+    label = _label(plan)
+    if plan["blockers"]:
+        raise AccountDeleteConflictError(f"{label} cannot be deleted: {' '.join(plan['blockers'])}")
+    portfolios = plan["portfolios"]
+    kept = list(plan["kept_portfolios"])
+    try:
+        result = _delete(context, plan, portfolios)
+    except MetaTableTransactionGuardError as exc:
+        if exc.label != ACCOUNT_PORTFOLIOS_GUARD:
+            raise
+        # A portfolio was referenced or removed in between; nothing was deleted.
+        kept.extend(_kept(portfolio, PORTFOLIO_CHANGED_REASON) for portfolio in portfolios)
+        portfolios = []
+        result = _delete(context, plan, portfolios)
+    except AccountDeleteConflictError as exc:
+        if not portfolios:
+            raise
+        # A key the read could not see, such as one from another application's table,
+        # refused the transaction, which deleted nothing. Delete the account alone: if a
+        # key refuses that too, it is the account's own and nothing is deleted.
+        refused = str(exc.__cause__ or exc)
+        result = _delete(context, plan, [])
+        kept.extend(
+            _kept(
+                portfolio,
+                f"A foreign key refused its delete, so the account was deleted alone: {refused}",
+            )
+            for portfolio in portfolios
+        )
+        portfolios = []
+    if not result.get("rows"):
+        # The account's guard stopped the list: the account vanished or was renamed in
+        # between. Nothing was deleted.
+        if not get_account_by_uid(context, uid=uuid.UUID(plan["uid"])).get("rows"):
+            return None
+        raise AccountDeleteConflictError(
+            f"{label} changed while it was being deleted; nothing was deleted. Retry the delete."
+        )
+    if portfolios:
+        # The portfolios' statement returns the rows it deleted, with their identifiers now.
+        returned = {
+            _canonical_uid(row["uid"]): str(row.get("unique_identifier") or "")
+            for row in result["rows"]
+        }
+        portfolios = [
+            {**portfolio, "unique_identifier": returned.get(portfolio["uid"]) or portfolio["unique_identifier"]}
+            for portfolio in portfolios
+        ]
+    return _DeletedAccount(plan=plan, portfolios=portfolios, kept=kept)
+
+
+def _refresh_statistics(
+    context: MarketsRepositoryContext,
+    deleted: Sequence[_DeletedAccount],
+) -> None:
+    """Rebuild the stored update statistics of every table the deletes left stale.
+
+    Once per table, after every transaction of the request: the account tables of
+    `_REPUBLISHED_HISTORY` that lost rows, scoped to the deleted accounts' identifiers,
+    and the portfolio dataset tables that lost rows, scoped to the deleted portfolios'
+    identifiers. Failures are logged and recorded on each deleted account.
+    """
+
+    from msm.services.update_statistics import (
+        refresh_portfolio_dataset_statistics,
+        refresh_update_statistics,
+    )
+
+    for key, model, dimension in _REPUBLISHED_HISTORY:
+        affected = [item for item in deleted if item.plan["row_counts"].get(key, 0) > 0]
+        if not affected:
+            continue
+        identifiers = [item.plan["unique_identifier"] for item in affected]
+        try:
+            refresh_update_statistics(
+                model,
+                dimension_filters={dimension: identifiers} if dimension else None,
+                timeout=context.timeout,
+            )
+        except Exception:
+            logger.exception(
+                "MetaTables could not refresh an account table's update statistics",
+                table=key,
+                account_identifiers=identifiers,
+            )
+            for item in affected:
+                item.statistics_not_refreshed.append(key)
+    not_refreshed = refresh_portfolio_dataset_statistics(
+        {
+            portfolio["unique_identifier"]: portfolio["row_counts"]
+            for item in deleted
+            for portfolio in item.portfolios
+        },
+        timeout=context.timeout,
+    )
+    for item in deleted:
+        item.portfolio_statistics_not_refreshed = {
+            portfolio["unique_identifier"]: not_refreshed.get(portfolio["unique_identifier"], [])
+            for portfolio in item.portfolios
+        }
+
+
+def _not_refreshed_text(keys: Sequence[str]) -> str:
+    from msm.services.update_statistics import statistics_not_refreshed_text
+
+    return statistics_not_refreshed_text(keys)
 
 
 def _delete(

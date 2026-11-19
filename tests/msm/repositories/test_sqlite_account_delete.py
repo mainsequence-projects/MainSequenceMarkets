@@ -4,11 +4,17 @@ Each test migrates a fresh SQLite file and runs `msm.services` through MetaTable
 server code for the local runtime, as `test_sqlite_snapshot_writes` does. Tables of
 another application are created with `provider_ns__` names; the tests check that no
 statement Markets sends names them, so they change only through their own keys.
+
+The order, trade and order-event storages and the portfolio datasets are bound to a
+table whose `delete_after_date` runs the local backend's own tail delete and keeps the
+statistics it rebuilds, as MetaTables' delete-after-date route stores them in
+`index_stats` (MetaTables#117).
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import uuid
 from types import SimpleNamespace
 
@@ -30,6 +36,7 @@ from msm.services import (
     preflight_bulk_delete_accounts,
 )
 from msm.services.accounts import deletion
+from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES, PortfoliosStorage
 from tests.msm.repositories.test_sqlite_snapshot_writes import (
     WHEN,
@@ -57,11 +64,47 @@ CORE_VALUES_UID = "0a0a0a0a-0000-4000-8000-000000000001"
 PROVIDER_VALUES_UID = "1b1b1b1b-0000-4000-8000-000000000002"
 ACCOUNT_TABLE_UID = "5a5a5a5a-0000-4000-8000-000000000005"
 ACCOUNT_DELETE_IMPACT = deletion.account_delete_impact
+REPUBLISHED = {"order_events": OrderEventsStorage, "trades": TradesStorage, "orders": OrdersStorage}
+"""The account tables whose statistics the delete rebuilds, in the order it does."""
+ACCOUNT_REFRESHES = [f"refresh:{key}" for key in REPUBLISHED]
+DATASET_REFRESHES = [f"refresh:{key}" for key in DATASETS]
+
+
+class _TimeIndexTable:
+    """A storage's TimeIndexMetaTable, served by MetaTables' local SQLite backend.
+
+    ``delete_after_date`` runs the backend's own tail delete, which rebuilds the table's
+    statistics from its rows, and keeps them, as the route stores them in
+    ``index_stats``. Each call is recorded as (key, dimension filters, rows deleted).
+    """
+
+    def __init__(self, markets, key: str, model) -> None:
+        self.markets, self.key, self.model = markets, key, model
+        self.uid = f"core-{key}"
+
+    def delete_after_date(self, after_date, *, dimension_filters=None, timeout=None):
+        if self.key in self.markets.failing:
+            raise TimeoutError("The rebuild exceeded MetaTables' 45 s statement timeout.")
+        snapshot = self.markets.backend.tables.delete_tail(
+            physical_schema=None,
+            physical_table_name=self.model.__table__.name,
+            time_index_name=self.model.__time_index_name__,
+            identity_dimensions=tuple(self.model.__index_names__[1:]),
+            after_date=after_date,
+            dimension_filters=dimension_filters,
+            index_coordinates=None,
+            dimension_range_map=None,
+        )
+        self.markets.index_stats[self.key] = snapshot.multi_index_stats or {}
+        self.markets.refreshes.append((self.key, dimension_filters, snapshot.deleted_count))
+        self.markets.requests.append(f"refresh:{self.key}")
+        return {"deleted_count": snapshot.deleted_count, "table_empty": snapshot.table_empty}
 
 
 @pytest.fixture
 def sqlite_markets(tmp_path, monkeypatch):
-    """The harness, recording each MetaTables request and refusing the impact."""
+    """The harness, recording each MetaTables request, refusing the impact, and with every
+    table whose statistics a delete rebuilds bound."""
 
     from metatables import MetaTable
 
@@ -84,8 +127,27 @@ def sqlite_markets(tmp_path, monkeypatch):
     monkeypatch.setattr(MetaTable, "execute_operation", classmethod(operation))
     monkeypatch.setattr(MetaTable, "execute_transaction", classmethod(transaction))
     monkeypatch.setattr(deletion, "account_delete_impact", no_impact)
-    _asset(markets.engine, "AAA")
-    return SimpleNamespace(**vars(markets), requests=requests)
+    harness = SimpleNamespace(
+        **vars(markets), requests=requests, refreshes=[], index_stats={}, failing=set(), tables={}
+    )
+    bound = {**REPUBLISHED, **{table.key: table.model for table in PORTFOLIO_DATASET_TABLES}}
+    for key, model in bound.items():
+        table = harness.tables[key] = _TimeIndexTable(harness, key, model)
+        monkeypatch.setattr(model, "get_time_index_meta_table", classmethod(lambda cls, table=table: table))
+    _asset(harness.engine, "AAA")
+    return harness
+
+
+def _progress(markets, key: str) -> dict:
+    """The progress MetaTables stores for one table, rebuilt from its rows now."""
+
+    model = markets.tables[key].model
+    markets.tables[key].delete_after_date(
+        "9999-12-31T00:00:00+00:00", dimension_filters={model.__index_names__[1]: ["-"]}
+    )
+    markets.refreshes.pop()
+    markets.requests.pop()
+    return markets.index_stats[key].get("index_progress", {})
 
 
 def _impact_unavailable(monkeypatch) -> list[str]:
@@ -424,7 +486,13 @@ def test_one_delete_sends_one_read_and_one_transaction(sqlite_markets, delete_po
     deleted = delete_account(sqlite_markets.context, uid=account, delete_portfolios=delete_portfolios)
 
     statements = len(ACCOUNT_DELETE_TABLES) + (len(DATASETS) + 1 if delete_portfolios else 0)
-    assert sqlite_markets.requests == ["read", f"transaction:{statements}"]
+    # Then, after the transaction, one statistics rebuild per table that lost rows.
+    assert sqlite_markets.requests == [
+        "read",
+        f"transaction:{statements}",
+        *ACCOUNT_REFRESHES,
+        *(DATASET_REFRESHES if delete_portfolios else []),
+    ]
     assert [item["uid"] for item in deleted["deleted_portfolios"]] == (
         [str(portfolio)] if delete_portfolios else []
     )
@@ -467,15 +535,15 @@ def test_without_the_option_the_portfolios_stay_with_their_data(sqlite_markets) 
     assert not _rows(engine, "SELECT uid FROM ms_markets__account WHERE uid = :uid", uid=account.hex)
 
 
-def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets, monkeypatch) -> None:
+def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets) -> None:
     engine = sqlite_markets.engine
     account = _account(engine)
     portfolio, identifier = _portfolio_with_data(engine)
     history = _history(sqlite_markets, account, portfolio)
     # Its catalog names the core values table, and it belongs to a group: both go by CASCADE.
     _catalog(engine, portfolio, values=CORE_VALUES_UID)
-    core = SimpleNamespace(uid=CORE_VALUES_UID)
-    monkeypatch.setattr(PortfoliosStorage, "get_time_index_meta_table", classmethod(lambda cls: core))
+    sqlite_markets.tables["values"].uid = CORE_VALUES_UID
+    assert PortfoliosStorage.get_time_index_meta_table().uid == CORE_VALUES_UID
     group = _insert(engine, "ms_markets__portfoliogroup")
     _insert(engine, "ms_markets__portfoliogroupmembership", portfolio_group_uid=group["uid"], portfolio_uid=portfolio.hex)
     other, other_identifier = _portfolio_with_data(engine)
@@ -487,7 +555,9 @@ def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets
     expected = {"uid": str(portfolio), "unique_identifier": identifier}
     assert preflight["portfolios"] == [{**expected, "row_counts": {key: 1 for key in DATASETS}}]
     assert preflight["kept_portfolios"] == []
-    assert deleted["deleted_portfolios"] == [{**expected, "deleted_rows": {key: 1 for key in DATASETS}}]
+    assert deleted["deleted_portfolios"] == [
+        {**expected, "deleted_rows": {key: 1 for key in DATASETS}, "statistics_not_refreshed": []}
+    ]
     assert deleted["kept_portfolios"] == []
     assert deleted["detail"] == f"Account {history['identifier']!r} deleted with its history and 1 portfolio."
     assert not _exists(engine, portfolio)
@@ -496,7 +566,13 @@ def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets
     assert _count(engine, "ms_markets__portfoliogroupmembership") == 0
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
-    assert sqlite_markets.requests == ["read", "read", f"transaction:{len(ACCOUNT_DELETE_TABLES) + len(DATASETS) + 1}"]
+    assert sqlite_markets.requests == [
+        "read",
+        "read",
+        f"transaction:{len(ACCOUNT_DELETE_TABLES) + len(DATASETS) + 1}",
+        *ACCOUNT_REFRESHES,
+        *DATASET_REFRESHES,
+    ]
 
 
 def test_a_portfolio_only_named_by_the_accounts_targets_goes_too(sqlite_markets) -> None:
@@ -560,7 +636,7 @@ def test_a_portfolio_catalogued_in_another_applications_table_stays_and_is_repor
     assert deleted["deleted_portfolios"] == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-    assert sqlite_markets.requests == ["read", f"transaction:{len(ACCOUNT_DELETE_TABLES)}"]
+    assert sqlite_markets.requests == ["read", f"transaction:{len(ACCOUNT_DELETE_TABLES)}", *ACCOUNT_REFRESHES]
 
 
 def test_a_key_the_read_cannot_see_keeps_the_portfolio_and_deletes_the_account_alone(sqlite_markets) -> None:
@@ -587,10 +663,12 @@ def test_a_key_the_read_cannot_see_keeps_the_portfolio_and_deletes_the_account_a
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
     assert _count(engine, "provider_ns__portfolioeventledgerts__copy") == 1
     assert _provider_statements(sqlite_markets) == []
+    # No dataset lost rows, so only the account's tables are rebuilt.
     assert sqlite_markets.requests == [
         "read",
         f"transaction:{len(ACCOUNT_DELETE_TABLES) + len(DATASETS) + 1}",
         f"transaction:{len(ACCOUNT_DELETE_TABLES)}",
+        *ACCOUNT_REFRESHES,
     ]
 
 
@@ -614,6 +692,7 @@ def test_a_portfolio_referenced_in_between_stops_its_guard_and_is_kept(sqlite_ma
     assert deleted["kept_portfolios"] == [
         {"uid": str(portfolio), "unique_identifier": identifier, "reason": deletion.PORTFOLIO_CHANGED_REASON}
     ]
+    assert [key for key, _filters, _deleted in sqlite_markets.refreshes] == list(REPUBLISHED)
     assert set(_account_rows(engine, account, history["identifier"]).values()) == {0}
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
@@ -640,6 +719,7 @@ def test_an_account_changed_in_between_deletes_nothing(sqlite_markets, monkeypat
     with pytest.raises(AccountDeleteConflictError, match="changed while it was being deleted"):
         delete_account(sqlite_markets.context, uid=account, delete_portfolios=True)
 
+    assert sqlite_markets.refreshes == []
     assert _account_rows(engine, account, "renamed")["accounts"] == 1
     assert _count(engine, "ms_markets__ordersts") == 1  # the history under the old identifier
     assert _exists(engine, portfolio)
@@ -735,6 +815,7 @@ def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(
     with pytest.raises(AccountDeleteConflictError, match="nothing was deleted"):
         delete_account(markets.context, uid=account, delete_portfolios=delete_portfolios)
 
+    assert markets.refreshes == []
     assert _provider_statements(markets) == []
     assert _account_rows(engine, account, history["identifier"]) == before
     assert _count(engine, "ms_markets__ordereventsts") == 1
@@ -904,3 +985,125 @@ def test_the_impact_is_asked_once_per_table_and_reused(sqlite_markets, monkeypat
 
     assert calls == ["delete_rows"]
     assert _count(engine, "ms_markets__account") == 0
+
+
+# Update statistics (MetaTables#117) ------------------------------------------------------
+
+
+def test_the_deleted_accounts_progress_goes_from_its_order_trade_and_event_tables(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account, other = _account(engine), _account(engine)
+    history = _history(sqlite_markets, account)
+    other_history = _history(sqlite_markets, other)
+    for key in ("orders", "order_events"):
+        assert {history["order"], other_history["order"]} <= set(_progress(sqlite_markets, key))
+
+    deleted = delete_account(sqlite_markets.context, uid=account)
+
+    assert deleted["statistics_not_refreshed"] == []
+    # After the transaction, one rebuild per table, scoped to the account; it deletes nothing.
+    assert sqlite_markets.refreshes == [
+        ("order_events", None, 0),
+        ("trades", {"account_identifier": [history["identifier"]]}, 0),
+        ("orders", {"account_identifier": [history["identifier"]]}, 0),
+    ]
+    # An account re-created under the same identifier would no longer have the orders and
+    # events it publishes again filtered by the deleted ones' last times.
+    for key in ("orders", "order_events"):
+        progress = sqlite_markets.index_stats[key]["index_progress"]
+        assert history["order"] not in progress and other_history["order"] in progress
+    assert _account_rows(engine, other, other_history["identifier"])["orders"] == 1
+
+
+def test_the_deleted_portfolios_progress_goes_from_their_datasets(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    portfolio, identifier = _portfolio_with_data(engine)
+    other, other_identifier = _portfolio_with_data(engine)
+    _history(sqlite_markets, account, portfolio)
+    for key in DATASETS:
+        assert {identifier, other_identifier} <= set(_progress(sqlite_markets, key))
+
+    deleted = delete_account(sqlite_markets.context, uid=account, delete_portfolios=True)
+
+    assert deleted["deleted_portfolios"][0]["statistics_not_refreshed"] == []
+    assert [refresh for refresh in sqlite_markets.refreshes if refresh[0] in DATASETS] == [
+        (key, {"portfolio_identifier": [identifier]}, 0) for key in DATASETS
+    ]
+    for key in DATASETS:
+        progress = sqlite_markets.index_stats[key]["index_progress"]
+        assert identifier not in progress and other_identifier in progress
+    assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
+
+
+def test_no_rebuild_without_rows_in_the_table(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    portfolio = _portfolio(engine)  # a portfolio with no data
+    _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
+    _write_target(sqlite_markets, account, [_portfolio_position(portfolio)])
+
+    deleted = delete_account(sqlite_markets.context, uid=account, delete_portfolios=True)
+
+    assert [item["uid"] for item in deleted["deleted_portfolios"]] == [str(portfolio)]
+    assert sqlite_markets.refreshes == []
+
+
+def test_a_failed_rebuild_still_reports_the_delete_and_names_the_tables(sqlite_markets, caplog) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    portfolio, identifier = _portfolio_with_data(engine)
+    history = _history(sqlite_markets, account, portfolio)
+    sqlite_markets.failing.update({"orders", "values"})
+
+    with caplog.at_level(logging.ERROR):
+        deleted = delete_account(sqlite_markets.context, uid=account, delete_portfolios=True)
+
+    assert deleted["statistics_not_refreshed"] == ["orders"]
+    assert deleted["deleted_portfolios"][0]["statistics_not_refreshed"] == ["values"]
+    assert deleted["detail"] == (
+        f"Account {history['identifier']!r} deleted with its history and 1 portfolio. MetaTables "
+        "could not refresh the stored update statistics of orders, values; see "
+        "statistics_not_refreshed."
+    )
+    # The delete stands, and the other tables were still rebuilt.
+    assert set(_account_rows(engine, account, history["identifier"]).values()) == {0}
+    assert not _exists(engine, portfolio)
+    assert {key for key, _filters, _deleted in sqlite_markets.refreshes} == (
+        {*REPUBLISHED, *DATASETS} - {"orders", "values"}
+    )
+    errors = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(errors) == 2 and all("could not refresh" in record.getMessage() for record in errors)
+    assert identifier not in sqlite_markets.index_stats["weights"].get("index_progress", {})
+
+
+def test_bulk_delete_rebuilds_each_table_once_for_every_account(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    first, second = _account(engine), _account(engine)
+    first_portfolio, first_portfolio_identifier = _portfolio_with_data(engine)
+    first_history = _history(sqlite_markets, first, first_portfolio)
+    second_history = _history(sqlite_markets, second)
+    sqlite_markets.requests.clear()
+
+    result = bulk_delete_accounts(sqlite_markets.context, uids=[first, second], delete_portfolios=True)
+
+    assert result["deleted_count"] == 2 and result["failed"] == []
+    identifiers = [first_history["identifier"], second_history["identifier"]]
+    # The second account's own portfolio has no data, so no dataset table is rebuilt for it.
+    assert sqlite_markets.refreshes == [
+        ("order_events", None, 0),
+        ("trades", {"account_identifier": identifiers}, 0),
+        ("orders", {"account_identifier": identifiers}, 0),
+        *((key, {"portfolio_identifier": [first_portfolio_identifier]}, 0) for key in DATASETS),
+    ]
+    # Each account's transaction first, then the rebuilds once for the request.
+    statements = len(ACCOUNT_DELETE_TABLES) + len(DATASETS) + 1
+    assert sqlite_markets.requests == [
+        "read",
+        f"transaction:{statements}",
+        "read",
+        f"transaction:{statements}",
+        *ACCOUNT_REFRESHES,
+        *DATASET_REFRESHES,
+    ]
+    assert all(item["statistics_not_refreshed"] == [] for item in result["deleted"])

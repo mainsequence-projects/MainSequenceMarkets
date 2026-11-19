@@ -2769,6 +2769,7 @@ def _deleted(uid: str, **values) -> dict:
         "unique_identifier": "a",
         "deleted_count": 1,
         "deleted_rows": {"orders": 2, "holdings": 3},
+        "statistics_not_refreshed": [],
         "deleted_portfolios": [],
         "kept_portfolios": [],
         **values,
@@ -2800,8 +2801,14 @@ def test_delete_account_with_its_portfolios_reports_what_it_deleted_and_kept(mon
     uid, deleted_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
     portfolios = {
         "detail": "Account 'a' deleted with its history and 1 portfolio. 1 portfolio it used was kept.",
+        "statistics_not_refreshed": ["orders"],
         "deleted_portfolios": [
-            {"uid": deleted_uid, "unique_identifier": "sleeve", "deleted_rows": {"weights": 4, "values": 2}}
+            {
+                "uid": deleted_uid,
+                "unique_identifier": "sleeve",
+                "deleted_rows": {"weights": 4, "values": 2},
+                "statistics_not_refreshed": ["values"],
+            }
         ],
         "kept_portfolios": [
             {

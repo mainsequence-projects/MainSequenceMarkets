@@ -52,6 +52,17 @@ and this project follows versioned releases.
   - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
     accepts the options an action declares, and `bulk_action_option_values` reads them;
     an undeclared option or a value of the wrong type answers `400`.
+  - After the transaction commits, the delete rebuilds MetaTables' stored update
+    statistics of each table that lost rows and whose rows an account re-created under
+    the same `unique_identifier` would publish again (orders, trades, order events), and
+    of each portfolio dataset table that lost rows, once per table for a bulk delete
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
+    Without it, the updater run would drop the orders, trades and events such an account
+    publishes again, at or before the deleted ones' last times, without an error. A
+    failed rebuild does not undo the delete: the answer lists the tables in
+    `statistics_not_refreshed`, for the account and for each deleted portfolio.
+    `msm.services.update_statistics` holds the rebuild, and the portfolio delete calls it
+    too.
 
 ## [4.1.0] - 2026-11-19
 
