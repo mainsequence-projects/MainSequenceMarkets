@@ -190,6 +190,9 @@ and this project follows versioned releases.
   delete now removes the portfolio's rows in all seven datasets and then the row as one
   MetaTables statement list, in one transaction; the last statement is guarded, so a
   portfolio that vanished in between answers `404` and one renamed in between `409`.
+  The counting read and the transaction run with MetaTables' longest deadline, 60 s,
+  instead of its 15 s default: deleting a portfolio with ten years of daily weights on
+  500 assets took 12 to 19 s on PostgreSQL 16 on a busy workstation.
   - Before anything is sent, it is refused while virtual funds or account target rows
     name the portfolio (ADR 0049), or while a table of another application whose
     `RESTRICT` key references the portfolio holds rows of it or cannot be checked. Those

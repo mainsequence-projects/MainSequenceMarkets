@@ -28,6 +28,7 @@ from msm.repositories.base import (
     execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
+    with_delete_deadline,
     with_max_rows,
 )
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
@@ -102,12 +103,17 @@ def build_delete_portfolio_operation(
     unique_identifier: str,
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
-    """Compile the portfolio delete for the context's DataSource."""
+    """Compile the portfolio delete for the context's DataSource.
+
+    The transaction may run for MetaTables' longest deadline (`with_delete_deadline`):
+    the 15 s default covers the whole list, and a portfolio with long series can take
+    longer to delete (ADR 0049).
+    """
 
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
     return compile_markets_statements(
         portfolio_delete_statements(uid=uid, unique_identifier=unique_identifier),
-        context=context,
+        context=with_delete_deadline(context),
         operation="delete",
         data_source_uid=data_source_uid,
         dialect=dialect,
@@ -184,7 +190,7 @@ def build_count_portfolio_delete_rows_operation(
     )
     return compile_markets_statement(
         statement,
-        context=with_max_rows(context, max(len(portfolio_uids), 1)),
+        context=with_max_rows(with_delete_deadline(context), max(len(portfolio_uids), 1)),
         operation="select",
         dialect=dialect,
     )

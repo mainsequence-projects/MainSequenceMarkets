@@ -434,6 +434,25 @@ def test_all_seven_datasets_go_in_one_transaction_with_the_portfolio(markets, mo
     assert _count(engine, "ms_markets__portfoliogroup") == 1
 
 
+def test_the_read_and_the_transaction_run_under_the_delete_deadline(markets, monkeypatch) -> None:
+    # MetaTables' 15 s default covers the whole statement list; a portfolio with long
+    # series takes longer to delete (ADR 0049), so both requests carry its 60 s maximum.
+    sent: list[tuple[str, int]] = []
+    for name in ("execute_markets_operation", "execute_markets_write"):
+
+        def record(operation, *, original=getattr(repository, name), **kwargs):
+            sent.append((operation.operation, operation.limits.statement_timeout_ms))
+            return original(operation, **kwargs)
+
+        monkeypatch.setattr(repository, name, record)
+    portfolio, _identifier = _portfolio_with(markets.engine, *DATASETS)
+
+    delete_portfolio_record(markets.context, uid=portfolio)
+
+    assert sent == [("select", 60_000), ("delete", 60_000)]
+    assert not _exists(markets.engine, portfolio)
+
+
 def test_a_missing_portfolio_deletes_nothing(markets) -> None:
     missing = uuid.uuid4()
 

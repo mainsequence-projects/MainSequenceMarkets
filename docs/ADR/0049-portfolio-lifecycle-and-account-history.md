@@ -340,6 +340,24 @@ and the portfolio survived without its weights and values
   failed call leaves the delete in place, is logged as an error, and is reported
   per portfolio in `statistics_not_refreshed`. The call is removed once
   MetaTables#117 is fixed.
+- **Deadline.** MetaTables runs a compiled read, and a statement list as a whole
+  (MetaTables ADR 0026), under a deadline of 15 seconds by default. The read that
+  counts a delete's rows, for the delete and for the preflight, and the
+  transaction ask for the longest it allows, 60 seconds
+  (`msm.repositories.base.with_delete_deadline`).
+  Measured on PostgreSQL 16 in Docker on a busy workstation (load average 155 to
+  210), with five portfolios of ten years of daily data on 500 assets: 6.3 million
+  rows each in the weights and rebalance-state tables, 504,000 in the event
+  ledger. The transaction that deletes one of them, with 1.26 million weights
+  rows, 1.26 million rebalance-state rows and 100,800 ledger rows, took 12.3 and
+  14.1 seconds, most of it in the rebalance-state delete (about 6 s), the
+  portfolio row's `RESTRICT` checks (3 to 4 s) and the weights delete (about
+  3 s). The same deletes took 16.5 and 18.7 seconds in an earlier run at a load
+  average of 130 to 250. The read took 3.3 and 5.6 seconds for that portfolio
+  and 20.8 and 23.1 seconds for all five. Its count subqueries are correlated:
+  PostgreSQL runs them once per portfolio, and only the weights table has an
+  index that leads with `portfolio_identifier`, so the read scans each of the six
+  other dataset tables once per portfolio.
 
 ### 2026-11-19: 4.1.0, `Portfolio.delete` is refused
 
