@@ -50,7 +50,8 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
 
     ``prepare(engine)`` runs after the migration and before the execution identity is
     built, so tables it creates are readable and writable by the identity. Every SQL
-    text sent to the backend is recorded in ``statements``.
+    text sent to the backend is recorded in ``statements``; ``backend`` is MetaTables'
+    backend for the file, for operations other than SQL.
     """
 
     from mainsequence.code_repository_context import GitCodeRepositorySourceContext
@@ -129,7 +130,12 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, prepare=None):
 
     monkeypatch.setattr(MetaTable, "execute_operation", classmethod(execute_operation))
     monkeypatch.setattr(MetaTable, "execute_transaction", classmethod(execute_transaction))
-    return SimpleNamespace(engine=engine, context=MarketsRepositoryContext(), statements=statements)
+    return SimpleNamespace(
+        engine=engine,
+        context=MarketsRepositoryContext(),
+        statements=statements,
+        backend=backend,
+    )
 
 
 def _insert(engine, table_name: str, **values) -> dict:

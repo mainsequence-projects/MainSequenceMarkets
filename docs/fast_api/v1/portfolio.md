@@ -525,7 +525,8 @@ Returns:
     "event_ledger": 6,
     "state": 3,
     "cash_flows": 1
-  }
+  },
+  "statistics_not_refreshed": []
 }
 ```
 
@@ -556,10 +557,36 @@ PostgreSQL names the constraint, and nothing is deleted. A portfolio that no
 longer exists when the delete runs answers `404`; one renamed in between
 answers `409`.
 
-The statements are plain deletes. Unlike
-`TimeIndexMetaTable.delete_after_date`, they do not rebuild the update
-statistics MetaTables stores for each table, so the deleted portfolio's
-progress stays listed there. The account delete behaves the same way.
+### Update statistics after the delete
+
+MetaTables stores update statistics for each table, including each
+portfolio's last time index (`index_progress`). The portfolio updaters resume
+from that entry. The delete's statements do not change it
+([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). Every insert into the table rebuilds the
+statistics, so a stale entry lasts only until the next write by any updater.
+It matters when the portfolio re-created under the same identifier is the first
+to write the table: its updater would start at the deleted portfolio's last
+time index.
+
+So, after the transaction commits, the route rebuilds the statistics of every
+dataset whose table lost rows. It calls the table's
+`TimeIndexMetaTable.delete_after_date` scoped to the deleted
+`portfolio_identifier`, with a cutoff later than any stored row, so the call
+deletes nothing. MetaTables then recomputes the whole table's statistics from
+its rows and replaces the stored ones, which drops the deleted portfolio's
+entry. When MetaTables#117 is fixed, this call is removed.
+
+Each rebuild locks the table in `SHARE ROW EXCLUSIVE` mode until it finishes:
+writes to that table wait, reads do not. It scans the whole table under
+MetaTables' 45-second statement timeout, so on a large table it can time out.
+MetaTables also refuses it for a table with more than 10,000 index coordinates.
+
+A rebuild that fails, for either reason or any other, does not undo the delete.
+The route logs it as an error and still returns the deleted portfolio.
+`statistics_not_refreshed` names the datasets whose statistics were not
+rebuilt, with the keys of `deleted_rows`, and `detail` says so. Those tables
+keep the deleted portfolio's entry until the next insert into them, or the next
+portfolio delete that removes rows there, rebuilds their statistics.
 
 ## Delete Portfolio Weights
 
@@ -647,7 +674,9 @@ blockers, and per portfolio the rows the delete removes:
 
 The bulk delete runs the preflight and answers `409` when it reports a blocker.
 Otherwise it deletes each portfolio as `DELETE /api/v1/portfolio/{uid}/` does,
-each in its own transaction, and returns every deleted portfolio:
+each in its own transaction. After the last transaction it rebuilds the update
+statistics of each dataset table once, for every portfolio it deleted that had
+rows there. It returns every deleted portfolio:
 
 ```json
 {
@@ -659,7 +688,8 @@ each in its own transaction, and returns every deleted portfolio:
       "uid": "portfolio-uid-1",
       "unique_identifier": "example-sleeve",
       "deleted_count": 1,
-      "deleted_rows": {"weights": 4, "values": 4, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0}
+      "deleted_rows": {"weights": 4, "values": 4, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0},
+      "statistics_not_refreshed": []
     }
   ],
   "failed": []

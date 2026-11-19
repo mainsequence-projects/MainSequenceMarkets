@@ -614,6 +614,7 @@ def _deleted_portfolio(uid: str) -> dict[str, object]:
             "state": 2,
             "cash_flows": 1,
         },
+        "statistics_not_refreshed": [],
     }
 
 

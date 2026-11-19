@@ -324,5 +324,19 @@ and the portfolio survived without its weights and values
   delete deletes each portfolio in its own transaction, as the account bulk
   delete does.
 - **Update statistics.** `delete_after_date` also rebuilt the update statistics
-  MetaTables stores for each table. The statement list does not, as the account
-  delete does not, so the deleted portfolio's progress stays listed there.
+  MetaTables stores for each table (`index_stats`), and the portfolio updaters
+  resume from a portfolio's entry there. The statement list's plain deletes do
+  not touch them ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). Every insert into the table
+  rebuilds them, so a stale entry lasts until the next write by any updater. It
+  matters when a portfolio re-created under the same identifier is the first
+  writer. So, after the transaction commits, the delete calls
+  `delete_after_date` once on each dataset table that lost rows, scoped to the
+  deleted identifiers and with a cutoff later than any row. It deletes nothing,
+  not even rows a re-created portfolio wrote since, and MetaTables replaces the
+  table's statistics with ones rebuilt from its rows. `set-last-update-index-time`
+  would not do: it merges into the stored statistics and keeps the deleted
+  entry. Each call locks the table in `SHARE ROW EXCLUSIVE` mode and scans it
+  whole under a 45-second statement timeout, so it can fail on a large table. A
+  failed call leaves the delete in place, is logged as an error, and is reported
+  per portfolio in `statistics_not_refreshed`. The call is removed once
+  MetaTables#117 is fixed.

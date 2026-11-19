@@ -28,6 +28,17 @@ and this project follows versioned releases.
     listed in `retained_datasets`, and now refuse the delete, as for curves (issue 59).
   - The `409` names the table and key that refused, or carries the database's message,
     which on PostgreSQL names the constraint.
+  - After the transaction commits, the delete rebuilds MetaTables' stored update statistics
+    of each dataset table that lost rows. The plain deletes leave the deleted portfolio's
+    last time index there until the next insert into the table
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)). A portfolio re-created under the same identifier
+    whose updater wrote first would have started from it. The delete calls
+    `delete_after_date` once per table, scoped to the deleted identifiers, with a cutoff
+    later than any row, so the call deletes nothing. Each call locks the table in
+    `SHARE ROW EXCLUSIVE` mode and scans it whole under a 45-second statement timeout. A
+    rebuild that fails is logged as an error and named in the response's
+    `statistics_not_refreshed`; the delete stands. The call goes once MetaTables#117 is
+    fixed.
   - `POST /api/v1/portfolio/bulk-delete/preflight/` runs the same checks, with one read
     for the whole selection, and returns `portfolios`: each portfolio's `row_counts` per
     dataset and its `blockers`.
