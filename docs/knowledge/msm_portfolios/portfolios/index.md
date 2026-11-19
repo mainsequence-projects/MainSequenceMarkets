@@ -1246,6 +1246,7 @@ retired, an exclusive end, and is null while it is live
   ([Delete Portfolio](../../../fast_api/v1/portfolio.md#delete-portfolio)).
   Only the Markets API's portfolio routes delete a portfolio; `Portfolio.delete`
   raises `MarketsOperationUnsupported` under both backends.
+  `MarketsClient.delete_portfolio` and `bulk_delete_portfolios` call those routes.
 - An account delete can take the portfolios only that account used, in the same
   transaction: `msm_portfolios.services.delete_account_with_portfolios` and
   `bulk_delete_accounts_with_portfolios`, which the account routes run with

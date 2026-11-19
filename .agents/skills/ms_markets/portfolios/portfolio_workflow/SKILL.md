@@ -115,10 +115,12 @@ referenced. Retire it instead:
 - Delete a portfolio only when nothing references it.
   `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
   delete it with its rows in its seven datasets (weights, values, rebalance
-  state, analytics, event ledger, state, cash flows), in one transaction. They
-  refuse with `409`, deleting nothing, while virtual funds or account target
-  rows name it, or while another application's table with a `RESTRICT` key to
-  it holds rows of it; that application deletes its rows first.
+  state, analytics, event ledger, state, cash flows), in one transaction.
+  `MarketsClient.delete_portfolio(uid)` and `bulk_delete_portfolios(uids)` call
+  them. They refuse with `409`, deleting nothing, while virtual funds or
+  account target rows name it, or while another application's table with a
+  `RESTRICT` key to it holds rows of it; that application deletes its rows
+  first.
   `POST /api/v1/portfolio/bulk-delete/preflight/` reports the rows per dataset
   and every blocker. These routes are the only portfolio delete:
   `Portfolio.delete` raises `MarketsOperationUnsupported` under both backends

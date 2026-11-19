@@ -268,7 +268,8 @@ def test_portfolio_refuses_delete_on_the_runtime_backend(monkeypatch) -> None:
     assert str(refused.value) == (
         "Portfolio.delete is not offered: a portfolio is deleted with its rows in its seven "
         "datasets, in one transaction, only through the Markets API: "
-        "DELETE /api/v1/portfolio/{uid}/ or POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
+        "MarketsClient.delete_portfolio and MarketsClient.bulk_delete_portfolios call "
+        "DELETE /api/v1/portfolio/{uid}/ and POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
     )
     assert deleted == []
 

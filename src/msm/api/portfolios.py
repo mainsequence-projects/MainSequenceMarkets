@@ -58,6 +58,8 @@ class Portfolio(MarketsMetaTableRow):
     nothing. A portfolio is deleted with its rows in its seven datasets, which belong
     to the portfolio package that core ``msm`` does not import (ADR 0019), so only the
     Markets API's portfolio routes delete it (ADR 0049).
+    ``MarketsClient.delete_portfolio`` and ``MarketsClient.bulk_delete_portfolios``
+    call them.
     """
 
     __table__: ClassVar[type[PortfolioTable]] = PortfolioTable
@@ -71,7 +73,8 @@ class Portfolio(MarketsMetaTableRow):
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
     __delete_refusal__: ClassVar[str | None] = (
         "a portfolio is deleted with its rows in its seven datasets, in one transaction, "
-        "only through the Markets API: DELETE /api/v1/portfolio/{uid}/ or "
+        "only through the Markets API: MarketsClient.delete_portfolio and "
+        "MarketsClient.bulk_delete_portfolios call DELETE /api/v1/portfolio/{uid}/ and "
         "POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
     )
 
@@ -186,6 +189,46 @@ class PortfolioUpdate(PayloadWithRenamedFields):
         if isinstance(value, dict) and "calendar_uid" in value and value["calendar_uid"] is None:
             raise ValueError("calendar_uid cannot be null for Portfolio rows.")
         return value
+
+
+PortfolioDeletedRows = dict[str, int]
+
+
+class PortfolioDeleteResponse(BaseModel):
+    """One portfolio deleted with its datasets in one transaction (ADR 0049, issue 93)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    uid: str
+    unique_identifier: str
+    deleted_count: int = 1
+    deleted_rows: PortfolioDeletedRows = Field(
+        default_factory=dict,
+        description=(
+            "The portfolio's rows deleted with it, per dataset: weights, values, "
+            "rebalance_state, analytics, event_ledger, state and cash_flows. Counted "
+            "just before the delete ran."
+        ),
+    )
+
+
+class PortfolioDeleteFailure(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    detail: str
+
+
+class PortfolioBulkDeleteResponse(BaseModel):
+    """Portfolios deleted with their datasets, each in its own transaction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    deleted_count: int = 0
+    deleted: list[PortfolioDeleteResponse] = Field(default_factory=list)
+    failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
 
 
 class PortfolioGroup(MarketsMetaTableRow):
@@ -490,7 +533,11 @@ def _resolve_portfolio_uid(
 
 __all__ = [
     "Portfolio",
+    "PortfolioBulkDeleteResponse",
     "PortfolioCreate",
+    "PortfolioDeleteFailure",
+    "PortfolioDeleteResponse",
+    "PortfolioDeletedRows",
     "PortfolioGroup",
     "PortfolioGroupCreate",
     "PortfolioGroupMembership",

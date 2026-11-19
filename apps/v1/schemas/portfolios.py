@@ -7,11 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
 
 
-def _portfolio_contract():
+def _portfolio_contracts():
     prepare_apps_v1_import_namespace()
-    from msm.api.portfolios import Portfolio
+    import msm.api.portfolios as contracts
 
-    return Portfolio
+    return contracts
 
 
 def _portfolio_metadata_contract():
@@ -21,7 +21,11 @@ def _portfolio_metadata_contract():
     return PortfolioMetadata
 
 
-Portfolio = _portfolio_contract()
+_contracts = _portfolio_contracts()
+Portfolio = _contracts.Portfolio
+PortfolioDeletedRows = _contracts.PortfolioDeletedRows
+PortfolioDeleteResponse = _contracts.PortfolioDeleteResponse
+PortfolioBulkDeleteResponse = _contracts.PortfolioBulkDeleteResponse
 PortfolioMetadata = _portfolio_metadata_contract()
 
 
@@ -92,46 +96,6 @@ class PortfolioWeightsSnapshotResponse(BaseModel):
     weights_date: dt.datetime | None = None
     resolution_warning: str | None = None
     weights: list[PortfolioWeightRow] = Field(default_factory=list)
-
-
-PortfolioDeletedRows = dict[str, int]
-
-
-class PortfolioDeleteResponse(BaseModel):
-    """One portfolio deleted with its datasets in one transaction (ADR 0049, issue 93)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    detail: str
-    uid: str
-    unique_identifier: str
-    deleted_count: int = 1
-    deleted_rows: PortfolioDeletedRows = Field(
-        default_factory=dict,
-        description=(
-            "The portfolio's rows deleted with it, per dataset: weights, values, "
-            "rebalance_state, analytics, event_ledger, state and cash_flows. Counted "
-            "just before the delete ran."
-        ),
-    )
-
-
-class PortfolioDeleteFailure(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: str
-    detail: str
-
-
-class PortfolioBulkDeleteResponse(BaseModel):
-    """Portfolios deleted with their datasets, each in its own transaction."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    detail: str
-    deleted_count: int = 0
-    deleted: list[PortfolioDeleteResponse] = Field(default_factory=list)
-    failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
 
 
 class PortfolioDeletePreflightItem(BaseModel):

@@ -453,6 +453,8 @@ MetaTables transaction
 This route and [Bulk Delete Portfolios](#bulk-delete-portfolios) are the only
 portfolio deletes: `Portfolio.delete` raises `MarketsOperationUnsupported`
 under both backends, and `POST /api/v1/rows/portfolio/delete/` answers `501`.
+`MarketsClient.delete_portfolio(...)` and `bulk_delete_portfolios(...)` call the
+two routes.
 Each dataset references `Portfolio.unique_identifier` with `RESTRICT`:
 
 | `deleted_rows` key | Storage | Contract |

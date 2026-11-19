@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **`MarketsClient.delete_portfolio(uid)` and `MarketsClient.bulk_delete_portfolios(uids)`**
+  call `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`, in place
+  of the refused `Portfolio.delete`. They return `PortfolioDeleteResponse` and
+  `PortfolioBulkDeleteResponse`, which moved from the API app's schemas into
+  `msm.api.portfolios`. `delete_portfolio` raises `LookupError` for a missing portfolio;
+  both raise `MarketsConflictError` when a reference refuses the delete, and
+  `bulk_delete_portfolios` also when a selected portfolio is missing.
+
 ## [4.2.0] - 2026-11-20
 
 This release breaks every producer of signals and portfolios
