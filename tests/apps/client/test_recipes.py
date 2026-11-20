@@ -12,7 +12,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import uuid
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -44,6 +43,7 @@ from tests.support.sqlite_markets import (
     _insert,
     _rows,
     make_sqlite_markets,
+    serve_row_operations,
 )
 
 UTC = dt.UTC
@@ -59,10 +59,7 @@ def markets(request, tmp_path, monkeypatch, sqlite_revisions):
     for asset in ("AAA", "BBB", "USD"):
         _asset(markets.engine, asset)
     markets.calendar = _insert(markets.engine, "ms_markets__calendar", unique_identifier="XNYS")
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **_kwargs: SimpleNamespace(context=markets.context),
-    )
+    serve_row_operations(monkeypatch, markets)
     markets.backend = request.param
     if request.param == "runtime":
         yield markets

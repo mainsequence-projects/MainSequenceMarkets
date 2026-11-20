@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The three published series work through a Markets API and after `start_engine`**
+  ([#103](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/103)).
+  Since 4.2.0, every `SignalWeightsSeries`, `PortfolioWeightsSeries` and
+  `PortfolioValuesSeries` operation, and `SignalMetadata.delete` and `end`, failed with
+  `ValueError: Unknown markets MetaTable model 'PortfolioWeightsStorage'` (or
+  `SignalWeightsStorage`, `PortfoliosStorage`). They named their storage tables by
+  string, and the runtime resolves names only for the tables of `msm`. They now name
+  the table classes, as every other row class does. The tests resolve each operation's
+  tables as the runtime does, instead of skipping that step.
+
 ## [4.2.1] - 2026-11-20
 
 ### Added

@@ -21,6 +21,7 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel
 
 from msm.api.remote import RemoteRowOperations
+from msm.models import AssetTable, PortfolioTable, SignalMetadataTable
 from msm_portfolios.services.series import (
     PORTFOLIO_VALUES,
     PORTFOLIO_WEIGHTS,
@@ -31,6 +32,8 @@ from msm_portfolios.services.series import (
     SeriesPublication,
     SeriesRows,
 )
+from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage, PortfolioWeightsStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 
 
 class _SeriesOperations:
@@ -41,7 +44,7 @@ class _SeriesOperations:
     """
 
     __series__: ClassVar[Series]
-    __required_tables__: ClassVar[list[str]]
+    __required_tables__: ClassVar[list[type[Any]]]
 
     @classmethod
     def _context(cls):
@@ -95,7 +98,11 @@ class SignalWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
 
     __resource__: ClassVar[str] = "signal-weights"
     __series__: ClassVar[Series] = SIGNAL_WEIGHTS
-    __required_tables__: ClassVar[list[str]] = ["Asset", "SignalMetadata", "SignalWeightsStorage"]
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        SignalMetadataTable,
+        SignalWeightsStorage,
+    ]
 
     @classmethod
     def publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
@@ -184,7 +191,11 @@ class PortfolioWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
 
     __resource__: ClassVar[str] = "portfolio-weights"
     __series__: ClassVar[Series] = PORTFOLIO_WEIGHTS
-    __required_tables__: ClassVar[list[str]] = ["Asset", "Portfolio", "PortfolioWeightsStorage"]
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        PortfolioTable,
+        PortfolioWeightsStorage,
+    ]
 
     @classmethod
     def publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
@@ -271,11 +282,11 @@ class PortfolioValuesSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
 
     __resource__: ClassVar[str] = "portfolio-values"
     __series__: ClassVar[Series] = PORTFOLIO_VALUES
-    __required_tables__: ClassVar[list[str]] = [
-        "Asset",
-        "Portfolio",
-        "PortfoliosStorage",
-        "PortfolioWeightsStorage",
+    __required_tables__: ClassVar[list[type[Any]]] = [
+        AssetTable,
+        PortfolioTable,
+        PortfoliosStorage,
+        PortfolioWeightsStorage,
     ]
 
     @classmethod
