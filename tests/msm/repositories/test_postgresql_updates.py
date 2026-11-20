@@ -11,13 +11,10 @@ import pytest
 from msm.models import AssetCategoryTable, SignalMetadataTable
 from msm.repositories.crud import create_model, update_model
 from msm_portfolios.services.portfolio_datasets import unregister_signal_dataset
-from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
-    _scalar_rows,
-    postgresql_markets,
-)
+from tests.support.postgresql_markets import _scalar_rows
 
 
-def test_unregister_signal_clears_the_binding(postgresql_markets) -> None:  # noqa: F811
+def test_unregister_signal_clears_the_binding(postgresql_markets) -> None:
     engine, context, _operations = postgresql_markets
     create_model(
         context,
@@ -34,7 +31,7 @@ def test_unregister_signal_clears_the_binding(postgresql_markets) -> None:  # no
     assert unregister_signal_dataset(context, signal_uid="momentum") is None
 
 
-def test_none_clears_a_json_column_to_sql_null(postgresql_markets) -> None:  # noqa: F811
+def test_none_clears_a_json_column_to_sql_null(postgresql_markets) -> None:
     engine, context, _operations = postgresql_markets
     row = create_model(
         context,

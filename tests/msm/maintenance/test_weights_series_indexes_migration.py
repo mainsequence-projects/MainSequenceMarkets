@@ -7,7 +7,7 @@ from alembic import command
 
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
-from tests.msm.maintenance.test_legacy_schema_migration import _config
+from tests.support.migrations import _config
 
 SERIES_INDEXES = {
     SignalWeightsStorage.__table__: ["signal_uid", "time_index"],

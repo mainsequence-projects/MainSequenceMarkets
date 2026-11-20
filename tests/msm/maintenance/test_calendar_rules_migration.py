@@ -12,7 +12,7 @@ from alembic import command
 
 from msm.models import CalendarExceptionTable, CalendarSessionRuleTable, CalendarTable
 from msm.services.calendars import CalendarDefinition, compute_dates, compute_sessions
-from tests.msm.maintenance.test_legacy_schema_migration import _config
+from tests.support.migrations import _config
 
 REVISION = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0027_calendar_rules_and_exceptions"

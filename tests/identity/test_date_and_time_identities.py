@@ -27,7 +27,7 @@ from msm_portfolios.time_index.portfolios.storage import (
     PortfoliosStorage,
     PortfolioWeightsStorage,
 )
-from tests.identity.test_pinned_identities import (
+from tests.support.pinned_identities import (
     NESTED_PORTFOLIOS,
     _bound,
     _built_updaters,

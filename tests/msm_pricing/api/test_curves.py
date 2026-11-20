@@ -14,7 +14,7 @@ from msm_pricing.api.curves import (
     CurveUpsert,
 )
 from msm_pricing.models import CurveTable
-from tests.msm_pricing.api.provider_discount_curves import (
+from tests.support.discount_curves import (
     CORE_TABLE_UID,
     CURVE_IDENTIFIER,
     PROVIDER_TABLE_UID,

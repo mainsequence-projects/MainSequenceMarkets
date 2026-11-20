@@ -27,40 +27,22 @@ import pkgutil
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from types import SimpleNamespace
 from typing import Any
 
-import pandas as pd
 import pytest
 from pydantic import Field
 
-from metatables import TimeIndexMetaTable, TimeIndexTableUpdateConfig, TimeIndexTableUpdater
+from metatables import TimeIndexTableUpdateConfig, TimeIndexTableUpdater
 from msm.time_index.assets import AssetSnapshot
-from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.time_index.indices import configured_index_values_storage
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
-from msm.settings import markets_auto_register_namespace
 from msm_migrations.registry import metatable_provider_models
 from msm_portfolios.configuration import (
-    BacktestingWeightsConfig,
-    PortfolioBuildConfiguration,
     PortfolioConfigBaseModel,
-    PortfolioConfiguration,
-    PortfolioExecutionConfiguration,
-    PortfolioMarketsConfig,
     compute_strategy_revision,
 )
 from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
-from msm_portfolios.contrib.signals.application_weights import (
-    ApplicationWeights,
-    ApplicationWeightsConfig,
-)
-from msm_portfolios.contrib.signals.fixed_weights import (
-    AUIDWeight,
-    FixedWeights,
-    FixedWeightsConfig,
-)
 from msm_portfolios.contrib.signals.intraday_trend import IntradayTrend, IntradayTrendConfig
 from msm_portfolios.time_index import (
     SignalWeights,
@@ -68,13 +50,16 @@ from msm_portfolios.time_index import (
     compute_signal_uid,
 )
 from msm_portfolios.time_index.contract_instances import configured_portfolios_storage
-from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
-from msm_portfolios.rebalance_strategy import (
-    ImmediateSignal,
-    LiquidityConstrained,
-    TimeWeighted,
-    TrailingAverageDailyVolumeParticipation,
-    VolumeParticipation,
+from tests.support.pinned_identities import (
+    LIBRARY_SIGNALS,
+    NESTED_PORTFOLIOS,
+    PINNED_PRE_RENAME_UPDATE_HASHES,
+    STRATEGIES,
+    _built_updaters,
+    _interpolated_prices_storage,
+    _portfolio_configuration,
+    _signal,
+    namespace_is_default,
 )
 
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
@@ -292,10 +277,6 @@ PINNED_UPDATE_HASHES = {
     "interpolated_prices": "interpolatedprices_946a6bc2b70ac3aa0e4a71cd0a1f1e32",
 }
 
-PINNED_PRE_RENAME_UPDATE_HASHES = {
-    "asset_snapshot": "assetsnapshot_4d4316ca465e3c695835bc75d3af6f26",
-    "interpolated_prices": "interpolatedprices_c4d16a20ee4ebf061f3581472e2e5f80",
-}
 
 PINNED_NESTED_SIGNAL_UIDS = {
     "intraday_trend_on_interpolated_prices": "c94254b4ab5f0cf1a5faa0c0751c6737",
@@ -339,18 +320,6 @@ PINNED_CONFIGURED_STORAGE = {
     ),
 }
 
-SOURCE_TABLE_UID = "0f2d6c1e-7a3b-4c5d-9e8f-1a2b3c4d5e6f"
-PRICES_TABLE_UID = "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
-DATA_SOURCE_UID = "7c8d9e0f-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
-
-
-class _Source(TimeIndexTableUpdater):
-    def update(self) -> pd.DataFrame:
-        return pd.DataFrame()
-
-    def dependencies(self) -> dict:
-        return {}
-
 
 class ApplicationSignalConfiguration(PortfolioConfigBaseModel):
     """A signal configuration declared by an application, outside ms-markets."""
@@ -362,106 +331,14 @@ class ApplicationSignal(SignalWeights):
     """A signal declared by an application, outside ms-markets."""
 
 
-def _source(update_hash: str) -> _Source:
-    source = object.__new__(_Source)
-    source.update_hash = update_hash
-    source._output_table = SimpleNamespace(
-        get_time_index_meta_table=lambda: TimeIndexMetaTable.model_construct(
-            uid=f"{update_hash}-table",
-            data_source_uid="source",
-        ),
-        get_data_source_uid=lambda: "source",
-    )
-    return source
-
-
-def _signal(signal_class: type[SignalWeights], configuration: Any) -> SignalWeights:
-    signal = object.__new__(signal_class)
-    signal.update_hash = "signal"
-    signal._output_table = _source("signal")._output_table
-    signal.signal_configuration = configuration
-    return signal
-
-
+# The application signal's uid hashes its class path in this module; keep it here.
 SIGNALS: dict[str, Callable[[], SignalWeights]] = {
-    "library_signal_weights": lambda: _signal(SignalWeights, {"kind": "pinned-identity"}),
-    "library_fixed_weights": lambda: _signal(
-        FixedWeights,
-        FixedWeightsConfig(
-            asset_unique_identifier_weights=[
-                AUIDWeight(unique_identifier="ASSET_A", weight=0.6),
-                AUIDWeight(unique_identifier="ASSET_B", weight=0.4),
-            ]
-        ),
-    ),
-    "library_application_weights": lambda: _signal(
-        ApplicationWeights,
-        ApplicationWeightsConfig(provider="pinned-provider", key="pinned-key"),
-    ),
+    **LIBRARY_SIGNALS,
     "application_signal": lambda: _signal(
         ApplicationSignal,
         ApplicationSignalConfiguration(lookback_days=20),
     ),
 }
-
-
-def _immediate_signal() -> ImmediateSignal:
-    return ImmediateSignal(
-        calendar_events_instance=_source("calendar-events"),
-        calendar_identifier="XNYS",
-    )
-
-
-def _portfolio_configuration(
-    signal: SignalWeights,
-    *,
-    valuation_source: TimeIndexTableUpdater | None = None,
-    rebalance_strategy: Any | None = None,
-) -> PortfolioConfiguration:
-    return PortfolioConfiguration(
-        portfolio_build_configuration=PortfolioBuildConfiguration(
-            valuation_source_instance=valuation_source or _source("valuation"),
-            valuation_asset_identifier="USD",
-            execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.0),
-            backtesting_weights_configuration=BacktestingWeightsConfig(
-                signal_weights_instance=signal,
-                rebalance_strategy_instance=rebalance_strategy or _immediate_signal(),
-            ),
-        ),
-        portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="pinned-identity"),
-    )
-
-
-@contextmanager
-def _bound(storage: type, uid: str, **metadata: Any) -> Iterator[type]:
-    """Bind fake backend metadata to a storage class and restore the class afterwards."""
-
-    before = dict(vars(storage))
-    storage._bind_meta_table(
-        TimeIndexMetaTable.model_construct(
-            uid=uid,
-            data_source_uid=DATA_SOURCE_UID,
-            identifier=storage.__metatable_identifier__,
-            **metadata,
-        )
-    )
-    try:
-        yield storage
-    finally:
-        for name in set(vars(storage)) - set(before):
-            delattr(storage, name)
-        for name, value in before.items():
-            if vars(storage).get(name) is not value:
-                setattr(storage, name, value)
-
-
-def _interpolated_prices_storage() -> type:
-    return configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid=SOURCE_TABLE_UID,
-        source_cadence="1d",
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-    )
 
 
 @contextmanager
@@ -474,26 +351,6 @@ def _renamed(cls: type, name: str) -> Iterator[type]:
         yield cls
     finally:
         cls.__name__, cls.__qualname__ = original
-
-
-@contextmanager
-def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
-    """Build real updaters through their constructors against fake bound tables."""
-
-    with (
-        _bound(AssetSnapshotsStorage, SOURCE_TABLE_UID, cadence="1d"),
-        _bound(_interpolated_prices_storage(), PRICES_TABLE_UID),
-    ):
-        asset_snapshot = AssetSnapshot()
-        interpolated_prices = InterpolatedPrices(
-            InterpolatedPricesConfig(
-                source_price_instance=asset_snapshot,
-                intraday_bar_interpolation_rule="ffill",
-                upsample_frequency_id="1d",
-                asset_list=["ASSET_A", "ASSET_B"],
-            )
-        )
-        yield {"asset_snapshot": asset_snapshot, "interpolated_prices": interpolated_prices}
 
 
 @pytest.fixture
@@ -513,44 +370,6 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
     ),
 }
 
-STRATEGIES: dict[str, Callable[[dict[str, Any]], Any]] = {
-    "immediate_signal": lambda updaters: _immediate_signal(),
-    "liquidity_constrained_on_asset_snapshot": lambda updaters: LiquidityConstrained(
-        liquidity_source_instance=updaters["asset_snapshot"]
-    ),
-    "time_weighted_on_interpolated_prices": lambda updaters: TimeWeighted(
-        execution_bars_instance=updaters["interpolated_prices"]
-    ),
-    "volume_participation_on_interpolated_prices": lambda updaters: VolumeParticipation(
-        execution_bars_instance=updaters["interpolated_prices"]
-    ),
-    "trailing_average_daily_volume_on_asset_snapshot": lambda updaters: (
-        TrailingAverageDailyVolumeParticipation(
-            daily_liquidity_instance=updaters["asset_snapshot"],
-            execution_bars_instance=updaters["interpolated_prices"],
-        )
-    ),
-}
-
-NESTED_PORTFOLIOS: dict[str, Callable[[dict[str, Any]], PortfolioConfiguration]] = {
-    "interpolated_prices_valuation": lambda updaters: _portfolio_configuration(
-        SIGNALS["library_fixed_weights"](),
-        valuation_source=updaters["interpolated_prices"],
-        rebalance_strategy=STRATEGIES["liquidity_constrained_on_asset_snapshot"](updaters),
-    ),
-    "time_weighted_rebalance": lambda updaters: _portfolio_configuration(
-        SIGNALS["library_fixed_weights"](),
-        rebalance_strategy=STRATEGIES["time_weighted_on_interpolated_prices"](updaters),
-    ),
-    "volume_participation_rebalance": lambda updaters: _portfolio_configuration(
-        SIGNALS["library_fixed_weights"](),
-        rebalance_strategy=STRATEGIES["volume_participation_on_interpolated_prices"](updaters),
-    ),
-    "trailing_average_daily_volume_rebalance": lambda updaters: _portfolio_configuration(
-        SIGNALS["library_fixed_weights"](),
-        rebalance_strategy=STRATEGIES["trailing_average_daily_volume_on_asset_snapshot"](updaters),
-    ),
-}
 
 CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
     "index_values_1d": lambda: configured_index_values_storage(cadence="1d"),
@@ -608,12 +427,6 @@ def _assert_paths_pinned(found: set[str], pinned: tuple[str, ...], kind: str) ->
         f"New {kind} classes are not pinned yet. Add their paths so a later move is "
         f"caught: {added}"
     )
-
-
-namespace_is_default = pytest.mark.skipif(
-    markets_auto_register_namespace() is not None,
-    reason="Table names and identifiers are pinned for the default markets namespace.",
-)
 
 
 @namespace_is_default

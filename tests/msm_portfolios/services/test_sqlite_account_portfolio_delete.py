@@ -2,7 +2,8 @@
 
 `msm_portfolios.services` owns this delete: it composes core's account read and
 statements with the portfolios' own. The harness, its request log and the data come
-from `tests/msm/repositories/test_sqlite_account_delete.py`.
+from `tests/support/account_delete.py`, as in
+`tests/msm/repositories/test_sqlite_account_delete.py`.
 """
 
 from __future__ import annotations
@@ -29,32 +30,36 @@ from msm_portfolios.services import (
 )
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES, PortfoliosStorage
-from tests.msm.repositories.test_sqlite_account_delete import (
+from tests.support.account_delete import (
     DATASETS,
     MARKETS_TABLES,
-    _account,
     _account_rows,
     _catalog,
-    _count,
     _create_provider_tables,
     _dataset_rows,
     _exists,
     _history,
     _identifier,
     _impact_unavailable,
-    _insert,
     _order,
     _portfolio_identifier,
-    _portfolio_position,
     _portfolio_with_data,
     _progress,
     _provider_statements,
+    account_markets,
+)
+from tests.support.portfolio_delete import series_index
+from tests.support.sqlite_markets import (
+    WHEN,
+    _account,
+    _count,
+    _insert,
+    _portfolio,
+    _portfolio_position,
     _write_holdings,
     _write_target,
-    make_account_markets,
+    table_reads,
 )
-from tests.msm.repositories.test_sqlite_snapshot_writes import WHEN, _portfolio, table_reads
-from tests.msm_portfolios.services.test_sqlite_portfolio_delete import series_index
 
 PORTFOLIO_TABLES = {
     *DATASETS.values(),
@@ -69,8 +74,8 @@ WITH_PORTFOLIOS = ACCOUNT_STATEMENTS + len(DATASETS) + 1
 
 
 @pytest.fixture
-def sqlite_markets(tmp_path, monkeypatch):
-    return make_account_markets(tmp_path, monkeypatch)
+def sqlite_markets(sqlite_markets, monkeypatch):
+    return account_markets(sqlite_markets, monkeypatch)
 
 
 # Statements ------------------------------------------------------------------------------

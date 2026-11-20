@@ -21,19 +21,17 @@ from msm.services.calendars import (
     read_calendar_session_records,
     sync_pandas_market_calendar,
 )
-from tests.msm.repositories.test_sqlite_snapshot_writes import make_sqlite_markets
 
 UTC = dt.UTC
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    sqlite = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(sqlite_markets, monkeypatch):
     monkeypatch.setattr(
         "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite.context),
+        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
     )
-    return sqlite
+    return sqlite_markets
 
 
 def library(version: str = "1.0", **changes) -> CalendarSourceDefinition:

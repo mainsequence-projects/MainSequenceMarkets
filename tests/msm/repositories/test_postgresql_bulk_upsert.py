@@ -25,15 +25,12 @@ from msm.repositories.crud import (
     UPSERT_STATUS_COLUMN,
     bulk_upsert_model,
 )
-from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
-    postgresql_markets,
-)
 
 KEY = ("unique_identifier",)
 
 
 @pytest.fixture
-def markets(postgresql_markets, monkeypatch):  # noqa: F811
+def markets(postgresql_markets, monkeypatch):
     engine, context, operations = postgresql_markets
     run = MetaTable.execute_operation
     statements = []

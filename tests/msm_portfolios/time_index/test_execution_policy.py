@@ -25,26 +25,24 @@ from msm_portfolios.rebalance_strategy import (
 )
 from msm_portfolios.time_index.constants import ASSET_IDENTIFIER
 from msm_portfolios.time_index.portfolios.storage import PortfolioRebalanceStateStorage
-from tests.identity.test_pinned_identities import _bound
-from tests.msm_portfolios.time_index.test_next_observed_price import (
+from tests.support.pinned_identities import _bound
+from tests.support.rebalance import (
+    HALTED_SELL,
+    SWAP,
     IncrementalRebalance,
     PublishedTable,
     book,
     calendar,
     marks,
+    position_deltas,
+    prices,
+    progress,
+    rounded,
     run_strategy,
     signal_frame,
     stock_strategy,
     utc,
 )
-
-
-def prices(*rows: tuple[str, str, float]) -> pd.DataFrame:
-    """``(asset, time, price)`` rows of the valuation source."""
-    return pd.DataFrame(
-        [(utc(stamp), asset, price) for asset, stamp, price in rows],
-        columns=["time_index", ASSET_IDENTIFIER, "close"],
-    )
 
 
 def immediate(**policy) -> ImmediateSignal:
@@ -87,11 +85,6 @@ def state_of(result: pd.DataFrame, time_index: str, asset: str) -> dict:
     return json.loads(row["strategy_state"])
 
 
-SWAP = signal_frame(
-    [("2026-11-18T15:00:00Z", {"AAPL": 1.0}), ("2026-11-18T16:00:00Z", {"ILLQ": 1.0})]
-)
-
-
 def test_the_defaults_are_the_owners_decisions() -> None:
     assert ExecutionPolicy().model_dump() == {
         "sizing": "at_decision",
@@ -130,18 +123,6 @@ def test_a_sell_at_the_same_instant_pays_for_the_buy() -> None:
         (utc("2026-11-18T16:01Z"), "AAPL", "complete", -0.01, 0.0),
         (utc("2026-11-18T16:02Z"), "ILLQ", "complete", 0.02, 1.0),
     ]
-
-
-HALTED_SELL = prices(
-    ("AAPL", "2026-11-18T14:45Z", 100.0),
-    ("ILLQ", "2026-11-18T14:45Z", 50.0),
-    ("AAPL", "2026-11-18T15:01Z", 100.0),
-    # AAPL is halted from 15:01 to 18:01.
-    ("ILLQ", "2026-11-18T16:01Z", 50.0),
-    ("ILLQ", "2026-11-18T17:01Z", 50.0),
-    ("AAPL", "2026-11-18T18:01Z", 100.0),
-    ("ILLQ", "2026-11-18T18:02Z", 50.0),
-)
 
 
 def test_a_buy_waits_for_the_cash_of_a_halted_sell() -> None:
@@ -194,20 +175,6 @@ def test_negative_cash_resumes_across_runs() -> None:
     assert [json.loads(state)["cash"] for state in whole["strategy_state"]] == pytest.approx(
         [json.loads(state)["cash"] for state in in_one_run["strategy_state"]]
     )
-
-
-def rounded(result: pd.DataFrame) -> list[tuple]:
-    ordered = result.sort_values(["time_index", ASSET_IDENTIFIER], kind="stable")
-    return [
-        (
-            utc(row["time_index"]),
-            row[ASSET_IDENTIFIER],
-            row["execution_status"],
-            round(float(row["executed_quantity"]), 12),
-            round(float(row["weight_after"]), 12),
-        )
-        for row in ordered.to_dict(orient="records")
-    ]
 
 
 def test_a_buy_cash_cannot_cover_is_cut_and_the_rest_cancelled() -> None:
@@ -311,21 +278,6 @@ def test_calendar_gating_can_be_turned_off(gating, fill_time) -> None:
 
 
 # --- The ledger books what PortfolioRebalance recorded --------------------------------------
-
-
-def progress(ledger: pd.DataFrame, asset: str) -> list[dict]:
-    rows = ledger[
-        (ledger["record_kind"] == "execution_progress") & (ledger["asset_identifier"] == asset)
-    ]
-    return [json.loads(payload) for payload in rows.sort_values("time_index")["extension_payload"]]
-
-
-def position_deltas(ledger: pd.DataFrame) -> list[tuple[pd.Timestamp, str, float, float]]:
-    deltas = ledger[ledger["record_kind"] == "position_delta"]
-    return [
-        (utc(row["time_index"]), row["asset_identifier"], row["quantity_delta"], row["price"])
-        for row in deltas.sort_values(["time_index", "asset_identifier"]).to_dict("records")
-    ]
 
 
 @pytest.mark.parametrize(("sizing", "shares"), [("at_decision", 50.0), ("at_fill", 45.0)])

@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from alembic import command
 
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
-from tests.msm.maintenance.test_legacy_schema_migration import _config
+from tests.support.migrations import _config
 
 SERIES_COLUMNS = ["portfolio_identifier", "time_index"]
 INDEXED = [table.model.__table__ for table in PORTFOLIO_DATASET_TABLES if table.key != "weights"]

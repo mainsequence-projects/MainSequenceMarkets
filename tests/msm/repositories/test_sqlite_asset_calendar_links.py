@@ -27,25 +27,24 @@ from msm.repositories.asset_calendars import (
 )
 from msm.services import register_account
 from msm.services.calendars import CalendarInUseConflictError, delete_calendar_record
-from tests.msm.repositories.test_sqlite_account_registration import (
-    _record_operations,
-    _request,
-    _rows,
-)
-from tests.msm.repositories.test_sqlite_snapshot_writes import make_sqlite_markets
+from tests.support.account_registration import _record_operations, _request
+from tests.support.sqlite_markets import _rows
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    sqlite = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(sqlite_markets, monkeypatch):
     monkeypatch.setattr(
         "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite.context),
+        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
     )
     AssetType.upsert(asset_type="equity", display_name="Equity")
-    sqlite.nyse = Calendar.create(unique_identifier="NYSE", display_name="NYSE", calendar_type="TRADING")
-    sqlite.desk = Calendar.create(unique_identifier="DESK", display_name="Desk", calendar_type="CUSTOM")
-    return sqlite
+    sqlite_markets.nyse = Calendar.create(
+        unique_identifier="NYSE", display_name="NYSE", calendar_type="TRADING"
+    )
+    sqlite_markets.desk = Calendar.create(
+        unique_identifier="DESK", display_name="Desk", calendar_type="CUSTOM"
+    )
+    return sqlite_markets
 
 
 def assets(*identifiers: str) -> list[Asset]:

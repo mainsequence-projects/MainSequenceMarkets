@@ -61,6 +61,11 @@ from msm_portfolios.rebalance_strategy import (
     TrailingAverageDailyVolumeParticipation,
     VolumeParticipation,
 )
+from tests.support.portfolio_values import (
+    FrameSource,
+    asset_frame,
+    portfolio_values_node_for_frames,
+)
 
 
 class ExplicitValuationSource(TimeIndexTableUpdater):
@@ -552,12 +557,6 @@ def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
         )
 
 
-def asset_frame(rows: list[tuple[str, str, float]]) -> pd.DataFrame:
-    frame = pd.DataFrame(rows, columns=["time_index", ASSET_IDENTIFIER, "close"])
-    frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
-    return frame.set_index(["time_index", ASSET_IDENTIFIER])
-
-
 def test_per_asset_asof_alignment_uses_distinct_seed_observations() -> None:
     observations = asset_frame(
         [
@@ -726,20 +725,6 @@ def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:
     assert result.loc[events[1], "eth"] == pytest.approx(0.8)
 
 
-class FrameSource:
-    def __init__(self, frame: pd.DataFrame):
-        self.frame = frame
-
-    def get_df_between_dates(self, **kwargs):
-        start = pd.Timestamp(kwargs["start_date"])
-        end = pd.Timestamp(kwargs["end_date"])
-        times = self.frame.index.get_level_values("time_index")
-        return self.frame[(times >= start) & (times <= end)]
-
-    def get_last_observation(self, **_kwargs):
-        return self.frame.iloc[0:0]
-
-
 class ExecutedWeightsSource:
     def __init__(self, *, window: pd.DataFrame, seed: pd.DataFrame) -> None:
         self.window = window
@@ -857,34 +842,6 @@ def test_executed_weights_reject_duplicate_current_window_coordinates() -> None:
             start=pd.Timestamp("2026-01-01T00:00:00Z").to_pydatetime(),
             end=current_time.to_pydatetime(),
         )
-
-
-def portfolio_values_node_for_frames(
-    *,
-    valuations: pd.DataFrame,
-    weights: pd.DataFrame,
-    timestamps: pd.DatetimeIndex,
-) -> PortfoliosUpdater:
-    node = object.__new__(PortfoliosUpdater)
-    node.valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_asset_identifier = "USD"
-    node.fx_source = None
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(hours=12)
-    )
-    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
-    node.commission_fee = 0.0
-    node._latest_portfolio_time_index_value = lambda: None
-    node._valuation_window = lambda _latest: (
-        timestamps[0].to_pydatetime(),
-        timestamps[-1].to_pydatetime(),
-    )
-    node._executed_weights_between = lambda **_kwargs: weights
-    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
-        close=(frame["return"] + 1.0).cumprod()
-    )
-    return node
 
 
 def test_strict_portfolio_valuation_ignores_missing_zero_exposure_asset() -> None:

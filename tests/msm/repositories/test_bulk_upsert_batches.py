@@ -3,8 +3,8 @@
 The first tests compile for PostgreSQL offline and answer each statement themselves, so
 they check how a list is split. The others run end to end on a migrated SQLite
 DataSource through MetaTables' own SQLite backend, with the trigger of
-``test_sqlite_upserts`` that aborts an update which would rewrite a row with the values
-it already holds.
+``test_sqlite_upserts`` (``tests.support.sqlite_markets._refuse_identical_rewrites``)
+that aborts an update which would rewrite a row with the values it already holds.
 """
 
 from __future__ import annotations
@@ -23,8 +23,7 @@ from msm.repositories.crud import (
     build_bulk_upsert_model_operation,
     bulk_upsert_model,
 )
-from tests.msm.repositories.test_sqlite_snapshot_writes import _count, make_sqlite_markets
-from tests.msm.repositories.test_sqlite_upserts import _refuse_identical_rewrites
+from tests.support.sqlite_markets import _count, _refuse_identical_rewrites
 
 KEY = ("unique_identifier",)
 STATUSES = ("inserted", "updated", "unchanged")
@@ -245,8 +244,8 @@ def test_the_builder_refuses_a_statement_over_the_limit(offline_postgresql_runti
 
 
 @pytest.fixture
-def sqlite_markets(tmp_path, monkeypatch):
-    return make_sqlite_markets(tmp_path, monkeypatch, prepare=_refuse_identical_rewrites)
+def sqlite_markets_prepare():
+    return _refuse_identical_rewrites
 
 
 def _stored(markets, asset_type: str) -> int:

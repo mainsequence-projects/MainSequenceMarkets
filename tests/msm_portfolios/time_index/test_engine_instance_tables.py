@@ -17,7 +17,7 @@ from msm_portfolios.time_index.contract_instances import (
 )
 from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalanceStateStorage
 from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage, PortfolioWeightsStorage
-from tests.identity.test_pinned_identities import NESTED_PORTFOLIOS, _bound, _built_updaters
+from tests.support.pinned_identities import NESTED_PORTFOLIOS, _bound, _built_updaters
 
 CORE_UIDS = {
     PortfoliosStorage: "a0000000-0000-4000-8000-000000000001",
@@ -105,7 +105,7 @@ def test_interpolated_prices_can_live_in_a_provider_namespace() -> None:
     from msm.time_index.assets.storage import AssetSnapshotsStorage
     from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
     from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
-    from tests.identity.test_pinned_identities import (
+    from tests.support.pinned_identities import (
         PRICES_TABLE_UID,
         SOURCE_TABLE_UID,
         _interpolated_prices_storage,

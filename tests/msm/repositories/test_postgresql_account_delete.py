@@ -24,10 +24,7 @@ from msm_portfolios.repositories import account_portfolio_deletion as portfolio_
 from msm_portfolios.services import delete_account_with_portfolios
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
-from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
-    postgresql_markets,
-)
-from tests.msm.repositories.test_postgresql_portfolio_delete import (
+from tests.support.postgresql_markets import (
     _count,
     _dataset_rows,
     _datasets,
@@ -49,7 +46,7 @@ PORTFOLIO_STATEMENTS = len(DATASETS) + 1
 
 
 @pytest.fixture
-def markets(postgresql_markets, monkeypatch):  # noqa: F811
+def markets(postgresql_markets, monkeypatch):
     def no_impact():
         raise AssertionError("The account delete must not ask MetaTables for its impact.")
 

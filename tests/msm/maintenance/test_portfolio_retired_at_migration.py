@@ -7,7 +7,7 @@ import importlib
 import sqlalchemy as sa
 from alembic import command
 
-from tests.msm.maintenance.test_legacy_schema_migration import _config, _seed_every_table
+from tests.support.migrations import _config, _seed_every_table
 
 REVISION = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0023_portfolio_retired_at"

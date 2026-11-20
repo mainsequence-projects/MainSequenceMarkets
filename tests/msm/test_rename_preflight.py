@@ -9,7 +9,7 @@ import pytest
 
 from msm_cli import rename_preflight
 from msm_cli.main import main
-from tests.identity.test_pinned_identities import (
+from tests.support.pinned_identities import (
     PINNED_PRE_RENAME_UPDATE_HASHES,
     _built_updaters,
     namespace_is_default,

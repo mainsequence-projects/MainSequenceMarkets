@@ -1,7 +1,8 @@
 """The portfolio delete on a SQLite DataSource, end to end (issue 93, ADR 0049).
 
-Each test migrates a fresh SQLite file and runs `msm_portfolios.services` through
-MetaTables' own server code for the local runtime, as `test_sqlite_account_delete` does.
+Each test runs `msm_portfolios.services` on its own copy of a migrated SQLite file,
+through MetaTables' own server code for the local runtime, as `test_sqlite_account_delete`
+does.
 A portfolio is deleted with its rows in its seven datasets in one transaction, or not at
 all. Tables of another application are created with `provider_ns__` names after the
 execution identity; no statement Markets sends names them. MetaTables' impact, table
@@ -29,7 +30,8 @@ from msm_portfolios.services import (
     preflight_bulk_delete_portfolio_records,
 )
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
-from tests.msm.repositories.test_sqlite_snapshot_writes import (
+from tests.support.portfolio_delete import series_index
+from tests.support.sqlite_markets import (
     WHEN,
     _account,
     _asset,
@@ -39,7 +41,6 @@ from tests.msm.repositories.test_sqlite_snapshot_writes import (
     _portfolio_position,
     _rows,
     _write_target,
-    make_sqlite_markets,
     table_reads,
 )
 
@@ -65,7 +66,7 @@ PROVIDER_TABLES = (
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
+def markets(sqlite_markets, monkeypatch):
     """The harness, with no MetaTables impact and no delete-after-date call allowed."""
 
     from metatables import TimeIndexMetaTable
@@ -75,9 +76,8 @@ def markets(tmp_path, monkeypatch):
 
     monkeypatch.setattr(TimeIndexMetaTable, "delete_after_date", refuse_delete_after_date)
     monkeypatch.setattr(PortfolioTable, "get_meta_table", classmethod(lambda cls: None))
-    markets = make_sqlite_markets(tmp_path, monkeypatch)
-    _asset(markets.engine, "AAA")
-    return markets
+    _asset(sqlite_markets.engine, "AAA")
+    return sqlite_markets
 
 
 # Data ------------------------------------------------------------------------------------
@@ -797,13 +797,6 @@ def test_one_read_counts_each_selected_portfolio_in_each_dataset(markets) -> Non
         ),
         str(empty): _counted(empty, empty_identifier),
     }
-
-
-def series_index(table) -> str:
-    """The dataset's index that leads with ``portfolio_identifier`` (revisions 0026, 0031)."""
-
-    (name,) = [index.name for index in table.model.__table__.indexes if not index.unique]
-    return name
 
 
 def test_each_count_reads_the_portfolios_rows_through_the_series_index(markets) -> None:

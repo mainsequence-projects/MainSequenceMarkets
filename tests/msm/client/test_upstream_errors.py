@@ -17,7 +17,7 @@ from msm.api.remote import (
     use_runtime_backend,
 )
 from msm.client import MarketsClient
-from tests.msm.fastapi.v1.test_upstream_errors import STATEMENT_TOO_LONG, sdk_error
+from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
 
 ROWS = [{"unique_identifier": "A", "asset_type": "equity"}]
 

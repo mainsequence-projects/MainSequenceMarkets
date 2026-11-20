@@ -21,8 +21,8 @@ from alembic import command
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
-from tests.msm.maintenance.test_legacy_schema_migration import _config
-from tests.msm.repositories.test_postgresql_portfolio_delete import _insert, _portfolio
+from tests.support.migrations import _config
+from tests.support.postgresql_markets import _insert, _portfolio
 
 URL_VARIABLE = "MS_MARKETS_TIMESCALE_TEST_POSTGRES_URL"
 WEEKS = 12

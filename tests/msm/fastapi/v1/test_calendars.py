@@ -14,7 +14,6 @@ from referencing import Registry, Resource
 from apps.v1.main import app
 from apps.v1.services import calendars as calendar_service
 from msm.services.calendars import CalendarRangeError
-from tests.msm.repositories.test_sqlite_snapshot_writes import make_sqlite_markets
 
 
 def _calendar_row(calendar_uid: uuid.UUID) -> dict[str, object]:
@@ -1074,16 +1073,15 @@ def test_calendar_child_discovery_describes_the_collections() -> None:
     ]
 
 
-def test_calendar_routes_run_on_the_record_services(tmp_path, monkeypatch) -> None:
+def test_calendar_routes_run_on_the_record_services(sqlite_markets, monkeypatch) -> None:
     """The routes against the real `msm.services` calendar records, on a migrated SQLite file.
 
     The worked example of ADR 0055: one rule and two exceptions give the dates and
     sessions of a Thanksgiving week.
     """
 
-    sqlite = make_sqlite_markets(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        calendar_service, "_get_runtime", lambda: SimpleNamespace(context=sqlite.context)
+        calendar_service, "_get_runtime", lambda: SimpleNamespace(context=sqlite_markets.context)
     )
     client = TestClient(app)
 

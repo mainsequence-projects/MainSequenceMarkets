@@ -21,7 +21,6 @@ from msm.services.calendars import (
     resync_adapter_calendars,
     sync_pandas_market_calendar,
 )
-from tests.msm.repositories.test_sqlite_snapshot_writes import make_sqlite_markets
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 JOB_PATH = PROJECT_ROOT / "jobs" / "resync_calendars.py"
@@ -29,13 +28,12 @@ WORKFLOW_PATH = PROJECT_ROOT / ".mainsequence" / "workflows" / "ms-markets-api.y
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    sqlite = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(sqlite_markets, monkeypatch):
     monkeypatch.setattr(
         "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite.context),
+        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
     )
-    return sqlite
+    return sqlite_markets
 
 
 @pytest.fixture

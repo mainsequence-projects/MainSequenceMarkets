@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 from apps.v1.schemas.pricing_curves import Curve, CurveSelectionsResponse
 from msm_pricing.api import CurveDeleteConflictError
-from tests.msm_pricing.api.provider_discount_curves import (
+from tests.support.discount_curves import (
     CURVE_IDENTIFIER,
     PROVIDER_TABLE_UID,
     bind_discount_curve_storages,

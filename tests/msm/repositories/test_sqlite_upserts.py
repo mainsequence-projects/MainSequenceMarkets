@@ -23,30 +23,12 @@ from msm.models import (
 )
 from msm.repositories import crud
 from msm.repositories.crud import UPSERT_STATUS_COLUMN, bulk_upsert_model, upsert_model
-from tests.msm.repositories.test_sqlite_snapshot_writes import _count, _insert, make_sqlite_markets
-
-GUARDED_TABLES = (
-    "ms_markets__asset",
-    "ms_markets__assetcategorymembership",
-    "ms_markets__openfigiassetdetails",
-    "ms_markets__currencyspotassetdetails",
-)
-
-
-def _refuse_identical_rewrites(engine) -> None:
-    with engine.begin() as connection:
-        for table in GUARDED_TABLES:
-            columns = [column["name"] for column in sa.inspect(connection).get_columns(table)]
-            same = " AND ".join(f'NEW."{name}" IS OLD."{name}"' for name in columns)
-            connection.exec_driver_sql(
-                f"CREATE TRIGGER refuse_identical_rewrite_{table} BEFORE UPDATE ON {table} "
-                f"WHEN {same} BEGIN SELECT RAISE(ABORT, 'identical rewrite of {table}'); END"
-            )
+from tests.support.sqlite_markets import _count, _insert, _refuse_identical_rewrites
 
 
 @pytest.fixture
-def sqlite_markets(tmp_path, monkeypatch):
-    return make_sqlite_markets(tmp_path, monkeypatch, prepare=_refuse_identical_rewrites)
+def sqlite_markets_prepare():
+    return _refuse_identical_rewrites
 
 
 def _rows(result) -> list[dict]:
