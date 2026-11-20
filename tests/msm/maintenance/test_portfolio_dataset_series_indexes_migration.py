@@ -30,11 +30,9 @@ def test_every_portfolio_dataset_model_has_the_series_index() -> None:
         assert not series[0].unique
 
 
-def test_0031_matches_the_storage_models(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'dataset-series-index.sqlite'}")
+def test_0031_matches_the_storage_models(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "dataset-series-index.sqlite", "head")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
-
         for table in INDEXED:
             migrated = _indexes(connection, table.name)
             assert migrated == {
@@ -44,11 +42,10 @@ def test_0031_matches_the_storage_models(tmp_path) -> None:
             assert (SERIES_COLUMNS, False) in migrated.values()
 
 
-def test_0031_downgrade_leaves_only_the_unique_index(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'dataset-series-index-down.sqlite'}")
+def test_0031_downgrade_leaves_only_the_unique_index(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "dataset-series-index-down.sqlite", "0031")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0031")
         command.downgrade(config, "0030")
 
         for table in INDEXED:

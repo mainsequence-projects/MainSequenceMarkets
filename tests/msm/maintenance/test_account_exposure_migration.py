@@ -64,10 +64,9 @@ def _unit_target(connection, *, portfolio: bool) -> str:
     return position_set_uid
 
 
-def test_0025_matches_the_storage_models(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'exposure-model.sqlite'}")
+def test_0025_matches_the_storage_models(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "exposure-model.sqlite", "head")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
         inspector = sa.inspect(connection)
 
         for model in (TargetPositionsStorage.__table__, AccountAllocationLinesStorage.__table__):
@@ -93,11 +92,12 @@ def test_0025_matches_the_storage_models(tmp_path) -> None:
         assert REVISION.LINES_GRAIN == list(AccountAllocationLinesStorage.__index_names__)
 
 
-def test_0025_keeps_asset_targets_and_deletes_portfolio_targets_in_units(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'exposure-data.sqlite'}")
+def test_0025_keeps_asset_targets_and_deletes_portfolio_targets_in_units(
+    tmp_path, sqlite_revisions
+) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "exposure-data.sqlite", "0023")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0023")
         _seed_every_table(connection, expected_tables=63)
         command.upgrade(config, "0024")
         asset_set = _unit_target(connection, portfolio=False)
@@ -127,11 +127,10 @@ def test_0025_keeps_asset_targets_and_deletes_portfolio_targets_in_units(tmp_pat
     assert columns["constant_notional_exposure"]["nullable"] is True
 
 
-def test_0025_leaves_the_fund_holdings_as_they_are(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'fund-holdings.sqlite'}")
+def test_0025_leaves_the_fund_holdings_as_they_are(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "fund-holdings.sqlite", "0023")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0023")
         _seed_every_table(connection, expected_tables=63)
         before = set(_columns(connection, "ms_markets__virtualfundholdingsts"))
         command.upgrade(config, "0025")
@@ -145,11 +144,10 @@ def test_0025_leaves_the_fund_holdings_as_they_are(tmp_path) -> None:
         ).scalar_one() == 0
 
 
-def test_0025_downgrade_restores_the_unit_columns(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'exposure-downgrade.sqlite'}")
+def test_0025_downgrade_restores_the_unit_columns(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "exposure-downgrade.sqlite", "0025")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0025")
 
         command.downgrade(config, "0024")
 

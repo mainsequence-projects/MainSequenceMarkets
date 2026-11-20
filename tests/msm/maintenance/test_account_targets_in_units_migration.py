@@ -38,11 +38,10 @@ def _unique_index_columns(connection) -> list[list[str]]:
     ]
 
 
-def test_0024_deletes_the_target_history_and_stores_units(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'targets-in-units.sqlite'}")
+def test_0024_deletes_the_target_history_and_stores_units(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "targets-in-units.sqlite", "0023")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0023")
         _seed_every_table(connection, expected_tables=63)
         connection.commit()
         assert _count(connection, REVISION.TABLE) == 1
@@ -63,10 +62,9 @@ def test_0024_deletes_the_target_history_and_stores_units(tmp_path) -> None:
         assert _unique_index_columns(connection) == [REVISION.GRAIN]
 
 
-def test_0024_refuses_a_zero_quantity_and_an_unknown_direction(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'targets-checks.sqlite'}")
+def test_0024_refuses_a_zero_quantity_and_an_unknown_direction(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "targets-checks.sqlite", "0024")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "0024")
         checks = {
             constraint["sqltext"]
             for constraint in sa.inspect(connection).get_check_constraints(REVISION.TABLE)
@@ -76,11 +74,10 @@ def test_0024_refuses_a_zero_quantity_and_an_unknown_direction(tmp_path) -> None
     assert "direction IN (1, -1)" in checks
 
 
-def test_0024_downgrade_restores_the_former_columns(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'targets-downgrade.sqlite'}")
+def test_0024_downgrade_restores_the_former_columns(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "targets-downgrade.sqlite", "0024")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0024")
 
         command.downgrade(config, "0023")
 

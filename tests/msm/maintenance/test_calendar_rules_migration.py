@@ -128,10 +128,9 @@ def _stored_definition(connection, calendar_uid) -> CalendarDefinition:
     )
 
 
-def test_0027_matches_the_models(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-model.sqlite'}")
+def test_0027_matches_the_models(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-model.sqlite", "head")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
         inspector = sa.inspect(connection)
 
         for model in (
@@ -165,11 +164,10 @@ def test_0027_matches_the_models(tmp_path) -> None:
     engine.dispose()
 
 
-def test_0027_converts_stored_rows_and_repairs_the_header(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-data.sqlite'}")
+def test_0027_converts_stored_rows_and_repairs_the_header(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-data.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         # The header claims 2020 to 2030; the rows cover three weeks.
         calendar_uid = _calendar(connection, "NYSE")
         _seed_nyse_week(connection, calendar_uid)
@@ -232,13 +230,14 @@ def test_0027_converts_stored_rows_and_repairs_the_header(tmp_path) -> None:
     engine.dispose()
 
 
-def test_0027_keeps_what_was_stored_not_what_a_library_would_say(tmp_path) -> None:
+def test_0027_keeps_what_was_stored_not_what_a_library_would_say(
+    tmp_path, sqlite_revisions
+) -> None:
     """A stored session that differs from the regular week stays as an exception."""
 
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-odd.sqlite'}")
+    engine = sqlite_revisions.engine(tmp_path / "calendar-odd.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         calendar_uid = _calendar(connection, "DESK", source=None, source_identifier=None)
         _seed_nyse_week(connection, calendar_uid)
         # A later close than the regular one, and a Saturday session.
@@ -272,11 +271,10 @@ def test_0027_keeps_what_was_stored_not_what_a_library_would_say(tmp_path) -> No
     engine.dispose()
 
 
-def test_0027_keeps_a_business_day_stored_without_a_session(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-dates.sqlite'}")
+def test_0027_keeps_a_business_day_stored_without_a_session(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-dates.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         calendar_uid = _calendar(connection, "SETTLEMENT")
         for day, business in [("2026-01-01", False), ("2026-01-02", True), ("2026-01-05", True)]:
             _date(connection, calendar_uid, day, business=business)
@@ -301,11 +299,12 @@ def test_0027_keeps_a_business_day_stored_without_a_session(tmp_path) -> None:
     engine.dispose()
 
 
-def test_0027_leaves_a_calendar_without_rows_and_drops_calendar_events(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-empty.sqlite'}")
+def test_0027_leaves_a_calendar_without_rows_and_drops_calendar_events(
+    tmp_path, sqlite_revisions
+) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-empty.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         calendar_uid = _calendar(connection, "HEADER_ONLY")
         connection.execute(
             _tables(connection)[REVISION.EVENT_TABLE].insert(),
@@ -331,11 +330,12 @@ def test_0027_leaves_a_calendar_without_rows_and_drops_calendar_events(tmp_path)
     engine.dispose()
 
 
-def test_0027_stops_before_dropping_when_rows_contradict_each_other(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-contradiction.sqlite'}")
+def test_0027_stops_before_dropping_when_rows_contradict_each_other(
+    tmp_path, sqlite_revisions
+) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-contradiction.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         calendar_uid = _calendar(connection, "BROKEN")
         _seed_nyse_week(connection, calendar_uid)
         # Thanksgiving is stored as not a business day and also has a session.
@@ -392,11 +392,10 @@ def test_0027_refuses_a_session_on_another_day_than_its_regular_week() -> None:
         )
 
 
-def test_0027_downgrade_restores_the_tables_empty(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'calendar-downgrade.sqlite'}")
+def test_0027_downgrade_restores_the_tables_empty(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "calendar-downgrade.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         calendar_uid = _calendar(connection, "NYSE")
         _seed_nyse_week(connection, calendar_uid)
         connection.commit()

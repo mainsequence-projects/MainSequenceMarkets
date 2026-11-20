@@ -22,11 +22,9 @@ def _indexes(connection: sa.Connection, table_name: str) -> dict[str, tuple[list
     }
 
 
-def test_0026_matches_the_storage_models(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'series-index.sqlite'}")
+def test_0026_matches_the_storage_models(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "series-index.sqlite", "head")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "head")
-
         for table, series_columns in SERIES_INDEXES.items():
             migrated = _indexes(connection, table.name)
             assert migrated == {
@@ -36,11 +34,10 @@ def test_0026_matches_the_storage_models(tmp_path) -> None:
             assert (series_columns, False) in migrated.values()
 
 
-def test_0026_downgrade_leaves_only_the_unique_index(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'series-index-down.sqlite'}")
+def test_0026_downgrade_leaves_only_the_unique_index(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "series-index-down.sqlite", "0026")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0026")
         command.downgrade(config, "0025")
 
         for table in SERIES_INDEXES:

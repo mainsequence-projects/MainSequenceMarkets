@@ -49,11 +49,10 @@ def _foreign_keys(connection) -> dict[str, list]:
     }
 
 
-def test_0022_copies_pre_3_0_values_and_downgrades_cleanly(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'uid-columns.sqlite'}")
+def test_0022_copies_pre_3_0_values_and_downgrades_cleanly(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "uid-columns.sqlite", "0021")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0021")
         expected = _seed_pre_3_0_values(connection)
         foreign_keys = _foreign_keys(connection)
 

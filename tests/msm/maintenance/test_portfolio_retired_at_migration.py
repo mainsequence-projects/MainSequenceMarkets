@@ -20,11 +20,10 @@ def _portfolio_columns(connection) -> dict[str, dict]:
     }
 
 
-def test_0023_adds_a_nullable_retired_at_and_downgrades_cleanly(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'retired-at.sqlite'}")
+def test_0023_adds_a_nullable_retired_at_and_downgrades_cleanly(tmp_path, sqlite_revisions) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "retired-at.sqlite", "0022")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0022")
         _seed_every_table(connection, expected_tables=63)
         connection.commit()
         portfolio = sa.Table(REVISION.TABLE, sa.MetaData(), autoload_with=connection)

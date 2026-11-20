@@ -43,12 +43,17 @@ def _seed_asset(connection):
 
 
 @pytest.mark.parametrize("start", [None, "0018", "0019"])
-def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, start):
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'migration.sqlite'}")
+def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, sqlite_revisions, start):
+    # Without a start, the whole chain runs from an empty database: the one test that
+    # does. With one, the database starts from the session's copy at that revision.
+    path = tmp_path / "migration.sqlite"
+    if start:
+        engine = sqlite_revisions.engine(path, start)
+    else:
+        engine = sa.create_engine(f"sqlite:///{path}")
     with engine.connect() as connection:
         config = _config(connection)
         if start:
-            command.upgrade(config, start)
             _seed_asset(connection)
         command.upgrade(config, "head")
         assert ScriptDirectory.from_config(config).get_heads() == ["0031"]
@@ -65,10 +70,9 @@ def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, start):
     engine.dispose()
 
 
-def test_bridge_rejects_missing_columns_without_modifying_schema(tmp_path):
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'broken.sqlite'}")
+def test_bridge_rejects_missing_columns_without_modifying_schema(tmp_path, sqlite_revisions):
+    engine = sqlite_revisions.engine(tmp_path / "broken.sqlite", "0019")
     with engine.connect() as connection:
-        command.upgrade(_config(connection), "0019")
         connection.exec_driver_sql("ALTER TABLE ms_markets__asset RENAME COLUMN asset_type TO incorrect_type")
         connection.commit()
         with Operations.context(MigrationContext.configure(connection)), pytest.raises(RuntimeError, match="column contract differs"):
