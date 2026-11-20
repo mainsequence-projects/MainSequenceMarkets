@@ -105,7 +105,8 @@ class MarketsUpstreamError(MarketsApiError):
 
     The message carries the reason that API gave. ``status_code`` is ``502`` when it
     refused the call, which the same request will be refused again, and ``503`` when
-    it failed or could not be reached, which ``retryable`` reports.
+    it failed or could not be reached, which ``retryable`` reports. A statement that
+    API rejects as invalid is ``MarketsInvalidStatementError`` instead.
     """
 
     def __init__(self, detail: str, *, status_code: int) -> None:
@@ -115,6 +116,22 @@ class MarketsUpstreamError(MarketsApiError):
     @property
     def retryable(self) -> bool:
         return self.status_code == 503
+
+
+INVALID_STATEMENT_ERROR_TYPE = "InvalidStatementError"
+"""``error_type`` of the Markets API's ``500`` when MetaTables rejected a statement it sent."""
+
+
+class MarketsInvalidStatementError(MarketsApiError):
+    """The Markets API sent MetaTables a statement it rejects as invalid (HTTP 500).
+
+    The fault is the Markets API's, not the arguments' and not MetaTables': the same
+    call fails the same way again, so it is not retryable. The message carries the
+    reason MetaTables gave (MainSequenceMarkets#87).
+    """
+
+    status_code = 500
+    retryable = False
 
 
 class MarketsOperationUnsupported(MarketsApiError, NotImplementedError):
@@ -508,6 +525,8 @@ def raise_for_error(status_code: int, detail: str, error_type: str | None) -> No
 
     if error_type == UPSTREAM_ERROR_TYPE:
         raise MarketsUpstreamError(detail, status_code=status_code)
+    if error_type == INVALID_STATEMENT_ERROR_TYPE:
+        raise MarketsInvalidStatementError(detail)
     if status_code in (401, 403):
         raise MarketsAccessError(detail)
     if status_code == 404:
@@ -533,10 +552,12 @@ __all__ = [
     "MarketsAccessError",
     "MarketsApiError",
     "MarketsConflictError",
+    "MarketsInvalidStatementError",
     "MarketsOperationUnsupported",
     "MarketsUpstreamError",
     "RemoteBackend",
     "RemoteRowOperations",
+    "INVALID_STATEMENT_ERROR_TYPE",
     "UPSTREAM_ERROR_TYPE",
     "WRITE_OPERATIONS",
     "active_remote_backend",

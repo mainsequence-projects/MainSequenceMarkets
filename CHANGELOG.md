@@ -17,6 +17,21 @@ and this project follows versioned releases.
   both raise `MarketsConflictError` when a reference refuses the delete, and
   `bulk_delete_portfolios` also when a selected portfolio is missing.
 
+### Fixed
+
+- **A statement MetaTables rejects as invalid answers `500`, not `502`**
+  ([#87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)). When
+  MetaTables refuses a statement the Markets API compiled, with
+  `compiled_sql_database_error` or a code of its checks before the statement runs
+  (`invalid_sql`, `empty_sql`, `invalid_sql_parameters`, ...), the fault is the Markets
+  API's and a retry fails the same way. The API answers `500` with `error_type`
+  `InvalidStatementError`, a `detail` that says so and keeps MetaTables' reason, and
+  `upstream_status`; `msm.client` raises the new `MarketsInvalidStatementError`
+  (`MarketsApiError`, not retryable) for it. MetaTables gives no SQLSTATE, so a
+  statement that breaks a constraint answers `500` too. Other refusals (permissions, a
+  missing table, a conflict) still answer `502` and failures `503`, as
+  `MarketsUpstreamError`.
+
 ## [4.2.0] - 2026-11-20
 
 This release breaks every producer of signals and portfolios

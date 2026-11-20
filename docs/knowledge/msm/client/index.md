@@ -104,6 +104,7 @@ asset pricing details).
 | 404 | `LookupError`; gets return `None` as under the runtime backend |
 | 409 | `MarketsConflictError` (`ValueError`) |
 | 501 | `MarketsOperationUnsupported` (`NotImplementedError`) |
+| 500 with `error_type` `InvalidStatementError` | `MarketsInvalidStatementError` (`MarketsApiError`) |
 | 502, 503 with `error_type` `UpstreamApiError` | `MarketsUpstreamError` (`MarketsApiError`) |
 | any other status | `MarketsApiError` (`RuntimeError`) |
 
@@ -119,6 +120,13 @@ reason that API gave, for example
 will be refused again. It is `503`, and `retryable` is `True`, when the upstream
 API failed or could not be reached. A `502` or `503` without that `error_type`
 comes from a proxy in front of the Markets API and raises plain `MarketsApiError`.
+
+`MarketsInvalidStatementError` means MetaTables rejected a statement the Markets
+API compiled as invalid, for example a database error running it. The fault is the
+Markets API's, not the arguments' or MetaTables': the same call fails the same way
+again, so `retryable` is `False` and `status_code` is `500`. Its message names the
+fault and carries MetaTables' reason. It is not a `MarketsUpstreamError`; a `500`
+without its `error_type` raises plain `MarketsApiError`.
 
 ## Set-Based Operations
 

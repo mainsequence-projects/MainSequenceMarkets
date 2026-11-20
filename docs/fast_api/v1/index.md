@@ -72,16 +72,39 @@ Every row a route reads or writes goes through the MetaTables API. When that API
 or another Main Sequence API this deployment calls, refuses or fails a call and
 the route does not handle it, the route answers:
 
-| Status | Meaning |
-|---|---|
-| 502 | The upstream API refused the call (it answered 4xx). The same request will be refused again. |
-| 503 | The upstream API failed or could not be reached (5xx, `429`, no answer, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
+| Status | `error_type` | Meaning |
+|---|---|---|
+| 500 | `InvalidStatementError` | MetaTables rejected a statement the Markets API compiled as invalid. The fault is the Markets API's, and the same request fails the same way again. |
+| 502 | `UpstreamApiError` | The upstream API refused the call for another reason (it answered 4xx): permissions, a missing table, a conflict. The same request will be refused again. |
+| 503 | `UpstreamApiError` | The upstream API failed or could not be reached (5xx, `429`, no answer, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
+
+A statement is invalid when MetaTables refuses it (4xx) with one of the codes in
+`INVALID_STATEMENT_CODES` (`apps/v1/upstream_errors.py`): `compiled_sql_database_error`,
+which MetaTables answers for every database error running the statement, and the
+codes of its checks before the statement runs (`invalid_sql`, `empty_sql`,
+`invalid_sql_parameters`, `invalid_query_limits`, `compiled_sql_dialect_mismatch`,
+`compiled_sql_transaction_ended` and the `compiled_sql_statement_list_*` codes).
+MetaTables gives no SQLSTATE, so a statement that breaks a constraint answers `500`
+like a syntax error: a route that expects a constraint to refuse a write checks for
+it itself. Before this, an invalid statement answered `502`
+([issue 87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)).
 
 ```json
 {
   "detail": "The upstream API answered 422: body.statement.sql: String should have at most 1000000 characters",
   "error_type": "UpstreamApiError",
   "upstream_status": 422
+}
+```
+
+For a `500`, `detail` begins by saying the statement was the Markets API's fault,
+then gives the upstream API's answer the same way:
+
+```json
+{
+  "detail": "The Markets API sent a statement the upstream API rejects as invalid. This is a fault of the Markets API; a retry fails the same way. The upstream API answered 400: compiled_sql_database_error: syntax error at or near \"WHERE\"",
+  "error_type": "InvalidStatementError",
+  "upstream_status": 400
 }
 ```
 

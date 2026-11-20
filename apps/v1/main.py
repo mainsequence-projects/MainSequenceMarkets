@@ -275,7 +275,8 @@ def create_app() -> FastAPI:
         return app.openapi_schema
 
     app.openapi = custom_openapi
-    # A call to MetaTables that a route does not handle answers 502 or 503 with its reason.
+    # A call to MetaTables that a route does not handle answers 500 (an invalid statement
+    # the Markets API compiled), 502 or 503, with its reason.
     install_upstream_error_handlers(app)
     # Authenticates every request before its handler: the gateway's signed caller
     # assertion when hosted, the caller's Bearer token locally. The platform
