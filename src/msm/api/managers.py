@@ -18,9 +18,10 @@ from __future__ import annotations
 import contextlib
 import re
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 
 MANAGED_BY = "managed_by"
 """The registry column that names a row's manager."""
@@ -145,16 +146,133 @@ def refuse_managed_by(values: dict) -> dict:
     return values
 
 
+@dataclass(frozen=True)
+class ManagedRows:
+    """A registry row class whose rows have a manager, and the column that names a row."""
+
+    kind: str
+    rows: type
+    key_column: str
+
+
+_managed_rows: dict[str, ManagedRows] = {}
+
+
+def register_managed_rows(kind: str, rows: type, key_column: str) -> None:
+    """Declare that ``rows`` has ``managed_by`` and ``assign_manager``.
+
+    The package that defines the row class calls it when the class is defined, so this
+    module names no row class of another package. ``kind`` is the name an operator uses
+    for it, ``key_column`` the column an operator names a row by.
+    """
+
+    _managed_rows[kind] = ManagedRows(kind, rows, key_column)
+
+
+def managed_rows() -> dict[str, ManagedRows]:
+    """The managed row classes of the packages loaded in this process, by kind."""
+
+    return dict(_managed_rows)
+
+
+@dataclass(frozen=True)
+class ManagerAssignment:
+    """One registry row given a manager, or why it was not."""
+
+    kind: str
+    key: str
+    uid: str | None
+    previous: str | None
+    managed_by: str
+    assigned: bool
+    detail: str = ""
+
+
+def assign_managers(
+    managed_by: str,
+    *,
+    keys: Mapping[str, Sequence[str]] | None = None,
+    unmanaged: bool = False,
+    dry_run: bool = True,
+) -> list[ManagerAssignment]:
+    """Make ``managed_by`` the manager of the named rows (ADR 0060, decision 9).
+
+    ``keys`` maps a kind (see ``managed_rows``) to the rows of that kind, each named by
+    its key column; ``unmanaged`` adds every row of every loaded kind that has no manager.
+    ``dry_run`` lists the rows and changes nothing. Runs only when a person runs it
+    (``msm registry assign-manager``). A kind whose package is not loaded is refused.
+    """
+
+    assigned_principal = validate_principal(managed_by)
+    kinds = managed_rows()
+    named = {kind: list(values) for kind, values in (keys or {}).items() if values}
+    unknown = sorted(set(named) - set(kinds))
+    if unknown:
+        raise ValueError(
+            f"No loaded package serves {', '.join(unknown)} rows; loaded kinds: "
+            f"{', '.join(sorted(kinds)) or 'none'}. Load the package that defines them first."
+        )
+    found: dict[tuple[str, str], Any] = {}
+    for kind, values in named.items():
+        managed = kinds[kind]
+        for key in values:
+            matches = managed.rows.filter(limit=1, **{managed.key_column: key})
+            found[(kind, str(key))] = matches[0] if matches else None
+    if unmanaged:
+        for kind, managed in kinds.items():
+            for row in _rows_without_manager(managed.rows):
+                found.setdefault((kind, str(getattr(row, managed.key_column))), row)
+    assignments: list[ManagerAssignment] = []
+    for (kind, key), row in found.items():
+        if row is None:
+            assignments.append(
+                ManagerAssignment(kind, key, None, None, assigned_principal, False, "not found")
+            )
+            continue
+        assigned = False
+        if not dry_run:
+            kinds[kind].rows.assign_manager(row.uid, assigned_principal)
+            assigned = True
+        assignments.append(
+            ManagerAssignment(
+                kind,
+                key,
+                str(row.uid),
+                row.managed_by,
+                assigned_principal,
+                assigned,
+                "dry run" if dry_run else "",
+            )
+        )
+    return assignments
+
+
+def _rows_without_manager(rows: type) -> list[Any]:
+    found: list[Any] = []
+    offset = 0
+    while True:
+        page = rows.filter(limit=500, offset=offset)
+        found.extend(row for row in page if not row.managed_by)
+        if len(page) < 500:
+            return found
+        offset += 500
+
+
 __all__ = [
     "MANAGED_BY",
+    "ManagedRows",
     "Manager",
+    "ManagerAssignment",
     "PRINCIPAL_KINDS",
     "acting_manager",
     "acting_manager_scope",
+    "assign_managers",
+    "managed_rows",
     "manager_for_new_row",
     "manager_refusal",
     "principal",
     "refuse_managed_by",
+    "register_managed_rows",
     "require_assigning_admin",
     "require_manager",
     "validate_principal",

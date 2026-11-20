@@ -422,11 +422,21 @@ Recipes, `msm_portfolios.recipes` (`src/msm_portfolios/recipes.py`):
 - `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=()) ->
   dict[str, int]`.
 
-Operator commands (`src/msm_portfolios/series_history.py`, `src/msm_cli/main.py`):
-`msm series publish module:callable [--execute] [--json]`, where the callable returns
-`SeriesHistoryPublish(source, series, keys=(), label="")` objects, and
-`msm registry assign-manager --manager <principal> [--portfolio ID]... [--signal UID]...
-[--unmanaged] [--execute] [--json]`. Both default to a dry run.
+Operator commands (`src/msm_cli/main.py`). `msm_cli` imports only `msm`, so both run
+through core and no command names the portfolio package:
+
+- `msm series publish module:callable [--execute] [--json]`. The callable returns
+  `msm_portfolios.series_history.SeriesHistoryPublish(source, series, keys=(), label="")`
+  objects. `msm.storage_copies.run_series_publishes` calls each object's
+  `run(dry_run=...)` and builds the report, as `run_series_moves` does for moves.
+- `msm registry assign-manager --manager <principal> [--portfolio ID]... [--signal UID]...
+  [--unmanaged] [--attach module:callable] [--execute] [--json]` runs
+  `msm.api.managers.assign_managers`. A row class with a manager registers itself with
+  `register_managed_rows` when its package is imported: `Portfolio` in `msm`,
+  `SignalMetadata` in `msm_portfolios`. `--attach` names a callable that attaches the
+  operator's runtime and imports the packages whose rows are assigned; signals need it.
+
+Both default to a dry run.
 
 ### Departures from the text above
 

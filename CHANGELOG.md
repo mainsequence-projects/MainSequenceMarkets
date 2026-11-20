@@ -28,7 +28,8 @@ Declared as 4.2.0. This release breaks every producer of signals and portfolios
   Rows created before have no manager and accept no publish until one is assigned.
 - `msm series publish` publishes the history held in an application's own table, key by
   key, and compares the bounds; `msm registry assign-manager` assigns managers. Both
-  default to a dry run.
+  default to a dry run. The `msm` command imports only `msm`: the publishes come from an
+  operator callable, and `--attach module:callable` loads the package that serves signals.
 - `SignalMetadata.delete(uid)` and `SignalMetadata.end(signal_uid)` delete a signal's
   weights and its row in one transaction.
 - The skill `platform/producer_boundary` teaches producers the boundary.

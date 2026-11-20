@@ -94,13 +94,13 @@ def series_publish_command(args: argparse.Namespace) -> int:
 
     import importlib
 
-    from msm_portfolios.series_history import publish_series_history
+    from msm.storage_copies import run_series_publishes
 
     module_name, _, attribute = args.publishes.partition(":")
     if not module_name or not attribute:
         raise SystemExit("Pass the publishes as module:callable.")
     produced = getattr(importlib.import_module(module_name), attribute)()
-    report = publish_series_history(
+    report = run_series_publishes(
         list(produced) if isinstance(produced, (list, tuple, set, frozenset)) else [produced],
         dry_run=not args.execute,
     )
@@ -130,15 +130,24 @@ def series_publish_command(args: argparse.Namespace) -> int:
 def assign_manager_command(args: argparse.Namespace) -> int:
     """Run ``msm registry assign-manager`` (ADR 0060, decision 9)."""
 
-    from msm_portfolios.series_history import assign_managers
+    import importlib
 
-    assignments = assign_managers(
-        args.manager,
-        portfolios=args.portfolio or (),
-        signals=args.signal or (),
-        unmanaged=args.unmanaged,
-        dry_run=not args.execute,
-    )
+    from msm.api.managers import assign_managers
+
+    if args.attach:
+        module_name, _, attribute = args.attach.partition(":")
+        if not module_name or not attribute:
+            raise SystemExit("Pass --attach as module:callable.")
+        getattr(importlib.import_module(module_name), attribute)()
+    try:
+        assignments = assign_managers(
+            args.manager,
+            keys={"portfolio": args.portfolio or (), "signal": args.signal or ()},
+            unmanaged=args.unmanaged,
+            dry_run=not args.execute,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.emit_json:
         print(json.dumps([assignment.__dict__ for assignment in assignments], indent=2))
     else:
@@ -404,8 +413,9 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_parser.add_argument(
         "publishes",
         help=(
-            "module:callable returning msm_portfolios.series_history.SeriesHistoryPublish "
-            "objects, after attaching the operator's runtime."
+            "module:callable returning the publishes to run, after attaching the operator's "
+            "runtime. Each is an object of the package that defines the series, with "
+            "run(dry_run=...)."
         ),
     )
     publish_parser.add_argument(
@@ -453,6 +463,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--portfolio", action="append", help="Portfolio unique_identifier; repeatable."
     )
     assign.add_argument("--signal", action="append", help="SignalMetadata signal_uid; repeatable.")
+    assign.add_argument(
+        "--attach",
+        help=(
+            "module:callable run first: it attaches the operator's runtime and imports the "
+            "packages whose rows are assigned. Signals need the package that serves them."
+        ),
+    )
     assign.add_argument(
         "--unmanaged", action="store_true", help="Also every portfolio and signal without a manager."
     )

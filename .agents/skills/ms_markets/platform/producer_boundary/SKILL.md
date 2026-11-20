@@ -120,6 +120,9 @@ Organization admin assigns one:
 msm registry assign-manager --manager branch:<branch uid> --portfolio <identifier> --execute
 ```
 
+The `msm` command imports only `msm`. To assign signals, add `--attach module:callable`:
+a callable of yours that attaches the runtime and imports `msm_portfolios.api`.
+
 ## Private state tables
 
 Build the private state tables with the factories of
@@ -191,8 +194,9 @@ Each application records its boundary in an ADR of its own, with these sections:
 
 Nothing moves by itself. A person runs, in each Environment:
 
-1. `msm registry assign-manager --manager branch:<uid> --unmanaged` (dry run), then
-   with `--execute`, so the application's workloads may publish to their rows.
+1. `msm registry assign-manager --manager branch:<uid> --unmanaged --attach
+   module:callable` (dry run), then with `--execute`, so the application's workloads may
+   publish to their rows. Without `--attach`, only portfolios are assigned.
 2. `msm series publish module:callable` (dry run), then with `--execute`. The callable
    returns `msm_portfolios.series_history.SeriesHistoryPublish(source=<instance class>,
    series="signal-weights" | "portfolio-weights" | "portfolio-values", keys=[...])`.

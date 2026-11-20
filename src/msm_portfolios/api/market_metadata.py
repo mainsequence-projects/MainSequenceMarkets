@@ -7,7 +7,12 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, Field
 
 from msm.api.base import MarketsMetaTableRow, Payload, _payload_values
-from msm.api.managers import refuse_managed_by, require_assigning_admin, validate_principal
+from msm.api.managers import (
+    refuse_managed_by,
+    register_managed_rows,
+    require_assigning_admin,
+    validate_principal,
+)
 
 from msm_portfolios.models import (
     RebalanceStrategyMetadataTable,
@@ -107,6 +112,9 @@ class SignalMetadata(MarketsMetaTableRow):
         return resolve_runtime(
             models=["SignalMetadata", "SignalWeightsStorage"], row_model_name=cls.__name__
         ).context
+
+
+register_managed_rows("signal", SignalMetadata, "signal_uid")
 
 
 class SignalMetadataCreate(BaseModel):

@@ -26,8 +26,7 @@ DEPENDS_ON: dict[str, frozenset[str]] = {
     "msm_portfolios": frozenset({"msm", "msm_portfolios"}),
     "msm_pricing": frozenset({"msm", "msm_pricing"}),
     "msm_migrations": frozenset({"msm", "msm_portfolios", "msm_pricing", "msm_migrations"}),
-    # `msm series publish` and `msm registry assign-manager` run msm_portfolios (ADR 0060).
-    "msm_cli": frozenset({"msm", "msm_portfolios", "msm_cli"}),
+    "msm_cli": frozenset({"msm", "msm_cli"}),
     "apps": frozenset({"msm", "msm_portfolios", "msm_pricing", "apps"}),
 }
 SOURCES = {

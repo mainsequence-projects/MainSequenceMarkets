@@ -120,8 +120,9 @@ Portfolios answer these questions:
 - `msm_portfolios.time_index.contract_instances`: factories that build an
   application's private state tables (rebalance state, calendar events, event
   ledger) in its own namespace.
-- `msm_portfolios.series_history`: the operator steps that publish an
-  application's existing history to Markets and assign managers.
+- `msm_portfolios.series_history`: `SeriesHistoryPublish`, the object
+  `msm series publish` runs to publish an application's existing history to
+  Markets.
 - `msm_portfolios.rebalance_strategy`: rebalance strategy base classes and
   built-in strategies.
 - `msm.models.portfolios`: core SQLAlchemy MetaTable declaration for portfolio
@@ -593,9 +594,11 @@ Nothing moves by itself. A person runs each step, in each Environment:
 1. `msm registry assign-manager --manager branch:<uid>` with `--portfolio
    <unique_identifier>`, `--signal <signal_uid>` (both repeatable) or
    `--unmanaged` (every portfolio and signal with no manager) lists the rows;
-   with `--execute` it assigns the manager
-   (`msm_portfolios.series_history.assign_managers`). Through the Markets API
-   only an Organization admin may assign one.
+   with `--execute` it assigns the manager (`msm.api.managers.assign_managers`).
+   The `msm` command imports only `msm`: to assign signals, pass
+   `--attach module:callable`, a callable that attaches the runtime and imports
+   `msm_portfolios.api`. Through the Markets API only an Organization admin may
+   assign one.
 2. `msm series publish module:callable` reads an application's own table with
    the operator's own MetaTables access and compares it with the series in
    Markets; with `--execute` it publishes the rows key by key and compares

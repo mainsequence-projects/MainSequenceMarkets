@@ -14,7 +14,12 @@ from msm.api.base import (
     operation_result_rows,
     pre_3_0_field,
 )
-from msm.api.managers import refuse_managed_by, require_assigning_admin, validate_principal
+from msm.api.managers import (
+    refuse_managed_by,
+    register_managed_rows,
+    require_assigning_admin,
+    validate_principal,
+)
 from msm.models import (
     CalendarTable,
     IndexTable,
@@ -132,6 +137,9 @@ class Portfolio(MarketsMetaTableRow):
             values={"managed_by": validate_principal(managed_by)},
         )
         return cls._from_operation_result(result)
+
+
+register_managed_rows("portfolio", Portfolio, "unique_identifier")
 
 
 class PortfolioCreate(PayloadWithRenamedFields):

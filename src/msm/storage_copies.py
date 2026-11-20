@@ -405,9 +405,101 @@ def run_series_moves(
     return report
 
 
+@dataclass(frozen=True)
+class KeyPublication:
+    """One key: rows in the source, rows written and skipped, and the series in Markets."""
+
+    key: str
+    source_rows: int
+    written: int
+    skipped: int
+    source_first: Any
+    source_last: Any
+    markets_first: Any
+    markets_last: Any
+    markets_rows: int
+    error: str = ""
+
+    @property
+    def verified(self) -> bool:
+        """Markets holds the source's span and at least its rows.
+
+        Signal weights may hold more: Markets closes a dropped asset at ``0``.
+        """
+
+        return (
+            not self.error
+            and _same_time(self.source_first, self.markets_first)
+            and _same_time(self.source_last, self.markets_last)
+            and self.markets_rows >= self.source_rows
+        )
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "source_rows": self.source_rows,
+            "written": self.written,
+            "skipped": self.skipped,
+            "source_first": _iso(self.source_first),
+            "source_last": _iso(self.source_last),
+            "markets_first": _iso(self.markets_first),
+            "markets_last": _iso(self.markets_last),
+            "markets_rows": self.markets_rows,
+            "verified": self.verified,
+            "error": self.error,
+        }
+
+
+@dataclass
+class SeriesHistoryReport:
+    """Every key of every publish of one ``run_series_publishes``."""
+
+    dry_run: bool
+    results: list[tuple[str, KeyPublication]] = field(default_factory=list)
+
+    @property
+    def succeeded(self) -> bool:
+        if self.dry_run:
+            return all(not key.error for _, key in self.results)
+        return all(key.verified for _, key in self.results)
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "dry_run": self.dry_run,
+            "succeeded": self.succeeded,
+            "results": [{"label": label, **key.summary()} for label, key in self.results],
+        }
+
+
+def run_series_publishes(publishes: Iterable[Any], *, dry_run: bool = True) -> SeriesHistoryReport:
+    """Run the publishes an operator callable returns, in order (ADR 0060, decision 9).
+
+    Each publish is an object of the package that defines the published series. Its
+    ``run(dry_run=...)`` answers ``(label, KeyPublication)`` for each key it publishes, so
+    this module names no series of another package. ``dry_run`` reads and compares only.
+    """
+
+    report = SeriesHistoryReport(dry_run=dry_run)
+    for publish in publishes:
+        report.results.extend(publish.run(dry_run=dry_run))
+    return report
+
+
+def _same_time(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return pd.Timestamp(left) == pd.Timestamp(right)
+
+
+def _iso(value: Any) -> str | None:
+    return None if value is None else pd.Timestamp(value).isoformat()
+
+
 __all__ = [
     "DEFAULT_KEYS_PER_READ",
     "KeyCopy",
+    "KeyPublication",
+    "SeriesHistoryReport",
     "SeriesMoveReport",
     "SeriesMoveResult",
     "TableSeriesMove",
@@ -418,4 +510,5 @@ __all__ = [
     "finish_move",
     "registered_time_index_meta_table",
     "run_series_moves",
+    "run_series_publishes",
 ]
