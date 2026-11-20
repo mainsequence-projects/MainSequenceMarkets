@@ -62,7 +62,8 @@ def sqlite_revisions(tmp_path_factory):
 
     `sqlite_revisions.engine(path, revision)` copies the file at ``revision`` to
     ``path``; `sqlite_revisions.file("head")` is the template every `sqlite_markets`
-    copies. See `tests.support.migrations.SQLiteRevisions`.
+    copies. See `tests.support.migrations.SQLiteRevisions`. Under pytest-xdist each worker
+    builds its own, in its own `tmp_path_factory` directory.
     """
 
     from tests.support.migrations import SQLiteRevisions

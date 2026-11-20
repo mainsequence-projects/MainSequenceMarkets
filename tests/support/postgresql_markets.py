@@ -29,6 +29,7 @@ from metatables import (
 from metatables.runtime_contract import RuntimeContext
 from msm.repositories.base import MarketsRepositoryContext
 from tests.support.migrations import _config
+from tests.support.postgresql_databases import worker_database
 
 URL_VARIABLE = "MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL"
 
@@ -45,6 +46,7 @@ def postgresql_markets(monkeypatch):
     parsed = make_url(url)
     if parsed.host not in {"localhost", "127.0.0.1"} or not (parsed.database or "").startswith("markets_"):
         pytest.fail("These tests accept only a disposable markets_* database on localhost")
+    parsed = worker_database(parsed)
 
     import psycopg
     from metatables.api.backend.backends.restricted_sql import json_value, parameters_for

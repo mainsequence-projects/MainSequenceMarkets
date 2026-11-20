@@ -7,6 +7,30 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.2.2] - 2026-11-20
+
+### Changed
+
+- **CI runs the test suite in parallel** with pytest-xdist (`-n auto --dist worksteal`),
+  now in the `dev` extra (#99). Each worker migrates its own SQLite templates, and the
+  PostgreSQL fixtures use one database per worker. The dynamic migration provider test
+  of the equal-weight example moved to `tests/msm_migrations`: run first in a process, it
+  built the Markets migration provider under the example namespace, and every later SQLite
+  database in that process lacked the Markets tables. The testing page describes parallel
+  runs, `-n 4` for local scoped runs included.
+
+### Fixed
+
+- **The three published series work through a Markets API and after `start_engine`**
+  ([#103](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/103)).
+  Since 4.2.0, every `SignalWeightsSeries`, `PortfolioWeightsSeries` and
+  `PortfolioValuesSeries` operation, and `SignalMetadata.delete` and `end`, failed with
+  `ValueError: Unknown markets MetaTable model 'PortfolioWeightsStorage'` (or
+  `SignalWeightsStorage`, `PortfoliosStorage`). They named their storage tables by
+  string, and the runtime resolves names only for the tables of `msm`. They now name
+  the table classes, as every other row class does. The tests resolve each operation's
+  tables as the runtime does, instead of skipping that step.
+
 ## [4.2.1] - 2026-11-20
 
 ### Added

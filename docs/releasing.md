@@ -41,7 +41,8 @@ runs on every pull request and is called by both publishing workflows. It:
 
 - checks that `uv.lock` matches `pyproject.toml` and installs from it
 - runs `ruff check` and `mkdocs build --strict`
-- runs the full `pytest` suite, which needs no database or platform services
+- runs the full `pytest` suite in parallel (`-n auto --dist worksteal`, see
+  [Testing](testing.md#parallel-runs)), which needs no database or platform services
 - builds the wheel and sdist, then runs `scripts/check_distribution_sources.py`
   and `twine check --strict`
 
@@ -58,7 +59,7 @@ uv lock --check
 uv sync --frozen --all-extras
 uv run --frozen --all-extras ruff check --no-fix .
 uv run --frozen --all-extras mkdocs build --strict
-uv run --frozen --all-extras pytest -q
+uv run --frozen --all-extras pytest -q -n auto --dist worksteal
 rm -rf dist
 uv run --frozen --all-extras python -m build
 uv run --frozen --all-extras python -m scripts.check_distribution_sources

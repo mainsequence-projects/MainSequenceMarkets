@@ -22,6 +22,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 from tests.support.migrations import _config
+from tests.support.postgresql_databases import worker_database
 from tests.support.postgresql_portfolios import _insert, _portfolio
 
 URL_VARIABLE = "MS_MARKETS_TIMESCALE_TEST_POSTGRES_URL"
@@ -42,6 +43,7 @@ def hypertables():
     parsed = make_url(url)
     if parsed.host not in {"localhost", "127.0.0.1"} or not (parsed.database or "").startswith("markets_"):
         pytest.fail("These tests accept only a disposable markets_* database on localhost")
+    parsed = worker_database(parsed)
     # Each connect is a new session: TimescaleDB creates its extension only as a session's
     # first use of it.
     engine = sa.create_engine(parsed.set(drivername="postgresql+psycopg"), poolclass=NullPool)

@@ -174,6 +174,23 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, template, prepare=None):
     )
 
 
+def serve_row_operations(monkeypatch, markets) -> None:
+    """Run every row operation on ``markets``, resolving its tables as a deployment does.
+
+    ``msm.bootstrap.resolve_runtime`` answers with the SQLite context, after resolving
+    the models the operation names with the same resolver the real runtime uses, so a
+    table it cannot find fails here as it fails in a deployed API (#103).
+    """
+
+    from msm.models.registration import resolve_markets_meta_table_models
+
+    def resolve_runtime(*, models, **_kwargs):
+        resolve_markets_meta_table_models(models)
+        return SimpleNamespace(context=markets.context)
+
+    monkeypatch.setattr("msm.bootstrap.resolve_runtime", resolve_runtime)
+
+
 def _refuse_identical_rewrites(engine) -> None:
     with engine.begin() as connection:
         for table in GUARDED_TABLES:

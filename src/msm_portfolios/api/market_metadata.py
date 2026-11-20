@@ -108,9 +108,10 @@ class SignalMetadata(MarketsMetaTableRow):
     @classmethod
     def _series_context(cls):
         from msm.bootstrap import resolve_runtime
+        from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 
         return resolve_runtime(
-            models=["SignalMetadata", "SignalWeightsStorage"], row_model_name=cls.__name__
+            models=[SignalMetadataTable, SignalWeightsStorage], row_model_name=cls.__name__
         ).context
 
 
