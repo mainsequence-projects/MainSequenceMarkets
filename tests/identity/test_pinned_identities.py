@@ -49,7 +49,9 @@ from msm_portfolios.time_index import (
     compute_portfolio_configuration_hash,
     compute_signal_uid,
 )
-from msm_portfolios.time_index.contract_instances import configured_portfolios_storage
+from msm_portfolios.time_index.contract_instances import (
+    configured_portfolio_rebalance_state_storage,
+)
 from tests.support.pinned_identities import (
     LIBRARY_SIGNALS,
     NESTED_PORTFOLIOS,
@@ -106,7 +108,6 @@ PINNED_TABLE_NAMES = {
     "PortfolioAnalyticsStorage": "ms_markets__portfolioanalyticsts",
     "PortfolioCalendarEventsStorage": "ms_markets__portfoliocalendareventsts",
     "PortfolioCashFlowsStorage": "ms_markets__portfoliocashflowsts",
-    "PortfolioDatasetAvailabilityTable": "ms_markets__portfoliodatasetavailability",
     "PortfolioEventLedgerStorage": "ms_markets__portfolioeventledgerts",
     "PortfolioGroupMembershipTable": "ms_markets__portfoliogroupmembership",
     "PortfolioGroupTable": "ms_markets__portfoliogroup",
@@ -172,7 +173,6 @@ PINNED_METATABLE_IDENTIFIERS = {
     "PortfolioAnalyticsStorage": "PortfolioAnalyticsTS",
     "PortfolioCalendarEventsStorage": "PortfolioCalendarEventsTS",
     "PortfolioCashFlowsStorage": "PortfolioCashFlowsTS",
-    "PortfolioDatasetAvailabilityTable": "PortfolioDatasetAvailability",
     "PortfolioEventLedgerStorage": "PortfolioEventLedgerTS",
     "PortfolioGroupMembershipTable": "PortfolioGroupMembership",
     "PortfolioGroupTable": "PortfolioGroup",
@@ -214,25 +214,30 @@ PINNED_UPDATER_PATHS = (
     "msm.time_index.indices.values:IndexValuesUpdater",
     "msm.time_index.utils.stamped:StampedUpdater",
     "msm_portfolios.contrib.prices.updaters:InterpolatedPrices",
-    "msm_portfolios.contrib.signals.application_weights:ApplicationWeights",
-    "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
-    "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
-    "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
-    "msm_portfolios.contrib.signals.market_cap:MarketCap",
-    "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
     "msm_portfolios.time_index.base:AssetScopedPortfolioCanonicalUpdater",
     "msm_portfolios.time_index.base:PortfolioCanonicalUpdater",
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngine",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalytics",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEvents",
     "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalance",
-    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
-    "msm_portfolios.time_index.portfolios:PortfoliosUpdater",
-    "msm_portfolios.time_index.signals.weights:SignalWeights",
     "msm_pricing.time_index.curves:CurveTimestampedUpdater",
     "msm_pricing.time_index.curves:DiscountCurvesUpdater",
     "msm_pricing.time_index.index_fixings:FixingRatesUpdater",
     "msm_pricing.time_index.pricing_details:AssetPricingDetail",
+)
+
+PINNED_PUBLISHED_NODE_PATHS = (
+    # Nodes of the published series (ADR 0060): no MetaTables update hash, but a
+    # signal's class path is hashed into its signal_uid.
+    "msm_portfolios.contrib.signals.application_weights:ApplicationWeights",
+    "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
+    "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
+    "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
+    "msm_portfolios.contrib.signals.market_cap:MarketCap",
+    "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
+    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
+    "msm_portfolios.time_index.portfolios:PortfoliosUpdater",
+    "msm_portfolios.time_index.signals.weights:SignalWeights",
 )
 
 PINNED_CONFIGURATION_PATHS = (
@@ -247,7 +252,6 @@ PINNED_CONFIGURATION_PATHS = (
     "msm.time_index.utils.stamped:StampedUpdaterConfiguration",
     "msm_portfolios.contrib.prices.updaters:InterpolatedPricesConfig",
     "msm_portfolios.time_index.base:PortfolioCanonicalUpdaterConfiguration",
-    "msm_portfolios.time_index.base:SignalWeightsConfiguration",
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngineConfiguration",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalyticsConfiguration",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEventsConfiguration",
@@ -314,9 +318,9 @@ PINNED_CONFIGURED_STORAGE = {
         "ms_markets__interpolated_prices__eeb2539c105f51d0",
         "InterpolatedPricesTS.eeb2539c105f51d0",
     ),
-    "portfolios_contract_instance": (
-        "pinned_app__portfoliosts__pinned_identity",
-        "PortfoliosTS.pinned_identity",
+    "rebalance_state_contract_instance": (
+        "pinned_app__portfoliorebalancestatets__pinned_identity",
+        "PortfolioRebalanceStateTS.pinned_identity",
     ),
 }
 
@@ -374,7 +378,7 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
 CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
     "index_values_1d": lambda: configured_index_values_storage(cadence="1d"),
     "interpolated_prices_1d_ffill": _interpolated_prices_storage,
-    "portfolios_contract_instance": lambda: configured_portfolios_storage(
+    "rebalance_state_contract_instance": lambda: configured_portfolio_rebalance_state_storage(
         instance_key="pinned_identity",
         storage_app="pinned_app",
     ),
@@ -450,6 +454,16 @@ def test_updater_class_paths_are_pinned() -> None:
         _defined_subclass_paths(TimeIndexTableUpdater),
         PINNED_UPDATER_PATHS,
         "updater",
+    )
+
+
+def test_published_series_node_class_paths_are_pinned() -> None:
+    from msm_portfolios.series_nodes import PublishedSeriesNode
+
+    _assert_paths_pinned(
+        _defined_subclass_paths(PublishedSeriesNode),
+        PINNED_PUBLISHED_NODE_PATHS,
+        "published series node",
     )
 
 

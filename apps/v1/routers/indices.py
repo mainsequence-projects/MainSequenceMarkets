@@ -20,7 +20,6 @@ from apps.v1.schemas.indices import (
     IndexFormulaWindowRequest,
     IndexType,
     IndexUpdate,
-    IndexWithIncludes,
     RelatedMetaTable,
 )
 from apps.v1.services.indices import (
@@ -45,7 +44,6 @@ from apps.v1.services.indices import (
     save_index_formula,
     update_index,
 )
-from apps.v1.services.includes import SidecarReadError
 from msm.api.http import (
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
@@ -160,7 +158,7 @@ def get_indexes(
 
 @router.get(
     "/by-uids/",
-    response_model=ResourceCollection[IndexWithIncludes],
+    response_model=ResourceCollection[Index],
     summary="Look up Indexes by uid",
     description=(
         "Return the Index identity rows whose uid is listed in `uid__in` (repeated or "
@@ -169,9 +167,8 @@ def get_indexes(
     ),
     operation_id="getIndexesByUids",
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
-        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
-        409: {"model": ErrorResponse, "description": "An included sidecar could not be read."},
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in`."},
+        409: {"model": ErrorResponse, "description": "A stored row is invalid."},
     },
 )
 def get_indexes_by_uid_list(
@@ -179,21 +176,9 @@ def get_indexes_by_uid_list(
         list[str],
         Query(alias="uid__in", description="Index uids, repeated or comma-separated."),
     ],
-    include: Annotated[
-        list[str] | None,
-        Query(
-            description=(
-                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
-                "by this resource's uid; their rows are attached under `includes`. The Markets "
-                "workload needs `data_viewer` on each sidecar."
-            ),
-        ),
-    ] = None,
-) -> ResourceCollection[IndexWithIncludes]:
+) -> ResourceCollection[Index]:
     try:
-        items = get_indexes_by_uids(uids=uid__in, include=include)
-    except SidecarReadError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        items = get_indexes_by_uids(uids=uid__in)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

@@ -30,6 +30,8 @@ CALENDAR_REVISION_DROPS = (
 
 
 TARGETS_REVISION_DELETES = ("ms_markets__positionset", "ms_markets__targetpositionsts")
+CATALOG_REVISION_DROPS = ("ms_markets__portfoliodatasetavailability",)
+"""Revision 0033 drops the portfolio dataset catalog (ADR 0060)."""
 
 
 def _seed_asset(connection):
@@ -56,18 +58,19 @@ def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, sqlite_rev
         if start:
             _seed_asset(connection)
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0032"
+        assert ScriptDirectory.from_config(config).get_heads() == ["0033"]
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0033"
         # Revision 0027 drops three calendar tables and adds two; 0028 adds AssetCalendar.
         # Revision 0029 adds a column to the portfolio values table; 0030 two to the
         # portfolio weights table; 0031 indexes to six portfolio dataset tables; 0032 a
-        # manager column to Portfolio and SignalMetadata.
-        assert len(sa.inspect(connection).get_table_names()) == 65
+        # manager column to Portfolio and SignalMetadata; 0033 drops the portfolio dataset
+        # catalog table.
+        assert len(sa.inspect(connection).get_table_names()) == 64
         if start:
             assert connection.exec_driver_sql("SELECT unique_identifier FROM ms_markets__asset").scalar_one() == "migration-preservation-asset"
         connection.rollback()
         command.upgrade(config, "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0032"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0033"
     engine.dispose()
 
 
@@ -141,13 +144,15 @@ def test_original_0017_postgresql_upgrade_preserves_every_row():
         assert {name: BRIDGE._fingerprint(connection, name) for name in tables} == before
         connection.rollback()
         command.upgrade(_config(connection), "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0032"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0033"
         # Revision 0024 deletes the account targets, as its docstring says. Revision 0027
         # converts the stored calendar rows and drops their three tables.
         kept = [
             name
             for name in tables
-            if name not in CALENDAR_REVISION_DROPS and name not in TARGETS_REVISION_DELETES
+            if name not in CALENDAR_REVISION_DROPS
+            and name not in CATALOG_REVISION_DROPS
+            and name not in TARGETS_REVISION_DELETES
         ]
         assert all(
             connection.exec_driver_sql(f'SELECT count(*) FROM "{name}"').scalar_one() == 0
@@ -156,5 +161,5 @@ def test_original_0017_postgresql_upgrade_preserves_every_row():
         assert {name: connection.exec_driver_sql(f'SELECT count(*) FROM "{name}"').scalar_one() for name in kept} == {name: counts[name] for name in kept}
         assert not set(CALENDAR_REVISION_DROPS) & set(sa.inspect(connection).get_table_names())
         assert connection.exec_driver_sql("SELECT count(*) FROM ms_markets__calendarsessionrule").scalar_one() == 1
-        assert "ms_markets__portfoliodatasetavailability" in sa.inspect(connection).get_table_names()
+        assert "ms_markets__portfoliodatasetavailability" not in sa.inspect(connection).get_table_names()
     engine.dispose()

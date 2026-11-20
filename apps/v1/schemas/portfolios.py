@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,66 +21,8 @@ def _portfolio_metadata_contract():
     return PortfolioMetadata
 
 
-def _portfolio_dataset_contracts():
-    prepare_apps_v1_import_namespace()
-    from msm_portfolios.services.portfolio_datasets import (
-        PortfolioDatasetReconciliationResult,
-        PortfolioDatasetState,
-    )
-
-    return PortfolioDatasetState, PortfolioDatasetReconciliationResult
-
-
 Portfolio = _portfolio_contract()
 PortfolioMetadata = _portfolio_metadata_contract()
-PortfolioDatasetState, PortfolioDatasetReconciliationResult = _portfolio_dataset_contracts()
-
-
-class PortfolioWithIncludes(Portfolio):
-    """`Portfolio` plus the provider sidecar rows requested with `include` (ADR 0047)."""
-
-    includes: dict[str, dict[str, Any] | None] = Field(
-        default_factory=dict,
-        description=(
-            "Provider sidecar rows requested with `include`, keyed by sidecar MetaTable uid; "
-            "`null` when the sidecar has no row for this uid. Empty when nothing was included."
-        ),
-    )
-
-
-class PortfolioDatasetRegistrationRequest(BaseModel):
-    """The instance tables a producer declares for one portfolio (ADR 0047)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    values_meta_table_uid: str = Field(
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the PortfoliosTS instance holding the values.",
-    )
-    weights_meta_table_uid: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the PortfolioWeightsTS instance, if any.",
-    )
-    signal_meta_table_uid: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the SignalWeightsTS instance, if any.",
-    )
-    reconcile: bool = Field(
-        default=True,
-        description="Reconcile the values instance at once; false records the row as not reconciled.",
-    )
-
-
-class PortfolioDatasetReconcileRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    portfolio_uids: list[str] = Field(default_factory=list, max_length=500)
-    portfolio_identifiers: list[str] = Field(default_factory=list, max_length=500)
 
 
 class PortfolioDetailTab(BaseModel):

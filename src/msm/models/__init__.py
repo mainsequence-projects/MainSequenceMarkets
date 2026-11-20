@@ -36,7 +36,6 @@ from .index_formulas import (
 )
 from .portfolios import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from .portfolios import SignalMetadataTable
-from .portfolio_dataset_availability import PortfolioDatasetAvailabilityTable
 
 
 def markets_sqlalchemy_models() -> list[type]:
@@ -65,7 +64,6 @@ def markets_sqlalchemy_models() -> list[type]:
         AssetCalendarTable,
         SignalMetadataTable,
         PortfolioTable,
-        PortfolioDatasetAvailabilityTable,
         PortfolioGroupTable,
         PortfolioGroupMembershipTable,
         AccountAllocationModelTable,
@@ -144,7 +142,6 @@ __all__ = [
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
     "PositionSetTable",
-    "PortfolioDatasetAvailabilityTable",
     "PortfolioGroupMembershipTable",
     "PortfolioGroupTable",
     "PortfolioTable",

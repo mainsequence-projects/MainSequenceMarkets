@@ -649,24 +649,19 @@ def test_a_snapshot_repeated_with_other_values_is_a_400(monkeypatch, remote) -> 
             "publish",
             {"account_uid": str(uuid.uuid4()), "holdings_date": "2026-01-02T00:00:00Z", "positions": []},
         ),
-        ("portfolio-datasets", "register", {"registration": {"portfolio_uid": str(uuid.uuid4())}}),
-        ("portfolio-datasets", "reconcile", {"portfolio_uids": [str(uuid.uuid4())]}),
+        ("signal-weights", "publish", {"key": "s", "rows": []}),
+        ("portfolio-values", "delete_after", {"key": "p", "time": "2026-01-02T00:00:00Z"}),
         ("asset", "upsert_many", {"payloads": [{"unique_identifier": "A"}]}),
         ("asset", "get_or_create_currency", {"code": "USD"}),
-        (
-            "portfolio-datasets",
-            "register_signal",
-            {"registration": {"signal_uid": "s", "signal_meta_table_uid": "t"}},
-        ),
+        ("portfolio", "assign_manager", {"uid": str(uuid.uuid4()), "managed_by": "user:x"}),
         ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
-        ("portfolio-datasets", "unregister", {"portfolio_uid": str(uuid.uuid4())}),
-        ("portfolio-datasets", "unregister_signal", {"signal_uid": "s"}),
+        ("signal-metadata", "end", {"signal_uid": "s"}),
         ("currency-spot", "upsert_many", {"payloads": []}),
         ("future", "upsert_many", {"payloads": []}),
         ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),
     ],
 )
-def test_every_publication_and_catalog_write_is_a_registry_write(
+def test_every_publication_and_manager_write_is_a_registry_write(
     monkeypatch, remote, resource, operation, arguments
 ) -> None:
     from msm.api.remote import WRITE_OPERATIONS
@@ -681,40 +676,6 @@ def test_every_publication_and_catalog_write_is_a_registry_write(
     assert operation in WRITE_OPERATIONS
     with pytest.raises(MarketsAccessError, match="registry_write resolved the acting identity"):
         remote.client.run_row_operation(resource, operation, arguments)
-
-
-def test_portfolio_datasets_register_runs_remotely(monkeypatch, remote) -> None:
-    from msm_portfolios.api.datasets import PortfolioDatasets
-    from msm_portfolios.services.portfolio_datasets import PortfolioDatasetState
-
-    portfolio_uid = uuid.uuid4()
-    seen: dict[str, Any] = {}
-
-    def register(context, registration, *, reconcile=True, **kwargs):
-        seen.update({"registration": dict(registration), "reconcile": reconcile})
-        return PortfolioDatasetState(
-            portfolio_uid=portfolio_uid,
-            portfolio_identifier="provider-sleeve",
-            values_meta_table_uid="values-uid",
-            population_state="compatible_empty",
-            reconciled_at=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
-        )
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.portfolio_datasets.register_portfolio_datasets", register
-    )
-
-    state = PortfolioDatasets.register(
-        {"portfolio_uid": str(portfolio_uid), "values_meta_table_uid": "values-uid"},
-        reconcile=False,
-    )
-
-    assert isinstance(state, PortfolioDatasetState)
-    assert state.portfolio_uid == portfolio_uid
-    assert seen == {
-        "registration": {"portfolio_uid": str(portfolio_uid), "values_meta_table_uid": "values-uid"},
-        "reconcile": False,
-    }
 
 
 class _Recording:

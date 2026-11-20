@@ -71,6 +71,43 @@ class SignalMetadata(MarketsMetaTableRow):
         )
         return cls._from_operation_result(result)
 
+    @classmethod
+    def delete(cls, uid: uuid.UUID | str) -> dict[str, Any]:
+        """Delete the signal's weights and this row in one transaction (ADR 0060).
+
+        Only the signal's manager may delete it. A portfolio that still names the signal
+        refuses the delete (``SignalDeleteConflictError``, 409) and nothing is deleted.
+        """
+
+        from msm_portfolios.services.public_api import delete_signal_metadata_record
+
+        deleted = delete_signal_metadata_record(cls._series_context(), uid=str(uid))
+        if deleted is None:
+            raise LookupError(f"SignalMetadata {uid} was not found.")
+        return deleted
+
+    @classmethod
+    def end(cls, signal_uid: str) -> dict[str, Any]:
+        """Delete signal ``signal_uid``: its weights and its metadata row, in one transaction.
+
+        As ``delete``, by ``signal_uid``. ``msm_portfolios.recipes.end_signal`` calls it.
+        """
+
+        from msm_portfolios.services.public_api import delete_signal_metadata_record
+
+        deleted = delete_signal_metadata_record(cls._series_context(), signal_uid=signal_uid)
+        if deleted is None:
+            raise LookupError(f"No SignalMetadata row has signal_uid {signal_uid!r}.")
+        return deleted
+
+    @classmethod
+    def _series_context(cls):
+        from msm.bootstrap import resolve_runtime
+
+        return resolve_runtime(
+            models=["SignalMetadata", "SignalWeightsStorage"], row_model_name=cls.__name__
+        ).context
+
 
 class SignalMetadataCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")

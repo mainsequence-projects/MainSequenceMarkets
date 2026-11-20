@@ -20,39 +20,30 @@ from msm.repositories.crud import (
     search_model,
     update_model,
 )
-from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from metatables.compiled_sql.v1 import GuardedStatement
+from msm.repositories.base import (
+    compile_markets_statement,
+    compile_markets_statements,
+    execute_markets_operation,
+    execute_markets_write,
+    resolve_markets_sql_target,
+)
 from msm.services.assets.reference_details import asset_reference_details
-from msm.storage_instances import PROVIDER_TABLE_DELETE_GUIDANCE, provider_owned_table_uid
+from msm.api.managers import require_manager
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services.portfolio_reads import (
-    PortfolioDatasetTables,
     latest_portfolio_weights,
     portfolio_values,
-    resolve_portfolio_dataset_tables,
     signal_weights,
 )
 from msm_portfolios.models import PortfolioMetadataTable, SignalMetadataTable
-from msm_portfolios.services.portfolio_deletion import PortfolioDeleteConflictError
 
 DEFAULT_PORTFOLIO_PAGE_SIZE = 50
 
 
 class SignalDeleteConflictError(ValueError):
     """Raised when a signal cannot be deleted because protected rows reference it."""
-
-
-class PortfolioDatasetOwnershipError(PortfolioDeleteConflictError):
-    """Raised when a delete would remove rows from a table another application owns.
-
-    ADR 0047: a provider owns the contract instances it registers in the Markets
-    catalog. Markets reads them; only the owning application writes or deletes
-    their rows.
-    """
-
-
-class SignalDatasetOwnershipError(SignalDeleteConflictError):
-    """Raised when a delete would remove signal rows from a table another application owns."""
 
 
 def list_portfolio_rows_response(
@@ -474,17 +465,15 @@ def get_portfolio_signal_weights_frame_response(
         return None
 
     portfolio = _build_portfolio_row(portfolio_row)
+    # The signal is the portfolio's signal_uid; a published signal has no update record
+    # of a bound table, so its table-update pointer may be empty (ADR 0060).
     signal_weights_table_update_uid = _string_or_none(
         portfolio.get("signal_weights_table_update_uid")
     )
-    if signal_weights_table_update_uid is None:
-        raise ValueError("Portfolio has no signal_weights_table_update_uid configured.")
-
     signal_uid = _resolve_portfolio_signal_uid(portfolio)
     rows = _portfolio_signal_weight_rows(
         context,
         signal_uid=signal_uid,
-        portfolio_identifier=_string_or_empty(portfolio.get("unique_identifier")),
         start_date=start_date,
         end_date=end_date,
         order=order,
@@ -624,51 +613,72 @@ def update_signal_metadata_response(
 def delete_signal_metadata_record(
     context: MarketsRepositoryContext,
     *,
-    uid: str,
+    uid: str | None = None,
+    signal_uid: str | None = None,
 ) -> dict[str, Any] | None:
-    existing = _get_signal_metadata_row(context, uid=uid)
+    """Delete a signal's weights and its ``SignalMetadata`` row in one transaction.
+
+    The signal is named by its row ``uid`` or its ``signal_uid``; ``None`` when it
+    does not exist. Only the signal's manager may delete it (ADR 0060). A portfolio
+    that still names the signal refuses the delete with ``SignalDeleteConflictError``
+    and nothing is deleted.
+    """
+
+    existing = (
+        _get_signal_metadata_row(context, uid=uid)
+        if uid is not None
+        else _signal_metadata_row_by_signal_uid(context, signal_uid=str(signal_uid or ""))
+    )
     if existing is None:
         return None
 
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = uuid.UUID(str(signal["uid"]))
     signal_uid = _string_or_empty(signal.get("signal_uid"))
-    retained_datasets = _retained_signal_datasets(existing, signal_uid=signal_uid)
-    deleted_weights_count = _delete_signal_weight_rows(
-        context,
-        signal_uid=signal_uid,
-        after_date=None,
+    require_manager(f"Signal {signal_uid!r}", existing.get("managed_by"))
+    deleted_weights_count = _count_rows(
+        context, SignalWeightsStorage, SignalWeightsStorage.signal_uid == signal_uid
     )
-
+    data_source_uid, dialect = resolve_markets_sql_target(context)
+    write = compile_markets_statements(
+        [
+            delete(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid == signal_uid),
+            GuardedStatement(
+                delete(SignalMetadataTable)
+                .where(SignalMetadataTable.uid == signal_metadata_uid)
+                .returning(SignalMetadataTable.uid.label("uid")),
+                expect_rows=1,
+                label=SIGNAL_DELETE_GUARD,
+            ),
+        ],
+        context=context,
+        operation="delete",
+        data_source_uid=data_source_uid,
+        dialect=dialect,
+    )
     try:
         rows = _operation_result_rows(
-            execute_markets_operation(
-                _compile_delete_signal_metadata_operation(
-                    context,
-                    signal_metadata_uid=signal_metadata_uid,
-                ),
-                context=context,
-            )
+            execute_markets_write(write, context=context, refused_by=(SIGNAL_DELETE_GUARD,))
         )
     except Exception as exc:
         if _is_delete_conflict(exc):
             raise SignalDeleteConflictError(
-                "Signal metadata is referenced by protected rows and could not be deleted."
+                f"Signal {signal_uid!r} is referenced by protected rows (a portfolio that "
+                f"names it) and could not be deleted: {exc}"
             ) from exc
         raise
 
     if not rows:
         raise SignalDeleteConflictError(
-            "Signal metadata deletion was blocked by a concurrent protected reference."
+            "Signal metadata deletion was blocked by a concurrent change."
         )
 
     return {
-        "detail": _deleted_detail("Signal metadata deleted.", retained_datasets),
+        "detail": "Signal metadata deleted.",
         "signal_metadata_uid": str(signal_metadata_uid),
         "signal_uid": signal_uid,
         "deleted_count": 1,
         "deleted_weights_count": deleted_weights_count,
-        "retained_datasets": retained_datasets,
     }
 
 
@@ -685,15 +695,7 @@ def delete_signal_weights(
     signal = _build_signal_metadata_row(existing)
     signal_metadata_uid = str(signal["uid"])
     signal_uid = _string_or_empty(signal.get("signal_uid"))
-    owned_table_uid = provider_owned_table_uid(
-        existing.get("meta_table_uid"),
-        core_storage=SignalWeightsStorage,
-    )
-    if owned_table_uid is not None:
-        raise SignalDatasetOwnershipError(
-            f"Signal {signal_uid!r} stores its weights in table {owned_table_uid}, which "
-            f"another application owns. {PROVIDER_TABLE_DELETE_GUIDANCE}"
-        )
+    require_manager(f"Signal {signal_uid!r}", existing.get("managed_by"))
     deleted_count = _delete_signal_weight_rows(
         context,
         signal_uid=signal_uid,
@@ -721,17 +723,7 @@ def delete_portfolio_weights(
     portfolio = _build_portfolio_row(existing)
     portfolio_uid = uuid.UUID(str(portfolio["uid"]))
     portfolio_identifier = _string_or_empty(portfolio.get("unique_identifier"))
-    tables = _portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier)
-    owned_table_uid = provider_owned_table_uid(
-        tables.weights_meta_table_uid if tables is not None else None,
-        core_storage=PortfolioWeightsStorage,
-    )
-    if owned_table_uid is not None:
-        raise PortfolioDatasetOwnershipError(
-            f"Portfolio {portfolio_identifier!r} stores its weights in table "
-            f"{owned_table_uid}, which another application owns. "
-            f"{PROVIDER_TABLE_DELETE_GUIDANCE}"
-        )
+    require_manager(f"Portfolio {portfolio_identifier!r}", existing.get("managed_by"))
 
     deleted_count = _delete_portfolio_weight_rows(
         context,
@@ -747,51 +739,33 @@ def delete_portfolio_weights(
     }
 
 
-def _portfolio_dataset_tables(
-    context: MarketsRepositoryContext,
-    *,
-    portfolio_identifier: str,
-) -> PortfolioDatasetTables | None:
-    """Return the catalogued instance tables of one portfolio, or ``None`` for the core tables."""
-
-    if not portfolio_identifier:
-        return None
-    return resolve_portfolio_dataset_tables(
-        portfolio_identifier,
-        repository_context=context,
-    ).get(portfolio_identifier)
+SIGNAL_DELETE_GUARD = "signal"
+"""Guard label of the signal delete's last statement: the SignalMetadata row."""
 
 
-def _retained_signal_datasets(
-    signal_metadata_row: Mapping[str, Any],
-    *,
-    signal_uid: str,
-) -> list[dict[str, str]]:
-    """List the signal dataset a delete leaves in a table another application owns."""
-
-    owned_table_uid = provider_owned_table_uid(
-        signal_metadata_row.get("meta_table_uid"),
-        core_storage=SignalWeightsStorage,
+def _signal_metadata_row_by_signal_uid(
+    context: MarketsRepositoryContext, *, signal_uid: str
+) -> dict[str, Any] | None:
+    if not signal_uid:
+        raise ValueError("signal_uid must be a non-empty string.")
+    return _first_operation_row(
+        search_model(
+            context, model=SignalMetadataTable, filters={"signal_uid": signal_uid}, limit=1
+        )
     )
-    if owned_table_uid is None:
-        return []
-    return [
-        {
-            "signal_uid": signal_uid,
-            "dataset": "signal_weights",
-            "meta_table_uid": owned_table_uid,
-        }
-    ]
 
 
-def _deleted_detail(detail: str, retained_datasets: Sequence[Mapping[str, Any]]) -> str:
-    if not retained_datasets:
-        return detail
-    return (
-        f"{detail} Rows in {len(retained_datasets)} table"
-        f"{'s' if len(retained_datasets) != 1 else ''} another application owns were left in "
-        "place; see retained_datasets."
+def _count_rows(context: MarketsRepositoryContext, model: type, condition: Any) -> int:
+    result = execute_markets_operation(
+        compile_markets_statement(
+            select(func.count().label("row_count")).select_from(model).where(condition),
+            context=context,
+            operation="select",
+        ),
+        context=context,
     )
+    rows = _operation_result_rows(result)
+    return int(rows[0].get("row_count") or 0) if rows else 0
 
 
 def _delete_signal_weight_rows(
@@ -852,26 +826,6 @@ def _delete_time_index_storage_after_date(
 
 def _time_index_delete_count(result: Mapping[str, Any]) -> int:
     return int(result["deleted_count"])
-
-
-def _compile_delete_signal_metadata_operation(
-    context: MarketsRepositoryContext,
-    *,
-    signal_metadata_uid: uuid.UUID,
-):
-    statement = (
-        delete(SignalMetadataTable)
-        .where(SignalMetadataTable.uid == signal_metadata_uid)
-        .returning(
-            SignalMetadataTable.uid.label("uid"),
-            SignalMetadataTable.signal_uid.label("signal_uid"),
-        )
-    )
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
 
 
 def _portfolio_filter_args(
@@ -993,33 +947,19 @@ def _portfolio_signal_weight_rows(
     context: MarketsRepositoryContext,
     *,
     signal_uid: str,
-    portfolio_identifier: str | None = None,
     start_date: dt.datetime | None,
     end_date: dt.datetime | None,
     order: Literal["asc", "desc"],
     limit: int,
 ) -> list[dict[str, Any]]:
-    """Read signal weights through the catalog-aware read service.
+    """Read a signal's published weights from Markets' own table."""
 
-    The ``SignalWeightsTS`` instance is the portfolio's catalogued signal table
-    when the portfolio is known, else the signal's own metadata reference, else
-    the core table.
-    """
-
-    meta_table_uid: str | None = None
-    if portfolio_identifier:
-        resolved = resolve_portfolio_dataset_tables(
-            portfolio_identifier,
-            repository_context=context,
-        ).get(portfolio_identifier)
-        meta_table_uid = resolved.signal_meta_table_uid if resolved is not None else None
     return signal_weights(
         signal_uid,
         start=start_date,
         end=end_date,
         order=order,
         limit=limit,
-        meta_table_uid=meta_table_uid,
         repository_context=context,
     )
 
@@ -1055,9 +995,8 @@ def _resolve_portfolio_signal_uid(
         return signal_uid
 
     raise ValueError(
-        "Portfolio has no signal_uid configured. Run the portfolio graph with "
-        "update_pointers=True so PortfolioTable.signal_uid is populated from "
-        "the persisted signal metadata."
+        "Portfolio has no signal_uid configured. Run the portfolio "
+        "(msm_portfolios.recipes.run_portfolio) so Portfolio.signal_uid names its signal."
     )
 
 

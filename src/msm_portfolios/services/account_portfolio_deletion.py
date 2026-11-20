@@ -12,12 +12,12 @@ the portfolio runtime calls them directly::
 Each account is deleted as core's `msm.services.delete_account` deletes it, with the
 same checks and answers, in the same single transaction as the portfolios that its
 virtual funds or target rows name and that nothing references once its history is
-gone: their rows in every dataset, their catalog row and group memberships (by
-`CASCADE`), then the portfolio. One read and one transaction per account. A portfolio is
-kept, and the answer says why, when account history of another account references it
-(ADR 0049), when the catalog places its values or weights in a table another
-application owns (ADR 0047), or when a foreign key refuses its delete; then the
-transaction deletes nothing, and a second one deletes the account alone.
+gone: their rows in every dataset and group memberships (by `CASCADE`), then the
+portfolio. One read and one transaction per account. A portfolio is kept, and the answer
+says why, when account history of another account references it (ADR 0049), when the
+caller does not manage it (ADR 0060), or when a foreign key refuses its delete (an
+application's own table that still holds rows of it); then the transaction deletes
+nothing, and a second one deletes the account alone.
 """
 
 from __future__ import annotations
@@ -31,10 +31,9 @@ from metatables import MetaTableTransactionGuardError
 from msm.repositories.base import MarketsRepositoryContext
 from msm.services.accounts import deletion as account_deletion
 from msm.services.accounts.deletion import AccountDeleteConflictError
-from msm.storage_instances import PROVIDER_TABLE_DELETE_GUIDANCE, provider_owned_table_uid
+from msm.api.managers import manager_refusal
 from msm_portfolios.repositories import account_portfolio_deletion as repository
 from msm_portfolios.repositories.account_portfolio_deletion import ACCOUNT_PORTFOLIOS_GUARD
-from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 
 PORTFOLIO_CHANGED_REASON = (
     "It changed while the account was being deleted, so the account was deleted alone. "
@@ -285,20 +284,11 @@ def _kept_reasons(portfolio: Mapping[str, Any]) -> list[str]:
         for key, count in portfolio["references"].items()
         if count > 0
     ]
-    provider_tables = [
-        f"The catalog places its {table.key} in table {owned}, which another application owns."
-        for table in PORTFOLIO_DATASET_TABLES
-        if table.catalog_column is not None
-        and (
-            owned := provider_owned_table_uid(
-                portfolio["catalog"].get(table.catalog_column),
-                core_storage=table.model,
-            )
-        )
-        is not None
-    ]
-    if provider_tables:
-        reasons.extend([*provider_tables, PROVIDER_TABLE_DELETE_GUIDANCE])
+    refusal = manager_refusal(
+        f"Portfolio {portfolio['unique_identifier']!r}", portfolio.get("managed_by")
+    )
+    if refusal is not None:
+        reasons.append(refusal)
     return reasons
 
 

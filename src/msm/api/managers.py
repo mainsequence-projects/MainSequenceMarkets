@@ -96,25 +96,34 @@ def manager_for_new_row() -> str | None:
     return None if manager is None else manager.principal
 
 
-def require_manager(label: str, managed_by: str | None) -> None:
-    """Refuse, with ``PermissionError``, an acting manager that does not manage ``label``.
+def manager_refusal(label: str, managed_by: str | None) -> str | None:
+    """Why the acting manager may not publish to or delete ``label``; ``None`` when it may.
 
-    Does nothing outside a Markets API write (see the module docstring).
+    Always ``None`` outside a Markets API write (see the module docstring).
     """
 
     manager = acting_manager()
     if manager is None:
-        return
+        return None
     if managed_by in (None, ""):
-        raise PermissionError(
+        return (
             f"{label} has no manager, so nobody may publish to it or delete it. An "
             "Organization admin assigns one with assign_manager (msm registry assign-manager)."
         )
     if managed_by != manager.principal:
-        raise PermissionError(
+        return (
             f"{label} is managed by {managed_by}; the caller is {manager.principal}. Only "
             "its manager publishes to it or deletes it."
         )
+    return None
+
+
+def require_manager(label: str, managed_by: str | None) -> None:
+    """Refuse, with ``PermissionError``, an acting manager that does not manage ``label``."""
+
+    refusal = manager_refusal(label, managed_by)
+    if refusal is not None:
+        raise PermissionError(refusal)
 
 
 def require_assigning_admin() -> None:
@@ -143,6 +152,7 @@ __all__ = [
     "acting_manager",
     "acting_manager_scope",
     "manager_for_new_row",
+    "manager_refusal",
     "principal",
     "refuse_managed_by",
     "require_assigning_admin",

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -29,11 +28,10 @@ from msm_portfolios.services import (
     preflight_bulk_delete_accounts_with_portfolios,
 )
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
-from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES, PortfoliosStorage
+from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.support.account_delete import (
     MARKETS_TABLES,
     _account_rows,
-    _catalog,
     _create_provider_tables,
     _exists,
     _history,
@@ -65,8 +63,6 @@ PORTFOLIO_TABLES = {
     "ms_markets__virtualfund",
     "ms_markets__targetpositionsts",
 }
-CORE_VALUES_UID = "0a0a0a0a-0000-4000-8000-000000000001"
-PROVIDER_VALUES_UID = "1b1b1b1b-0000-4000-8000-000000000002"
 ACCOUNT_STATEMENTS = len(ACCOUNT_DELETE_TABLES)
 WITH_PORTFOLIOS = ACCOUNT_STATEMENTS + len(DATASETS) + 1
 
@@ -124,15 +120,12 @@ def test_a_missing_account_deletes_nothing(sqlite_markets) -> None:
     assert sqlite_markets.requests == ["read", "read"]
 
 
-def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets, monkeypatch) -> None:
+def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets) -> None:
     engine = sqlite_markets.engine
     account = _account(engine)
     portfolio, identifier = _portfolio_with_data(engine)
     history = _history(sqlite_markets, account, portfolio)
-    # Its catalog names the core values table, and it belongs to a group: both go by CASCADE.
-    _catalog(engine, portfolio, values=CORE_VALUES_UID)
-    core = SimpleNamespace(uid=CORE_VALUES_UID)
-    monkeypatch.setattr(PortfoliosStorage, "get_time_index_meta_table", classmethod(lambda cls: core))
+    # It belongs to a group: its membership goes by CASCADE.
     group = _insert(engine, "ms_markets__portfoliogroup")
     _insert(engine, "ms_markets__portfoliogroupmembership", portfolio_group_uid=group["uid"], portfolio_uid=portfolio.hex)
     other, other_identifier = _portfolio_with_data(engine)
@@ -150,7 +143,6 @@ def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets
     assert deleted["deleted_rows"] == preflight["row_counts"]
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
-    assert _count(engine, "ms_markets__portfoliodatasetavailability") == 0
     assert _count(engine, "ms_markets__portfoliogroupmembership") == 0
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
@@ -302,20 +294,23 @@ def test_a_portfolio_another_account_uses_stays_with_its_data(sqlite_markets, re
     assert set(_dataset_rows(engine, own_identifier).values()) == {0}
 
 
-def test_a_portfolio_catalogued_in_another_applications_table_stays_and_is_reported(sqlite_markets) -> None:
+def test_a_portfolio_the_caller_does_not_manage_stays_and_is_reported(sqlite_markets) -> None:
+    """ADR 0060, decision 4: through the Markets API a caller deletes only what it manages."""
+
+    from msm.api.managers import Manager, acting_manager_scope
+
     engine = sqlite_markets.engine
     account = _account(engine)
     portfolio, identifier = _portfolio_with_data(engine)
     _history(sqlite_markets, account, portfolio)
-    _catalog(engine, portfolio, values=PROVIDER_VALUES_UID)
     sqlite_markets.requests.clear()
 
-    deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
+    with acting_manager_scope(lambda: Manager("branch:00000000-0000-4000-8000-00000000000b")):
+        deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
 
     (kept,) = deleted["kept_portfolios"]
     assert kept["uid"] == str(portfolio)
-    assert f"The catalog places its values in table {PROVIDER_VALUES_UID}" in kept["reason"]
-    assert "delete them through the application that owns the table" in kept["reason"]
+    assert "has no manager" in kept["reason"]
     assert deleted["deleted_portfolios"] == []
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}

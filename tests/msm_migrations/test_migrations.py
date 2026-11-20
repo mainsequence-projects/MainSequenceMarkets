@@ -165,6 +165,7 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0030_portfolio_weights_book_shares.py",
         "0031_portfolio_dataset_series_indexes.py",
         "0032_registry_row_managers.py",
+        "0033_drop_portfolio_dataset_catalog.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -243,6 +244,11 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert managers.revision == "0032"
     assert managers.down_revision == "0031"
+    dropped_catalog = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0033_drop_portfolio_dataset_catalog"
+    )
+    assert dropped_catalog.revision == "0033"
+    assert dropped_catalog.down_revision == "0032"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

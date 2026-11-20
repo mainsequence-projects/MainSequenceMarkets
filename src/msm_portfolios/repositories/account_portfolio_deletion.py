@@ -22,7 +22,7 @@ from sqlalchemy import delete, func, select, union
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
-from msm.models import PortfolioDatasetAvailabilityTable, PortfolioTable
+from msm.models import PortfolioTable
 from msm.repositories.account_deletion import (
     ACCOUNT_HISTORY_REFERENCES,
     account_delete_read_row,
@@ -139,7 +139,7 @@ def build_read_account_with_portfolios_operation(
     """One read: core's account read, with one row per portfolio its history names.
 
     Per portfolio: the account history of other accounts that references it, its
-    catalog row's values and weights instances, and its rows in each dataset. Each
+    manager, and its rows in each dataset. Each
     dataset count reads only that portfolio's rows, through the dataset's
     ``(portfolio_identifier, time_index)`` index (revisions 0026 and 0031, issue 96).
     """
@@ -156,6 +156,7 @@ def build_read_account_with_portfolios_operation(
         .add_columns(
             PortfolioTable.uid.label(_label("uid")),
             PortfolioTable.unique_identifier.label(_label("identifier")),
+            PortfolioTable.managed_by.label(_label("managed_by")),
             # Account history of other accounts: it stays when this account goes.
             *(
                 select(func.count())
@@ -164,13 +165,6 @@ def build_read_account_with_portfolios_operation(
                 .scalar_subquery()
                 .label(_label(key))
                 for key, model, column in ACCOUNT_HISTORY_REFERENCES
-            ),
-            *(
-                getattr(PortfolioDatasetAvailabilityTable, table.catalog_column).label(
-                    table.catalog_column
-                )
-                for table in PORTFOLIO_DATASET_TABLES
-                if table.catalog_column
             ),
             *(
                 select(func.count())
@@ -182,10 +176,6 @@ def build_read_account_with_portfolios_operation(
             ),
         )
         .outerjoin(PortfolioTable, PortfolioTable.uid.in_(named))
-        .outerjoin(
-            PortfolioDatasetAvailabilityTable,
-            PortfolioDatasetAvailabilityTable.portfolio_uid == PortfolioTable.uid,
-        )
     )
     return compile_markets_statement(
         statement,
@@ -205,8 +195,8 @@ def read_account_with_portfolios(
     Answers ``None`` when the account does not exist. Otherwise core's
     `account_delete_read_row` with ``portfolios``: per portfolio its ``uid`` and
     ``unique_identifier``, the account history of other accounts that references it
-    (``references``, by key of `ACCOUNT_HISTORY_REFERENCES`), its ``catalog`` instance
-    uids and its ``row_counts`` per dataset.
+    (``references``, by key of `ACCOUNT_HISTORY_REFERENCES`), its ``managed_by`` and its
+    ``row_counts`` per dataset.
     """
 
     result = execute_markets_operation(
@@ -231,11 +221,7 @@ def read_account_with_portfolios(
                     key: int(row.get(_label(key)) or 0)
                     for key, _model, _column in ACCOUNT_HISTORY_REFERENCES
                 },
-                "catalog": {
-                    table.catalog_column: _string_or_none(row.get(table.catalog_column))
-                    for table in PORTFOLIO_DATASET_TABLES
-                    if table.catalog_column
-                },
+                "managed_by": _string_or_none(row.get(_label("managed_by"))),
                 "row_counts": {
                     table.key: int(row.get(_label(f"{table.key}_rows")) or 0)
                     for table in PORTFOLIO_DATASET_TABLES

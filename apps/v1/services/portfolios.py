@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -10,16 +9,11 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
     PortfolioBulkDeleteResponse,
-    PortfolioDatasetReconciliationResult,
-    PortfolioDatasetReconcileRequest,
-    PortfolioDatasetRegistrationRequest,
-    PortfolioDatasetState,
     PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
-    PortfolioWithIncludes,
 )
 from msm.api.http import (
     TabularFrameResponse,
@@ -210,28 +204,15 @@ def get_portfolio_values_frame(
     return TabularFrameResponse.model_validate(response)
 
 
-def get_portfolios_by_uids(
-    *, uids: Sequence[str], include: Sequence[str] | None = None
-) -> list[PortfolioWithIncludes]:
-    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted.
+def get_portfolios_by_uids(*, uids: Sequence[str]) -> list[Portfolio]:
+    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted."""
 
-    ``include`` names provider sidecar MetaTables keyed by `Portfolio.uid` whose
-    rows are attached under ``includes`` (ADR 0047 `include` hydration).
-    """
-
-    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
     from msm.models import PortfolioTable
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=PortfolioTable, uids=normalize_lookup_uids(uids))
-    return hydrate(
-        runtime.context,
-        model_cls=PortfolioWithIncludes,
-        core_model=PortfolioTable,
-        items=[_validate_portfolio_row(row) for row in rows],
-        include=include,
-    )
+    return [_validate_portfolio_row(row) for row in rows]
 
 
 def get_portfolios_values_frame(
@@ -245,11 +226,10 @@ def get_portfolios_values_frame(
 ) -> TabularFrameResponse:
     """Return one `core.tabular_frame@v1` of values for several portfolios.
 
-    ADR 0047: the portfolios are grouped by the `PortfoliosTS` instance the
-    catalog records for them; each instance is read once and the rows are
-    merged. Every requested uid must be a portfolio. The merged rows are
-    ordered by (`time_index`, `portfolio_identifier`) and `offset` skips that
-    many of them, so a caller pages through a window longer than `limit`.
+    The rows come from Markets' own `PortfoliosTS` table (ADR 0060). Every
+    requested uid must be a portfolio. The rows are ordered by (`time_index`,
+    `portfolio_identifier`) and `offset` skips that many of them, so a caller
+    pages through a window longer than `limit`.
     """
 
     portfolios = _required_portfolios(uids)
@@ -404,58 +384,6 @@ def get_portfolios_weights_frame(
     )
 
 
-@registry_write("portfolio", "register:datasets")
-def register_portfolio_dataset_catalog(
-    *,
-    uid: str,
-    payload: PortfolioDatasetRegistrationRequest,
-) -> PortfolioDatasetState:
-    """Record which instance tables hold one portfolio's datasets (ADR 0047)."""
-
-    from msm_portfolios.services import register_portfolio_datasets
-
-    return register_portfolio_datasets(
-        _get_runtime().context,
-        {
-            "portfolio_uid": uuid.UUID(str(uid)),
-            "values_meta_table_uid": payload.values_meta_table_uid,
-            "weights_meta_table_uid": payload.weights_meta_table_uid,
-            "signal_meta_table_uid": payload.signal_meta_table_uid,
-        },
-        reconcile=payload.reconcile,
-    )
-
-
-def get_portfolio_dataset_state(*, uid: str) -> PortfolioDatasetState | None:
-    """Return the catalog row of one portfolio, or ``None`` when it reads the core tables.
-
-    Raises ``LookupError`` when the portfolio does not exist.
-    """
-
-    from msm_portfolios.services import list_portfolio_dataset_states
-
-    if get_portfolio_detail(uid=uid) is None:
-        raise LookupError(f"Portfolio {uid!r} was not found.")
-    states = list_portfolio_dataset_states(_get_runtime().context, portfolio_uids=[uid])
-    return states[0] if states else None
-
-
-@registry_write("portfolio", "reconcile:datasets")
-def reconcile_portfolio_dataset_catalog(
-    *,
-    payload: PortfolioDatasetReconcileRequest,
-) -> PortfolioDatasetReconciliationResult:
-    """Reconcile the values instance of the selected catalogued portfolios."""
-
-    from msm_portfolios.services import reconcile_portfolio_dataset_availability
-
-    return reconcile_portfolio_dataset_availability(
-        _get_runtime().context,
-        portfolio_uids=payload.portfolio_uids,
-        portfolio_identifiers=payload.portfolio_identifiers,
-    )
-
-
 def _required_portfolios(uids: Sequence[str]) -> list[Portfolio]:
     from apps.v1.services.lookups import normalize_lookup_uids
 
@@ -558,7 +486,6 @@ def _get_runtime():
     return resolve_apps_v1_portfolio_runtime(
         models=[
             "Portfolio",
-            "PortfolioDatasetAvailability",
             "Index",
             "Asset",
             "AssetSnapshotsStorage",
@@ -582,7 +509,6 @@ def _get_delete_runtime():
     return resolve_apps_v1_portfolio_runtime(
         models=[
             "Portfolio",
-            "PortfolioDatasetAvailability",
             "PortfolioWeightsStorage",
             "PortfoliosStorage",
             "PortfolioRebalanceStateStorage",

@@ -1125,16 +1125,10 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
 @dataclass(frozen=True)
 class PortfolioDatasetTable:
-    """One of the portfolio's own Markets datasets, keyed by ``portfolio_identifier``.
-
-    ``catalog_column`` names the ``PortfolioDatasetAvailability`` column that can place
-    the portfolio's rows in another application's instance of the table instead
-    (ADR 0047). Markets never deletes rows there.
-    """
+    """One of the portfolio's own Markets datasets, keyed by ``portfolio_identifier``."""
 
     key: str
     model: type[Any]
-    catalog_column: str | None = None
 
     @property
     def table_name(self) -> str:
@@ -1142,8 +1136,8 @@ class PortfolioDatasetTable:
 
 
 PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
-    PortfolioDatasetTable("weights", PortfolioWeightsStorage, catalog_column="weights_meta_table_uid"),
-    PortfolioDatasetTable("values", PortfoliosStorage, catalog_column="values_meta_table_uid"),
+    PortfolioDatasetTable("weights", PortfolioWeightsStorage),
+    PortfolioDatasetTable("values", PortfoliosStorage),
     PortfolioDatasetTable("rebalance_state", PortfolioRebalanceStateStorage),
     PortfolioDatasetTable("analytics", PortfolioAnalyticsStorage),
     PortfolioDatasetTable("event_ledger", PortfolioEventLedgerStorage),

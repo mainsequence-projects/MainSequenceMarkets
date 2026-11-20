@@ -34,12 +34,12 @@ def test_none_sets_the_column_to_null() -> None:
         _context(),
         model=SignalMetadataTable,
         uid=ROW_UID,
-        values={"meta_table_uid": None},
+        values={"managed_by": None},
         returning=False,
     )
 
-    assert _set_clause(operation) == "meta_table_uid=NULL"
-    assert "meta_table_uid" not in operation.statement.parameters
+    assert _set_clause(operation) == "managed_by=NULL"
+    assert "managed_by" not in operation.statement.parameters
 
 
 def test_none_on_a_json_column_is_sql_null_not_json_null() -> None:

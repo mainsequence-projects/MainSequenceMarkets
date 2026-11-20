@@ -21,17 +21,13 @@ from msm.time_index.utils.storage_schema import (
     storage_index_names,
     storage_time_index_name,
 )
-from msm.models import AssetTable, PortfolioTable, SignalMetadataTable
+from msm.models import AssetTable, CalendarTable, PortfolioTable
 from msm_portfolios.time_index.contract_instances import (
     PORTFOLIO_STORAGE_CONTRACTS,
     configured_contract_instance_storage,
     configured_portfolio_calendar_events_storage,
     configured_portfolio_event_ledger_storage,
     configured_portfolio_rebalance_state_storage,
-    configured_portfolio_weights_storage,
-    configured_portfolios_storage,
-    configured_signal_weights_storage,
-    contract_columns_satisfied,
     contract_instance_identifier,
     contract_instance_table_name,
 )
@@ -39,19 +35,13 @@ from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioEventLedgerStorage,
     PortfolioRebalanceStateStorage,
-    PortfoliosStorage,
-    PortfolioWeightsStorage,
 )
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
 
 
 @pytest.mark.parametrize(
     ("factory", "contract", "core"),
     [
-        (configured_portfolios_storage, "PortfoliosTS", PortfoliosStorage),
-        (configured_portfolio_weights_storage, "PortfolioWeightsTS", PortfolioWeightsStorage),
-        (configured_signal_weights_storage, "SignalWeightsTS", SignalWeightsStorage),
         (
             configured_portfolio_rebalance_state_storage,
             "PortfolioRebalanceStateTS",
@@ -149,21 +139,34 @@ def test_event_ledger_instance_registers_with_the_core_secondary_index() -> None
     ]
 
 
+def test_published_series_are_not_contracts() -> None:
+    """ADR 0060: signal weights, portfolio weights and values are published, never instances."""
+
+    assert sorted(PORTFOLIO_STORAGE_CONTRACTS) == [
+        "PortfolioCalendarEventsTS",
+        "PortfolioEventLedgerTS",
+        "PortfolioRebalanceStateTS",
+    ]
+    with pytest.raises(ValueError, match="Unknown portfolio storage contract"):
+        configured_contract_instance_storage("PortfoliosTS", instance_key="x")
+
+
 def test_instances_keep_the_contract_foreign_keys_to_core_registries() -> None:
-    values = configured_portfolios_storage(instance_key="fk_check", namespace="ns-a")
-    weights = configured_portfolio_weights_storage(instance_key="fk_check", namespace="ns-a")
-    signals = configured_signal_weights_storage(instance_key="fk_check", namespace="ns-a")
+    rebalance = configured_portfolio_rebalance_state_storage(instance_key="fk_check", namespace="ns-a")
+    events = configured_portfolio_calendar_events_storage(instance_key="fk_check", namespace="ns-a")
 
     def targets(model, column):
         return sorted(fk.target_fullname for fk in model.__table__.c[column].foreign_keys)
 
-    portfolio = f"{PortfolioTable.__table__.fullname}.unique_identifier"
-    asset = f"{AssetTable.__table__.fullname}.unique_identifier"
-    assert targets(values, "portfolio_identifier") == [portfolio]
-    assert targets(weights, "portfolio_identifier") == [portfolio]
-    assert targets(weights, "asset_identifier") == [asset]
-    assert targets(signals, "signal_uid") == [f"{SignalMetadataTable.__table__.fullname}.signal_uid"]
-    assert targets(signals, "asset_identifier") == [asset]
+    assert targets(rebalance, "portfolio_identifier") == [
+        f"{PortfolioTable.__table__.fullname}.unique_identifier"
+    ]
+    assert targets(rebalance, "asset_identifier") == [
+        f"{AssetTable.__table__.fullname}.unique_identifier"
+    ]
+    assert targets(events, "calendar_identifier") == [
+        f"{CalendarTable.__table__.fullname}.unique_identifier"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -203,18 +206,21 @@ def test_every_contract_declares_the_core_table_foreign_keys() -> None:
 
 
 def test_identifier_is_stable_and_derived_from_contract_and_instance_key() -> None:
-    first = configured_portfolios_storage(instance_key="Stable", namespace="ns-b")
-    second = configured_portfolios_storage(instance_key="stable", namespace="ns-b")
-    markets = configured_portfolios_storage(instance_key="second_engine")
+    first = configured_portfolio_rebalance_state_storage(instance_key="Stable", namespace="ns-b")
+    second = configured_portfolio_rebalance_state_storage(instance_key="stable", namespace="ns-b")
+    markets = configured_portfolio_rebalance_state_storage(instance_key="second_engine")
 
     assert first is second
-    assert contract_instance_identifier("PortfoliosTS", "Stable") == "PortfoliosTS.stable"
+    assert (
+        contract_instance_identifier("PortfolioRebalanceStateTS", "Stable")
+        == "PortfolioRebalanceStateTS.stable"
+    )
     # The default Markets namespace keeps the bare identifier, as every Markets table does.
-    assert markets.__metatable_identifier__ == "PortfoliosTS.second_engine"
-    assert markets.__table__.name == "ms_markets__portfoliosts__second_engine"
-    assert markets.__table__.name != PortfoliosStorage.__table__.name
+    assert markets.__metatable_identifier__ == "PortfolioRebalanceStateTS.second_engine"
+    assert markets.__table__.name == "ms_markets__portfoliorebalancestatets__second_engine"
+    assert markets.__table__.name != PortfolioRebalanceStateStorage.__table__.name
     with pytest.raises(ValueError, match="instance_key"):
-        configured_portfolios_storage(instance_key="Bad Key!")
+        configured_portfolio_rebalance_state_storage(instance_key="Bad Key!")
     with pytest.raises(ValueError, match="Unknown portfolio storage contract"):
         configured_contract_instance_storage("BarsTS", instance_key="x")
 
@@ -223,43 +229,34 @@ def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
     class ProviderBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
-    instance = configured_signal_weights_storage(
+    instance = configured_portfolio_rebalance_state_storage(
         instance_key="own_base",
-        namespace="provider-ns",
-        storage_app="provider_app",
+        namespace="app-ns",
+        storage_app="app",
         base=ProviderBase,
     )
 
     assert issubclass(instance, ProviderBase)
     assert instance.__table__.metadata is ProviderBase.metadata
     assert set(ProviderBase.metadata.tables) == {
-        "provider_app__signalweightsts__own_base",
+        "app__portfoliorebalancestatets__own_base",
         AssetTable.__table__.name,
-        SignalMetadataTable.__table__.name,
+        PortfolioTable.__table__.name,
     }
-    assert "provider_app__signalweightsts__own_base" not in MarketsBase.metadata.tables
+    assert "app__portfoliorebalancestatets__own_base" not in MarketsBase.metadata.tables
     assert ProviderBase.metadata.tables[AssetTable.__table__.name] is not AssetTable.__table__
 
 
 def test_instances_carry_the_series_lookup_index_of_their_contract() -> None:
-    signals = configured_signal_weights_storage(instance_key="series_index", namespace="ns-a")
-    weights = configured_portfolio_weights_storage(instance_key="series_index", namespace="ns-a")
+    rebalance = configured_portfolio_rebalance_state_storage(
+        instance_key="series_index", namespace="ns-a"
+    )
 
-    def lookup(table) -> list[list[str]]:
-        return [
-            [column.name for column in index.columns]
-            for index in table.indexes
-            if not index.unique
-        ]
+    lookup = [
+        [column.name for column in index.columns]
+        for index in rebalance.__table__.indexes
+        if not index.unique
+    ]
 
-    assert lookup(signals.__table__) == [["signal_uid", "time_index"]]
-    assert lookup(weights.__table__) == [["portfolio_identifier", "time_index"]]
-    assert all(len(index.name) <= 63 for index in signals.__table__.indexes)
-    assert all(len(index.name) <= 63 for index in weights.__table__.indexes)
-
-
-def test_contract_columns_allow_provider_extras_but_not_missing_columns() -> None:
-    required = PORTFOLIO_STORAGE_CONTRACTS["PortfoliosTS"].column_names
-
-    assert contract_columns_satisfied("PortfoliosTS", [*required, "provider_only"])
-    assert not contract_columns_satisfied("PortfoliosTS", required[:-1])
+    assert lookup == [["portfolio_identifier", "time_index"]]
+    assert all(len(index.name) <= 63 for index in rebalance.__table__.indexes)

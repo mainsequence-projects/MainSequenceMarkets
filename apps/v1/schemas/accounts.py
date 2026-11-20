@@ -38,18 +38,6 @@ VirtualFundAllocationPolicyDescription = _contracts.VirtualFundAllocationPolicyD
 VirtualFundAllocationPolicyList = _contracts.VirtualFundAllocationPolicyList
 
 
-class AccountWithIncludes(Account):
-    """`Account` plus the provider sidecar rows requested with `include` (ADR 0047)."""
-
-    includes: dict[str, dict[str, Any] | None] = Field(
-        default_factory=dict,
-        description=(
-            "Provider sidecar rows requested with `include`, keyed by sidecar MetaTable uid; "
-            "`null` when the sidecar has no row for this uid. Empty when nothing was included."
-        ),
-    )
-
-
 class AccountHoldingRow(BaseHoldingRow):
     model_config = ConfigDict(extra="ignore")
 

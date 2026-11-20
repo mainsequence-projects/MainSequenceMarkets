@@ -183,7 +183,6 @@ def test_delete_portfolio_signal_deletes_metadata_and_weights(monkeypatch) -> No
         "signal_uid": "example-signal",
         "deleted_count": 1,
         "deleted_weights_count": 3,
-        "retained_datasets": [],
     }
 
 
@@ -245,49 +244,8 @@ def test_delete_portfolio_signal_weights_returns_deleted_count(monkeypatch) -> N
     }
 
 
-def test_public_delete_signal_metadata_reports_deleted_weights(monkeypatch) -> None:
-    signal_uid = uuid.uuid4()
-    signal = {
-        "uid": signal_uid,
-        "signal_uid": "example-signal",
-        "signal_description": "Example signal",
-    }
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._get_signal_metadata_row",
-        lambda context, uid: signal,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._delete_signal_weight_rows",
-        lambda context, **kwargs: captured.update({"delete_weights": kwargs}) or 4,
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._compile_delete_signal_metadata_operation",
-        lambda context, **kwargs: captured.update({"compile": kwargs}) or "delete-signal-op",
-    )
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.execute_markets_operation",
-        lambda operation, context: {"rows": [{"uid": str(signal_uid), "signal_uid": "example-signal"}]},
-    )
-
-    from msm_portfolios.services.public_api import delete_signal_metadata_record
-
-    response = delete_signal_metadata_record(object(), uid=str(signal_uid))
-
-    assert response == {
-        "detail": "Signal metadata deleted.",
-        "signal_metadata_uid": str(signal_uid),
-        "signal_uid": "example-signal",
-        "deleted_count": 1,
-        "deleted_weights_count": 4,
-        "retained_datasets": [],
-    }
-    assert captured["compile"] == {"signal_metadata_uid": signal_uid}
-    assert captured["delete_weights"] == {
-        "signal_uid": "example-signal",
-        "after_date": None,
-    }
+# The signal delete (weights and metadata in one transaction) runs end to end on SQLite in
+# tests/msm_portfolios/test_recipes.py (end_signal).
 
 
 def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
@@ -338,34 +296,3 @@ def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:
         "dimension_filters": {"signal_uid": ["example-signal"]},
         "timeout": 30,
     }
-
-
-def test_public_delete_signal_metadata_operation_deletes_metadata_only(monkeypatch) -> None:
-    signal_metadata_uid = uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_compile(statement, **kwargs):
-        captured["statement"] = statement
-        captured.update(kwargs)
-        return "compiled-delete-signal-op"
-
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api.compile_markets_statement",
-        fake_compile,
-    )
-
-    from msm_portfolios.services.public_api import (
-        _compile_delete_signal_metadata_operation,
-    )
-
-    operation = _compile_delete_signal_metadata_operation(
-        object(),
-        signal_metadata_uid=signal_metadata_uid,
-    )
-
-    statement_text = str(captured["statement"]).lower()
-    assert operation == "compiled-delete-signal-op"
-    assert captured["operation"] == "delete"
-    assert "signal_scope" not in statement_text
-    assert "deleted_signal_weights" not in statement_text
-    assert "delete from" in statement_text

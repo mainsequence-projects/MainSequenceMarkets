@@ -8,9 +8,24 @@ from __future__ import annotations
 
 import pytest
 
-from msm.models import AssetCategoryTable
+from msm.models import AssetCategoryTable, SignalMetadataTable
 from msm.repositories.crud import create_model, update_model
 from tests.support.postgresql_markets import _scalar_rows
+
+
+def test_none_clears_a_signals_manager(postgresql_markets) -> None:
+    engine, context, _operations = postgresql_markets
+    row = create_model(
+        context,
+        model=SignalMetadataTable,
+        values={"signal_uid": "momentum", "managed_by": "user:00000000-0000-4000-8000-000000000001"},
+    )["rows"][0]
+
+    update_model(context, model=SignalMetadataTable, uid=row["uid"], values={"managed_by": None})
+
+    assert _scalar_rows(
+        engine, "SELECT signal_uid, managed_by FROM ms_markets__signalmetadata"
+    ) == [("momentum", None)]
 
 
 def test_none_clears_a_json_column_to_sql_null(postgresql_markets) -> None:

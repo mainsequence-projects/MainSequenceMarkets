@@ -5,8 +5,8 @@ through MetaTables' own server code for the local runtime, as `test_sqlite_accou
 does.
 A portfolio is deleted with its rows in its seven datasets in one transaction, or not at
 all. Tables of another application are created with `provider_ns__` names after the
-execution identity; no statement Markets sends names them. MetaTables' impact, table
-reads and read-only queries are served from the same file where a test needs them.
+execution identity; Markets sends them no statement, never reads, counts or names them,
+and lets the database refuse the delete when their `RESTRICT` keys hold rows (ADR 0060).
 """
 
 from __future__ import annotations
@@ -54,10 +54,7 @@ from tests.support.sqlite_markets import (
 
 MARKETS_TABLES = {*DATASETS.values(), "ms_markets__portfolio", "ms_markets__virtualfund", "ms_markets__targetpositionsts"}
 PORTFOLIO_TABLE_UID = "0e0e0e0e-0000-4000-8000-000000000001"
-PROVIDER_VALUES_UID = "1b1b1b1b-0000-4000-8000-000000000002"
 PROVIDER_LEDGER_UID = "2c2c2c2c-0000-4000-8000-000000000003"
-PROVIDER_SIDECAR_UID = "4e4e4e4e-0000-4000-8000-000000000005"
-PROVIDER_SIDECAR_TABLE = "provider_ns__portfolio_sidecar"
 PROVIDER_VALUES_TABLE = "provider_ns__portfoliosts__copy"
 PROVIDER_LEDGER_TABLE = "provider_ns__portfolioeventledgerts__copy"
 PROVIDER_TABLES = (
@@ -115,65 +112,16 @@ def _provider_row(engine, table_name: str, identifier: str) -> None:
         )
 
 
-def _catalog(engine, portfolio: uuid.UUID, *, values: str) -> None:
-    _insert(
-        engine,
-        "ms_markets__portfoliodatasetavailability",
-        portfolio_uid=portfolio.hex,
-        values_meta_table_uid=values,
-        weights_meta_table_uid=None,
-        signal_meta_table_uid=None,
-        population_state="unavailable",
-        row_count=None,
-        earliest_time_index=None,
-        latest_time_index=None,
-    )
-
-
-def _serve_tables(monkeypatch, engine, tables: dict[str, tuple], *, unreadable=()) -> list[str]:
-    """Serve ``MetaTable.get_by_uid`` and ``run_query`` for provider tables from ``engine``.
-
-    ``tables`` maps a table uid to its identifier, physical name and, optionally, the
-    column pair of its key to the portfolio table (the contract's
-    ``portfolio_identifier`` -> ``unique_identifier`` by default). Returns the SQL of
-    every query run.
-    """
+def _refuse_reading_other_tables(monkeypatch) -> None:
+    """Fail the test if Markets reads, counts or describes a table it does not own."""
 
     from metatables import MetaTable
-    from metatables.models import MetaTableForeignKeyPayload
 
-    def get_by_uid(cls, uid, timeout=None, **filters):
-        if str(uid) in unreadable or str(uid) not in tables:
-            raise LookupError(f"MetaTable {uid} was not found.")
-        identifier, name, *key = tables[str(uid)]
-        source, target = key[0] if key else ("portfolio_identifier", "unique_identifier")
-        return MetaTable.model_construct(
-            uid=str(uid),
-            identifier=identifier,
-            physical_schema="main",
-            physical_table_name=name,
-            foreign_keys=[
-                MetaTableForeignKeyPayload(
-                    name=f"fk_{name}_portfolio_identifier",
-                    source_columns=[source],
-                    target_table_uid=PORTFOLIO_TABLE_UID,
-                    target_columns=[target],
-                    on_delete="restrict",
-                )
-            ],
-        )
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("Markets must not read another application's table (ADR 0060).")
 
-    queries: list[str] = []
-
-    def run_query(self, sql, *, max_rows=None, statement_timeout_ms=None, timeout=None):
-        queries.append(sql)
-        with engine.connect() as connection:
-            rows = [dict(row) for row in connection.exec_driver_sql(sql).mappings()]
-        return {"ok": True, "results": rows, "truncated": False, "row_count": len(rows)}
-
-    monkeypatch.setattr(MetaTable, "get_by_uid", classmethod(get_by_uid))
-    monkeypatch.setattr(MetaTable, "run_query", run_query)
-    return queries
+    monkeypatch.setattr(MetaTable, "get_by_uid", classmethod(refuse))
+    monkeypatch.setattr(MetaTable, "run_query", refuse)
 
 
 def _serve_impact(monkeypatch, *sources: dict) -> None:
@@ -299,7 +247,6 @@ def test_the_portfolio_is_deleted_with_its_rows_in_each_dataset(markets, key: st
 def test_all_seven_datasets_go_in_one_transaction_with_the_portfolio(markets, monkeypatch) -> None:
     engine = markets.engine
     portfolio, identifier = _portfolio_with(engine, *DATASETS)
-    _catalog(engine, portfolio, values=PROVIDER_VALUES_UID)
     group = _insert(engine, "ms_markets__portfoliogroup")
     _insert(
         engine,
@@ -307,25 +254,18 @@ def test_all_seven_datasets_go_in_one_transaction_with_the_portfolio(markets, mo
         portfolio_group_uid=group["uid"],
         portfolio_uid=portfolio.hex,
     )
-    # The catalog names an instance another application owns; it holds no rows of this
-    # portfolio, so it does not block.
+    # Another application's table references portfolios; it holds no rows of this one.
     _create_provider_tables(engine)
-    queries = _serve_tables(
-        monkeypatch,
-        engine,
-        {PROVIDER_VALUES_UID: ("PortfoliosTS.provider_key", PROVIDER_VALUES_TABLE)},
-    )
+    _refuse_reading_other_tables(monkeypatch)
     markets.statements.clear()
 
     deleted = delete_portfolio_record(markets.context, uid=str(portfolio))
 
     assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
-    assert len(queries) == 1 and PROVIDER_VALUES_TABLE in queries[0]
     assert len(_deletes(markets)) == len(DATASETS) + 1
     assert not any("provider_ns__" in sql for sql in markets.statements)
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
-    assert _count(engine, "ms_markets__portfoliodatasetavailability") == 0  # its CASCADE key
     assert _count(engine, "ms_markets__portfoliogroupmembership") == 0  # its CASCADE key
     assert _count(engine, "ms_markets__portfoliogroup") == 1
 
@@ -430,37 +370,11 @@ def test_an_account_target_row_blocks_the_delete_and_nothing_is_deleted(markets)
 # Other applications' tables --------------------------------------------------------------
 
 
-def test_a_catalogued_instance_holding_rows_blocks_the_delete(markets, monkeypatch) -> None:
-    engine = markets.engine
-    portfolio, identifier = _portfolio_with(engine, *DATASETS)
-    _create_provider_tables(engine)
-    _provider_row(engine, PROVIDER_VALUES_TABLE, identifier)
-    _catalog(engine, portfolio, values=PROVIDER_VALUES_UID)
-    _serve_tables(
-        monkeypatch,
-        engine,
-        {PROVIDER_VALUES_UID: ("PortfoliosTS.provider_key", PROVIDER_VALUES_TABLE)},
-    )
+def test_a_table_metatables_lists_is_never_read_and_the_database_refuses(
+    markets, monkeypatch
+) -> None:
+    """ADR 0060: Markets passes MetaTables' impact through and reads no listed table."""
 
-    preflight = _preflight(markets, portfolio)
-    with pytest.raises(PortfolioDeleteConflictError) as refused:
-        delete_portfolio_record(markets.context, uid=portfolio)
-
-    label = f"Table PortfoliosTS.provider_key ({PROVIDER_VALUES_UID}), which another application owns,"
-    assert preflight["allowed"] is False
-    assert preflight["blockers"] == [
-        f"{label} holds 1 row that references it (RESTRICT key); Markets does not delete them."
-    ]
-    assert preflight["row_counts"] == {key: 1 for key in DATASETS}
-    assert label in str(refused.value)
-    assert "delete them through the application that owns the table" in str(refused.value)
-    assert _deletes(markets) == []
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-    assert _count(engine, PROVIDER_VALUES_TABLE) == 1
-
-
-def test_a_restrict_key_from_the_impact_blocks_while_its_table_holds_rows(markets, monkeypatch) -> None:
     engine = markets.engine
     portfolio, identifier = _portfolio_with(engine, *DATASETS)
     clean, clean_identifier = _portfolio_with(engine, *DATASETS)
@@ -470,104 +384,51 @@ def test_a_restrict_key_from_the_impact_blocks_while_its_table_holds_rows(market
         monkeypatch,
         _provider_node(PROVIDER_LEDGER_UID, "PortfolioEventLedgerTS.provider_key", PROVIDER_LEDGER_TABLE),
     )
-    queries = _serve_tables(
-        monkeypatch,
-        engine,
-        {PROVIDER_LEDGER_UID: ("PortfolioEventLedgerTS.provider_key", PROVIDER_LEDGER_TABLE)},
-    )
+    _refuse_reading_other_tables(monkeypatch)
 
     preflight = preflight_bulk_delete_portfolio_records(markets.context, uids=[portfolio, clean])
-    blocked = {item["uid"]: item["blockers"] for item in preflight["portfolios"]}
-    with pytest.raises(PortfolioDeleteConflictError, match="PortfolioEventLedgerTS.provider_key"):
+    with pytest.raises(PortfolioDeleteConflictError, match="FOREIGN KEY constraint failed"):
         delete_portfolio_record(markets.context, uid=portfolio)
     deleted = delete_portfolio_record(markets.context, uid=clean)
 
-    constraint = f"RESTRICT key fk_{PROVIDER_LEDGER_TABLE}_portfolio_identifier"
-    assert preflight["allowed"] is False
-    assert blocked[str(clean)] == []
-    assert blocked[str(portfolio)] == [
-        f"Table PortfolioEventLedgerTS.provider_key ({PROVIDER_LEDGER_UID}), which another "
-        f"application owns, holds 1 row that references it ({constraint}); Markets does not "
-        "delete them."
-    ]
-    # One query for the whole selection; the weights table is Markets' own.
-    assert len(queries) == 3 and all(PROVIDER_LEDGER_TABLE in sql for sql in queries)
+    assert preflight["allowed"] is True
+    assert preflight["impact"] is not None
     assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
     assert not _exists(engine, clean) and set(_dataset_rows(engine, clean_identifier).values()) == {0}
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
+    assert _count(engine, PROVIDER_LEDGER_TABLE) == 1
     assert not any("provider_ns__" in sql for sql in markets.statements)
 
 
-def test_a_table_keyed_by_the_portfolio_uid_blocks_while_it_holds_rows(markets, monkeypatch) -> None:
+def test_only_the_portfolios_manager_deletes_it(markets) -> None:
+    """ADR 0060, decision 4: through the Markets API a caller deletes only what it manages."""
+
+    from msm.api.managers import Manager, acting_manager_scope
+
     engine = markets.engine
     portfolio, identifier = _portfolio_with(engine, *DATASETS)
-    clean, _ = _portfolio_with(engine, *DATASETS)
     with engine.begin() as connection:
         connection.exec_driver_sql(
-            f"CREATE TABLE {PROVIDER_SIDECAR_TABLE} (portfolio_uid CHAR(32) PRIMARY KEY "
-            "REFERENCES ms_markets__portfolio (uid) ON DELETE RESTRICT, note TEXT)"
+            "UPDATE ms_markets__portfolio SET managed_by = 'branch:00000000-0000-4000-8000-00000000000a'"
         )
-        connection.exec_driver_sql(
-            f"INSERT INTO {PROVIDER_SIDECAR_TABLE} VALUES (?, 'kept')", (portfolio.hex,)
-        )
-    _serve_impact(
-        monkeypatch,
-        _provider_node(PROVIDER_SIDECAR_UID, "PortfolioSidecar", PROVIDER_SIDECAR_TABLE),
-    )
-    queries = _serve_tables(
-        monkeypatch,
-        engine,
-        {PROVIDER_SIDECAR_UID: ("PortfolioSidecar", PROVIDER_SIDECAR_TABLE, ("portfolio_uid", "uid"))},
-    )
 
-    preflight = preflight_bulk_delete_portfolio_records(markets.context, uids=[portfolio, clean])
-    blocked = {item["uid"]: item["blockers"] for item in preflight["portfolios"]}
-    with pytest.raises(PortfolioDeleteConflictError, match="PortfolioSidecar"):
-        delete_portfolio_record(markets.context, uid=portfolio)
+    with acting_manager_scope(lambda: Manager("branch:00000000-0000-4000-8000-00000000000b")):
+        preflight = _preflight(markets, portfolio)
+        with pytest.raises(PermissionError, match="managed by"):
+            delete_portfolio_record(markets.context, uid=portfolio)
+        bulk = bulk_delete_portfolio_records(markets.context, uids=[portfolio])
+    with acting_manager_scope(lambda: Manager("branch:00000000-0000-4000-8000-00000000000a")):
+        deleted = delete_portfolio_record(markets.context, uid=portfolio)
 
-    # The count joins the portfolio table, so a uid key is counted by identifier.
-    assert 'JOIN "main"."ms_markets__portfolio" AS p' in queries[0]
-    assert blocked[str(clean)] == []
-    assert blocked[str(portfolio)] == [
-        f"Table PortfolioSidecar ({PROVIDER_SIDECAR_UID}), which another application owns, "
-        f"holds 1 row that references it (RESTRICT key fk_{PROVIDER_SIDECAR_TABLE}_portfolio_identifier); "
-        "Markets does not delete them."
-    ]
-    assert delete_portfolio_record(markets.context, uid=clean)["deleted_rows"] == {key: 1 for key in DATASETS}
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-    assert _count(engine, PROVIDER_SIDECAR_TABLE) == 1
-
-
-@pytest.mark.parametrize("hidden", [True, False])
-def test_a_table_that_cannot_be_checked_blocks_the_delete(markets, monkeypatch, hidden: bool) -> None:
-    engine = markets.engine
-    portfolio, identifier = _portfolio_with(engine, *DATASETS)
-    if hidden:
-        _serve_impact(monkeypatch, {"id": "hidden:1", "type": "hidden"})
-        expected = "A table you cannot view references portfolios"
-    else:
-        _serve_impact(
-            monkeypatch,
-            _provider_node(PROVIDER_LEDGER_UID, "PortfolioEventLedgerTS.provider_key", PROVIDER_LEDGER_TABLE),
-        )
-        _serve_tables(monkeypatch, engine, {}, unreadable={PROVIDER_LEDGER_UID})
-        expected = f"Table PortfolioEventLedgerTS.provider_key ({PROVIDER_LEDGER_UID})"
-
-    preflight = _preflight(markets, portfolio)
-    with pytest.raises(PortfolioDeleteConflictError, match="could not be checked"):
-        delete_portfolio_record(markets.context, uid=portfolio)
-
-    assert preflight["allowed"] is False
-    assert len(preflight["blockers"]) == 1 and preflight["blockers"][0].startswith(expected)
-    assert "could not be checked" in preflight["blockers"][0]
-    assert _deletes(markets) == []
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
+    assert preflight["allowed"] is False and "managed by" in preflight["blockers"][0]
+    assert bulk["deleted_count"] == 0 and "managed by" in bulk["failed"][0]["detail"]
+    assert deleted["deleted_rows"] == {key: 1 for key in DATASETS}
+    assert set(_dataset_rows(engine, identifier).values()) == {0}
 
 
 def test_a_restrict_key_the_checks_cannot_see_refuses_the_whole_delete(markets) -> None:
-    """Issue 93: the database refuses the portfolio row last; the datasets are kept."""
+    """Issue 93, ADR 0060: the database refuses the portfolio row last; the datasets are kept."""
 
     engine = markets.engine
     portfolio, identifier = _portfolio_with(engine, *DATASETS)
@@ -578,7 +439,7 @@ def test_a_restrict_key_the_checks_cannot_see_refuses_the_whole_delete(markets) 
     with pytest.raises(PortfolioDeleteConflictError, match="nothing was deleted") as refused:
         delete_portfolio_record(markets.context, uid=portfolio)
 
-    # Without MetaTables' impact the checks cannot see the key; the transaction can.
+    # Markets does not look for the key; the transaction meets it.
     assert preflight["allowed"] is True
     assert "FOREIGN KEY constraint failed" in str(refused.value)
     assert len(_deletes(markets)) == len(DATASETS) + 1
@@ -710,7 +571,7 @@ def _counted(portfolio: uuid.UUID, identifier: str, **rows: int) -> dict:
     return {
         "uid": str(portfolio),
         "unique_identifier": identifier,
-        **{key: None for key in repository.CATALOG_TABLE_KEYS},
+        "managed_by": None,
         **{key: rows.get(key, 0) for key in (*DATASETS, "virtual_funds", "target_positions")},
     }
 
@@ -718,7 +579,6 @@ def _counted(portfolio: uuid.UUID, identifier: str, **rows: int) -> dict:
 def test_one_read_counts_each_selected_portfolio_in_each_dataset(markets) -> None:
     engine = markets.engine
     first, first_identifier = _portfolio_with(engine, "weights", "values")
-    _catalog(engine, first, values=PROVIDER_VALUES_UID)
     second, second_identifier = _portfolio_with(engine, "values", "event_ledger", "cash_flows")
     _dataset_row(engine, "values", second_identifier, when=WHEN + dt.timedelta(days=1))
     _virtual_fund(engine, second)
@@ -732,13 +592,8 @@ def test_one_read_counts_each_selected_portfolio_in_each_dataset(markets) -> Non
     )
 
     assert len(markets.statements) == 1
-    catalogued = counted[str(first)]["values_meta_table_uid"]
-    assert uuid.UUID(catalogued) == uuid.UUID(PROVIDER_VALUES_UID)
     assert counted == {
-        str(first): {
-            **_counted(first, first_identifier, weights=1, values=1),
-            "values_meta_table_uid": catalogued,
-        },
+        str(first): _counted(first, first_identifier, weights=1, values=1),
         str(second): _counted(
             second, second_identifier, values=2, event_ledger=1, cash_flows=1, virtual_funds=1
         ),

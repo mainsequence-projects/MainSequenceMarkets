@@ -241,21 +241,6 @@ def _exists(engine, portfolio: uuid.UUID) -> bool:
     return bool(_rows(engine, "SELECT uid FROM ms_markets__portfolio WHERE uid = :uid", uid=portfolio.hex))
 
 
-def _catalog(engine, portfolio: uuid.UUID, *, values: str) -> None:
-    _insert(
-        engine,
-        "ms_markets__portfoliodatasetavailability",
-        portfolio_uid=portfolio.hex,
-        values_meta_table_uid=values,
-        weights_meta_table_uid=None,
-        signal_meta_table_uid=None,
-        population_state="unavailable",
-        row_count=None,
-        earliest_time_index=None,
-        latest_time_index=None,
-    )
-
-
 PROVIDER_TABLES = (
     # A sidecar on the account with cascade delete (ADR 0047's worked example).
     "CREATE TABLE provider_ns__account_sidecar (account_uid CHAR(32) PRIMARY KEY "

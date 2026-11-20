@@ -165,9 +165,8 @@ def update_portfolio_signal_by_uid(
         "Delete historical SignalWeightsStorage rows for one signal metadata row "
         "through the TimeIndexMetaTable tail-delete API. When weights_date is "
         "provided, rows at or after that timestamp are deleted. Without "
-        "weights_date, all storage rows for the signal_uid are deleted. When the "
-        "signal's weights live in a SignalWeightsTS instance another application "
-        "owns, the route returns 409 and deletes nothing."
+        "weights_date, all storage rows for the signal_uid are deleted. Only the "
+        "signal's manager may delete them (ADR 0060)."
     ),
     operation_id="deletePortfolioSignalWeights",
     status_code=status.HTTP_200_OK,
@@ -176,9 +175,9 @@ def update_portfolio_signal_by_uid(
             "model": ErrorResponse,
             "description": "The requested signal metadata uid was not found.",
         },
-        409: {
+        403: {
             "model": ErrorResponse,
-            "description": "The signal's weights live in a table another application owns.",
+            "description": "The caller does not manage the signal.",
         },
     },
 )
@@ -191,6 +190,8 @@ def remove_portfolio_signal_weights(
 ) -> PortfolioSignalWeightsDeleteResponse:
     try:
         response = delete_portfolio_signal_weights(uid=uid, weights_date=weights_date)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PortfolioSignalDeleteConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -205,10 +206,9 @@ def remove_portfolio_signal_weights(
     response_model=PortfolioSignalDeleteResponse,
     summary="Delete portfolio signal",
     description=(
-        "Delete one SignalMetadata row and its historical SignalWeightsStorage rows. "
-        "Storage cleanup uses the TimeIndexMetaTable tail-delete API scoped by signal_uid. "
-        "Weights in a SignalWeightsTS instance another application owns stay in place and "
-        "are listed in retained_datasets."
+        "Delete one SignalMetadata row and its SignalWeightsStorage rows in one transaction. "
+        "Only the signal's manager may delete it; a portfolio that still names the signal "
+        "refuses the delete (409) and nothing is deleted (ADR 0060)."
     ),
     operation_id="deletePortfolioSignal",
     status_code=status.HTTP_200_OK,
@@ -221,11 +221,17 @@ def remove_portfolio_signal_weights(
             "model": ErrorResponse,
             "description": "The signal metadata row could not be deleted.",
         },
+        403: {
+            "model": ErrorResponse,
+            "description": "The caller does not manage the signal.",
+        },
     },
 )
 def delete_portfolio_signal_by_uid(uid: str) -> PortfolioSignalDeleteResponse:
     try:
         response = delete_portfolio_signal(uid=uid)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PortfolioSignalDeleteConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

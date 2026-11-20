@@ -9,7 +9,6 @@ its row guards (see ``test_postgresql_account_registration``).
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 
 import pytest
 
@@ -55,27 +54,9 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets, mon
     _datasets(engine, identifier)
     other, other_identifier = _portfolio(engine)
     _datasets(engine, other_identifier)
-    _insert(
-        engine,
-        "ms_markets__portfoliodatasetavailability",
-        portfolio_uid=portfolio,
-        values_meta_table_uid="0a0a0a0a-0000-4000-8000-000000000001",
-        weights_meta_table_uid=None,
-        signal_meta_table_uid=None,
-        population_state="unavailable",
-        row_count=None,
-        earliest_time_index=None,
-        latest_time_index=None,
-    )
     group = _insert(engine, "ms_markets__portfoliogroup")
     _insert(engine, "ms_markets__portfoliogroupmembership", portfolio_group_uid=group["uid"], portfolio_uid=portfolio)
     operations.clear()
-
-    from msm_portfolios.time_index.portfolios.storage import PortfoliosStorage
-
-    # The catalog names the core values table: no other application's table to check.
-    core = SimpleNamespace(uid="0a0a0a0a-0000-4000-8000-000000000001")
-    monkeypatch.setattr(PortfoliosStorage, "get_time_index_meta_table", classmethod(lambda cls: core))
 
     deleted = delete_portfolio_record(context, uid=portfolio)
 
@@ -83,7 +64,6 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets, mon
     assert operations == ["read", "transaction"]
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
-    assert _count(engine, "SELECT count(*) FROM ms_markets__portfoliodatasetavailability") == 0
     assert _count(engine, "SELECT count(*) FROM ms_markets__portfoliogroupmembership") == 0
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}

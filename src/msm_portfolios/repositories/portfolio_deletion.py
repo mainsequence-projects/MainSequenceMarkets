@@ -4,7 +4,7 @@ The delete is an ordered statement list that MetaTables runs in one transaction 
 PostgreSQL and on SQLite (MetaTables ADR 0026), as the account delete is (ADR 0050).
 Every statement targets a table in the Markets namespace: the portfolio's rows in its
 seven datasets, then the portfolio row. Rows in another application's table are never
-deleted here; their `RESTRICT` keys refuse the delete instead.
+deleted here; their `RESTRICT` keys refuse the delete instead (ADR 0060).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from sqlalchemy import String, Uuid, bindparam, delete, func, select
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
-from msm.models import PortfolioDatasetAvailabilityTable, PortfolioTable
+from msm.models import PortfolioTable
 from msm.repositories.account_deletion import ACCOUNT_HISTORY_REFERENCES, account_history_reference
 from msm.repositories.base import (
     MarketsCompiledWrite,
@@ -35,11 +35,6 @@ from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLE
 
 PORTFOLIO_DELETE_GUARD = "portfolio"
 """Guard label of the last statement: the portfolio row, with the identifier read before."""
-
-CATALOG_TABLE_KEYS = tuple(
-    table.catalog_column for table in PORTFOLIO_DATASET_TABLES if table.catalog_column
-)
-"""The catalog columns that can place the portfolio's values or weights in an instance."""
 
 
 @dataclass(frozen=True)
@@ -147,11 +142,10 @@ def build_count_portfolio_delete_rows_operation(
     uids: Sequence[uuid.UUID | str],
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MetaTableCompiledSQLOperation:
-    """One read: each portfolio, its catalogued instances and the rows its delete reaches.
+    """One read: each portfolio, its manager and the rows its delete reaches.
 
-    Per portfolio it returns ``uid``, ``unique_identifier``, the catalog's
-    ``values_meta_table_uid`` and ``weights_meta_table_uid``, the rows in each of the
-    seven datasets, and the account-history rows that block the delete. Each count runs
+    Per portfolio it returns ``uid``, ``unique_identifier``, ``managed_by``, the rows in
+    each of the seven datasets, and the account-history rows that block the delete. Each count runs
     per portfolio row and reads only that portfolio's rows, through the dataset's
     ``(portfolio_identifier, time_index)`` index (revisions 0026 and 0031, issue 96).
     """
@@ -177,17 +171,10 @@ def build_count_portfolio_delete_rows_operation(
         select(
             PortfolioTable.uid.label("uid"),
             PortfolioTable.unique_identifier.label("unique_identifier"),
-            *(
-                getattr(PortfolioDatasetAvailabilityTable, key).label(key)
-                for key in CATALOG_TABLE_KEYS
-            ),
+            PortfolioTable.managed_by.label("managed_by"),
             *counts,
         )
         .select_from(PortfolioTable)
-        .outerjoin(
-            PortfolioDatasetAvailabilityTable,
-            PortfolioDatasetAvailabilityTable.portfolio_uid == PortfolioTable.uid,
-        )
         .where(PortfolioTable.uid.in_(portfolio_uids))
     )
     return compile_markets_statement(
@@ -203,7 +190,7 @@ def count_portfolio_delete_rows(
     *,
     uids: Sequence[uuid.UUID | str],
 ) -> dict[str, dict[str, Any]]:
-    """Per existing portfolio uid: its identifier, catalogued instances and row counts.
+    """Per existing portfolio uid: its identifier, manager and row counts.
 
     A uid that names no portfolio is absent from the answer.
     """
@@ -220,7 +207,7 @@ def count_portfolio_delete_rows(
         counted[uid] = {
             "uid": uid,
             "unique_identifier": str(row.get("unique_identifier") or ""),
-            **{key: _string_or_none(row.get(key)) for key in CATALOG_TABLE_KEYS},
+            "managed_by": _string_or_none(row.get("managed_by")),
             **{
                 key: int(row.get(_count_label(key)) or 0)
                 for key in (
@@ -242,7 +229,6 @@ def _string_or_none(value: Any) -> str | None:
 
 
 __all__ = [
-    "CATALOG_TABLE_KEYS",
     "PORTFOLIO_DELETE_GUARD",
     "build_count_portfolio_delete_rows_operation",
     "build_delete_portfolio_operation",

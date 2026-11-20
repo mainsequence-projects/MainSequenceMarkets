@@ -70,11 +70,6 @@ WRITE_OPERATIONS = frozenset(
         "delete_after",
         "assign_manager",
         "end",
-        "register",
-        "register_signal",
-        "unregister",
-        "unregister_signal",
-        "reconcile",
         "activate_definition",
         "retire_definition",
     }

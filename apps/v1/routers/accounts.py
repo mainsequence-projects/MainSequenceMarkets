@@ -11,7 +11,6 @@ from apps.v1.schemas.accounts import (
     Account,
     AccountCreate,
     AccountUpdate,
-    AccountWithIncludes,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -54,7 +53,6 @@ from apps.v1.services.accounts import (
     search_account_target_allocation_targets,
     update_account,
 )
-from apps.v1.services.includes import SidecarReadError
 from apps.v1.services.resource_discovery import ACCOUNT_DELETE_PORTFOLIOS_OPTION
 from msm.services.accounts.allocation_policies import AllocationError
 from msm.api.http import (
@@ -258,7 +256,7 @@ def get_virtual_fund_allocation_policy_route(
 
 @router.get(
     "/by-uids/",
-    response_model=ResourceCollection[AccountWithIncludes],
+    response_model=ResourceCollection[Account],
     summary="Look up accounts by uid",
     description=(
         "Return the accounts whose uid is listed in `uid__in` (repeated or comma-separated, "
@@ -267,9 +265,8 @@ def get_virtual_fund_allocation_policy_route(
     ),
     operation_id="getAccountsByUids",
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
-        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
-        409: {"model": ErrorResponse, "description": "An included sidecar could not be read."},
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in`."},
+        409: {"model": ErrorResponse, "description": "A stored row is invalid."},
     },
 )
 def get_accounts_by_uid_list(
@@ -277,21 +274,9 @@ def get_accounts_by_uid_list(
         list[str],
         Query(alias="uid__in", description="Account uids, repeated or comma-separated."),
     ],
-    include: Annotated[
-        list[str] | None,
-        Query(
-            description=(
-                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
-                "by this resource's uid; their rows are attached under `includes`. The Markets "
-                "workload needs `data_viewer` on each sidecar."
-            ),
-        ),
-    ] = None,
-) -> ResourceCollection[AccountWithIncludes]:
+) -> ResourceCollection[Account]:
     try:
-        items = get_accounts_by_uids(uids=uid__in, include=include)
-    except SidecarReadError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        items = get_accounts_by_uids(uids=uid__in)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

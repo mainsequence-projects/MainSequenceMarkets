@@ -1164,10 +1164,6 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
         return statement
 
     def fake_execute(operation, context):
-        # ADR 0047: the read first resolves the portfolio's dataset instance from the
-        # Markets catalog; no row means the core PortfoliosStorage table.
-        if "portfoliodatasetavailability" in str(operation):
-            return {"rows": []}
         return {
             "rows": [
                 {
@@ -1229,12 +1225,8 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
         return statement
 
     def fake_execute(operation, context):
-        # No catalog row and no SignalMetadata.meta_table_uid: the core table is read.
-        sql = str(operation)
-        if "portfoliodatasetavailability" in sql:
-            return {"rows": []}
-        if "signalweightsts" not in sql:
-            return {"rows": [{"meta_table_uid": None}]}
+        # ADR 0060: the signal's weights are read from Markets' own table.
+        assert "signalweightsts" in str(operation)
         return {
             "rows": [
                 {
@@ -1289,24 +1281,7 @@ def test_public_signal_weights_frame_requires_portfolio_signal_uid(monkeypatch) 
         get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
 
 
-def test_public_signal_weights_frame_requires_signal_updater(monkeypatch) -> None:
-    portfolio = _portfolio_row()
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._get_portfolio_row",
-        lambda context, uid: portfolio,
-    )
-
-    from msm_portfolios.services.public_api import get_portfolio_signal_weights_frame_response
-
-    with pytest.raises(ValueError, match="signal_weights_table_update_uid"):
-        get_portfolio_signal_weights_frame_response(object(), uid=str(portfolio["uid"]))
-
-
 def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "msm_portfolios.services.public_api._portfolio_dataset_tables",
-        lambda context, portfolio_identifier: None,
-    )
     portfolio = _portfolio_row()
     weights_date = dt.datetime(2026, 6, 7, 10, 30, tzinfo=dt.UTC)
     captured: dict[str, object] = {}
@@ -1351,23 +1326,7 @@ def test_public_delete_portfolio_weights_uses_portfolio_identifier(monkeypatch) 
     }
 
 
-# --- ADR 0047: multi-portfolio frames and the dataset catalog ---------------------------------
-
-
-def _catalog_state(portfolio_uid: uuid.UUID) -> dict[str, object]:
-    return {
-        "portfolio_uid": str(portfolio_uid),
-        "portfolio_identifier": "equity-tracker",
-        "values_meta_table_uid": "provider-values",
-        "weights_meta_table_uid": "provider-weights",
-        "signal_meta_table_uid": None,
-        "population_state": "populated",
-        "row_count": 12,
-        "earliest_time_index": "2026-01-01T00:00:00Z",
-        "latest_time_index": "2026-01-12T00:00:00Z",
-        "reconciled_at": "2026-01-12T01:00:00Z",
-        "error": None,
-    }
+# --- ADR 0047, 0060: multi-portfolio frames ---------------------------------------------------
 
 
 def test_multi_portfolio_values_frame_route_groups_uids_into_one_frame(monkeypatch) -> None:
@@ -1437,7 +1396,7 @@ def test_multi_portfolio_weights_frame_route_passes_snapshot_selection(monkeypat
     }
 
 
-def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(monkeypatch) -> None:
+def test_multi_portfolio_frame_services_read_markets_own_tables_once(monkeypatch) -> None:
     from apps.v1.services import portfolios as portfolio_service
 
     first, second = _portfolio_row(), {**_portfolio_row(), "unique_identifier": "income-fund"}
@@ -1473,7 +1432,7 @@ def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(mon
     )
     weights = portfolio_service.get_portfolios_weights_frame(uids=[first["uid"]], weights_date=now)
 
-    # One read for both portfolios, through the catalog-aware service with the API runtime context.
+    # One read for both portfolios, with the API runtime context.
     assert values_calls == [(["example-sleeve", "income-fund"], {"start": None, "end": None, "repository_context": "ctx"})]
     assert [row["portfolio_identifier"] for row in values.rows] == ["income-fund"]
     assert values.rows[0]["portfolio_uid"] == second["uid"]
@@ -1483,160 +1442,3 @@ def test_multi_portfolio_frame_services_read_through_the_catalog_aware_reads(mon
     assert weights.rows[0]["asset_identifier"] == "a"
     with pytest.raises(LookupError, match="not found"):
         portfolio_service.get_portfolios_values_frame(uids=[str(uuid.uuid4())])
-
-
-def test_register_portfolio_datasets_route_returns_catalog_state(monkeypatch) -> None:
-    from apps.v1.schemas.portfolios import PortfolioDatasetRegistrationRequest, PortfolioDatasetState
-
-    portfolio_uid = uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_register(*, uid, payload):
-        captured.update(uid=uid, payload=payload)
-        return PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid))
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", fake_register)
-
-    response = TestClient(app).post(
-        f"/api/v1/portfolio/{portfolio_uid}/datasets/",
-        json={"values_meta_table_uid": "provider-values", "weights_meta_table_uid": "provider-weights"},
-    )
-
-    assert response.status_code == 201
-    assert response.json()["population_state"] == "populated"
-    assert response.json()["values_meta_table_uid"] == "provider-values"
-    assert captured["uid"] == str(portfolio_uid)
-    assert isinstance(captured["payload"], PortfolioDatasetRegistrationRequest)
-    assert captured["payload"].reconcile is True
-    assert captured["payload"].signal_meta_table_uid is None
-
-    def not_visible(**_kwargs):
-        raise LookupError("PortfoliosTS instance 'x' is not a visible TimeIndexMetaTable")
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", not_visible)
-    assert TestClient(app).post(
-        f"/api/v1/portfolio/{portfolio_uid}/datasets/", json={"values_meta_table_uid": "x"}
-    ).status_code == 404
-
-    def incompatible(**_kwargs):
-        raise ValueError("missing contract columns ['close']")
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.register_portfolio_dataset_catalog", incompatible)
-    assert TestClient(app).post(
-        f"/api/v1/portfolio/{portfolio_uid}/datasets/", json={"values_meta_table_uid": "x"}
-    ).status_code == 400
-
-
-def test_get_portfolio_datasets_route_returns_row_or_null(monkeypatch) -> None:
-    from apps.v1.schemas.portfolios import PortfolioDatasetState
-
-    portfolio_uid = uuid.uuid4()
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.get_portfolio_dataset_state",
-        lambda *, uid: PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid)),
-    )
-    assert TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/").json()["row_count"] == 12
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolio_dataset_state", lambda *, uid: None)
-    response = TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/")
-    assert response.status_code == 200 and response.json() is None
-
-    def missing(*, uid):
-        raise LookupError(f"Portfolio {uid!r} was not found.")
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.get_portfolio_dataset_state", missing)
-    assert TestClient(app).get(f"/api/v1/portfolio/{portfolio_uid}/datasets/").status_code == 404
-
-
-def test_reconcile_portfolio_datasets_route_returns_states_and_skipped(monkeypatch) -> None:
-    from apps.v1.schemas.portfolios import (
-        PortfolioDatasetReconcileRequest,
-        PortfolioDatasetReconciliationResult,
-        PortfolioDatasetState,
-    )
-
-    portfolio_uid, skipped_uid = uuid.uuid4(), uuid.uuid4()
-    captured: dict[str, object] = {}
-
-    def fake_reconcile(*, payload):
-        captured["payload"] = payload
-        return PortfolioDatasetReconciliationResult(
-            portfolio_uids=(portfolio_uid, skipped_uid),
-            states=(PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid)),),
-            skipped_portfolio_uids=(skipped_uid,),
-        )
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.reconcile_portfolio_dataset_catalog", fake_reconcile)
-
-    response = TestClient(app).post(
-        "/api/v1/portfolio/datasets/reconcile/",
-        json={"portfolio_uids": [str(portfolio_uid)], "portfolio_identifiers": ["legacy"]},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["skipped_portfolio_uids"] == [str(skipped_uid)]
-    assert response.json()["states"][0]["population_state"] == "populated"
-    assert isinstance(captured["payload"], PortfolioDatasetReconcileRequest)
-    assert captured["payload"].portfolio_identifiers == ["legacy"]
-
-    def no_selectors(**_kwargs):
-        raise ValueError("requires explicit portfolio UIDs or identifiers")
-
-    monkeypatch.setattr("apps.v1.routers.portfolios.reconcile_portfolio_dataset_catalog", no_selectors)
-    assert TestClient(app).post("/api/v1/portfolio/datasets/reconcile/", json={}).status_code == 400
-
-
-def test_portfolio_dataset_services_delegate_to_the_catalog_services(monkeypatch) -> None:
-    from apps.v1.schemas.portfolios import (
-        PortfolioDatasetReconcileRequest,
-        PortfolioDatasetRegistrationRequest,
-        PortfolioDatasetState,
-    )
-    from apps.v1.services import portfolios as portfolio_service
-    from msm_portfolios.services import portfolio_datasets
-
-    portfolio_uid = uuid.uuid4()
-    state = PortfolioDatasetState.model_validate(_catalog_state(portfolio_uid))
-    calls: dict[str, object] = {}
-    monkeypatch.setattr(portfolio_service, "_get_runtime", lambda: SimpleNamespace(context="ctx"))
-    monkeypatch.setattr(
-        portfolio_datasets,
-        "register_portfolio_datasets",
-        lambda context, registration, *, reconcile=True, **_kwargs: calls.update(register=(context, registration, reconcile)) or state,
-    )
-    monkeypatch.setattr(
-        portfolio_datasets,
-        "reconcile_portfolio_dataset_availability",
-        lambda context, *, portfolio_uids, portfolio_identifiers: calls.update(reconcile=(context, portfolio_uids, portfolio_identifiers)) or "result",
-    )
-    monkeypatch.setattr(
-        portfolio_datasets,
-        "list_portfolio_dataset_states",
-        lambda context, *, portfolio_uids: calls.update(list=(context, portfolio_uids)) or (state,),
-    )
-    monkeypatch.setattr(portfolio_service, "get_portfolio_detail", lambda *, uid: object() if uid == str(portfolio_uid) else None)
-    import msm_portfolios.services as services_package
-
-    for name in ("register_portfolio_datasets", "reconcile_portfolio_dataset_availability", "list_portfolio_dataset_states"):
-        monkeypatch.setattr(services_package, name, getattr(portfolio_datasets, name), raising=False)
-
-    registered = portfolio_service.register_portfolio_dataset_catalog(
-        uid=str(portfolio_uid),
-        payload=PortfolioDatasetRegistrationRequest(values_meta_table_uid="v", reconcile=False),
-    )
-    reconciled = portfolio_service.reconcile_portfolio_dataset_catalog(
-        payload=PortfolioDatasetReconcileRequest(portfolio_uids=[str(portfolio_uid)])
-    )
-    listed = portfolio_service.get_portfolio_dataset_state(uid=str(portfolio_uid))
-
-    assert registered is state and listed is state and reconciled == "result"
-    assert calls["register"] == (
-        "ctx",
-        {"portfolio_uid": portfolio_uid, "values_meta_table_uid": "v", "weights_meta_table_uid": None, "signal_meta_table_uid": None},
-        False,
-    )
-    assert calls["reconcile"] == ("ctx", [str(portfolio_uid)], [])
-    assert calls["list"] == ("ctx", [str(portfolio_uid)])
-    with pytest.raises(LookupError):
-        portfolio_service.get_portfolio_dataset_state(uid=str(uuid.uuid4()))
-    assert portfolio_service.register_portfolio_dataset_catalog.__registry_write__ == ("portfolio", "register:datasets")

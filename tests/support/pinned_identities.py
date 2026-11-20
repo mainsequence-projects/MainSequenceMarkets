@@ -80,8 +80,6 @@ def _source(update_hash: str) -> _Source:
 
 def _signal(signal_class: type[SignalWeights], configuration: Any) -> SignalWeights:
     signal = object.__new__(signal_class)
-    signal.update_hash = "signal"
-    signal._output_table = _source("signal")._output_table
     signal.signal_configuration = configuration
     return signal
 

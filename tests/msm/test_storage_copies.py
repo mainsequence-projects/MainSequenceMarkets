@@ -167,12 +167,12 @@ def test_table_moves_forward_their_read_tuning(monkeypatch) -> None:
     assert seen[0]["keys_per_read"] == 3 and seen[0]["deadline_seconds"] == 300.0
 
 
-def test_run_series_moves_orders_moves_and_reports_failures() -> None:
+def test_run_series_moves_runs_moves_in_order_and_reports_failures() -> None:
     calls: list[tuple[str, bool]] = []
 
     class Move:
-        def __init__(self, label: str, order: int, fail: bool = False):
-            self.label, self.move_order, self.fail, self.kind = label, order, fail, "fake"
+        def __init__(self, label: str, fail: bool = False):
+            self.label, self.fail, self.kind = label, fail, "fake"
 
         def run(self, *, rollback, dry_run):
             calls.append((self.label, rollback))
@@ -180,15 +180,15 @@ def test_run_series_moves_orders_moves_and_reports_failures() -> None:
                 raise LookupError("not registered")
             return storage_copies.SeriesMoveResult("fake", self.label, status="moved")
 
-    moves = [Move("portfolio", 1), Move("signal", 0), Move("broken", 0, fail=True)]
+    moves = [Move("first"), Move("broken", fail=True), Move("last")]
 
     report = run_series_moves(moves, dry_run=False)
-    assert [label for label, _ in calls] == ["signal", "broken", "portfolio"]
+    assert [label for label, _ in calls] == ["first", "broken", "last"]
     assert [result.status for result in report.results] == ["moved", "failed", "moved"]
     assert report.results[1].detail == "LookupError: not registered" and not report.succeeded
 
     calls.clear()
     run_series_moves(moves, rollback=True, dry_run=False)
-    assert calls[0] == ("portfolio", True)
+    assert [label for label, _ in calls] == ["last", "broken", "first"]
     with pytest.raises(LookupError):
         run_series_moves(moves, dry_run=False, stop_on_error=True)

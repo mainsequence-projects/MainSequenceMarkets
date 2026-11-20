@@ -8,8 +8,10 @@ keeps owning the storage contract: the instance has the core storage's columns,
 dtypes, nullability, time index, index names and foreign keys to the Markets
 registries. How Markets finds the instance depends on the series: pricing
 market-data bindings carry its ``storage_table_uid``, the Index dataset catalog
-its table uid. Portfolio values, weights, signal weights and the portfolio
-engine outputs use the dedicated portfolio contracts and their catalog instead.
+its table uid (both outside ADR 0060's decision). Portfolio values, weights and
+signal weights are never instances: they are published to Markets' own tables
+(ADR 0060). An application's private portfolio state uses the portfolio package's own
+contract-instance factories.
 
 The instance is named ``<storage_app>__<core table>__<instance_key>`` and
 identified as ``<CoreIdentifier>.<instance_key>``, namespace-prefixed outside the
@@ -33,28 +35,6 @@ from msm.settings import markets_identifier, markets_namespace
 INSTANCE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,62}$")
 STORAGE_CONTRACT_COMPONENT = "storage_contract"
 INSTANCE_KEY_COMPONENT = "instance_key"
-PROVIDER_TABLE_DELETE_GUIDANCE = (
-    "Markets does not delete rows in a table another application owns (ADR 0047); "
-    "delete them through the application that owns the table."
-)
-
-
-def provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
-    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
-
-    ``None`` means no table or the core table, which Markets owns and deletes from.
-    Any other uid is an instance another application registered, so Markets
-    reads it but never deletes its rows.
-    """
-
-    if meta_table_uid in (None, ""):
-        return None
-    core_meta_table = core_storage.get_time_index_meta_table()
-    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
-        meta_table_uid
-    ):
-        return None
-    return str(meta_table_uid)
 
 
 def configured_time_index_instance(
@@ -236,9 +216,7 @@ def _copy_table(
 
 
 __all__ = [
-    "PROVIDER_TABLE_DELETE_GUIDANCE",
     "configured_time_index_instance",
     "markets_reference_table",
-    "provider_owned_table_uid",
     "time_index_instance_identifier",
 ]

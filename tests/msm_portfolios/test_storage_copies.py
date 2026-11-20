@@ -13,9 +13,11 @@ from tests.support.storage_copies import DAY, _frame
 def test_the_real_copier_keeps_one_identity_per_source_and_target() -> None:
     from metatables import TimeIndexMetaTable
     from msm.storage_copies import TimeIndexRowsCopy, registered_time_index_meta_table
-    from msm_portfolios.time_index.contract_instances import configured_portfolio_weights_storage
+    from msm_portfolios.time_index.contract_instances import (
+        configured_portfolio_event_ledger_storage,
+    )
 
-    instance = configured_portfolio_weights_storage(
+    instance = configured_portfolio_event_ledger_storage(
         instance_key="copytest", namespace="my-provider", storage_app="my_provider"
     )
     before = dict(vars(instance))
