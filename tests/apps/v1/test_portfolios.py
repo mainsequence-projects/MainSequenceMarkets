@@ -25,6 +25,7 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "portfolio_weights_data_node_uid": None,
         "signal_weights_data_node_uid": None,
         "portfolio_data_node_uid": None,
+        "managed_by": None,
     }
 
 

@@ -188,6 +188,21 @@ class PortfolioTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Column name used as the portfolio backtest price field when reading price tables.",
         },
     )
+    managed_by: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        info={
+            "label": "Managed By",
+            "description": (
+                "The principal that manages this portfolio (ADR 0060): `branch:<uid>` for a "
+                "workload of a code repository branch, `user:<uid>` for a person or another "
+                "identity. Recorded from the acting identity of the create call; only the "
+                "manager publishes to the portfolio's series or deletes it. Null on rows "
+                "created before it existed, which accept no publish until an Organization "
+                "admin assigns a manager."
+            ),
+        },
+    )
     retired_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

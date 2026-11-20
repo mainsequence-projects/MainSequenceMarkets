@@ -1191,6 +1191,7 @@ def _build_portfolio_row(row: Mapping[str, Any]) -> dict[str, Any]:
         or "close",
         "retired_at": row.get("retired_at"),
         **_pre_3_0_pointers(pointers),
+        "managed_by": _string_or_none(row.get("managed_by")),
     }
 
 
@@ -1228,6 +1229,7 @@ def _build_signal_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "uid": row.get("uid"),
         "signal_uid": _string_or_empty(row.get("signal_uid")),
         "signal_description": _string_or_none(row.get("signal_description")),
+        "managed_by": _string_or_none(row.get("managed_by")),
     }
 
 

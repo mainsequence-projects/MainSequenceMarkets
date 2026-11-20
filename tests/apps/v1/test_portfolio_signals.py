@@ -57,6 +57,7 @@ def test_list_portfolio_signals_returns_canonical_collection(monkeypatch) -> Non
                 "uid": str(row.uid),
                 "signal_uid": "example-signal",
                 "signal_description": "Example signal",
+                "managed_by": None,
             }
         ],
         "pageInfo": {
@@ -90,6 +91,7 @@ def test_get_portfolio_signal_returns_metadata(monkeypatch) -> None:
         "uid": str(row.uid),
         "signal_uid": "example-signal",
         "signal_description": "Example signal",
+        "managed_by": None,
     }
 
 

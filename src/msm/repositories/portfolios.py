@@ -24,6 +24,7 @@ from msm.repositories.crud import (
     build_update_model_operation,
     build_upsert_model_operation,
     mirror_renamed_columns,
+    with_new_row_manager,
     renamed_keyword,
     UpsertStatus,
     upsert_model,
@@ -68,7 +69,7 @@ def build_create_portfolio_operation(
         .values(
             **mirror_renamed_columns(
                 PortfolioTable,
-                {
+                with_new_row_manager(PortfolioTable, {
                     "unique_identifier": unique_identifier,
                     "calendar_uid": calendar_uid,
                     "published_index_uid": published_index_uid,
@@ -77,7 +78,7 @@ def build_create_portfolio_operation(
                     "signal_uid": signal_uid,
                     "portfolio_table_update_uid": portfolio_table_update_uid,
                     "backtest_table_price_column_name": backtest_table_price_column_name,
-                },
+                }),
             )
         )
         .returning(PortfolioTable)

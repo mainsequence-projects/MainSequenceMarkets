@@ -4,10 +4,11 @@ Every handler and service authorizes against one identity: the requester on a
 requester-bound call, the caller otherwise, never both. ``acting_identity()``
 is the only place that choice is made. Services that create, update or delete
 a registry row are wrapped with ``registry_write``, which resolves the acting
-identity before the write and records it after a successful write. No Markets
-registry table has an author or owner column yet, so the record is the API's
-structured audit log (logger ``apps.v1.identity``); when such a column exists
-the same hook supplies the value.
+identity before the write and records it after a successful write in the API's
+structured audit log (logger ``apps.v1.identity``). ``registry_write`` also binds
+the acting manager of the write (ADR 0060): the principal a new ``Portfolio`` or
+``SignalMetadata`` row records in ``managed_by``, and the one ``publish``,
+``delete_after`` and the delete of such a row are checked against.
 
 The requester is only present because the ``markets-api`` resource declares
 ``acts_for_requester: true`` in ``.mainsequence/workflows/ms-markets-api.yaml``;
@@ -21,11 +22,14 @@ from __future__ import annotations
 
 import functools
 import logging
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, TypeVar
 
 from mainsequence.client.models_user import RequestIdentityError, RequestUserIdentity, User
+
+from msm.api.managers import Manager, acting_manager_scope, principal
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +130,11 @@ def registry_write(resource: str, action: str) -> Callable[[_F], _F]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             identity = acting_identity()
-            result = func(*args, **kwargs)
+            if identity is None:
+                result = func(*args, **kwargs)
+            else:
+                with acting_manager_scope(lambda: acting_manager_of(identity)):
+                    result = func(*args, **kwargs)
             record_registry_write(
                 action,
                 resource=resource,
@@ -139,6 +147,65 @@ def registry_write(resource: str, action: str) -> Callable[[_F], _F]:
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+class _DirectoryUser(User):
+    """A platform User row with the code repository branch of its workload.
+
+    The platform returns ``code_repository_branch_uid`` on every workload row, next to
+    ``job_uid``; the SDK's ``User`` does not declare it and would drop it. MetaTables
+    reads the same field to admit a branch's workloads (its ADR 0029).
+    """
+
+    code_repository_branch_uid: str | None = None
+
+
+_caller_principals: dict[str, str] = {}
+_caller_principals_lock = threading.Lock()
+
+
+def caller_principal(uid: str) -> str:
+    """The ``managed_by`` principal of caller ``uid``: its branch, or the User itself.
+
+    A workload User declared on a code repository branch is ``branch:<branch uid>``:
+    every Job, release and Agent of one application in one Environment (an Environment
+    is bound to one branch). Any other User, a person included, is ``user:<uid>``. The
+    row is read as the caller, once per process: a User's identity type and branch
+    never change. A failed read raises; it is never taken for "no branch".
+    """
+
+    with _caller_principals_lock:
+        cached = _caller_principals.get(uid)
+    if cached is not None:
+        return cached
+    from mainsequence.server.fastapi import reads_as_caller
+
+    with reads_as_caller():
+        user = _DirectoryUser.get_by_uid(uid)
+    branch = (
+        getattr(user, "code_repository_branch_uid", None)
+        if getattr(user, "identity_type", None) == "workload"
+        else None
+    )
+    resolved = principal("branch", branch) if branch else principal("user", uid)
+    with _caller_principals_lock:
+        _caller_principals[uid] = resolved
+    return resolved
+
+
+def acting_manager_of(identity: ActingIdentity) -> Manager:
+    """The manager an acting identity creates rows as and publishes as (ADR 0060).
+
+    A requester is the person ``user:<uid>``; a caller is resolved by
+    ``caller_principal``.
+    """
+
+    resolved = (
+        principal("user", identity.uid)
+        if identity.is_requester
+        else caller_principal(identity.uid)
+    )
+    return Manager(principal=resolved, is_organization_admin=identity.is_organization_admin)
 
 
 def _acting_identity(user: RequestUserIdentity | Any, *, kind: ActingIdentityKind) -> ActingIdentity:
@@ -170,6 +237,8 @@ __all__ = [
     "ActingIdentity",
     "ActingIdentityKind",
     "acting_identity",
+    "acting_manager_of",
+    "caller_principal",
     "record_registry_write",
     "registry_write",
     "require_acting_identity",

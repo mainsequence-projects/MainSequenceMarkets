@@ -10,6 +10,15 @@ from .market_metadata import (
     SignalMetadataUpdate,
     SignalMetadataUpsert,
 )
+from .series import (
+    PortfolioValuesSeries,
+    PortfolioWeightsSeries,
+    SeriesBounds,
+    SeriesDeletion,
+    SeriesPublication,
+    SeriesRows,
+    SignalWeightsSeries,
+)
 from .portfolios import (
     PortfolioMetadata,
     PortfolioMetadataCreate,
@@ -19,6 +28,13 @@ from .portfolios import (
 
 __all__ = [
     "PortfolioMetadata",
+    "PortfolioValuesSeries",
+    "PortfolioWeightsSeries",
+    "SeriesBounds",
+    "SeriesDeletion",
+    "SeriesPublication",
+    "SeriesRows",
+    "SignalWeightsSeries",
     "PortfolioMetadataCreate",
     "PortfolioMetadataUpdate",
     "PortfolioMetadataUpsert",

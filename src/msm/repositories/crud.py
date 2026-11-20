@@ -1177,7 +1177,7 @@ def _model_insert_payload(
     model: type[MarketsBase],
     values: Mapping[str, Any],
 ) -> dict[str, Any]:
-    payload = dict(values)
+    payload = with_new_row_manager(model, values)
     for column_property in inspect(model).column_attrs:
         column = column_property.columns[0]
         if column_property.key in payload and payload[column_property.key] is not None:
@@ -1185,6 +1185,24 @@ def _model_insert_payload(
         default_value = _column_default_value(column.default)
         if default_value is not _MISSING:
             payload[column_property.key] = default_value
+    return payload
+
+
+def with_new_row_manager(model: type[MarketsBase], values: Mapping[str, Any]) -> dict[str, Any]:
+    """``values`` of a row being inserted, with its manager when the table records one.
+
+    A table with a ``managed_by`` column (ADR 0060) records the acting manager of the
+    Markets API write that inserts the row. The value goes into the insert only: an
+    upsert that finds the row leaves its manager alone.
+    """
+
+    from msm.api.managers import MANAGED_BY, manager_for_new_row
+
+    payload = dict(values)
+    if MANAGED_BY in model.__table__.c and payload.get(MANAGED_BY) is None:
+        manager = manager_for_new_row()
+        if manager is not None:
+            payload[MANAGED_BY] = manager
     return payload
 
 
