@@ -294,10 +294,17 @@ Environment from an owner of `mainsequence.markets`:
 
 | Consumer workload | Role |
 | --- | --- |
+| Producer that publishes signal weights, portfolio weights or portfolio values through the Markets API (`msm.client`, remote backend) | none on `mainsequence.markets`; it needs only access to the Markets API |
 | Migration Job that registers tables in `mainsequence.markets` | `editor` on the namespace |
-| Updater producer that writes an ms-markets table | table `editor` on each output table, plus `data_viewer` on the namespace |
+| Updater producer that writes an ms-markets table directly | table `editor` on each output table, plus `data_viewer` on the namespace |
 | Row writer (assets, OpenFIGI details, categories, calendars, Index rows) | `data_writer` on the namespace |
 | Reader | `data_viewer` on the namespace |
+
+The grants go one way. Markets workloads (`migrate-markets`, `markets-api`,
+`resync-calendars`) never get a role on an application's namespace or tables:
+Markets reads and writes only its own tables
+([ADR 0060](ADR/0060-producers-publish-markets-reads-only-its-own-tables.md)), so
+a new Environment needs no person's step for Markets to read a producer.
 
 Prefer table `editor` for producers: namespace `editor` would also let them delete
 every table in the namespace. Grant before the consumer's push when its workload

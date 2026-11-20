@@ -2,6 +2,13 @@
 
 ## Status
 
+Note (2026-11-20): decision 5 is superseded, and the `include` grant of decision 4
+withdrawn, by [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md),
+which is implemented. The portfolio dataset catalog, the catalog-aware reads and deletes,
+the series moves of portfolios and signals and `include=` are removed. Producers publish
+their series to Markets, and Markets reads no table of another application. Decisions 1
+to 3 stand, and `managed_by` of decision 4 is implemented by ADR 0060.
+
 Proposed. Drafted 2026-10-25 from an analysis of this repository, of how
 applications consume it, and of the installed MetaTables and SDK contracts. The
 `development` branch has since moved to MetaTables 0.1.51, whose namespace and

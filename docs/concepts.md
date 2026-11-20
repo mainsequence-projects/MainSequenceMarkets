@@ -130,25 +130,37 @@ repositories, time-index table updaters, and row APIs. The split is recorded in
 [ADR 0008](ADR/0008-metatable-table-and-api-model-split.md) and should guide new
 MetaTable-facing APIs unless a more specific ADR overrides it.
 
-## The boundary rule: Markets reads only its own tables
+## The boundary rule: Markets reads and writes only its own tables
 
 ms-markets is the base other applications and libraries build on, so it knows nothing about
-them. Markets reads and writes only the tables its own migrations create. It never takes a
-table uid, name or namespace from a caller or from a registry row and reads what it names.
+them. Markets reads and writes only the tables its own migrations create. No route, row
+operation, service, Job or command of ms-markets takes a table uid, name or namespace from a
+caller or from a registry row and reads, counts, checks or deletes what it names.
 
 Data crosses the boundary in two ways, and no third:
 
 - **Publish.** An application sends rows to a Markets operation, such as
-  `AccountHoldingsSnapshots.publish`. Markets stores them in its own table and serves them.
-- **Keep.** An application keeps data in its own tables and serves it itself. Markets holds
-  nothing about it.
+  `AccountHoldingsSnapshots.publish` or `SignalWeightsSeries.publish`. Markets stores them in
+  its own table and serves them. The rows are Markets' from then on.
+- **Keep.** An application keeps data in its own tables and serves or shares it itself.
+  Markets holds nothing about it.
 
-A producer therefore never grants Markets access to its tables, and an application that
-extends ms-markets builds on its primitives and recipes instead of asking Markets to reach
-into it. The rule and its consequences are
-[ADR 0060](ADR/0060-producers-publish-markets-reads-only-its-own-tables.md). Until that ADR
-is implemented, the portfolio dataset catalog, `include=` and the paths its "Not Decided
-Here" section lists still break the rule; new code must not add to them.
+The test for every design is one question: **would Markets need to read my table for this to
+work?** If yes, the design is wrong. Publish the rows, or keep them and serve them yourself.
+
+Signal weights, portfolio weights and portfolio values are published: they are stored once,
+in Markets' tables, and an application keeps no copy
+([Published Series](knowledge/msm_portfolios/portfolios/index.md#published-series)). A
+producer never grants Markets a role on its tables, never sends Markets a table uid, and
+builds on the series operations and the recipes of `msm_portfolios.recipes`. A private table
+of an application may reference a registry row with a foreign key; Markets never discovers,
+counts or names it, and the database applies the key when Markets deletes the row. The rule
+and its consequences are
+[ADR 0060](ADR/0060-producers-publish-markets-reads-only-its-own-tables.md); the skill
+`.agents/skills/ms_markets/platform/producer_boundary/SKILL.md` teaches it to an application
+that builds on ms-markets. The paths listed under "Not Decided Here" in that ADR (Index
+values, Index formula sources, pricing market-data sets and related tables) still read
+tables Markets does not own; new code must not add to them.
 
 ## Related pages
 

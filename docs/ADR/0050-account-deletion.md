@@ -2,6 +2,11 @@
 
 ## Status
 
+Note (2026-11-20): the delete notes below that count rows in another application's table
+or read the portfolio dataset catalog are replaced by
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) decision 7: the
+database applies that table's key, and a `RESTRICT` refusal answers 409 with its message.
+
 Accepted (2026-11-11), implemented in 3.3.0 through
 [issue #58](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/58).
 Builds on [ADR 0049](0049-portfolio-lifecycle-and-account-history.md) decision 1

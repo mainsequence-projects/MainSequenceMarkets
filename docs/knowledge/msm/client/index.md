@@ -315,29 +315,45 @@ while that list is not empty; `reinstate_portfolio` clears it.
 
 ## Provider Time Series
 
-Time series a provider produces live in its own namespace (ADR 0047). Besides
-the portfolio contracts, `msm.storage_instances.configured_time_index_instance`
-builds an instance of any Markets time-index storage (discount curves, index
-fixings, pricing details, index values, orders, trades ...) with the core
-storage's columns, foreign keys and grain index, under the provider's
-`namespace`, `storage_app` and Alembic `base`; the provider binds its updater
-with `output_table=`. Markets finds the instance through the catalog of the
-series: pricing market-data bindings carry its `storage_table_uid`, the Index
-dataset catalog its table uid, the portfolio catalog its values, weights and
-signal tables (`PortfolioDatasets.register`; `register_signal` for a signal
-that is not a portfolio's current one). Rows a series already has in a core
-table move with `msm.storage_copies.copy_time_index_rows`, which writes only the
-rows the instance lacks and verifies every key; `TableSeriesMove`,
-`PortfolioSeriesMove` and `SignalSeriesMove` add the catalog steps and the
-rollback (`msm series move|rollback`). `PortfolioDatasets.unregister` removes
-a portfolio's catalog row to roll a move back; its reads return to the core
-tables and the instance keeps its rows. `unregister_signal` undoes
-`register_signal` for one signal.
+Markets reads and writes only its own tables (ADR 0060). Signal weights,
+portfolio weights and portfolio values are published: an application sends
+their rows to `SignalWeightsSeries`, `PortfolioWeightsSeries` and
+`PortfolioValuesSeries` (`msm_portfolios.api`) and reads them back the same
+way; it keeps no table for them. Under the remote backend each operation is
+`POST /api/v1/rows/{resource}/{operation}/`:
+
+```python
+from msm_portfolios.api import PortfolioValuesSeries, SignalWeightsSeries
+
+SignalWeightsSeries.publish(signal_uid, rows)        # only the signal's manager
+bounds = SignalWeightsSeries.bounds([signal_uid])
+page = PortfolioValuesSeries.window([portfolio_identifier], start=start)
+frame = page.frame()
+```
+
+`msm_portfolios.recipes` builds on them: `publish_signal_weights`,
+`signal_history`, `portfolio_history`, `weights_as_of`, `portfolio_preflight`,
+`run_portfolio`, `end_signal` and `delete_private_series`. Only a row's
+manager publishes to it (`managed_by`, recorded by Markets; any other caller
+gets `MarketsAccessError`, HTTP 403). See
+[Published Series](../../msm_portfolios/portfolios/index.md#published-series).
+
+Other time series a provider produces live in its own namespace.
+`msm.storage_instances.configured_time_index_instance` builds an instance of a
+Markets time-index storage (discount curves, index fixings, pricing details,
+index values, orders, trades ...) with the core storage's columns, foreign keys
+and grain index, under the provider's `namespace`, `storage_app` and Alembic
+`base`; the provider binds its updater with `output_table=`. Pricing
+market-data bindings carry such an instance's `storage_table_uid`, and the Index
+dataset catalog its table uid. `msm.storage_copies.copy_time_index_rows` copies
+rows between two tables with the operator's own access, writing only the rows
+the target lacks and verifying every key; `TableSeriesMove` adds the rollback
+(`msm series move|rollback`). Markets takes no part in a copy.
 
 ## Portfolio Time Series
 
-Time series are not row calls. Read portfolio values and weights from the
-catalogued instance tables through the Markets API:
+Read portfolio values and weights through the Markets API, which reads its own
+tables:
 
 ```python
 client = MarketsClient.from_environment()

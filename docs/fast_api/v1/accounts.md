@@ -70,8 +70,9 @@ direct account snapshots and virtual-fund-grouped views.
     `created` and `changed`
   - audited as `registry_write("account", "register")`, with one record per
     row created or changed, each carrying the account's `unique_identifier`
-  - writes only Markets tables: a provider writes its own account sidecar
-    afterwards with the returned account uid (ADR 0047)
+  - writes only Markets tables: an application keeps its own data about the
+    account in its own tables, keyed by the returned account uid, and serves it
+    itself (ADR 0060)
   - `MarketsClient.register_account(...)` calls this route and returns
     `AccountRegistrationResponse`
 - `GET /api/v1/account/by-uids/?uid__in=<uid>&uid__in=<uid>`
@@ -82,17 +83,8 @@ direct account snapshots and virtual-fund-grouped views.
   - a bounded lookup for consumers that hydrate core columns from their own
     rows, not a browsable collection: no `limit`, `offset`, search or
     discovery route
-  - `include=<sidecar MetaTable uid>` (repeated or comma-separated, at most
-    10) attaches provider sidecar rows under `includes[<uid>]` on every item
-    (`null` when the sidecar has no row). A sidecar is a provider table with a
-    single-column foreign key to this resource's `uid`, proven from the
-    MetaTables catalog; each sidecar is read once for all returned uids. The
-    Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
-    `404` for a uid that is not a visible MetaTable, `400` for a table that is
-    not a sidecar of this resource). Plain columns come back as stored; Markets
-    never decrypts a provider column, never selects a column the catalog marks
-    as application-encrypted and drops any encryption-envelope value, so
-    `include` never returns ciphertext. `includes` is `{}` when nothing is included
+  - returns Markets' rows only. Data an application keeps about a row, in its
+    own tables, is read from that application; Markets never reads it (ADR 0060)
 - `GET /api/v1/account/{uid}/`
   - returns one canonical `Account` row by uid
 - `PATCH /api/v1/account/{uid}/`
@@ -114,12 +106,13 @@ direct account snapshots and virtual-fund-grouped views.
   - `delete_portfolios=true` (query parameter, `false` by default) also deletes,
     in the same transaction and with all their data, the portfolios that the
     account's virtual funds or target rows name and that nothing else uses: their
-    rows in the seven portfolio datasets, their catalog row, their group
-    memberships, then the portfolio. A portfolio is kept when another account's
-    virtual fund or target rows name it, or when its catalog places its values or
-    weights in another application's table. When another application's table
-    holds a portfolio's rows under a `RESTRICT` key, the transaction deletes
-    nothing and a second one deletes the account alone; the portfolios are kept.
+    rows in the seven portfolio datasets, their group memberships, then the
+    portfolio. A portfolio is kept when another account's virtual fund or target
+    rows name it, or when the caller does not manage it (`Portfolio.managed_by`,
+    ADR 0060). Markets reads no other application's table: when an
+    application's own table holds a portfolio's rows under a `RESTRICT` key, the
+    database refuses, the transaction deletes nothing and a second one deletes
+    the account alone; the portfolios are kept.
     The route then runs the portfolio package's
     `msm_portfolios.services.delete_account_with_portfolios`, which Python code
     with a portfolio runtime calls directly; `Account.delete` deletes the account

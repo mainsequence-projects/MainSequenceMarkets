@@ -26,17 +26,8 @@ provider-specific records. The API does not flatten those separate models into `
   - returns the matching `Asset` identity rows in request order inside a
     `ResourceCollection`; unknown uids are omitted
   - not a browsable collection: no `limit`, `offset`, search or discovery route
-  - `include=<sidecar MetaTable uid>` (repeated or comma-separated, at most
-    10) attaches provider sidecar rows under `includes[<uid>]` on every item
-    (`null` when the sidecar has no row). A sidecar is a provider table with a
-    single-column foreign key to this resource's `uid`, proven from the
-    MetaTables catalog; each sidecar is read once for all returned uids. The
-    Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
-    `404` for a uid that is not a visible MetaTable, `400` for a table that is
-    not a sidecar of this resource). Plain columns come back as stored; Markets
-    never decrypts a provider column, never selects a column the catalog marks
-    as application-encrypted and drops any encryption-envelope value, so
-    `include` never returns ciphertext. `includes` is `{}` when nothing is included
+  - returns Markets' rows only. Data an application keeps about a row, in its
+    own tables, is read from that application; Markets never reads it (ADR 0060)
 - `GET /api/v1/asset/monitor/frame/`
   - supports `search`, `limit`, `offset`, optional `asset_type`, and repeated
     `unique_identifiers`

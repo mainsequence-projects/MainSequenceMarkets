@@ -2,8 +2,8 @@
 
 Construct an equal-weights portfolio end to end. The workflow runs in two
 stages: a schema-preparation step that provisions the interpolated price
-storage, then a run step that publishes prices, computes weights, and stores the
-portfolio TimeIndexTableUpdater results. It reuses the calendar from
+storage, then a run step that publishes prices, computes weights, and publishes
+the portfolio's signal weights, weights and values to Markets. It reuses the calendar from
 [Calendars](02-calendars.md) as `Portfolio.calendar_uid`.
 
 For the runtime model behind these row APIs, see [Core Concepts](../concepts.md).
@@ -34,8 +34,11 @@ optional portfolio `Index`, publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
 `PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
 `PortfoliosUpdater`, creates or reuses the crypto
-`CRYPTO_24_7` calendar, and stores the calendar, index, and TimeIndexTableUpdater UIDs on the
-`Portfolio` row. The price configuration stores the
+`CRYPTO_24_7` calendar, and stores the calendar, index and signal on the
+`Portfolio` row. `SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater`
+publish their rows through the series operations
+([Published Series](../knowledge/msm_portfolios/portfolios/index.md#published-series)).
+The price configuration stores the
 `ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
 the explicit upstream interpolation node can recover the price source through
 the `metatables` TimeIndexTableRef lookup path. The portfolio configuration receives that

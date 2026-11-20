@@ -5,8 +5,10 @@ composition, latest portfolio weights, the accounts whose current target names
 a portfolio, retirement, and delete operations.
 
 The routes do not create or update portfolios. Portfolio construction remains a
-library workflow outside this API surface. ADR 0047 adds the multi-portfolio
-frames, the batch lookup and the dataset catalog routes described below.
+library workflow outside this API surface: an application publishes a
+portfolio's weights and values through the series row operations
+([Row Operations](rows.md#published-series)). ADR 0047 adds the
+multi-portfolio frames and the batch lookup described below.
 
 !!! note "Pre-3.0 field names"
     Through ms-markets 3.x every response that carries a `*_table_update_uid` portfolio pointer also
@@ -26,11 +28,11 @@ frames, the batch lookup and the dataset catalog routes described below.
 - Signal weights resolve from nullable `Portfolio.signal_uid`, which points to
   `SignalMetadataTable.signal_uid`. The API does not recompute signal identity
   from the TimeIndexTableUpdater build configuration or by scanning shared signal storage.
-- Values, weights and signal-weight reads resolve each portfolio's table from
-  the Markets catalog (`PortfolioDatasetAvailabilityTable`) and read it by uid
-  through `TimeIndexTableRef`; a portfolio without a catalog row reads the core
-  tables (ADR 0047, see the
-  [portfolios knowledge page](../../knowledge/msm_portfolios/portfolios/index.md)).
+- Values, weights and signal-weight reads read Markets' own `PortfoliosTS`,
+  `PortfolioWeightsTS` and `SignalWeightsTS` tables, whichever application
+  published the rows. Markets reads no other application's table (ADR 0060, see
+  the
+  [portfolios knowledge page](../../knowledge/msm_portfolios/portfolios/index.md#published-series)).
 
 Latest weights resolve through:
 
@@ -266,9 +268,9 @@ GET /api/v1/portfolio/by-uids/?uid__in=<uid>&uid__in=<uid>
 Returns the matching `Portfolio` rows in request order inside a
 `ResourceCollection`. `uid__in` is repeated or comma-separated, at most 500;
 unknown uids are omitted. A bounded lookup, not a browsable collection: no
-`limit`, `offset`, search or discovery route. `include=<sidecar MetaTable uid>`
-attaches provider sidecar rows under `includes[<uid>]`, as described for
-[accounts](accounts.md).
+`limit`, `offset`, search or discovery route. A row carries `managed_by`, the
+principal that publishes to the portfolio's series. Data an application keeps
+about a portfolio is read from that application.
 
 ## Values Frame For Several Portfolios
 
@@ -278,10 +280,9 @@ GET /api/v1/portfolio/values/?portfolio_uid__in=<uid>&portfolio_uid__in=<uid>&st
 
 Returns one `core.tabular_frame@v1` with columns `time_index`,
 `portfolio_identifier`, `portfolio_uid`, `close`, `return`, `calculated_close`
-and `close_time` for every requested portfolio. The portfolios are grouped by
-the `PortfoliosTS` instance the catalog records for them; each instance is read
-once, so comparing portfolios computed by two different providers is one call
-whose two sources live in two namespaces. `order` sorts by
+and `close_time` for every requested portfolio, read from Markets' own
+`PortfoliosTS` table, so comparing portfolios published by two different
+applications is one call. `order` sorts by
 `time_index` across all portfolios and `limit` (1 to 5000) bounds the merged
 result; `offset` skips that many rows of the merged order, so a longer window
 is read in pages (`MarketsClient.portfolio_values` pages for a larger
@@ -299,47 +300,7 @@ the latest snapshot, the latest at or before `weights_date` with `as_of=true`,
 or the exact `weights_date` snapshot with `as_of=false`. Columns are
 `time_index`, `portfolio_identifier`, `portfolio_uid`, `asset_identifier`,
 `weight`, `weight_before`, `price_current`, `price_before`, `volume_current`
-and `volume_before`. Portfolios are grouped by their `PortfolioWeightsTS`
-instance as for values.
-
-## Dataset Catalog
-
-```text
-POST /api/v1/portfolio/{uid}/datasets/
-GET  /api/v1/portfolio/{uid}/datasets/
-POST /api/v1/portfolio/datasets/reconcile/
-```
-
-A provider that computes a portfolio in its own namespace registers, per
-portfolio, the `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS`
-instances that hold its rows, and reconciles after each run (ADR 0047).
-
-- `POST /api/v1/portfolio/{uid}/datasets/` takes `values_meta_table_uid`
-  (required), `weights_meta_table_uid`, `signal_meta_table_uid` and
-  `reconcile` (default `true`). Each table must be a `TimeIndexMetaTable`
-  visible to the Markets workload that exposes the contract columns and index
-  names; extra provider columns are allowed. The row is upserted, the signal's
-  `SignalMetadata.meta_table_uid` is bound when the portfolio has a
-  `signal_uid`, and the values instance is reconciled unless `reconcile` is
-  `false`, in which case the row is `unavailable` with error code
-  `not_reconciled`. Returns the `PortfolioDatasetState` with `201`; `404` for
-  an unknown portfolio or a table that is not visible, `400` for a table that
-  does not satisfy its contract.
-- `GET /api/v1/portfolio/{uid}/datasets/` returns the catalog row, or `null`
-  when the portfolio exists and reads the core tables; `404` for an unknown
-  portfolio.
-- `POST /api/v1/portfolio/datasets/reconcile/` takes `portfolio_uids` and
-  `portfolio_identifiers` (at least one selector, at most 500 in all) and
-  returns a `PortfolioDatasetReconciliationResult`: the reconciled states, one
-  aggregate per instance however many portfolios it holds, plus
-  `skipped_portfolio_uids` for portfolios without a catalog row. `404` names
-  selectors that are not portfolios.
-
-`PortfolioDatasetState` carries `portfolio_uid`, `portfolio_identifier`, the
-three table uids, `population_state` (`populated`, `compatible_empty` or
-`unavailable`), `row_count`, `earliest_time_index`, `latest_time_index`,
-`reconciled_at` and `error`. Registration and reconciliation record the acting
-identity.
+and `volume_before`, read from Markets' own `PortfolioWeightsTS` table.
 
 ## Latest Portfolio Weights
 
@@ -507,10 +468,9 @@ Each dataset references `Portfolio.unique_identifier` with `RESTRICT`:
 The statements delete the portfolio's rows in each dataset and then the
 portfolio row, in that order. The last one deletes the row only while it still
 has the `unique_identifier` read before and no virtual fund or account target
-row names it. If any statement fails, nothing is deleted. The catalog row
-(`PortfolioDatasetAvailabilityTable`) and the portfolio's group memberships go
-with the row through their own `CASCADE` keys. `PortfolioMetadataTable` rows
-are not deleted.
+row names it. If any statement fails, nothing is deleted. The portfolio's
+group memberships go with the row through their own `CASCADE` key.
+`PortfolioMetadataTable` rows are not deleted.
 
 Each dataset table has an index that leads with `portfolio_identifier`
 (Alembic revision 0026 for the weights, 0031 for the six others), so the delete's
@@ -541,29 +501,27 @@ Returns:
 `deleted_rows` counts the portfolio's rows in each dataset just before the
 delete ran.
 
-Before it sends anything, the route checks what would refuse the delete. It
-answers `409`, deletes nothing and names the table and key that refuse it when:
+Before it sends anything, the route checks what would refuse the delete and
+deletes nothing when:
 
+- **the caller does not manage the portfolio:** only the principal in
+  `Portfolio.managed_by` deletes it, and nobody does while it has no manager.
+  The route answers `403`
+  ([ADR 0060](../../ADR/0060-producers-publish-markets-reads-only-its-own-tables.md)).
 - **account history names the portfolio:** virtual funds
   (`VirtualFundTable.target_portfolio_uid`) or account target rows
-  (`TargetPositionsStorage.portfolio_uid`). No route removes that history:
-  retire the portfolio instead ([Retire Portfolio](#retire-portfolio)).
-- **another application's table references it:** a table outside these
-  Markets tables whose `RESTRICT` key references the portfolio holds rows of it,
-  for example a provider's `PortfoliosTS` or `PortfolioEventLedgerTS` instance
-  ([ADR 0047](../../ADR/0047-markets-api-application-boundary.md)). Markets
-  never deletes rows in such a table: the application that owns it deletes them
-  first. The route checks every table that MetaTables' delete impact lists with
-  such a key, and every instance the catalog names for the portfolio, with one
-  read-only count per table. It also refuses when it cannot check one, for
-  example a table the caller cannot view.
+  (`TargetPositionsStorage.portfolio_uid`). The route answers `409` and names
+  the table and key. No route removes that history: retire the portfolio
+  instead ([Retire Portfolio](#retire-portfolio)).
 
-The database applies the same keys when the statements run. A key the checks
-could not see, for example while MetaTables' impact is unavailable, refuses the
-whole transaction: the route answers `409` with the database's message, which on
-PostgreSQL names the constraint, and nothing is deleted. A portfolio that no
-longer exists when the delete runs answers `404`; one renamed in between
-answers `409`.
+Markets reads and deletes only its own tables. An application's own table whose
+`RESTRICT` key references the portfolio is neither discovered nor counted: the
+database applies the key when the statements run, and a key that refuses
+answers `409` with the database's message, which on PostgreSQL names the
+constraint. Nothing is deleted. The application deletes its own rows first
+(`msm_portfolios.recipes.delete_private_series`). A portfolio that no longer
+exists when the delete runs answers `404`; one renamed in between answers
+`409`.
 
 The statements are plain deletes. After the statement list commits, MetaTables
 rebuilds the update statistics it stores for each time-index table the list
@@ -601,9 +559,8 @@ Weight deletion itself is scoped by `Portfolio.unique_identifier`; the API never
 calls `delete_after_date(None)` without that dimension scope. Protected
 portfolio references only matter for deleting the portfolio identity row.
 
-When the catalog places the portfolio's weights in a `PortfolioWeightsTS`
-instance another application owns, the route returns 409, deletes nothing and
-names the table. Delete those rows through the application that owns the table.
+Only the portfolio's manager may delete its weights; any other caller gets
+`403` and nothing is deleted.
 
 ## Bulk Delete Portfolios
 
@@ -623,8 +580,8 @@ Both take the Command Center bulk-action request with explicit uids:
 
 The preflight runs the delete's checks without deleting: one read counts every
 selected portfolio's rows per dataset and the account history that names it,
-and each table of another application with a `RESTRICT` key to portfolios is
-counted once for the whole selection. Each count reads only that portfolio's
+and reads its manager; a portfolio the caller does not manage is a blocker.
+Each count reads only that portfolio's
 rows, through its dataset's index on `(portfolio_identifier, time_index)`
 ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
 It returns the MetaTables impact, the blockers, and per portfolio the rows the

@@ -2,6 +2,11 @@
 
 ## Status
 
+Note (2026-11-20): the delete notes below that count a portfolio's rows in another
+application's table are replaced by
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) decision 7: the
+database applies that table's key, and a `RESTRICT` refusal answers 409 with its message.
+
 Accepted (2026-11-10), implemented in 3.2.0. Amends
 [ADR 0027](0027-account-target-position-portfolio-exposure.md) (target writes
 refuse a retired portfolio),

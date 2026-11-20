@@ -8,8 +8,7 @@ backend and `msm.client` are implemented, with the
 deviations recorded in the ADR's "step 2" implementation note (per-method
 dispatch instead of a `RowBackend` protocol, mixed backends per row class,
 release name `api`). The distribution split (order of work, step 5) is not. Step 1
-(the acting identity, the portfolio dataset catalog, the catalog-aware reads
-and the missing routes) is on `development`; this note is the hand-off for
+(the acting identity and the missing routes) is on `development`; this note is the hand-off for
 the packaging split. It records what the split must preserve, where the
 current code resists it and the order in which to do it. It does not start
 the split.
@@ -51,10 +50,10 @@ The split is complete when:
 | `msm.api.formula_indices.FormulaIndex` | split | The model (`index`, `definition`, `inputs`) is a contract; `upsert`, `activate`, `retire`, `calculate_from_sources` are service calls behind the backend |
 | `msm.analytics.indices` contracts (`IndexFormulaDefinition`, `IndexFormulaInput`, `IndexFormulaSourceReference`) | contracts | Pure Pydantic plus the formula parser; no table access |
 | `msm.services.indices.contracts` (`IndexFormulaDetail`, `IndexDatasetState`, ...) | contracts | API response models; move under `msm.api.indices` or a new `msm.api.contracts.indices` |
-| `msm_portfolios.services.portfolio_datasets` models (`PortfolioDatasetRegistration`, `PortfolioDatasetState`, `PortfolioDatasetReconciliationResult`) | contracts | Response models of the catalog routes |
+| `msm_portfolios.api.series` answers (`SeriesPublication`, `SeriesRows`, `SeriesBounds`, `SeriesDeletion`) | contracts | Answers of the published-series operations (ADR 0060) |
 | `msm.api.http` | contracts | Collection, discovery, bulk-action, tabular-frame, error and operation contracts; see "FastAPI in the contracts" |
 | `msm.constants` | contracts | Static keys |
-| Storage layout contracts: column names, dtypes, index names of `PortfoliosTS`, `PortfolioWeightsTS`, `SignalWeightsTS`, `IndexValuesTS` | contracts | As data (a frozen mapping per contract), not as SQLAlchemy tables; `contract_instances.py` keeps building tables from them |
+| Storage layout contracts: column names, dtypes, index names of `PortfolioRebalanceStateTS`, `PortfolioCalendarEventsTS`, `PortfolioEventLedgerTS`, `IndexValuesTS` | contracts | As data (a frozen mapping per contract), not as SQLAlchemy tables; `contract_instances.py` keeps building tables from them |
 | `msm.models`, `msm.repositories`, `msm.bootstrap`, `msm_migrations`, `msm.time_index`, `msm_portfolios` (updaters, strategies, services), `msm_pricing`, `apps/v1`, `msm_cli` | `ms-markets` | Unchanged location |
 
 `msm.client` (new, in the contracts distribution so a consumer needs one
@@ -166,9 +165,8 @@ themselves have no FastAPI dependency.
   consumer range `>=2,<3` matches the current ms-markets major.
 - A contracts test fixture pins the OpenAPI document; `tests/msm/fastapi`
   fails when a route changes without a contracts bump.
-- Consumers never see a table schema change: `PortfolioDatasetAvailability`
-  and every future column reach them as response fields, with
-  `extra="ignore"` on the way in.
+- Consumers never see a table schema change: every future column reaches
+  them as a response field, with `extra="ignore"` on the way in.
 
 ## Repository Layout
 
@@ -218,5 +216,4 @@ PyPI project and the ordering rule.
 - Moving signals, strategies or engines; they stay in `msm_portfolios` and
   with providers (ADR 0047 non-goals).
 - A generic SQL endpoint or a MetaTables pass-through in `msm.client`.
-- Provider namespace moves and backfills (migration path step 3); the
-  contract instances and the catalog from step 1 are what they build on.
+- Provider namespace moves and backfills (migration path step 3).

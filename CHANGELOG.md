@@ -7,8 +7,48 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Declared as 4.2.0. This release breaks every producer of signals and portfolios
+([ADR 0060](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0060-producers-publish-markets-reads-only-its-own-tables/)).
+
+### Added
+
+- `SignalWeightsSeries` (`signal-weights`), `PortfolioWeightsSeries` (`portfolio-weights`)
+  and `PortfolioValuesSeries` (`portfolio-values`) in `msm_portfolios.api`, with `publish`,
+  `window`, `last`, `bounds`, `assets` and `delete_after`, under the `runtime` backend and
+  as `POST /api/v1/rows/{resource}/{operation}/`. `publish` writes one key's rows in one
+  transaction: an equal row is skipped and a different one refuses the call. Signal
+  weights keep `ApplicationWeights`' rules, now enforced by Markets for every signal.
+- `msm_portfolios.recipes`: `publish_signal_weights`, `signal_history`,
+  `portfolio_history`, `weights_as_of`, `portfolio_preflight`, `run_portfolio`,
+  `end_signal` and `delete_private_series`.
+- `Portfolio.managed_by` and `SignalMetadata.managed_by` (revision 0032): the principal of
+  the call that created the row, `branch:<uid>` for a workload of a code repository branch
+  and `user:<uid>` otherwise. Through the Markets API only the manager publishes to a row,
+  restates it or deletes it (403 otherwise); `assign_manager` is for Organization admins.
+  Rows created before have no manager and accept no publish until one is assigned.
+- `msm series publish` publishes the history held in an application's own table, key by
+  key, and compares the bounds; `msm registry assign-manager` assigns managers. Both
+  default to a dry run.
+- `SignalMetadata.delete(uid)` and `SignalMetadata.end(signal_uid)` delete a signal's
+  weights and its row in one transaction.
+- The skill `platform/producer_boundary` teaches producers the boundary.
+
 ### Changed
 
+- **Breaking: Markets reads and writes only its own tables.** `SignalWeights` and its
+  subclasses, `PortfolioWeights` and `PortfoliosUpdater` are no longer
+  `TimeIndexTableUpdater`s: they publish through the series and take no `output_table=`
+  (`PortfoliosUpdater` and `PortfolioWeights` keep `rebalance_output_table=`). Their
+  progress is the published series. `PortfoliosUpdater.run` no longer takes
+  `override_update_stats` and no longer fills the `*_table_update_uid` pointers of the
+  `Portfolio` row.
+- **Breaking:** `PortfolioRebalance` no longer runs the signal; `PortfolioWeights` runs it.
+  `PortfolioAnalyticsConfiguration` loses `portfolio_values_instance` and reads the
+  published values, so its update hash changes.
+- **Breaking:** the portfolio delete no longer reads other applications' tables; a
+  `RESTRICT` key that refuses it is answered 409 with the database's message. The signal
+  delete is one transaction.
+- `GET /api/v1/portfolio/{uid}/signals_weights/` reads by `Portfolio.signal_uid` alone.
 - **Requires MetaTables 0.1.71 or later.** `mainsequence-metatable>=0.1.71,<0.2` (was
   `>=0.1.66`), for two of its fixes:
   - **0.1.69 rebuilds a table's update statistics after a compiled-SQL write.** The
@@ -46,7 +86,7 @@ and this project follows versioned releases.
   finishes or rebuilds what it left. Dropping a hypertable's index, which the downgrade and
   the upgrade after an interrupted build do, takes about two locks per chunk of that table
   in one transaction, because TimescaleDB 2.22 opens every chunk to drop it (4,010 locks
-  for 2,005 chunks). Instances built with `configured_portfolios_storage`,
+  for 2,005 chunks). Instances built with
   `configured_portfolio_rebalance_state_storage` and
   `configured_portfolio_event_ledger_storage` declare the same index; **a provider adds it
   to its existing instances in a revision of its own**.
@@ -65,6 +105,17 @@ and this project follows versioned releases.
   ([ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
 - **`msm.services.delete_portfolio`, `msm.repositories.delete_portfolio` and
   `msm.repositories.build_delete_portfolio_operation`**, unused one-row portfolio deletes.
+- **Breaking:** `PortfolioDatasetAvailabilityTable` and `SignalMetadata.meta_table_uid`
+  (revision 0033), `PortfolioDatasets`, `msm_portfolios.services.portfolio_datasets`, the
+  routes `registerPortfolioDatasets`, `getPortfolioDatasets` and
+  `reconcilePortfolioDatasets`, the catalog reads of `msm_portfolios.services.portfolio_reads`,
+  `PortfolioDatasetOwnershipError`, `SignalDatasetOwnershipError`, `retained_datasets`,
+  the foreign-table checks of the portfolio delete, `include=` and `includes` on the
+  account, asset, portfolio and Index by-uid lookups, `PortfolioSeriesMove`,
+  `SignalSeriesMove`, `configured_signal_weights_storage`,
+  `configured_portfolio_weights_storage` and `configured_portfolios_storage`.
+  `msm.storage_instances` no longer exports `provider_owned_table_uid` or
+  `PROVIDER_TABLE_DELETE_GUIDANCE`.
 
 ### Fixed
 
@@ -160,6 +211,7 @@ and this project follows versioned releases.
     `PortfolioDeletePlan`, and `bulk_delete_portfolio_records(..., plan=...)`). A
     portfolio referenced after that read is still refused by its guarded statement or by
     a `RESTRICT` key.
+
 
 ## [4.1.0] - 2026-11-19
 

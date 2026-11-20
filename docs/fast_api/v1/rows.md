@@ -47,11 +47,14 @@ model's own fields only.
 Writes (`create`, `upsert`, `update`, `delete`, `add`, `bulk_delete`,
 `add_portfolio`, `remove_portfolio`, `replace_memberships`, `create_batch`,
 `create_from_pandas_calendar`, `link_many`, `reconcile_dataset_availability`, `upsert_many`,
-`add_many`, `create_index_curve_selection`, `upsert_index_curve_selection`,
-`publish`, `register`, `register_signal`, `unregister`, `unregister_signal`, `reconcile`, `activate_definition`,
-`retire_definition`) run through `registry_write`, which records who made them.
+`add_many`, `create_index_curve_selection`, `get_or_create_currency`,
+`upsert_index_curve_selection`, `publish`, `delete_after`, `assign_manager`, `end`,
+`activate_definition`, `retire_definition`) run through `registry_write`, which
+records who made them and binds the acting manager (see
+[Published series](#published-series)).
 A row class that defines its own `delete` runs it like any other operation:
-`account` (the cascading account delete, with `bulk_delete`, ADR 0050) and the
+`account` (the cascading account delete, with `bulk_delete`, ADR 0050),
+`signal-metadata` (the signal's weights and its row, in one transaction) and the
 composites (`curve`, `pricing-market-data-set`, the binding resources). Any other
 table row class's `delete` runs the resource's service delete with its preflight
 checks and exists only for `asset`, `asset-category`, `calendar`, `index` and
@@ -76,8 +79,9 @@ calendar's `valid_from` to `valid_to` range answers `400` with `error_type`
 `source="user"`.
 
 The resources include the `msm_portfolios.api` metadata rows
-(`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`) and
-the `msm_pricing.api` composites (`curve`, `curve-building-details`,
+(`signal-metadata`, `portfolio-metadata`, `rebalance-strategy-metadata`), the
+three published series (`signal-weights`, `portfolio-weights`,
+`portfolio-values`) and the `msm_pricing.api` composites (`curve`, `curve-building-details`,
 `index-convention-details`, `pricing-market-data-set`,
 `pricing-market-data-set-binding`, `pricing-market-data-set-curve-binding`,
 `asset-current-pricing-details`, `asset-pricing-details`).
@@ -100,3 +104,45 @@ these; see [Upstream errors](index.md#upstream-errors). `msm.client` raises
 statements, each its own transaction, so a failure part of the way leaves the
 earlier rows written; sending the same list again finishes the write
 ([Bulk upserts of any length](../../knowledge/msm/repositories/index.md#bulk-upserts-of-any-length)).
+
+## Published Series
+
+Signal weights, portfolio weights and portfolio values are stored once, in
+Markets' own tables, and an application publishes them here
+([ADR 0060](../../ADR/0060-producers-publish-markets-reads-only-its-own-tables.md)).
+Markets reads no application's table: no operation takes a table uid.
+
+| Resource | Row class | Key |
+|---|---|---|
+| `signal-weights` | `SignalWeightsSeries` | `SignalMetadata.signal_uid` |
+| `portfolio-weights` | `PortfolioWeightsSeries` | `Portfolio.unique_identifier` |
+| `portfolio-values` | `PortfolioValuesSeries` | `Portfolio.unique_identifier` |
+
+| Operation | Writes | Arguments | Result |
+|---|---|---|---|
+| `publish` | yes | `key`, `rows` | Rows written and skipped; the key's first time, last time and row count |
+| `window` | no | `keys`, `start`, `end`, `columns`, `assets` (weights only), `limit` (default 5,000, at most 9,000), `offset`, `newest_first` | One page of rows; `next_offset` when the page was full |
+| `last` | no | `keys`, `at`, `by` (`key` or `asset`, weights only), `inclusive`, `assets` (weights only) | The last rows at or before `at`, at most 9,000 |
+| `bounds` | no | `keys` | First time, last time and row count per key |
+| `assets` | no | `key` | Every asset the key has had a row for |
+| `delete_after` | yes | `key`, `time` | Rows deleted after `time` |
+
+`publish` writes one key's rows in one transaction, at most 10,000 rows per
+call. A row equal to the stored one is skipped; a different row for a stored
+time (and asset) answers `400` and nothing is written, so sending the same rows
+again writes nothing. On `signal-weights` times must carry a timezone, weights
+must be finite numbers, assets must be registered (`404` otherwise), an asset
+the signal held and an observation leaves out is written at `0`, and an
+observation at or before the signal's last stored time is refused. On the two
+portfolio series, rows at or after the portfolio's retirement are refused.
+
+`Portfolio` and `SignalMetadata` rows carry `managed_by`, recorded by this API
+from the acting identity of the create call: `branch:<uid>` for a workload of
+a code repository branch, `user:<uid>` for a person or any other identity. A
+payload that sends `managed_by` answers `400`. `publish` and `delete_after` on
+a series, the delete of a `signal-metadata` row (`delete`, or `end` by
+`signal_uid`) and the portfolio delete answer `403` for any caller but the
+row's manager, and for every caller while the row has no manager.
+`assign_manager` (`uid`, `managed_by`) on `portfolio` and `signal-metadata`
+sets the manager; only an Organization admin may call it, any other caller
+gets `403`.

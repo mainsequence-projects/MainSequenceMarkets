@@ -5,8 +5,12 @@
 Accepted (2026-11-19). The owner decided the rule (decision 1), that each published row is
 stored once, in Markets' tables (decision 2), that ms-markets ships the primitives and
 recipes a producer needs (decisions 3, 5 and 6), and that a skill teaches producers the
-pattern (decision 10). The names and signatures below are proposed
-and are settled at implementation. Nothing in this ADR is implemented.
+pattern (decision 10).
+
+Implemented (2026-11-20), released in 4.2.0: decisions 1 to 11. The names below are
+final; the signatures are under [Implementation Notes](#implementation-notes), which also
+record where the implementation departs from the text above and the "Not Verified" items
+it settled.
 
 - It supersedes decision 5 of
   [ADR 0047](0047-markets-api-application-boundary.md) (contract instances read through a
@@ -19,8 +23,8 @@ and are settled at implementation. Nothing in this ADR is implemented.
 - It changes the delete notes of [ADR 0049](0049-portfolio-lifecycle-and-account-history.md)
   and [ADR 0050](0050-account-deletion.md) where they count rows in another application's
   table.
-- [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md)
-  (proposed) already records orders and trades this way: a recorder writes Markets' tables
+- Execution Engine ADR 0001 (proposed, not in this repository) already records orders and
+  trades this way: a recorder writes Markets' tables
   through the API.
 
 ## Context
@@ -365,3 +369,120 @@ the grant is again a person's step in each Environment.
   workload's branch through the platform; Markets has no such code today.
 - That no consumer depends on `include=` or on the dataset catalog routes. Their callers
   outside this repository were not searched.
+
+## Implementation Notes
+
+Implemented on 2026-11-20. Revisions `0032_registry_row_managers` (adds `managed_by` to
+`Portfolio` and `SignalMetadata`) and `0033_drop_portfolio_dataset_catalog` (drops
+`PortfolioDatasetAvailability` and `SignalMetadata.meta_table_uid`).
+
+### Signatures
+
+Series row classes, `msm_portfolios.api` (`src/msm_portfolios/api/series.py`); the SQL is
+in `src/msm_portfolios/services/series.py`. A `key` is a `signal_uid` or a
+`Portfolio.unique_identifier`.
+
+| Operation | `SignalWeightsSeries` and `PortfolioWeightsSeries` | `PortfolioValuesSeries` |
+| --- | --- | --- |
+| `publish` | `(key, rows) -> SeriesPublication` | same |
+| `window` | `(keys, start=None, end=None, columns=None, assets=None, limit=5000, offset=0, newest_first=False) -> SeriesRows` | `(keys, start=None, end=None, columns=None, limit=5000, offset=0, newest_first=False) -> SeriesRows` |
+| `last` | `(keys, at=None, by="key", inclusive=True, assets=None) -> SeriesRows`, `by` is `"key"` or `"asset"` | `(keys, at=None, inclusive=True) -> SeriesRows` |
+| `bounds` | `(keys) -> list[SeriesBounds]` | same |
+| `assets` | `(key) -> list[str]` | same (the assets of the portfolio's weights) |
+| `delete_after` | `(key, time) -> SeriesDeletion` | same |
+
+- `rows` are mappings with `time_index` (timezone-aware) and the table's columns
+  (`asset_identifier` and `signal_weight`; the weights' or values' value columns). At most
+  `PUBLISH_MAX_ROWS` (10,000) per call; `window` pages hold at most 9,000 rows and a
+  `last` answer as many (`READ_MAX_ROWS`); `SeriesRows.next_offset` pages a window.
+- `SeriesPublication(key, written, skipped, first_time, last_time, row_count)`,
+  `SeriesBounds(key, first_time, last_time, row_count)`, `SeriesDeletion(key, after,
+  deleted)`, `SeriesRows(series, rows, next_offset)` with `.frame()`.
+- Managers: `Portfolio.assign_manager(uid, managed_by)` and
+  `SignalMetadata.assign_manager(uid, managed_by)`; `SignalMetadata.delete(uid)` and
+  `SignalMetadata.end(signal_uid)` delete a signal's weights and its row in one
+  transaction.
+
+Recipes, `msm_portfolios.recipes` (`src/msm_portfolios/recipes.py`):
+
+- `publish_signal_weights(signal_uid, observations, *, description=None) -> SignalPublication`
+  with `observations` a `{datetime: {asset: weight}}` mapping;
+  `SignalPublication(signal_uid, written, skipped, assets, first_time, last_time,
+  row_count, created_metadata)`.
+- `signal_history(signal_uids, *, latest=0) -> SignalHistory(bounds, latest)`.
+- `portfolio_history(portfolio_identifier, *, limit=100, offset=0) ->
+  PortfolioHistory(portfolio_identifier, count, values, next_offset)`.
+- `weights_as_of(portfolio_identifiers, at=None) -> pandas.DataFrame`.
+- `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None) ->
+  PortfolioPreflight(ready, reasons, signal_uid, signal_first_time, signal_last_time)`.
+- `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, namespace=None,
+  portfolio_resolver=None, portfolio_description=None) -> PortfolioRun(portfolio,
+  weights, values, first_rebalance)`.
+- `end_signal(signal_uid) -> dict`.
+- `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=()) ->
+  dict[str, int]`.
+
+Operator commands (`src/msm_portfolios/series_history.py`, `src/msm_cli/main.py`):
+`msm series publish module:callable [--execute] [--json]`, where the callable returns
+`SeriesHistoryPublish(source, series, keys=(), label="")` objects, and
+`msm registry assign-manager --manager <principal> [--portfolio ID]... [--signal UID]...
+[--unmanaged] [--execute] [--json]`. Both default to a dry run.
+
+### Departures from the text above
+
+- `PortfolioValuesSeries` has no asset column: its `window` and `last` take no `assets`
+  or `by`, and its `assets(key)` answers the assets of the portfolio's weights, so all
+  three classes offer the six operations. `window` gains `newest_first`, which
+  `portfolio_history` and `signal_history` need.
+- The engine nodes publish only rows after the key's last stored time
+  (`PublishedSeriesNode.publish_frame`, `src/msm_portfolios/series_nodes.py`), as the
+  update runner filtered by the latest value before. With decision 3's signal rule this
+  means a signal that adds an asset can no longer write that asset's history before the
+  signal's last observation; per-asset progress used to allow it. Every signal is now
+  held to the signal rules, so a computed signal's `NaN` weight is refused.
+- `PortfolioRebalance.dependencies()` no longer names the signal (a published series is
+  read, not run); `PortfolioWeights.run()` runs the signal node, then the rebalance. A
+  ledger portfolio (`PortfolioEngine`) runs its signal first; `run_portfolio` refuses it.
+- `PortfolioAnalyticsConfiguration` loses `portfolio_values_instance`: analytics reads the
+  published values, so its update hash changes.
+- The nodes no longer fill `Portfolio.*_table_update_uid` (their replacement is not
+  decided here); `PortfoliosUpdater` records the signal on the row. The signal-weights
+  frame route reads by `Portfolio.signal_uid` and no longer requires
+  `signal_weights_table_update_uid`.
+- The portfolio delete preflight still passes MetaTables' delete impact of the
+  `Portfolio` table through; Markets reads none of the tables it lists. A `RESTRICT`
+  refusal is answered 409 with the database's message. A bulk delete and the account
+  delete with portfolios report a portfolio the caller does not manage instead of
+  deleting it.
+- Pricing is out of scope: `provider_owned_table_uid` and `PROVIDER_TABLE_DELETE_GUIDANCE`
+  moved unchanged from `msm.storage_instances` into `src/msm_pricing/api/curves.py`, their
+  only remaining user.
+- `msm.storage_copies.run_series_moves` runs moves in the given order (reversed for a
+  rollback), and `finish_move` lost its catalog steps, since only the removed moves used
+  them.
+- The architecture test (`tests/msm_portfolios/imports/test_markets_reads_only_its_own_tables.py`)
+  checks `apps/v1` and the portfolio library's `services`, `api`, `repositories` and
+  `recipes`. The Index dataset, formula-source, pricing and related-table code that the
+  section above leaves undecided lives in `msm` and `msm_pricing` and is outside it, as
+  are the engine nodes and operator commands, which run with a producer's or operator's
+  own access.
+
+### Not Verified, settled or confirmed
+
+- Settled: `bounds` and `last` replace `update_statistics` in the three nodes. The
+  signal's progress is `SignalWeightsSeries.bounds`, and the per-asset progress of
+  `_signal_asset_start_date` is `last(by="asset")`
+  (`src/msm_portfolios/time_index/signals/weights.py`); the limit is the one above.
+- Settled, with a caveat: Markets names a workload caller's application by its code
+  repository branch, as MetaTables does (`metatables.api.backend.integrations.
+  platform_principals.workload_branch`). `apps/v1/identity.caller_principal` reads the
+  caller's User with `User.get_by_uid` inside `reads_as_caller()`, through a subclass that
+  declares `code_repository_branch_uid`; the SDK's `User` (mainsequence 9.0.40) does not
+  declare that field, so this relies on the platform returning it on workload rows, as
+  MetaTables does. A person, or a workload without a branch, is `user:<uid>`; a requester
+  is `user:<requester uid>`. It was not run against a live platform. Outside a Markets API
+  request (the `runtime` backend in a script or Job) no manager is bound: nothing is
+  checked, and a row created that way has no manager until one is assigned.
+- Still not verified: the cost of a run through the API and of publishing a long history
+  (no measurement), and whether any consumer outside this repository uses `include=` or the
+  catalog routes.
