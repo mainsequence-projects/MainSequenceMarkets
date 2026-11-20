@@ -334,7 +334,6 @@ def test_portfolio_rebalance_reads_the_portfolios_fx_source() -> None:
     )
 
     assert node.dependencies() == {
-        "signal_weights": signal,
         "valuation_source": source,
         "fx_source": fx,
         "calendar_events": events,

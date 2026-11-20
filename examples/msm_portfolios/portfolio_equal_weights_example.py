@@ -387,11 +387,11 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
     )
     print_detail("source_prices_table_update_uid", result["source_prices_table_update_uid"])
     print_detail("interpolated_prices_table_update_uid", result["interpolated_prices_table_update_uid"])
-    print_detail("signal_weights_table_update_uid", result["signal_weights_table_update_uid"])
     print_detail("calendar_events_table_update_uid", result["calendar_events_table_update_uid"])
     print_detail("portfolio_rebalance_table_update_uid", result["portfolio_rebalance_table_update_uid"])
-    print_detail("portfolio_weights_table_update_uid", result["portfolio_weights_table_update_uid"])
-    print_detail("portfolio_values_table_update_uid", result["portfolio_values_table_update_uid"])
+    print_detail("published_signal_weights_rows", result["published_signal_weights_rows"])
+    print_detail("published_portfolio_weights_rows", result["published_portfolio_weights_rows"])
+    print_detail("published_portfolio_values_rows", result["published_portfolio_values_rows"])
     if not run_updaters:
         print_detail("updater_mode", "frames built locally; storage publication skipped")
 
@@ -477,7 +477,7 @@ def build_equal_weight_portfolio(
         "source_prices_rows", len(build_example_daily_bars_frame(ASSET_UNIQUE_IDENTIFIERS))
     )
 
-    print_step(5, "Publishing portfolio time-index-table outputs.")
+    print_step(5, "Running the portfolio and publishing its series to Markets (ADR 0060).")
     if run_updaters:
         source_bars_node.run(update_tree=False)
         source_prices_table_update_uid = str(source_bars_node.table_update.uid)
@@ -492,40 +492,48 @@ def build_equal_weight_portfolio(
         interpolated_prices_table_update_uid = str(interpolated_prices_node.table_update.uid)
         print_detail("interpolated_prices_table_update_uid", interpolated_prices_table_update_uid)
 
-        signal_weights_table_update_uid = str(signal_weights_node.table_update.uid)
-        print_detail("signal_weights_table_update_uid", signal_weights_table_update_uid)
-
         calendar_events_table_update_uid = str(calendar_events_node.table_update.uid)
         print_detail("calendar_events_table_update_uid", calendar_events_table_update_uid)
 
-        portfolio_weights_node = portfolio_values_node._canonical_portfolio_weights_node()
+        portfolio_weights_node = portfolio_run_result["portfolio_weights"]
         portfolio_rebalance_table_update_uid = str(
             portfolio_weights_node.portfolio_rebalance.table_update.uid
         )
         print_detail("portfolio_rebalance_table_update_uid", portfolio_rebalance_table_update_uid)
 
-        portfolio_weights_table_update_uid = str(portfolio_weights_node.table_update.uid)
-        print_detail("portfolio_weights_table_update_uid", portfolio_weights_table_update_uid)
+        from msm_portfolios.api import (
+            PortfolioValuesSeries,
+            PortfolioWeightsSeries,
+            SignalWeightsSeries,
+        )
 
-        portfolio_values_table_update_uid = str(portfolio_values_node.table_update.uid)
-        print_detail("portfolio_values_table_update_uid", portfolio_values_table_update_uid)
+        published_signal_weights_rows = SignalWeightsSeries.bounds(
+            [signal_weights_node.signal_uid]
+        )[0].row_count
+        published_portfolio_weights_rows = PortfolioWeightsSeries.bounds(
+            [portfolio.unique_identifier]
+        )[0].row_count
+        published_portfolio_values_rows = PortfolioValuesSeries.bounds(
+            [portfolio.unique_identifier]
+        )[0].row_count
+        print_detail("published_signal_weights_rows", published_signal_weights_rows)
+        print_detail("published_portfolio_weights_rows", published_portfolio_weights_rows)
+        print_detail("published_portfolio_values_rows", published_portfolio_values_rows)
     else:
         print_detail("source_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("interpolated_prices_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("signal_weights_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("calendar_events_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("portfolio_rebalance_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_weights_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_values_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("published series", "skipped (--no-run-updaters)")
         source_prices_table_update_uid = None
         interpolated_prices_table_update_uid = None
-        signal_weights_table_update_uid = None
         calendar_events_table_update_uid = None
         portfolio_rebalance_table_update_uid = None
-        portfolio_weights_table_update_uid = None
-        portfolio_values_table_update_uid = None
+        published_signal_weights_rows = None
+        published_portfolio_weights_rows = None
+        published_portfolio_values_rows = None
 
-    print_step(6, "Portfolio row has current TimeIndexTableUpdater links.")
+    print_step(6, "The Portfolio row names its signal; its weights and values are published.")
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
 
@@ -546,11 +554,11 @@ def build_equal_weight_portfolio(
         "interpolated_prices_storage_cadence": interpolated_prices_storage.__cadence__,
         "source_prices_table_update_uid": source_prices_table_update_uid,
         "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
-        "signal_weights_table_update_uid": signal_weights_table_update_uid,
         "calendar_events_table_update_uid": calendar_events_table_update_uid,
         "portfolio_rebalance_table_update_uid": portfolio_rebalance_table_update_uid,
-        "portfolio_weights_table_update_uid": portfolio_weights_table_update_uid,
-        "portfolio_values_table_update_uid": portfolio_values_table_update_uid,
+        "published_signal_weights_rows": published_signal_weights_rows,
+        "published_portfolio_weights_rows": published_portfolio_weights_rows,
+        "published_portfolio_values_rows": published_portfolio_values_rows,
     }
     print_result_summary(result, run_updaters=run_updaters)
     return result

@@ -7,7 +7,6 @@ from typing import Any
 import pandas as pd
 import pytz
 
-from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
 
 from msm_portfolios.retirement import (
@@ -17,7 +16,6 @@ from msm_portfolios.retirement import (
     window_is_empty,
 )
 from ..base import (
-    AssetScopedPortfolioCanonicalUpdater,
     OutputTable,
     _empty_flat_frame,
     _require_columns,
@@ -34,42 +32,40 @@ from ..portfolio_identity import (
     compute_portfolio_configuration_hash,
     get_or_create_portfolio,
 )
+from msm_portfolios.series_nodes import PublishedSeriesNode
 from .rebalance import PortfolioRebalance
 from .storage import PortfolioWeightsStorage
 
 
-class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
-    """Projection of canonical rebalance state into executed portfolio weights."""
+class PortfolioWeights(PublishedSeriesNode):
+    """Projection of rebalance state into executed weights, published as
+    ``PortfolioWeightsSeries`` (ADR 0060, decision 5)."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
+    series_resource = "portfolio-weights"
+    key_column = PORTFOLIO_IDENTIFIER
 
     def __init__(
         self,
-        config=None,
-        *args,
+        *,
         portfolio_configuration: Any | None = None,
         portfolio_rebalance: PortfolioRebalance | None = None,
         rebalance_output_table: OutputTable | None = None,
         namespace: str | None = None,
-        **kwargs,
     ):
-        """Create the executed-weights updater.
+        """Create the executed-weights node.
 
-        ``output_table`` binds these weights to a ``PortfolioWeightsTS`` instance and
-        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to a
-        ``PortfolioRebalanceStateTS`` instance (ADR 0047). Neither enters ``update_hash``:
-        MetaTables keys each update record by update hash and output table.
+        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to
+        the application's own ``PortfolioRebalanceStateTS`` instance: rebalance state is
+        private to the application that runs the portfolio. The weights themselves are
+        published to Markets.
         """
         self._portfolio_configuration = portfolio_configuration
         self.portfolio_rebalance = portfolio_rebalance
         self._rebalance_output_table = rebalance_output_table
-        super().__init__(config, *args, namespace=namespace, **kwargs)
+        super().__init__(None, namespace=namespace)
         if portfolio_configuration is not None:
             self.set_portfolio_configuration(portfolio_configuration)
-
-    def _initialize_configuration(self, init_kwargs: dict) -> None:
-        init_kwargs.pop("rebalance_output_table", None)
-        super()._initialize_configuration(init_kwargs=init_kwargs)
 
     def set_portfolio_configuration(
         self,
@@ -82,8 +78,7 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         metadata_updater: Any | None = None,
         portfolio_rebalance: PortfolioRebalance | None = None,
     ) -> PortfolioWeights:
-        """Attach the hash-bearing portfolio contract and its rebalance-state source."""
-        self._rehash_for_portfolio_configuration(portfolio_configuration)
+        """Attach the portfolio contract and its rebalance-state source."""
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_identifier = portfolio_identifier
         self._portfolio = portfolio
@@ -108,16 +103,6 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         )
         return self
 
-    def _rehash_for_portfolio_configuration(self, portfolio_configuration: Any) -> None:
-        build_configuration = {
-            "config": self.config,
-            "portfolio_configuration": portfolio_configuration,
-        }
-        if self.hash_namespace:
-            build_configuration["hash_namespace"] = self.hash_namespace
-        self.build_configuration = build_configuration
-        self._initialize_configuration(init_kwargs=build_configuration)
-
     def set_weights_frame(
         self,
         weights_frame: pd.DataFrame,
@@ -139,30 +124,36 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         self._portfolio_metadata_updater = metadata_updater
         return self
 
-    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+    def dependencies(self) -> dict[str, Any]:
+        """The portfolio's signal, then its rebalance state, which this node projects."""
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
         if self.portfolio_rebalance is None:
             raise ValueError("PortfolioWeights requires PortfolioRebalance.")
-        return {"portfolio_rebalance": self.portfolio_rebalance}
+        return {
+            "signal_weights": self.portfolio_rebalance.signal_weights,
+            "portfolio_rebalance": self.portfolio_rebalance,
+        }
+
+    def series_key(self) -> str:
+        return self._resolve_portfolio_identifier()
 
     def update(self) -> pd.DataFrame:
         if getattr(self, "_portfolio_configuration", None) is not None:
             frame = normalize_portfolio_weights_frame(
                 self._calculate_projected_weights(),
                 portfolio_identifier=self._resolve_portfolio_identifier(),
-                output_table=self.output_table,
             )
         else:
             weights = getattr(self, "_weights_frame", None)
             if weights is None:
-                frame = self.get_canonical_frame()
-            else:
-                frame = normalize_portfolio_weights_frame(
-                    weights,
-                    portfolio_identifier=self._resolve_portfolio_identifier(),
-                    output_table=self.output_table,
+                raise ValueError(
+                    "PortfolioWeights needs a portfolio configuration or set_weights_frame()."
                 )
+            frame = normalize_portfolio_weights_frame(
+                weights,
+                portfolio_identifier=self._resolve_portfolio_identifier(),
+            )
         frame = drop_retired_rows(frame, self._retirement_boundary())
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
@@ -275,18 +266,9 @@ class PortfolioWeights(AssetScopedPortfolioCanonicalUpdater):
         return start, end
 
     def _latest_projection_time_index_value(self) -> Any | None:
-        statistics = getattr(self, "update_statistics", None)
-        if statistics is None:
-            return None
-        progress = statistics.index_progress
-        portfolio_identifier = self._resolve_portfolio_identifier()
-        if isinstance(progress, dict):
-            value = progress.get(portfolio_identifier)
-            if isinstance(value, dict):
-                return self._max_in_nested_values(value)
-            if value is not None:
-                return value
-        return statistics.max_time_index_value
+        """The portfolio's last published weights time: this node's progress."""
+        last_time = self.reader.bounds(self._resolve_portfolio_identifier()).last_time
+        return None if last_time is None else pd.Timestamp(last_time)
 
     def _last_projected_weights(self, latest: Any | None) -> pd.DataFrame | None:
         if latest is None:
@@ -369,10 +351,9 @@ def normalize_portfolio_weights_frame(
     weights_frame: pd.DataFrame,
     *,
     portfolio_identifier: str,
-    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize executed-weight projections into canonical PortfolioWeights rows."""
-    required_columns = list(PortfolioWeights._column_dtypes_map_for_storage(output_table))
+    required_columns = list(PortfolioWeights._column_dtypes_map_for_storage())
     flat = _reset_frame_index(weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -387,10 +368,7 @@ def normalize_portfolio_weights_frame(
         required_columns=required_columns,
         frame_name="PortfolioWeights",
     )
-    return PortfolioWeights.validate_frame(
-        flat[required_columns],
-        output_table=output_table,
-    )
+    return PortfolioWeights.validate_frame(flat[required_columns])
 
 
 __all__ = ["PortfolioWeights", "normalize_portfolio_weights_frame"]

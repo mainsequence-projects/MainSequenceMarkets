@@ -1,4 +1,4 @@
-"""Consumer-owned analytical sampling of canonical portfolio values."""
+"""Consumer-owned analytical sampling of a portfolio's published values (ADR 0060)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
 from ..constants import PORTFOLIO_IDENTIFIER
+from msm_portfolios.series_nodes import PublishedSeriesReader
 from .storage import PortfolioAnalyticsStorage
 
 
@@ -21,8 +22,10 @@ class PortfolioAnalyticsConfiguration(PortfolioCanonicalUpdaterConfiguration):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    portfolio_values_instance: TimeIndexTableUpdater | TimeIndexTableRef
-    portfolio_identifier: str = Field(min_length=1)
+    portfolio_identifier: str = Field(
+        min_length=1,
+        description="Portfolio.unique_identifier whose published values are sampled.",
+    )
     frequency: str = Field(
         min_length=1,
         description="Pandas-compatible analytical period frequency such as 1D, 1W, or 1ME.",
@@ -46,7 +49,9 @@ class PortfolioAnalytics(PortfolioCanonicalUpdater):
         **kwargs,
     ):
         resolved = self._validate_config(config)
-        self.portfolio_values = resolved.portfolio_values_instance
+        self.portfolio_values = PublishedSeriesReader(
+            "portfolio-values", key_column=PORTFOLIO_IDENTIFIER, asset_column=None
+        )
         self.portfolio_identifier = resolved.portfolio_identifier
         self.frequency = resolved.frequency
         self.label = resolved.label
@@ -56,7 +61,8 @@ class PortfolioAnalytics(PortfolioCanonicalUpdater):
         super().__init__(resolved, *args, namespace=namespace, **kwargs)
 
     def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
-        return {"portfolio_values": self.portfolio_values}
+        """None: the values are a published series, read from Markets, never run here."""
+        return {}
 
     @property
     def analysis_identifier(self) -> str:

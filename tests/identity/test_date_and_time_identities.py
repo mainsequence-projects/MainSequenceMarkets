@@ -23,10 +23,6 @@ from msm_portfolios.time_index import (
 )
 from msm_portfolios.time_index.base import _isoformat_dates_and_times
 from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalanceStateStorage
-from msm_portfolios.time_index.portfolios.storage import (
-    PortfoliosStorage,
-    PortfolioWeightsStorage,
-)
 from tests.support.pinned_identities import (
     NESTED_PORTFOLIOS,
     _bound,
@@ -34,8 +30,6 @@ from tests.support.pinned_identities import (
     _signal,
 )
 
-WEIGHTS_TABLE_UID = "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e"
-PORTFOLIOS_TABLE_UID = "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"
 REBALANCE_TABLE_UID = "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a"
 
 
@@ -78,19 +72,20 @@ def test_signal_configurations_with_dates_and_times_get_a_signal_uid() -> None:
     ],
 )
 def test_portfolio_updaters_with_execution_windows_get_a_stable_update_hash(name: str) -> None:
-    """MetaTables 0.1.57 hashes the ``datetime.time`` execution windows of these strategies."""
+    """MetaTables 0.1.57 hashes the ``datetime.time`` execution windows of these strategies.
+
+    The rebalance state is the updater that carries them (ADR 0060: the weights and
+    values nodes publish to Markets and have no update hash).
+    """
 
     with (
         _built_updaters() as updaters,
-        _bound(PortfolioWeightsStorage, WEIGHTS_TABLE_UID),
-        _bound(PortfoliosStorage, PORTFOLIOS_TABLE_UID),
         # Every storage the updaters touch is bound, so nothing reaches a MetaTables backend.
         _bound(PortfolioRebalanceStateStorage, REBALANCE_TABLE_UID),
     ):
         weights = PortfolioWeights(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
-        portfolios = PortfoliosUpdater(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
+        PortfoliosUpdater(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
         rebuilt = PortfolioWeights(portfolio_configuration=NESTED_PORTFOLIOS[name](updaters))
 
-    assert weights.update_hash.startswith("portfolioweights_")
-    assert portfolios.update_hash.startswith("portfoliosupdater_")
-    assert rebuilt.update_hash == weights.update_hash
+    assert weights.portfolio_rebalance.update_hash.startswith("portfoliorebalance_")
+    assert rebuilt.portfolio_rebalance.update_hash == weights.portfolio_rebalance.update_hash

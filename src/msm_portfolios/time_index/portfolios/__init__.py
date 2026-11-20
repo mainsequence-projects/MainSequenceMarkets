@@ -8,9 +8,6 @@ import numpy as np
 import pandas as pd
 import pytz
 
-import metatables.updaters.configuration as update_configuration
-from metatables import BaseUpdateStatistics, TimeIndexTableRef, TimeIndexTableUpdater
-
 from msm_portfolios.retirement import (
     drop_retired_rows,
     end_before_retirement,
@@ -19,10 +16,6 @@ from msm_portfolios.retirement import (
 )
 from ..base import (
     OutputTable,
-    PortfolioCanonicalUpdater,
-    PortfolioCanonicalUpdaterConfiguration,
-    _class_import_path,
-    _drop_empty_framework_init_kwargs,
     _empty_flat_frame,
     _is_canonical_frame,
     _require_columns,
@@ -35,6 +28,7 @@ from ..constants import (
 )
 from ..metadata import emit_portfolio_metadata, extract_portfolio_description
 from ..portfolio_identity import get_or_create_portfolio
+from msm_portfolios.series_nodes import PublishedSeriesNode
 from .storage import PortfoliosStorage
 from msm_portfolios.rebalance_strategy import PriceConversion
 
@@ -43,34 +37,35 @@ from .temporal import align_asset_observations, fetch_asset_observations, utc_in
 from .weights import PortfolioWeights
 
 
-class PortfoliosUpdater(PortfolioCanonicalUpdater):
-    """Valuation-only updater consuming canonical executed portfolio weights."""
+class PortfoliosUpdater(PublishedSeriesNode):
+    """Valuation of executed portfolio weights, published as ``PortfolioValuesSeries``.
+
+    Bound to no table (ADR 0060, decision 5): ``run()`` runs the portfolio's chain
+    (signal, rebalance state, executed weights, valuation source), publishes the values
+    and records the portfolio's signal on its ``Portfolio`` row.
+    """
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
+    series_resource = "portfolio-values"
+    key_column = PORTFOLIO_IDENTIFIER
+    asset_column = None
 
     def __init__(
         self,
-        config: PortfolioCanonicalUpdaterConfiguration | None = None,
-        *args,
+        *,
         portfolio_configuration: Any | None = None,
         portfolio_resolver: Any | None = None,
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
-        weights_output_table: OutputTable | None = None,
         rebalance_output_table: OutputTable | None = None,
         namespace: str | None = None,
-        **kwargs,
     ):
-        """Create the valuation updater.
+        """Create the valuation node.
 
-        ``output_table`` binds the portfolio values to a ``PortfoliosTS`` instance. The
-        updaters built internally follow the same instance pattern (ADR 0047):
-        ``weights_output_table`` binds ``PortfolioWeights`` to a ``PortfolioWeightsTS``
-        instance and ``rebalance_output_table`` binds ``PortfolioRebalance`` to a
-        ``PortfolioRebalanceStateTS`` instance. None of them enters ``update_hash``;
-        MetaTables keys each update record by update hash and output table.
+        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to the
+        application's own ``PortfolioRebalanceStateTS`` instance; rebalance state is
+        private. The weights and values are published to Markets.
         """
-        self._weights_output_table = weights_output_table
         self._rebalance_output_table = rebalance_output_table
         self.portfolio_configuration = portfolio_configuration
         self._portfolio_configuration = portfolio_configuration
@@ -82,28 +77,9 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         self._resolved_unique_identifier: str | None = None
         self.target_portfolio = None
         self.portfolio_weights: PortfolioWeights | None = None
-        super().__init__(config, *args, namespace=namespace, **kwargs)
+        super().__init__(None, namespace=namespace)
         if portfolio_configuration is not None:
             self._initialize_from_portfolio_configuration(portfolio_configuration)
-
-    def _initialize_configuration(self, init_kwargs: dict) -> None:
-        """Use the canonical portfolio-values updater class for shared storage."""
-        _drop_empty_framework_init_kwargs(init_kwargs)
-        for runtime_key in (
-            "portfolio_resolver",
-            "portfolio_description",
-            "metadata_updater",
-            "weights_output_table",
-            "rebalance_output_table",
-        ):
-            init_kwargs.pop(runtime_key, None)
-        init_kwargs["table_updater_class_import_path"] = _class_import_path(PortfoliosUpdater)
-        config = update_configuration.create_config(
-            kwargs=init_kwargs,
-            updater_class_name=PortfoliosUpdater.__name__,
-        )
-        for field_name, value in config.__dict__.items():
-            setattr(self, field_name, value)
 
     def set_portfolio_configuration(
         self,
@@ -118,14 +94,6 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         self._portfolio_resolver = portfolio_resolver
         self._portfolio_description = portfolio_description
         self._portfolio_metadata_updater = metadata_updater
-        build_configuration = {
-            "config": self.config,
-            "portfolio_configuration": portfolio_configuration,
-        }
-        if self.hash_namespace:
-            build_configuration["hash_namespace"] = self.hash_namespace
-        self.build_configuration = build_configuration
-        self._initialize_configuration(init_kwargs=build_configuration)
         self._initialize_from_portfolio_configuration(portfolio_configuration)
         return self
 
@@ -153,15 +121,10 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if self.portfolio_configuration is None:
             raise ValueError("PortfolioWeights requires a portfolio configuration.")
         if self.portfolio_weights is None:
-            instance_tables: dict[str, OutputTable] = {}
-            if self._weights_output_table is not None:
-                instance_tables["output_table"] = self._weights_output_table
-            if self._rebalance_output_table is not None:
-                instance_tables["rebalance_output_table"] = self._rebalance_output_table
             self.portfolio_weights = PortfolioWeights(
                 portfolio_configuration=self.portfolio_configuration,
+                rebalance_output_table=self._rebalance_output_table,
                 namespace=self._canonical_namespace(),
-                **instance_tables,
             )
         self.portfolio_weights.set_portfolio_configuration(
             self.portfolio_configuration,
@@ -192,7 +155,7 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         self._portfolio_metadata_updater = metadata_updater
         return self
 
-    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+    def dependencies(self) -> dict[str, Any]:
         if self.portfolio_configuration is None:
             return {}
         return {
@@ -200,60 +163,51 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             "valuation_source": self.valuation_source,
         }
 
+    def series_key(self) -> str:
+        return self._resolve_unique_identifier()
+
     def run(
         self,
         *,
         update_tree: bool = True,
         update_only_tree: bool = False,
         update_pointers: bool = True,
-        override_update_stats: BaseUpdateStatistics | None = None,
     ):
+        """Run the chain, publish the values and record the portfolio's signal.
+
+        With ``update_tree`` the signal, rebalance state, executed weights and valuation
+        source run first, in that order. ``update_only_tree`` runs them and publishes no
+        values. Answers ``{"portfolio_weights", "portfolio_values", "portfolio"}``, where
+        ``portfolio_values`` is the values' ``SeriesPublication`` (``None`` when nothing
+        was new).
+        """
         if self.portfolio_configuration is None:
-            return super().run(
-                update_tree=update_tree,
-                update_only_tree=update_only_tree,
-                override_update_stats=override_update_stats,
-            )
+            return None if update_only_tree else super().run(update_tree=update_tree)
         portfolio = self._resolve_portfolio_identity()
         self._require_strategy_calendar(portfolio)
         self._resolved_unique_identifier = str(portfolio.unique_identifier)
         portfolio_weights = self._ensure_portfolio_weights_node()
-        portfolio_values_result = super().run(
-            update_tree=update_tree,
-            update_only_tree=update_only_tree,
-            override_update_stats=override_update_stats,
-        )
+        if update_tree:
+            self.run_dependencies()
         if update_only_tree:
-            return portfolio_values_result
+            return {"portfolio_weights": portfolio_weights, "portfolio_values": None, "portfolio": portfolio}
+        portfolio_values = self.publish_frame(self.update())
         if update_pointers:
-            portfolio = self._update_portfolio_pointers(
-                portfolio=portfolio,
-                signal_weights_table_update_uid=self._required_table_update_uid(
-                    self.signal_weights, "signal weights"
-                ),
-                portfolio_weights_table_update_uid=self._required_table_update_uid(
-                    portfolio_weights, "portfolio weights"
-                ),
-                portfolio_table_update_uid=self._required_table_update_uid(self, "portfolio values"),
-            )
+            portfolio = self._update_portfolio_pointers(portfolio=portfolio)
         return {
             "portfolio_weights": portfolio_weights,
-            "portfolio_values": portfolio_values_result,
+            "portfolio_values": portfolio_values,
             "portfolio": portfolio,
         }
 
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_portfolio_values()
         frame = (
-            self.validate_frame(raw_frame, output_table=self.output_table)
-            if _is_canonical_frame(raw_frame, output_table=self.output_table)
-            else self.validate_frame(
-                normalize_portfolio_values_frame(
-                    raw_frame,
-                    unique_identifier=self._resolve_unique_identifier(),
-                    output_table=self.output_table,
-                ),
-                output_table=self.output_table,
+            self.validate_frame(raw_frame)
+            if _is_canonical_frame(raw_frame, output_table=PortfoliosStorage)
+            else normalize_portfolio_values_frame(
+                raw_frame,
+                unique_identifier=self._resolve_unique_identifier(),
             )
         )
         frame = drop_retired_rows(frame, retirement_boundary(getattr(self, "target_portfolio", None)))
@@ -264,7 +218,9 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if self.portfolio_configuration is not None:
             return self._calculate_portfolio_workflow_values()
         if self._portfolio_values_frame is None:
-            return self.get_canonical_frame()
+            raise ValueError(
+                "PortfoliosUpdater needs a portfolio configuration or set_portfolio_values_frame()."
+            )
         return self._portfolio_values_frame
 
     def _calculate_portfolio_workflow_values(self) -> pd.DataFrame:
@@ -626,18 +582,12 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         return start, end
 
     def _latest_portfolio_time_index_value(self) -> Any | None:
-        statistics = getattr(self, "update_statistics", None)
-        if statistics is None:
-            return None
+        """The portfolio's last published value time: this node's progress."""
         identifier = self._portfolio_progress_identifier()
-        progress = statistics.index_progress
-        if identifier is not None and isinstance(progress, dict):
-            value = progress.get(identifier)
-            if isinstance(value, dict):
-                return value.get("max") or value.get("time_index")
-            if value is not None:
-                return value
-        return statistics.max_time_index_value
+        if identifier is None:
+            return None
+        last_time = self.reader.bounds(identifier).last_time
+        return None if last_time is None else pd.Timestamp(last_time)
 
     def _portfolio_progress_identifier(self) -> str | None:
         if self._resolved_unique_identifier is not None:
@@ -732,19 +682,13 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             f"{type(strategy).__name__} must use the calendar of Portfolio.calendar_uid."
         )
 
-    def _update_portfolio_pointers(
-        self,
-        *,
-        portfolio: Any,
-        signal_weights_table_update_uid: str,
-        portfolio_weights_table_update_uid: str,
-        portfolio_table_update_uid: str,
-    ) -> Any:
+    def _update_portfolio_pointers(self, *, portfolio: Any) -> Any:
+        """Record the portfolio's current signal on its ``Portfolio`` row."""
         from msm.api.portfolios import Portfolio
 
         if portfolio.calendar_uid in (None, ""):
             raise ValueError(
-                "PortfoliosUpdater cannot update PortfolioTable pointers because "
+                "PortfoliosUpdater cannot update the Portfolio row because "
                 "portfolio.calendar_uid is missing."
             )
         self._ensure_signal_metadata(self.signal_weights)
@@ -755,10 +699,7 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
             backtest_table_price_column_name=(
                 portfolio.backtest_table_price_column_name or self.valuation_column
             ),
-            signal_weights_table_update_uid=signal_weights_table_update_uid,
             signal_uid=self._required_signal_uid(self.signal_weights),
-            portfolio_weights_table_update_uid=portfolio_weights_table_update_uid,
-            portfolio_table_update_uid=portfolio_table_update_uid,
         )
         self.target_portfolio = portfolio
         return portfolio
@@ -773,13 +714,6 @@ class PortfoliosUpdater(PortfolioCanonicalUpdater):
         if signal_uid in (None, ""):
             raise RuntimeError("signal_weights.signal_uid is not available.")
         return str(signal_uid)
-
-    @staticmethod
-    def _required_table_update_uid(node: Any, label: str) -> str:
-        uid = node.table_update.uid
-        if uid in (None, ""):
-            raise RuntimeError(f"{label} TimeIndexTableUpdate.uid is not available.")
-        return str(uid)
 
     def _upsert_portfolio_metadata_if_available(self, frame: pd.DataFrame) -> None:
         configuration = self._portfolio_configuration
@@ -841,10 +775,9 @@ def normalize_portfolio_values_frame(
     portfolio_values_frame: pd.DataFrame,
     *,
     unique_identifier: str,
-    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize portfolio values into canonical valuation-observation rows."""
-    required_columns = list(PortfoliosUpdater._column_dtypes_map_for_storage(output_table))
+    required_columns = list(PortfoliosUpdater._column_dtypes_map_for_storage())
     flat = _reset_frame_index(portfolio_values_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -859,7 +792,7 @@ def normalize_portfolio_values_frame(
         # A value supplied without the marking is unknown, not fresh (ADR 0058).
         flat["valuation_stale"] = pd.Series(pd.NA, index=flat.index, dtype="boolean")
     _require_columns(flat, required_columns=required_columns, frame_name="PortfoliosUpdater")
-    return PortfoliosUpdater.validate_frame(flat[required_columns], output_table=output_table)
+    return PortfoliosUpdater.validate_frame(flat[required_columns])
 
 
 from .accounting import (  # noqa: E402

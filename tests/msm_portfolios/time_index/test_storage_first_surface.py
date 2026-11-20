@@ -45,13 +45,7 @@ def test_portfolio_asset_scope_uses_markets_asset_dimension() -> None:
 def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
     registered = set(portfolio_sqlalchemy_models())
 
-    for node_cls in (
-        PortfolioCalendarEvents,
-        PortfolioRebalance,
-        PortfolioWeights,
-        PortfoliosUpdater,
-        SignalWeights,
-    ):
+    for node_cls in (PortfolioCalendarEvents, PortfolioRebalance):
         assert "__data_node_identifier__" not in node_cls.__dict__
         assert "_default_identifier" not in node_cls.__dict__
         assert "_default_description" not in node_cls.__dict__
@@ -74,6 +68,18 @@ def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
         assert not hasattr(node_cls, "build_mock_frame")
         assert not hasattr(node_cls, "build_schema_bootstrap_frame")
         assert not hasattr(node_cls, "build_initialization_frame")
+
+
+def test_published_nodes_validate_against_their_markets_storage() -> None:
+    """ADR 0060: the nodes of the three series publish; their storage is Markets' own."""
+
+    registered = set(portfolio_sqlalchemy_models())
+    for node_cls in (PortfolioWeights, PortfoliosUpdater, SignalWeights):
+        output_table = node_cls._required_output_table()
+        assert output_table in registered
+        assert node_cls._column_dtypes_map_for_storage() == storage_column_dtypes_map(output_table)
+        assert not hasattr(node_cls, "_default_identifier")
+        assert not hasattr(node_cls, "output_table")
 
 
 def test_portfolio_storage_identifiers_use_camel_case_ts_suffix() -> None:

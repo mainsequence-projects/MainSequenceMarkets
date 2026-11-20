@@ -684,13 +684,12 @@ def test_portfolio_rebalance_depends_on_the_valuation_source_it_trades_at() -> N
         calendar_events_instance=events, calendar_identifier="XNYS"
     )
     assert node.dependencies() == {
-        "signal_weights": signal,
         "valuation_source": prices,
         "calendar_events": events,
     }
 
     node.rebalance_strategy = TimeWeighted(execution_bars_instance=prices)
-    assert node.dependencies() == {"signal_weights": signal, "execution_bars": prices}
+    assert node.dependencies() == {"execution_bars": prices}
 
 
 # --- The ledger books the recorded fills ---------------------------------------------------
