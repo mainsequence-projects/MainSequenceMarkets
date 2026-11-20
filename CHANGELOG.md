@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.2.2] - 2026-11-20
+
 ### Changed
 
 - **CI runs the test suite in parallel** with pytest-xdist (`-n auto --dist worksteal`),
