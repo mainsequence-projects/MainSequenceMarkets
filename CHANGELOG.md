@@ -7,7 +7,9 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
-Declared as 4.2.0. This release breaks every producer of signals and portfolios
+## [4.2.0] - 2026-11-20
+
+This release breaks every producer of signals and portfolios
 ([ADR 0060](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0060-producers-publish-markets-reads-only-its-own-tables/)).
 
 ### Added
