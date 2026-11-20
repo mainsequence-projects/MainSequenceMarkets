@@ -28,7 +28,7 @@ from msm.api.assets import (
 from msm.api.calendars import Calendar, CalendarException, CalendarSessionRule
 from msm.api.execution import OrderManager
 from msm.api.indices import Index, IndexType
-from msm.api.portfolios import PortfolioGroup, PortfolioGroupMembership
+from msm.api.portfolios import Portfolio, PortfolioGroup, PortfolioGroupMembership
 from msm.api.remote import MarketsOperationUnsupported
 from msm.api.virtual_funds import VirtualFund, VirtualFundHoldingsSet
 from msm.models import (
@@ -245,6 +245,30 @@ def test_account_history_rows_refuse_delete_on_the_runtime_backend(monkeypatch, 
         f"{row_class.__name__}.delete is not offered: its rows are account history, kept for "
         "as long as the account exists; Account.delete removes them together with the account "
         "(ADR 0049, ADR 0050)."
+    )
+    assert deleted == []
+
+
+def test_portfolio_refuses_delete_on_the_runtime_backend(monkeypatch) -> None:
+    """Only the Markets API's portfolio routes delete a portfolio, with its datasets."""
+
+    deleted = []
+    monkeypatch.setattr(
+        "msm.bootstrap.resolve_runtime",
+        lambda **_kwargs: pytest.fail("Portfolio.delete must refuse before resolving a runtime."),
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: deleted.append((model, uid)),
+    )
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        Portfolio.delete(uuid.uuid4())
+
+    assert str(refused.value) == (
+        "Portfolio.delete is not offered: a portfolio is deleted with its rows in its seven "
+        "datasets, in one transaction, only through the Markets API: "
+        "DELETE /api/v1/portfolio/{uid}/ or POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
     )
     assert deleted == []
 

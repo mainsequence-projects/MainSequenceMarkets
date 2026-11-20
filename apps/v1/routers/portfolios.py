@@ -9,23 +9,18 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     PortfolioBulkDeleteResponse,
-    PortfolioDatasetReconciliationResult,
-    PortfolioDatasetReconcileRequest,
-    PortfolioDatasetRegistrationRequest,
-    PortfolioDatasetState,
+    PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     Portfolio,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
-    PortfolioWithIncludes,
 )
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
     bulk_delete_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
-    get_portfolio_dataset_state,
     get_portfolio_detail,
     get_portfolio_signal_weights_frame,
     get_portfolio_summary,
@@ -36,20 +31,17 @@ from apps.v1.services.portfolios import (
     get_portfolios_weights_frame,
     list_portfolio_account_targets,
     list_portfolios,
+    plan_bulk_delete_portfolios,
     preflight_bulk_delete_portfolios,
-    reconcile_portfolio_dataset_catalog,
-    register_portfolio_dataset_catalog,
     reinstate_portfolio,
     retire_portfolio,
 )
-from apps.v1.services.includes import SidecarReadError
 from msm.api.accounts import PortfolioAccountTarget
 from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
     CORE_TABULAR_FRAME_CONTRACT,
     RESOURCE_COLLECTION_CONTRACT,
     BulkActionExecutionRequest,
-    BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
     TabularFrameResponse,
@@ -60,6 +52,16 @@ from msm.api.http import (
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 logger = logging.getLogger(__name__)
+
+_PORTFOLIO_DELETE_DESCRIPTION = (
+    "Each portfolio is deleted with its rows in its seven datasets (weights, values, "
+    "rebalance state, analytics, event ledger, state and cash flows) in one transaction, "
+    "or not at all (ADR 0049, issue 93); `deleted_rows` counts them per dataset. It is "
+    "refused with 409 while virtual funds or account target rows name the portfolio, or "
+    "when the database refuses it: an application's own table whose RESTRICT key "
+    "references the portfolio still holds rows of it (ADR 0060). Only the portfolio's "
+    "manager may delete it (403 otherwise)."
+)
 
 
 @router.get(
@@ -130,7 +132,7 @@ def get_portfolios(
 
 @router.get(
     "/by-uids/",
-    response_model=ResourceCollection[PortfolioWithIncludes],
+    response_model=ResourceCollection[Portfolio],
     summary="Look up portfolios by uid",
     description=(
         "Return the portfolio identity rows whose uid is listed in `uid__in` (repeated or "
@@ -139,11 +141,10 @@ def get_portfolios(
     ),
     operation_id="getPortfoliosByUids",
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
-        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in`."},
         409: {
             "model": ErrorResponse,
-            "description": "A stored portfolio row is invalid or an included sidecar could not be read.",
+            "description": "A stored portfolio row is invalid.",
         },
     },
 )
@@ -152,22 +153,10 @@ def get_portfolios_by_uid_list(
         list[str],
         Query(alias="uid__in", description="Portfolio uids, repeated or comma-separated."),
     ],
-    include: Annotated[
-        list[str] | None,
-        Query(
-            description=(
-                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
-                "by this resource's uid; their rows are attached under `includes`. The Markets "
-                "workload needs `data_viewer` on each sidecar."
-            ),
-        ),
-    ] = None,
-) -> ResourceCollection[PortfolioWithIncludes]:
+) -> ResourceCollection[Portfolio]:
     try:
-        items = get_portfolios_by_uids(uids=uid__in, include=include)
+        items = get_portfolios_by_uids(uids=uid__in)
     except PortfolioDataIntegrityError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except SidecarReadError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -184,9 +173,8 @@ def get_portfolios_by_uid_list(
     summary="Get values frame for several portfolios",
     description=(
         "Return portfolio value rows for every portfolio in `portfolio_uid__in` as one canonical "
-        "Command Center tabular frame. Portfolios are grouped by the PortfoliosTS instance the "
-        "Markets catalog records for them; each instance is read once, so comparing portfolios "
-        "from two providers is one call (ADR 0047)."
+        "Command Center tabular frame, read from Markets' own PortfoliosTS table whoever "
+        "published the portfolios (ADR 0060)."
     ),
     operation_id="getPortfoliosValuesFrame",
     response_model_exclude_none=True,
@@ -242,8 +230,7 @@ def get_portfolios_values_frame_route(
         "Return one weight snapshot per portfolio in `portfolio_uid__in` as one canonical "
         "Command Center tabular frame: the latest snapshot, the latest at or before "
         "`weights_date` with `as_of=true`, or the exact `weights_date` snapshot with "
-        "`as_of=false`. Portfolios are grouped by the PortfolioWeightsTS instance the Markets "
-        "catalog records for them (ADR 0047)."
+        "`as_of=false`, read from Markets' own PortfolioWeightsTS table (ADR 0060)."
     ),
     operation_id="getPortfoliosWeightsFrame",
     response_model_exclude_none=True,
@@ -277,79 +264,14 @@ def get_portfolios_weights_frame_route(
 
 
 @router.post(
-    "/datasets/reconcile/",
-    response_model=PortfolioDatasetReconciliationResult,
-    summary="Reconcile portfolio dataset availability",
-    description=(
-        "Reconcile the values instance of the selected catalogued portfolios: one aggregate per "
-        "instance, however many portfolios it holds. Portfolios without a catalog row are "
-        "reported as skipped and keep reading the core tables (ADR 0047)."
-    ),
-    operation_id="reconcilePortfolioDatasets",
-    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
-)
-def reconcile_portfolio_datasets_route(
-    payload: PortfolioDatasetReconcileRequest,
-) -> PortfolioDatasetReconciliationResult:
-    try:
-        return reconcile_portfolio_dataset_catalog(payload=payload)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.post(
-    "/{uid}/datasets/",
-    response_model=PortfolioDatasetState,
-    status_code=status.HTTP_201_CREATED,
-    summary="Register portfolio dataset instances",
-    description=(
-        "Record which PortfoliosTS, PortfolioWeightsTS and SignalWeightsTS instances hold this "
-        "portfolio's rows. Each table must be a visible TimeIndexMetaTable that satisfies its "
-        "contract. The row is reconciled at once unless `reconcile` is false (ADR 0047)."
-    ),
-    operation_id="registerPortfolioDatasets",
-    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
-)
-def register_portfolio_datasets_route(
-    uid: str,
-    payload: PortfolioDatasetRegistrationRequest,
-) -> PortfolioDatasetState:
-    try:
-        return register_portfolio_dataset_catalog(uid=uid, payload=payload)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.get(
-    "/{uid}/datasets/",
-    response_model=PortfolioDatasetState | None,
-    summary="Get portfolio dataset catalog row",
-    description=(
-        "Return the catalog row naming the instances that hold this portfolio's datasets and "
-        "the reconciled population state of its values. `null` means the portfolio has no row "
-        "and reads the Markets-owned core tables."
-    ),
-    operation_id="getPortfolioDatasets",
-    responses={404: {"model": ErrorResponse}},
-)
-def get_portfolio_datasets_route(uid: str) -> PortfolioDatasetState | None:
-    try:
-        return get_portfolio_dataset_state(uid=uid)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.post(
     "/bulk-delete/",
     response_model=PortfolioBulkDeleteResponse,
     summary="Bulk delete portfolios",
     description=(
-        "Delete multiple portfolio identity rows by uid. Rows referenced by protected "
-        "tables are reported in `failed` and are not silently removed."
+        "Delete the selected portfolios. " + _PORTFOLIO_DELETE_DESCRIPTION + " The route runs "
+        "the preflight first and answers 409 when it reports a blocker; then each portfolio "
+        "is deleted in its own transaction with the preflight's counts, so the selection is "
+        "counted once, and 409 lists any that could not be deleted."
     ),
     operation_id="bulkDeletePortfolios",
     responses={
@@ -373,12 +295,12 @@ def bulk_delete_portfolio_rows(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkDeletePreflightResponse.model_validate(
-        preflight_bulk_delete_portfolios(uids=uids)
-    )
+    # One counting read: the deletes reuse the preflight's plan (issue 96).
+    plan = plan_bulk_delete_portfolios(uids=uids)
+    preflight = PortfolioDeletePreflightResponse.model_validate(plan.preflight())
     if not preflight.allowed:
         raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
-    response = bulk_delete_portfolios(uids=uids)
+    response = bulk_delete_portfolios(uids=uids, plan=plan)
     if response.failed:
         detail = _portfolio_bulk_delete_error_detail(response)
         logger.warning(
@@ -386,8 +308,6 @@ def bulk_delete_portfolio_rows(
             extra={
                 "failed": [failure.model_dump(mode="json") for failure in response.failed],
                 "deleted_count": response.deleted_count,
-                "deleted_weights_count": response.deleted_weights_count,
-                "deleted_values_count": response.deleted_values_count,
             },
         )
         raise HTTPException(status_code=409, detail=detail)
@@ -396,12 +316,14 @@ def bulk_delete_portfolio_rows(
 
 @router.post(
     "/bulk-delete/preflight/",
-    response_model=BulkDeletePreflightResponse,
+    response_model=PortfolioDeletePreflightResponse,
     summary="Preflight portfolio bulk deletion",
     description=(
-        "Reauthorize an explicit portfolio selection and report missing rows, protected "
-        "references and the tables the delete reaches through foreign-key cascades, "
-        "without deleting data."
+        "Run the delete's checks for an explicit portfolio selection without deleting: per "
+        "portfolio the rows each of its seven datasets would lose (`portfolios[].row_counts`) "
+        "and its blockers (account history that names it, and tables of other applications "
+        "whose RESTRICT keys reference it and that hold rows of it or cannot be checked), "
+        "missing portfolios, and the MetaTables delete impact."
     ),
     operation_id="preflightBulkDeletePortfolios",
     openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
@@ -412,18 +334,20 @@ def preflight_portfolio_bulk_delete(
         BulkActionExecutionRequest,
         Body(description="Command Center bulk-action execution request to preflight."),
     ],
-) -> BulkDeletePreflightResponse:
+) -> PortfolioDeletePreflightResponse:
     try:
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return BulkDeletePreflightResponse.model_validate(preflight_bulk_delete_portfolios(uids=uids))
+    return PortfolioDeletePreflightResponse.model_validate(
+        preflight_bulk_delete_portfolios(uids=uids)
+    )
 
 
 def _portfolio_bulk_delete_error_detail(response: PortfolioBulkDeleteResponse) -> str:
-    failed_reasons = "; ".join(f"{failure.uid}: {failure.reason}" for failure in response.failed)
-    if failed_reasons:
-        return f"{response.detail} Failed: {failed_reasons}"
+    failed_details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
+    if failed_details:
+        return f"{response.detail} Failed: {failed_details}"
     return response.detail
 
 
@@ -632,9 +556,8 @@ def get_portfolio_values_frame_by_uid(
         "Delete historical portfolio weight rows for one portfolio through the "
         "TimeIndexMetaTable tail-delete API. When `weights_date` is provided, "
         "rows at or after that timestamp are deleted. Without `weights_date`, "
-        "all weight rows for the portfolio identifier are deleted. When the Markets "
-        "catalog places the portfolio's weights in a PortfolioWeightsTS instance "
-        "another application owns, the route returns 409 and deletes nothing."
+        "all weight rows for the portfolio identifier are deleted. Only the portfolio's "
+        "manager may delete them (ADR 0060)."
     ),
     operation_id="deletePortfolioWeights",
     status_code=status.HTTP_200_OK,
@@ -643,9 +566,9 @@ def get_portfolio_values_frame_by_uid(
             "model": ErrorResponse,
             "description": "The requested portfolio uid was not found.",
         },
-        409: {
+        403: {
             "model": ErrorResponse,
-            "description": "The portfolio's weights live in a table another application owns.",
+            "description": "The caller does not manage the portfolio.",
         },
     },
 )
@@ -658,9 +581,9 @@ def remove_portfolio_weights(
 ) -> PortfolioWeightsDeleteResponse:
     try:
         response = delete_portfolio_weights(uid=uid, weights_date=weights_date)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
-        if exc.__class__.__name__ == "PortfolioDatasetOwnershipError":
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if response is None:
         raise HTTPException(status_code=404, detail=f"Portfolio {uid!r} was not found.")
@@ -803,12 +726,7 @@ def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
     "/{uid}/",
     response_model=PortfolioDeleteResponse,
     summary="Delete portfolio",
-    description=(
-        "Delete one portfolio identity row. The route returns 409 when protected "
-        "rows, such as account target-position history, still reference the portfolio. "
-        "Values and weights catalogued in tables another application owns stay in place "
-        "and are listed in retained_datasets."
-    ),
+    description="Delete one portfolio. " + _PORTFOLIO_DELETE_DESCRIPTION,
     operation_id="deletePortfolio",
     status_code=status.HTTP_200_OK,
     responses={
@@ -818,13 +736,22 @@ def get_portfolio_by_uid(uid: str) -> PortfolioDetailResponse:
         },
         409: {
             "model": ErrorResponse,
-            "description": "The portfolio is referenced by protected rows.",
+            "description": (
+                "Account history references the portfolio, or the database refused the "
+                "delete. Nothing was deleted."
+            ),
+        },
+        403: {
+            "model": ErrorResponse,
+            "description": "The caller does not manage the portfolio.",
         },
     },
 )
 def remove_portfolio(uid: str) -> PortfolioDeleteResponse:
     try:
         response = delete_portfolio(uid=uid)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         if exc.__class__.__name__ == "PortfolioDeleteConflictError":
             raise HTTPException(status_code=409, detail=str(exc)) from exc

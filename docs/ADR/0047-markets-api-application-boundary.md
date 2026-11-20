@@ -2,12 +2,24 @@
 
 ## Status
 
+Note (2026-11-20): decision 5 is superseded, and the `include` grant of decision 4
+withdrawn, by [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md),
+which is implemented. The portfolio dataset catalog, the catalog-aware reads and deletes,
+the series moves of portfolios and signals and `include=` are removed. Producers publish
+their series to Markets, and Markets reads no table of another application. Decisions 1
+to 3 stand, and `managed_by` of decision 4 is implemented by ADR 0060.
+
 Proposed. Drafted 2026-10-25 from an analysis of this repository, of how
 applications consume it, and of the installed MetaTables and SDK contracts. The
 `development` branch has since moved to MetaTables 0.1.51, whose namespace and
 table roles (`owner`, `editor`, `data_writer`, `data_viewer`, `metadata_viewer`)
 replace the Reader and Writer vocabulary used below; the grant boundaries this
 ADR draws are unchanged by that rename, and implementation uses the role names.
+
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) (2026-11-19)
+supersedes decision 5 and withdraws the grant of decision 4: producers publish their
+series to Markets, and Markets reads no table of another application. The text below is
+kept as the record of what was built.
 
 Migration path step 1 is implemented on `development` except per-service
 ownership and Team scoping policy, which is still open (see "Implementation
@@ -374,8 +386,10 @@ Implemented in `msm_portfolios.time_index.contract_instances`,
   instances only.
 - Deletes respect the catalog. Markets does not delete rows in a table another
   application owns: weight and signal-weight deletes return 409 for such a
-  portfolio, and portfolio and signal deletes remove the Markets rows and list
-  the instances they left in place in `retained_datasets`. The pricing-curve
+  portfolio, and signal deletes remove the Markets rows and list the instances
+  they left in place in `retained_datasets`. The portfolio delete returns 409
+  while such an instance, or any other table whose `RESTRICT` key references the
+  portfolio, holds rows of it (#93, ADR 0049's 2026-11-19 note). The pricing-curve
   delete's `delete_values` cleans only `DiscountCurvesStorage`; a provider's
   discount-curve instance bound through a market-data set keeps the `RESTRICT`
   key on `curve_identifier`, so while it holds rows of the curve the preflight

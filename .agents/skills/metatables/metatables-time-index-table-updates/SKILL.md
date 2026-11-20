@@ -53,11 +53,15 @@ output binding or explicitly authorized row scope for mutation tests.
 
 A deployed producer runs as its Job's workload User. It needs `editor` on its output
 tables, which lets it operate updaters and write rows, and `data_viewer` on its
-inputs. A person who manages the migration Job that created the output namespace, or
-an owner, grants these on the namespaces, directly or through a Team (step 4 of the
-[migrations skill](../metatables-migrations/SKILL.md)); no Organization admin is
-needed. Output tables belong to the migration provider and are in the namespaces
-their models declare: a workload never creates a table outside a namespace.
+inputs. When the producer is deployed from the same repository branch as the
+migration Job, it gets these through the branch: the provider's `branch_access`
+declares `editor` on the output namespace (step 4 of the
+[migrations skill](../metatables-migrations/SKILL.md)), and the producer holds it on
+its first run, in every Environment and after any rename. It does not wait for a
+grant. Inputs in another repository's namespace need one grant from that namespace's
+owner to this branch, per Environment (step 5). Output tables belong to the migration
+provider and are in the namespaces their models declare: a workload never creates a
+table outside a namespace.
 
 ## Configuration and dependencies
 

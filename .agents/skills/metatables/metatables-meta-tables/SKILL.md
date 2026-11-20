@@ -176,6 +176,10 @@ label=...)`; a miss rolls back and raises `MetaTableTransactionGuardError`. Neve
 put `COMMIT` or savepoints in a list. PostgreSQL and SQLite only; see the query
 guide's "Several statements in one transaction".
 
+Compiled writes keep time-index statistics: the API rebuilds those of each time-index
+table a write changed, and `result["index_statistics"]` maps its UID to `rebuilt` or
+to why not. Do not follow a compiled delete with `delete_after_date` to refresh them.
+
 Select or return `Uuid` columns typed, not cast to text: compiled `Uuid` results come
 back dashed on every engine, while a `CAST` or untyped SQL returns SQLite's stored hex.
 Do not reformat uids in the application to paper over engine differences.
@@ -185,7 +189,11 @@ To find tables, use `MetaTable.search` as described in the
 sharing/label actions are not supported API workflows.
 Use `get_access`, `grant_role`, `revoke_role`, `allowed_actions` and `explain` on a
 table or `Namespace` for roles (`metadata_viewer`, `data_viewer`, `data_writer`,
-`editor`, `owner`); `Namespace.create(name)` makes the caller its owner. Registering a
+`editor`, `owner`); `Namespace.create(name)` makes the caller its owner. A role is
+granted to a User, a Team or a code repository branch (ADR 0029):
+`grant_role(<branch_uid>, "data_viewer", principal_kind="branch")` gives it to every
+workload of that branch, never `owner`. Each binding has a `grant_source`: `explicit`,
+`creator`, `converted`, or `declared` by a migration's `branch_access`. Registering a
 table into a missing namespace also creates it: a person gets `owner`, a workload `editor`
 (see the [migrations skill](../metatables-migrations/SKILL.md)). A table can be in
 several namespaces: `table.namespaces` lists each with its `source` (`declared` by the

@@ -66,5 +66,5 @@ class ExternalWeights(SignalWeights):
         weights.rename(columns={"weight": "signal_weight"}, inplace=True)
         weights.set_index(["time_index", ASSET_IDENTIFIER], inplace=True)
 
-        weights = self.update_statistics.filter_df_by_latest_value(weights)
+        weights = self.rows_after_last_observation(weights)
         return weights

@@ -23,12 +23,10 @@ from msm_portfolios.configuration import (
     canonical_valuation_source_configuration,
 )
 from msm_portfolios.time_index import (
-    AssetScopedPortfolioCanonicalUpdater,
     PortfolioAnalytics,
     PortfolioAnalyticsConfiguration,
     PortfolioCalendarEvents,
     PortfolioCalendarEventsConfiguration,
-    PortfolioCanonicalUpdater,
     PortfolioCanonicalUpdaterConfiguration,
     PortfolioRebalance,
     PortfolioWeights,
@@ -61,6 +59,11 @@ from msm_portfolios.rebalance_strategy import (
     TrailingAverageDailyVolumeParticipation,
     VolumeParticipation,
 )
+from tests.support.portfolio_values import (
+    FrameSource,
+    asset_frame,
+    portfolio_values_node_for_frames,
+)
 
 
 class ExplicitValuationSource(TimeIndexTableUpdater):
@@ -89,11 +92,8 @@ def valuation_source(update_hash: str = "valuations") -> ExplicitValuationSource
 @pytest.mark.parametrize(
     ("node_cls", "storage_cls"),
     [
-        (PortfolioWeights, PortfolioWeightsStorage),
         (PortfolioRebalance, PortfolioRebalanceStateStorage),
         (PortfolioCalendarEvents, PortfolioCalendarEventsStorage),
-        (SignalWeights, SignalWeightsStorage),
-        (PortfoliosUpdater, PortfoliosStorage),
         (PortfolioAnalytics, PortfolioAnalyticsStorage),
     ],
 )
@@ -104,12 +104,27 @@ def test_portfolio_nodes_source_schema_from_storage(node_cls, storage_cls) -> No
     assert node_cls._required_output_table() is storage_cls
 
 
-def test_portfolio_run_matches_sdk_8_1_runtime_controls() -> None:
+@pytest.mark.parametrize(
+    ("node_cls", "storage_cls"),
+    [
+        (PortfolioWeights, PortfolioWeightsStorage),
+        (SignalWeights, SignalWeightsStorage),
+        (PortfoliosUpdater, PortfoliosStorage),
+    ],
+)
+def test_published_nodes_validate_against_the_markets_contract(node_cls, storage_cls) -> None:
+    """ADR 0060: these nodes publish to Markets' own table, so its contract is theirs."""
+
+    assert node_cls._column_dtypes_map_for_storage() == storage_column_dtypes_map(storage_cls)
+    assert node_cls._required_output_table() is storage_cls
+    assert not issubclass(node_cls, TimeIndexTableUpdater)
+
+
+def test_portfolio_run_controls() -> None:
     parameters = inspect.signature(PortfoliosUpdater.run).parameters
-    assert {"update_tree", "update_only_tree", "override_update_stats", "update_pointers"} <= set(
-        parameters
-    )
+    assert {"update_tree", "update_only_tree", "update_pointers"} <= set(parameters)
     assert "force_update" not in parameters
+    assert "override_update_stats" not in parameters
 
 
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
@@ -185,7 +200,6 @@ def test_calendar_event_node_configuration_is_hash_bearing() -> None:
 
 def test_analytics_configuration_declares_full_sampling_semantics() -> None:
     config = PortfolioAnalyticsConfiguration(
-        portfolio_values_instance=valuation_source("portfolio-values"),
         portfolio_identifier="portfolio",
         frequency="1W",
         label="right",
@@ -484,11 +498,14 @@ def test_portfolio_values_depend_on_executed_weights_not_signal_directly() -> No
     }
 
 
-def test_portfolio_weights_depends_only_on_rebalance_state() -> None:
+def test_portfolio_weights_runs_the_signal_then_projects_rebalance_state() -> None:
     node = object.__new__(PortfolioWeights)
     node._portfolio_configuration = object()
-    node.portfolio_rebalance = object()
-    assert node.dependencies() == {"portfolio_rebalance": node.portfolio_rebalance}
+    node.portfolio_rebalance = SimpleNamespace(signal_weights=object())
+    assert node.dependencies() == {
+        "signal_weights": node.portfolio_rebalance.signal_weights,
+        "portfolio_rebalance": node.portfolio_rebalance,
+    }
 
 
 def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:
@@ -499,10 +516,8 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
     node.signal_weights = signal
     node.rebalance_strategy = LiquidityConstrained(liquidity_source_instance=liquidity)
 
-    assert node.dependencies() == {
-        "signal_weights": signal,
-        "available_liquidity": liquidity,
-    }
+    # The signal is a published series (ADR 0060): read by the rebalance, never run by it.
+    assert node.dependencies() == {"available_liquidity": liquidity}
     source = inspect.getsource(PortfolioRebalance)
     assert "timing_mode" not in source
     assert "ImmediateSignal" not in source
@@ -510,7 +525,7 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
     assert "LiquidityConstrained" not in source
 
 
-def test_rebalance_and_projection_progress_resolve_nested_asset_state() -> None:
+def test_rebalance_and_projection_progress_resolve_nested_asset_state(monkeypatch) -> None:
     earlier = pd.Timestamp("2026-01-01T01:00:00Z")
     latest = pd.Timestamp("2026-01-01T02:00:00Z")
     rebalance = object.__new__(PortfolioRebalance)
@@ -526,13 +541,19 @@ def test_rebalance_and_projection_progress_resolve_nested_asset_state() -> None:
     )
     projection = object.__new__(PortfolioWeights)
     projection._resolve_portfolio_identifier = lambda: "portfolio"
-    projection.update_statistics = SimpleNamespace(
-        index_progress={"portfolio": {"btc": earlier, "eth": latest}},
-        max_time_index_value=pd.Timestamp("2026-02-01T00:00:00Z"),
-    )
+    bounds_calls: list[str] = []
+
+    class Reader:
+        def bounds(self, key):
+            bounds_calls.append(key)
+            return SimpleNamespace(last_time=latest.to_pydatetime())
+
+    monkeypatch.setattr(PortfolioWeights, "reader", property(lambda self: Reader()))
 
     assert rebalance._latest_transition_time_index_value() == latest
+    # The projection's progress is its published series (ADR 0060).
     assert projection._latest_projection_time_index_value() == latest
+    assert bounds_calls == ["portfolio"]
 
 
 def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
@@ -550,12 +571,6 @@ def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
             dependency_name="execution_bars",
             contract=contract,
         )
-
-
-def asset_frame(rows: list[tuple[str, str, float]]) -> pd.DataFrame:
-    frame = pd.DataFrame(rows, columns=["time_index", ASSET_IDENTIFIER, "close"])
-    frame["time_index"] = pd.to_datetime(frame["time_index"], utc=True)
-    return frame.set_index(["time_index", ASSET_IDENTIFIER])
 
 
 def test_per_asset_asof_alignment_uses_distinct_seed_observations() -> None:
@@ -643,9 +658,7 @@ def test_seed_lookup_is_one_set_based_request_for_all_assets() -> None:
                 ]
             )
 
-    source = object.__new__(SignalWeights)
-    source._update_manager = SourceManager()
-    source.asset_list = ["btc", "eth"]
+    source = SourceManager()
     _window, seed = fetch_asset_observations(
         source,
         start=pd.Timestamp("2026-01-03T00:00:00Z"),
@@ -713,31 +726,15 @@ def test_signal_after_calendar_cutoff_is_not_applied_retroactively() -> None:
             return timedelta(days=1)
 
     signal = object.__new__(TestSignal)
-    signal.use_canonical_signal_weights = True
-    signal.canonical_signal_weights_node = CanonicalSource()
     events = pd.DatetimeIndex(
         ["2026-01-02T21:00:00Z", "2026-01-03T21:00:00Z"],
         name="time_index",
     )
-    result = signal.interpolate_index(events)
+    result = signal.interpolate_index(events, signal_weights_node=CanonicalSource())
     assert result.loc[events[0], "btc"] == pytest.approx(0.6)
     assert result.loc[events[0], "eth"] == pytest.approx(0.4)
     assert result.loc[events[1], "btc"] == pytest.approx(0.2)
     assert result.loc[events[1], "eth"] == pytest.approx(0.8)
-
-
-class FrameSource:
-    def __init__(self, frame: pd.DataFrame):
-        self.frame = frame
-
-    def get_df_between_dates(self, **kwargs):
-        start = pd.Timestamp(kwargs["start_date"])
-        end = pd.Timestamp(kwargs["end_date"])
-        times = self.frame.index.get_level_values("time_index")
-        return self.frame[(times >= start) & (times <= end)]
-
-    def get_last_observation(self, **_kwargs):
-        return self.frame.iloc[0:0]
 
 
 class ExecutedWeightsSource:
@@ -857,34 +854,6 @@ def test_executed_weights_reject_duplicate_current_window_coordinates() -> None:
             start=pd.Timestamp("2026-01-01T00:00:00Z").to_pydatetime(),
             end=current_time.to_pydatetime(),
         )
-
-
-def portfolio_values_node_for_frames(
-    *,
-    valuations: pd.DataFrame,
-    weights: pd.DataFrame,
-    timestamps: pd.DatetimeIndex,
-) -> PortfoliosUpdater:
-    node = object.__new__(PortfoliosUpdater)
-    node.valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_asset_identifier = "USD"
-    node.fx_source = None
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(
-        maximum_staleness=timedelta(hours=12)
-    )
-    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
-    node.commission_fee = 0.0
-    node._latest_portfolio_time_index_value = lambda: None
-    node._valuation_window = lambda _latest: (
-        timestamps[0].to_pydatetime(),
-        timestamps[-1].to_pydatetime(),
-    )
-    node._executed_weights_between = lambda **_kwargs: weights
-    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
-        close=(frame["return"] + 1.0).cumprod()
-    )
-    return node
 
 
 def test_strict_portfolio_valuation_ignores_missing_zero_exposure_asset() -> None:
@@ -1116,7 +1085,8 @@ def test_portfolio_weights_projects_only_state_events_that_change_execution() ->
     ).set_index(["time_index", PORTFOLIO_IDENTIFIER, "rebalance_intent_id", ASSET_IDENTIFIER])
     node = object.__new__(PortfolioWeights)
     node.portfolio_rebalance = FrameSource(state)
-    node.update_statistics = None
+    node._latest_projection_time_index_value = lambda: None
+    node._retirement_boundary = lambda: None
     node._resolve_portfolio_identifier = lambda: "portfolio"
     node._projection_window = lambda _latest: (
         first_event.to_pydatetime(),
@@ -1684,9 +1654,9 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
-    assert issubclass(PortfoliosUpdater, PortfolioCanonicalUpdater)
-    assert not issubclass(PortfoliosUpdater, AssetScopedPortfolioCanonicalUpdater)
-    assert issubclass(PortfolioWeights, AssetScopedPortfolioCanonicalUpdater)
+    assert PortfoliosUpdater.asset_column is None
+    assert PortfolioWeights.asset_column == ASSET_IDENTIFIER
+    assert SignalWeights.asset_column == ASSET_IDENTIFIER
 
 
 def test_retired_fixed_frame_strategy_api_is_not_exposed() -> None:

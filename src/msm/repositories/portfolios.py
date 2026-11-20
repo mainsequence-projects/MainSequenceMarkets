@@ -24,6 +24,7 @@ from msm.repositories.crud import (
     build_update_model_operation,
     build_upsert_model_operation,
     mirror_renamed_columns,
+    with_new_row_manager,
     renamed_keyword,
     UpsertStatus,
     upsert_model,
@@ -68,7 +69,7 @@ def build_create_portfolio_operation(
         .values(
             **mirror_renamed_columns(
                 PortfolioTable,
-                {
+                with_new_row_manager(PortfolioTable, {
                     "unique_identifier": unique_identifier,
                     "calendar_uid": calendar_uid,
                     "published_index_uid": published_index_uid,
@@ -77,7 +78,7 @@ def build_create_portfolio_operation(
                     "signal_uid": signal_uid,
                     "portfolio_table_update_uid": portfolio_table_update_uid,
                     "backtest_table_price_column_name": backtest_table_price_column_name,
-                },
+                }),
             )
         )
         .returning(PortfolioTable)
@@ -264,30 +265,6 @@ def update_portfolio(
 ) -> dict[str, Any]:
     return execute_markets_operation(
         build_update_portfolio_operation(context, **kwargs),
-        context=context,
-    )
-
-
-def build_delete_portfolio_operation(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> MetaTableCompiledSQLOperation:
-    statement = delete(PortfolioTable).where(PortfolioTable.uid == uid)
-    return compile_markets_statement(
-        statement,
-        context=context,
-        operation="delete",
-    )
-
-
-def delete_portfolio(
-    context: MarketsRepositoryContext,
-    *,
-    uid: uuid.UUID | str,
-) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_delete_portfolio_operation(context, uid=uid),
         context=context,
     )
 
@@ -720,7 +697,6 @@ def list_portfolio_groups_for_portfolio(
 __all__ = [
     "build_create_portfolio_operation",
     "build_create_portfolio_group_operation",
-    "build_delete_portfolio_operation",
     "build_delete_portfolio_group_membership_by_pair_operation",
     "build_delete_portfolio_group_membership_operation",
     "build_delete_portfolio_group_operation",
@@ -738,7 +714,6 @@ __all__ = [
     "build_upsert_portfolio_group_operation",
     "create_portfolio",
     "create_portfolio_group",
-    "delete_portfolio",
     "delete_portfolio_group",
     "delete_portfolio_group_membership",
     "delete_portfolio_group_membership_by_pair",

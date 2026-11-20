@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -11,12 +10,8 @@ import metatables.updaters.configuration as update_configuration
 from msm.identity import stable_identity_payload
 
 from ..base import (
-    AssetScopedPortfolioCanonicalUpdater,
-    PortfolioCanonicalUpdaterConfiguration,
     SignalWeightsConfiguration,
-    OutputTable,
     _class_import_path,
-    _drop_empty_framework_init_kwargs,
     _drop_excluded_keys,
     _isoformat_dates_and_times,
     _empty_flat_frame,
@@ -31,36 +26,33 @@ from ..constants import (
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
 )
 from ..metadata import emit_signal_metadata, extract_signal_description
+from msm_portfolios.series_nodes import PublishedSeriesNode
 from .storage import SignalWeightsStorage
 
 
-class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
-    """Canonical TimeIndexTableUpdater for Portfolios signal weights."""
+class SignalWeights(PublishedSeriesNode):
+    """A signal's weights, published as ``SignalWeightsSeries`` (ADR 0060, decision 5).
+
+    A subclass computes weights in ``_calculate_signal_weights()``; ``run()`` publishes
+    them under the signal's ``signal_uid``, after creating its ``SignalMetadata`` row.
+    Its progress is the published series: ``_latest_signal_time_index_value()`` is the
+    signal's last stored time and ``_signal_asset_start_date(asset)`` an asset's.
+    """
+
+    series_resource = "signal-weights"
+    key_column = SIGNAL_UID
+    computes_weights: ClassVar[bool] = True
+    """Whether ``run()`` computes the weights; ``False`` when they arrive by publication."""
 
     def __init__(
         self,
         config: SignalWeightsConfiguration | None = None,
-        *args,
+        *,
         namespace: str | None = None,
-        **kwargs,
     ):
-        resolved_config = self._validate_config(config or self.default_config())
-        self.signal_configuration = resolved_config.signal_configuration
-        self.use_canonical_signal_weights = True
-        self.canonical_signal_weights_node = self
-        super().__init__(resolved_config, *args, namespace=namespace, **kwargs)
-
-    def _initialize_configuration(self, init_kwargs: dict) -> None:
-        """Hash every signal subclass as the canonical SignalWeights table."""
-        _drop_empty_framework_init_kwargs(init_kwargs)
-        init_kwargs.pop("config", None)
-        init_kwargs["table_updater_class_import_path"] = _class_import_path(SignalWeights)
-        config = update_configuration.create_config(
-            kwargs=init_kwargs,
-            updater_class_name=SignalWeights.__name__,
-        )
-        for field_name, value in asdict(config).items():
-            setattr(self, field_name, value)
+        super().__init__(config, namespace=namespace)
+        self.signal_configuration = self.config.signal_configuration
+        self._progress_by_asset: dict[str, pd.Timestamp] | None = None
 
     def set_signal_weights_frame(
         self,
@@ -71,7 +63,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
         signal_description: str | None = None,
         metadata_updater: Any | None = None,
     ) -> SignalWeights:
-        """Attach runtime signal inputs without changing table identity."""
+        """Attach runtime signal inputs without changing the signal's identity."""
         self._signal_weights_frame = signal_weights_frame
         if signal is not None and signal_configuration is not None:
             raise ValueError("Pass either signal or signal_configuration, not both.")
@@ -84,30 +76,29 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
         self._signal_metadata_updater = metadata_updater
         return self
 
+    def series_key(self) -> str:
+        return self.signal_uid
+
+    def run(self, *, update_tree: bool = True) -> Any:
+        """Create the signal's metadata, then compute and publish its new weights."""
+
+        self._progress_by_asset = None
+        self._upsert_signal_metadata_if_available()
+        try:
+            return super().run(update_tree=update_tree)
+        finally:
+            self._progress_by_asset = None
+
     def update(self) -> pd.DataFrame:
         raw_frame = self._calculate_signal_weights()
-        frame = (
-            self.validate_frame(raw_frame, output_table=self.output_table)
-            if _is_canonical_frame(raw_frame, output_table=self.output_table)
-            else self.validate_frame(
-                normalize_signal_weights_frame(
-                    raw_frame,
-                    signal_uid=self.signal_uid,
-                    output_table=self.output_table,
-                ),
-                output_table=self.output_table,
-            )
-        )
-        self._upsert_signal_metadata_if_available()
-        return frame
+        if _is_canonical_frame(raw_frame, output_table=SignalWeightsStorage):
+            return self.validate_frame(raw_frame)
+        return normalize_signal_weights_frame(raw_frame, signal_uid=self.signal_uid)
 
     def _calculate_signal_weights(self) -> pd.DataFrame:
         signal_weights_frame = getattr(self, "_signal_weights_frame", None)
         if signal_weights_frame is not None:
             return signal_weights_frame
-
-        if self.signal_configuration is None:
-            return self.get_canonical_frame()
 
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement _calculate_signal_weights()."
@@ -153,60 +144,62 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
     def get_asset_list(self) -> None | list:
         return None
 
+    def get_update_asset_list(self) -> None | list:
+        return self.get_asset_list()
+
     def get_asset_uid_to_override_portfolio_price(self):
         return None
 
-    def _signal_progress(self):
-        progress = self.update_statistics.index_progress
-        if progress is None:
-            return None
-        return progress.get(self.signal_uid)
+    def _latest_signal_time_index_value(self) -> pd.Timestamp | None:
+        """The signal's last published time, or ``None`` before its first observation."""
 
-    def _latest_signal_time_index_value(self):
-        progress = self._signal_progress()
-        if progress is None:
-            return None
-        return self._max_in_nested_values(progress)
+        last_time = self.reader.bounds(self.signal_uid).last_time
+        return None if last_time is None else pd.Timestamp(last_time)
 
-    def _signal_asset_latest_time_index_value(self, asset) -> object | None:
-        progress = self._signal_progress()
-        if not isinstance(progress, dict):
-            return None
+    def _signal_asset_latest_time_index_value(self, asset) -> pd.Timestamp | None:
+        """The time of the signal's last published row of ``asset``."""
 
-        asset_identifier = self._asset_unique_identifier(asset)
-        value = progress.get(asset_identifier)
-        if isinstance(value, dict):
-            return self._max_in_nested_values(value)
-        return value
+        if getattr(self, "_progress_by_asset", None) is None:
+            latest = self.reader.last([self.signal_uid], by="asset")
+            self._progress_by_asset = (
+                {}
+                if latest.empty
+                else {
+                    str(asset_identifier): pd.Timestamp(time)
+                    for time, _signal, asset_identifier in latest.index
+                }
+            )
+        return self._progress_by_asset.get(str(self._asset_unique_identifier(asset)))
 
     def _signal_asset_start_date(self, asset):
         latest_value = self._signal_asset_latest_time_index_value(asset)
         if latest_value is not None:
             return latest_value
+        return self.OFFSET_START
 
-        fallback_date = self.update_statistics._initial_fallback_date
-        if fallback_date is not None:
-            return fallback_date
+    def rows_after_last_observation(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """``frame`` without the rows at or before the signal's last published time."""
 
-        return self.get_offset_start()
+        latest = self._latest_signal_time_index_value()
+        if latest is None or frame is None or frame.empty:
+            return frame
+        times = pd.to_datetime(frame.index.get_level_values("time_index"), utc=True)
+        return frame[times > latest]
 
     def interpolate_index(
         self,
         new_index: pd.DatetimeIndex,
         *,
         signal_weights_node=None,
-        use_canonical_signal_weights: bool | None = None,
     ):
         """
         Get interpolated signal weights for a time index.
 
-        Signal weights are valid only for a bounded duration, enforced by
+        The weights are read from the published series, or from ``signal_weights_node``
+        when given. Signal weights are valid only for a bounded duration, enforced by
         maximum_forward_fill().
         """
-        weights_source = self._resolve_signal_weights_source(
-            signal_weights_node=signal_weights_node,
-            use_canonical_signal_weights=use_canonical_signal_weights,
-        )
+        weights_source = self if signal_weights_node is None else signal_weights_node
         if len(new_index) == 0:
             return pd.DataFrame()
         new_index = pd.DatetimeIndex(pd.to_datetime(new_index, utc=True), name="time_index")
@@ -303,32 +296,6 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
             .sort_index()
         )
 
-    def _resolve_signal_weights_source(
-        self,
-        *,
-        signal_weights_node=None,
-        use_canonical_signal_weights: bool | None = None,
-    ):
-        if use_canonical_signal_weights is None:
-            use_canonical_signal_weights = (
-                signal_weights_node is not None
-                or getattr(self, "use_canonical_signal_weights", False)
-                or getattr(self, "canonical_signal_weights_node", None) is not None
-            )
-
-        if not use_canonical_signal_weights:
-            return self
-
-        if signal_weights_node is not None:
-            return signal_weights_node
-
-        canonical_node = getattr(self, "canonical_signal_weights_node", None)
-        if canonical_node is not None:
-            return canonical_node
-
-        hash_namespace = getattr(self, "hash_namespace", "") or None
-        return SignalWeights(namespace=hash_namespace)
-
     def _get_signal_weights_between_dates(
         self,
         *,
@@ -343,10 +310,6 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
             "dimension_range_map": dimension_range_map,
         }
         kwargs = {key: value for key, value in kwargs.items() if value is not None}
-
-        if weights_source is self and not getattr(self, "use_canonical_signal_weights", False):
-            return self.get_df_between_dates(**kwargs)
-
         return weights_source.get_df_between_dates(
             **kwargs,
             dimension_filters={SIGNAL_UID: [self.signal_uid]},
@@ -387,11 +350,7 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
         *,
         signal_configuration: Any | None = None,
     ) -> SignalWeightsConfiguration:
-        return cls._validate_config(
-            SignalWeightsConfiguration(
-                signal_configuration=signal_configuration,
-            )
-        )
+        return SignalWeightsConfiguration(signal_configuration=signal_configuration)
 
     @classmethod
     def from_signal_configuration(
@@ -399,25 +358,17 @@ class SignalWeights(AssetScopedPortfolioCanonicalUpdater):
         signal_configuration: Any,
         *,
         namespace: str | None = None,
-        **kwargs,
     ) -> SignalWeights:
         return cls(
             config=cls.default_config(signal_configuration=signal_configuration),
             namespace=namespace,
-            **kwargs,
         )
 
     @classmethod
-    def _validate_config(
-        cls,
-        config: PortfolioCanonicalUpdaterConfiguration,
-    ) -> SignalWeightsConfiguration:
+    def _validate_config(cls, config: Any) -> SignalWeightsConfiguration:
         if not isinstance(config, SignalWeightsConfiguration):
-            if isinstance(config, PortfolioCanonicalUpdaterConfiguration):
-                config = SignalWeightsConfiguration()
-            else:
-                raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
-        return super()._validate_config(config)
+            raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
+        return config
 
     @classmethod
     def _required_output_table(cls) -> type[SignalWeightsStorage]:
@@ -458,10 +409,9 @@ def normalize_signal_weights_frame(
     signal_weights_frame: pd.DataFrame,
     *,
     signal_uid: str,
-    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
     """Normalize signal output into canonical SignalWeights rows."""
-    required_columns = list(SignalWeights._column_dtypes_map_for_storage(output_table))
+    required_columns = list(SignalWeights._column_dtypes_map_for_storage())
     flat = _reset_frame_index(signal_weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -475,10 +425,7 @@ def normalize_signal_weights_frame(
         required_columns=required_columns,
         frame_name="SignalWeights",
     )
-    return SignalWeights.validate_frame(
-        flat[required_columns],
-        output_table=output_table,
-    )
+    return SignalWeights.validate_frame(flat[required_columns])
 
 
 def _signal_configuration_payload(signal: Any) -> dict[str, Any]:

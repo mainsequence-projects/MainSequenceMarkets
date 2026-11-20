@@ -2,6 +2,11 @@
 
 ## Status
 
+Note (2026-11-20): the delete notes below that count a portfolio's rows in another
+application's table are replaced by
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) decision 7: the
+database applies that table's key, and a `RESTRICT` refusal answers 409 with its message.
+
 Accepted (2026-11-10), implemented in 3.2.0. Amends
 [ADR 0027](0027-account-target-position-portfolio-exposure.md) (target writes
 refuse a retired portfolio),
@@ -34,17 +39,20 @@ Both reference the portfolio with `RESTRICT`:
 
 The portfolio's own datasets (weights, values, rebalance state, analytics and
 the engine's ledger, state and cash flows) reference `Portfolio.unique_identifier`
-with `RESTRICT`. The delete routes remove its weights and values first.
+with `RESTRICT`. The delete routes remove all seven with the portfolio row, in one
+transaction (amended 2026-11-19, issue 93; see the implementation notes).
 
 `Portfolio` has no lifecycle state. A portfolio that should no longer be used
 can be left as it is, in which case it stays selectable as an account target and
 its updaters keep computing it, or it can be deleted. Deleting it is blocked
 while any account's history names it, which is the protection the `RESTRICT`
-references exist for. Three routes delete portfolios:
+references exist for. Four routes delete portfolios:
 
-- `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
-  delete the portfolio's weights and values and refuse while target rows or
-  virtual funds reference it.
+- `DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and
+  the remote `POST /api/v1/rows/portfolio/delete/` delete the portfolio with its
+  rows in its seven datasets, in one transaction, and refuse while target rows or
+  virtual funds reference it, or while another application's table holds rows
+  that reference it (amended 2026-11-19, issue 93).
 - `POST /api/v1/portfolio/bulk-cascade-delete/` deletes every account's target
   rows and virtual funds for the portfolio, current targets included, without
   checking them, and then deletes the portfolio.
@@ -288,3 +296,201 @@ The Markets API allocation route is removed
 ADR 0029's 3.5.0 amendment). Decision 4's rule for virtual funds is now checked
 only in `apply_account_virtual_fund_allocation_plan`; the 3.2.0 note's check "in
 the Markets API route" went with the route.
+
+### 2026-11-19: 4.1.1, issue 93
+
+The delete routes removed the weights and values with two
+`TimeIndexMetaTable.delete_after_date` calls, each its own MetaTables request,
+and then deleted the portfolio row. The checks before them counted only virtual
+funds and target rows. A `RESTRICT` key from any of the five other datasets, or
+from another application's instance, refused the row afterwards with a `409`,
+and the portfolio survived without its weights and values
+([issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)).
+
+- **One transaction.** `msm_portfolios.repositories.portfolio_deletion` deletes
+  the portfolio's rows in all seven datasets and then the row, as one MetaTables
+  statement list (MetaTables ADR 0026), as the account delete does (ADR 0050).
+  The last statement deletes the row only while it still has the
+  `unique_identifier` read before and no virtual fund or target row names it,
+  and must delete exactly one row. A portfolio that vanished in between answers
+  `404`; one renamed, or named by account history in between, answers `409`.
+  Nothing is deleted either way. The `delete_after_date` calls are gone.
+- **Checks first.** One read counts, per portfolio, its rows in each dataset and
+  the virtual funds and target rows that name it. A table outside those whose
+  `RESTRICT` key references the portfolio, listed by MetaTables' delete impact or
+  named by the catalog as an instance another application owns, gets one
+  read-only count. It refuses the delete while it holds rows of the portfolio,
+  or when it cannot be checked, as for curves
+  ([#59](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/59)).
+  Markets sends it no statement (ADR 0050 decision 2). Such rows used to stay in
+  place and be listed in `retained_datasets`; that field is gone.
+- **Same checks in the preflight.** `POST /api/v1/portfolio/bulk-delete/preflight/`
+  runs them and reports each portfolio's `row_counts` and blockers. The bulk
+  delete deletes each portfolio in its own transaction, as the account bulk
+  delete does.
+- **Update statistics.** `delete_after_date` also rebuilt the update statistics
+  MetaTables stores for each table (`index_stats`), and the portfolio updaters
+  resume from a portfolio's entry there. After a statement list commits,
+  MetaTables rebuilds the statistics of each time-index table the list changed
+  ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
+  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.71), so a
+  portfolio re-created under the same identifier starts from scratch.
+- **Deadline.** MetaTables runs a compiled read, and a statement list as a whole
+  (MetaTables ADR 0026), under a deadline of 15 seconds by default. The read that
+  counts a delete's rows, for the delete and for the preflight, and the
+  transaction ask for the longest it allows, 60 seconds
+  (`msm.repositories.base.with_delete_deadline`).
+  Measured on PostgreSQL 16 in Docker on a busy workstation (load average 155 to
+  210), with five portfolios of ten years of daily data on 500 assets: 6.3 million
+  rows each in the weights and rebalance-state tables, 504,000 in the event
+  ledger. The transaction that deletes one of them, with 1.26 million weights
+  rows, 1.26 million rebalance-state rows and 100,800 ledger rows, took 12.3 and
+  14.1 seconds, most of it in the rebalance-state delete (about 6 s), the
+  portfolio row's `RESTRICT` checks (3 to 4 s) and the weights delete (about
+  3 s). The same deletes took 16.5 and 18.7 seconds in an earlier run at a load
+  average of 130 to 250. The read took 3.3 and 5.6 seconds for that portfolio
+  and 20.8 and 23.1 seconds for all five. Its count subqueries are correlated:
+  PostgreSQL runs them once per portfolio, and only the weights table has an
+  index that leads with `portfolio_identifier`, so the read scans each of the six
+  other dataset tables once per portfolio. The 4.1.1, issue 96 note gives those six
+  tables an index that leads with `portfolio_identifier`, so each count reads only
+  its portfolio's rows.
+
+### 2026-11-19: 4.1.1, issue 96
+
+The read that counts a portfolio delete's rows counts each dataset with a subquery
+on the portfolio row, which PostgreSQL runs once per selected portfolio. Six of the
+seven dataset tables had no index that leads with `portfolio_identifier`, so each
+of those counts read its table in full: the read grew with the number of portfolios
+times the size of the tables (the "Deadline" bullet above). The account delete's
+read with its portfolios ([ADR 0050](0050-account-deletion.md)) counts the same
+way, and `POST /api/v1/portfolio/bulk-delete/` ran the read twice: in its preflight,
+and again to delete
+([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+
+- **Series indexes.** Revision `0031` gives the six other dataset tables (values,
+  rebalance state, analytics, event ledger, state and cash flows) the
+  `(portfolio_identifier, time_index)` index that revision `0026` gave the weights
+  table, and the storage models declare it as the weights model does, so the
+  contract instances built from them copy it. A count, read or delete of one
+  portfolio's rows then reads that portfolio's rows instead of the whole table, and
+  so does the `RESTRICT` check of the portfolio row's delete.
+- **Per-portfolio counts.** Both reads keep their count per portfolio row. A read
+  that grouped each dataset once for the whole selection
+  (`GROUP BY portfolio_identifier`) was built and measured first. Without the
+  indexes it avoided reading each table once per portfolio; with them, the
+  per-portfolio counts read the same index entries (about 13,000 buffers for five
+  portfolios) and took less time, 0.43 s against 0.94 s for five portfolios with the
+  pages in memory, because the grouped read hashes every row it counts. The grouped
+  read was dropped.
+- **One read per bulk delete.** `msm_portfolios.services.plan_portfolio_deletes`
+  runs the delete's checks once and returns a `PortfolioDeletePlan`, whose
+  `preflight()` is the preflight's report; `bulk_delete_portfolio_records(...,
+  plan=...)` deletes by it. The route plans once, answers `409` from that report,
+  and deletes by the same plan, so each portfolio's `deleted_rows` are its
+  preflight `row_counts`. The delete is as safe as before: a reference written
+  after the read stops that portfolio's transaction at its guarded statement, or
+  a `RESTRICT` key refuses it, and only then is that portfolio read again, to
+  name what refused it.
+- **The migration on ordinary tables.** The upgrade builds the index inside its
+  transaction, as `0026` did: a `SHARE` lock on each table until the upgrade
+  commits, so writes to the table wait and reads do not. On the tables measured
+  below it took 2.3 to 3.2 seconds with their pages in memory, and 6.8 to 15.5
+  seconds on PostgreSQL 16 on the busy workstation.
+- **The migration on hypertables.** A TimescaleDB DataSource makes these tables
+  hypertables, one chunk per week of data by default. Built in one transaction, an
+  index on a hypertable takes about two locks per chunk until the transaction ends:
+  with 505 chunks per table (ten years) the six indexes held 6,087 locks, and with
+  8,030 chunks across the six tables the upgrade failed with `out of shared memory`
+  at `max_locks_per_transaction = 64`, PostgreSQL's default, and rolled back.
+  Revision `0031` therefore builds a hypertable's index with
+  `timescaledb.transaction_per_chunk`, which TimescaleDB runs one chunk per
+  transaction and refuses inside a transaction block, so the migration runs it in
+  Alembic's `autocommit_block()`, after committing what the upgrade did before. The
+  build holds a few locks at a time whatever the number of chunks, and writes wait
+  only on the chunk being indexed. On the same 8,030 chunks at the default 64, the
+  upgrade took 32 s and held at most 22 locks; in one transaction, with the limit
+  raised to 256, it had taken 5.6 s.
+- **Interrupted and repeated.** A per-chunk build that stops part way leaves the
+  hypertable's index invalid, with the chunks built so far indexed; nothing links
+  those chunk indexes to it in TimescaleDB 2.22's catalog. The upgrade skips a
+  valid index; otherwise it drops each chunk's index on the series columns in its
+  own transaction, then the hypertable's index, and builds again. The indexes on
+  ordinary tables are created only if missing. So an upgrade stopped at any point
+  can be run again. On the 8,030 chunks, an upgrade stopped after 5 s, with 979 of
+  the values table's 1,005 chunks indexed, left the revision at `0030` and that
+  index invalid; run again, it finished in 50 s with all six indexes valid on every
+  chunk. The downgrade drops a hypertable's chunk indexes one at a time too, 88 s
+  for the 8,030. The builds run without a statement timeout and restore the
+  session's own afterwards, so a role's default timeout cannot cut a long build
+  short.
+- **Dropping a hypertable's index.** TimescaleDB 2.22 drops a hypertable's index in
+  one transaction, and opens every chunk of the table and every index on it to find
+  the chunk indexes to drop, even when none is left: here about two locks per
+  chunk, and no statement drops it chunk by chunk. Revision `0031` drops one only in
+  the downgrade and in the upgrade after an interrupted build, once the chunk
+  indexes are gone, so that drop only reads the chunks. The migration's session
+  peaked at 1,986 locks in the upgrade after the interruption and at 4,010 in the
+  downgrade: two for each chunk of the 1,005-chunk table and of a 2,005-chunk
+  table. At 64 this server's lock table is sized for 9,344 locks (64 for each of
+  its 146 backends), so by that count a table would need about 4,600 chunks, 88
+  years at one chunk a week, before its drop could not fit on an otherwise idle
+  server; the build stays at a few locks.
+
+Measured on PostgreSQL 17.6 (the TimescaleDB 2.22 image, ordinary tables, pages in
+memory, idle machine) with five portfolios of 2,520 days on 500 assets and one of
+50 days (0.4 % of the rows); the weights and rebalance state tables hold 6.3 million
+rows each. Medians of six runs for the reads, of two for the big deletes and six for
+the small one. Before is `development` without the indexes; the reads' SQL is the
+same before and after.
+
+| Operation | Before | 4.1.1 |
+| --- | ---: | ---: |
+| Portfolio delete read, one portfolio | 0.47 s | 0.10 s |
+| Portfolio delete read, five portfolios | 1.51 s | 0.43 s |
+| Portfolio delete read, the small portfolio | 0.27 s | 9 ms |
+| Account delete read, one portfolio | 0.43 s | 0.11 s |
+| Account delete read, five portfolios | 1.67 s | 0.43 s |
+| Delete transaction, one portfolio | 4.8 s | 3.5 s |
+| Delete transaction, the small portfolio | 0.38 s | 28 ms |
+| Delete transactions, five portfolios | 21 s | 22 s |
+
+The read for five portfolios touched 586,635 buffers before and 12,821 after. The
+five big deletes remove about 2.6 million rows each, which takes the same time
+either way (20.6 and 21.4 s before, 15.8 and 28.0 s after). The bulk delete runs
+the read once instead of twice.
+
+### 2026-11-19: 4.1.1, `Portfolio.delete` is refused
+
+After issue 93 the same call still did two different things. Through
+`msm.client`, the row router ran the routes' service, so `Portfolio.delete`
+deleted the portfolio with its seven datasets. Under the runtime backend it was
+the inherited `MarketsMetaTableRow.delete`: one `DELETE` of the portfolio row,
+which removed none of the datasets and was refused by the first `RESTRICT` key
+from any of them. ADR 0050 rejected that split for `Account` ("Keep The Runtime
+Delete As A One-Row Delete").
+
+`Account` closed it by running its delete service under both backends.
+`Portfolio` cannot: the row class is in core `msm`, while the delete service and
+the seven dataset storages are in `msm_portfolios`, which core `msm` does not
+import ([ADR 0019](0019-msm-portfolios-package-boundary.md)). A hook that
+`msm_portfolios` fills when it is imported would keep that rule, but the runtime
+`Portfolio.delete` would then depend on what the process had imported.
+Applications other than the Markets deployment and the producers of Markets
+tables already reach portfolios through the Markets API (ADR 0047).
+
+- `Portfolio` sets `__delete_refusal__`, as the account-history rows do (the
+  3.4.2 note). `Portfolio.delete` raises `MarketsOperationUnsupported` under both
+  backends, before any runtime call, and names the two routes below. The remote
+  `POST /api/v1/rows/portfolio/delete/`, which the context lists among the
+  routes that delete portfolios, answers `501` with the same text: the row
+  router no longer has a service delete for `portfolio`, and `GET /api/v1/rows/`
+  no longer lists `delete` for it.
+- `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
+  are the only portfolio deletes; this change does not alter them. The single
+  delete answers `404` for a missing portfolio and `409` when a reference
+  refuses it; the bulk delete answers `409` naming each portfolio that is
+  missing or refused.
+- The unused one-row helpers `msm.services.delete_portfolio`,
+  `msm.repositories.delete_portfolio` and
+  `msm.repositories.build_delete_portfolio_operation` are removed.

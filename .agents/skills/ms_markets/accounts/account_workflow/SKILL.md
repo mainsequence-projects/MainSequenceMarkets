@@ -122,6 +122,18 @@ Rules:
   `POST /api/v1/account/bulk-delete/preflight/`. Markets sends deletes only to its own
   tables; another application's table loses rows only through its own `CASCADE` key,
   and its `RESTRICT` key refuses the delete.
+- To remove an account together with the portfolios only it used, call
+  `msm_portfolios.services.delete_account_with_portfolios(context, uid=...)` with the
+  portfolio runtime's context (`msm_portfolios.get_runtime().context`), or
+  `bulk_delete_accounts_with_portfolios`; over HTTP, `?delete_portfolios=true` or the
+  bulk action's `delete_portfolios` option. `Account.delete` deletes the account alone.
+  The same transaction deletes each portfolio its virtual funds or target rows name,
+  with all its data, unless another account uses it, the caller does not manage it
+  (ADR 0060), or the database refuses it because an application's own table still
+  holds rows of it; the answer lists `deleted_portfolios` and `kept_portfolios` with
+  the reason. Don't delete those portfolios one by one afterwards. An application
+  deletes its own rows of a portfolio first
+  (`msm_portfolios.recipes.delete_private_series`).
 - A connector registers a brokerage account, and syncs its holdings, with one call:
   `MarketsClient.register_account(...)` (`POST /api/v1/account/registration/`, ADR
   0051). In one transaction it creates the missing asset types, assets and cash currency
@@ -133,8 +145,9 @@ Rules:
   `calendar_identifier`, the `unique_identifier` of its stored trading calendar: an
   asset with no trading calendar is linked in the same transaction, and one that has a
   calendar keeps it (ADR 0057). The calendar must exist first; an unknown one refuses
-  the call. A provider sidecar is
-  written afterwards by the provider, with the returned account uid.
+  the call. An application's own sidecar is
+  written afterwards by the application, in its own table, with the returned account
+  uid; Markets never reads it (ADR 0060). A consumer reads it from the application.
 
 ## Runtime Attachment
 
@@ -187,8 +200,9 @@ The full account example is intentionally chainable. By default,
 contributed interpolation output storage needed by the reusable equal-weight
 portfolio example, chains that portfolio workflow, reuses the resulting
 `Portfolio` row, and assigns that portfolio UID as one of the account target
-positions. This preparation is not portfolio core registration:
-`PortfoliosUpdater` must still consume an explicit
+positions. The portfolio's weights and values are published to Markets
+(`PortfolioWeightsSeries`, `PortfolioValuesSeries`; ADR 0060). This preparation is
+not portfolio core registration: `PortfoliosUpdater` must still consume an explicit
 `PortfolioBuildConfiguration.valuation_source_instance` and configured
 `valuation_column`. The same full workflow can be extended with a dry-run
 account virtual-fund allocation plan using

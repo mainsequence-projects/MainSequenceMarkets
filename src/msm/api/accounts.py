@@ -201,6 +201,10 @@ class Account(MarketsMetaTableRow):
         `RESTRICT` key there refuses the delete. Returns `None` when the account does
         not exist and raises `AccountDeleteConflictError` when a key refuses it. The
         same call does the same under the runtime and the remote backend.
+
+        The portfolios its history names stay. To delete the ones only it used in the
+        same transaction, call the portfolio package's `delete_account_with_portfolios`,
+        or `DELETE /api/v1/account/{uid}/?delete_portfolios=true` (issue 91).
         """
 
         from msm.services import delete_account

@@ -19,12 +19,37 @@ from msm.repositories.crud import (
     update_model,
     upsert_model,
 )
-from msm.storage_instances import PROVIDER_TABLE_DELETE_GUIDANCE, provider_owned_table_uid
 
 from msm_pricing.bootstrap import attach_pricing_schemas, resolve_pricing_runtime
 from msm_pricing.time_index.curves.storage import CURVE_IDENTIFIER_DIMENSION
 from msm_pricing.models.curves import CurveTable
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
+
+
+# Pricing market-data sets keep binding curves to instance tables by uid; ADR 0060 leaves
+# them undecided (its "Not Decided Here"), so these stay with pricing alone.
+PROVIDER_TABLE_DELETE_GUIDANCE = (
+    "Markets does not delete rows in a table another application owns (ADR 0047); "
+    "delete them through the application that owns the table."
+)
+
+
+def provider_owned_table_uid(meta_table_uid: Any, *, core_storage: type) -> str | None:
+    """Return ``meta_table_uid`` when it names a table other than Markets' own core table.
+
+    ``None`` means no table or the core table, which Markets owns and deletes from.
+    Any other uid is an instance another application registered, so Markets
+    reads it but never deletes its rows.
+    """
+
+    if meta_table_uid in (None, ""):
+        return None
+    core_meta_table = core_storage.get_time_index_meta_table()
+    if core_meta_table is not None and str(getattr(core_meta_table, "uid", "")) == str(
+        meta_table_uid
+    ):
+        return None
+    return str(meta_table_uid)
 
 
 def _validate_payload(

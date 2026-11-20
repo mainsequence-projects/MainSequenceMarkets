@@ -10,8 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from msm.api.base import (
     MarketsMetaTableRow,
     PayloadWithRenamedFields,
+    _payload_values,
     operation_result_rows,
     pre_3_0_field,
+)
+from msm.api.managers import (
+    refuse_managed_by,
+    register_managed_rows,
+    require_assigning_admin,
+    validate_principal,
 )
 from msm.models import (
     CalendarTable,
@@ -45,7 +52,13 @@ def _validate_payload(
 
 
 class Portfolio(MarketsMetaTableRow):
-    """Typed portfolio identity and runtime configuration row."""
+    """Typed portfolio identity and runtime configuration row.
+
+    ``delete`` raises ``MarketsOperationUnsupported`` under both backends and deletes
+    nothing. A portfolio is deleted with its rows in its seven datasets, which belong
+    to the portfolio package that core ``msm`` does not import (ADR 0019), so only the
+    Markets API's portfolio routes delete it (ADR 0049).
+    """
 
     __table__: ClassVar[type[PortfolioTable]] = PortfolioTable
     __required_tables__: ClassVar[list[type[Any]]] = [
@@ -56,6 +69,11 @@ class Portfolio(MarketsMetaTableRow):
         PortfolioTable,
     ]
     __upsert_keys__: ClassVar[tuple[str, ...]] = ("unique_identifier",)
+    __delete_refusal__: ClassVar[str | None] = (
+        "a portfolio is deleted with its rows in its seven datasets, in one transaction, "
+        "only through the Markets API: DELETE /api/v1/portfolio/{uid}/ or "
+        "POST /api/v1/portfolio/bulk-delete/ (ADR 0049)."
+    )
 
     unique_identifier: str
     calendar_uid: uuid.UUID
@@ -73,6 +91,55 @@ class Portfolio(MarketsMetaTableRow):
         "signal_weights_table_update_uid"
     )
     portfolio_data_node_uid: uuid.UUID | None = pre_3_0_field("portfolio_table_update_uid")
+    managed_by: str | None = None
+
+    @classmethod
+    def create(cls, payload: Payload = None, **kwargs: Any) -> Portfolio:
+        """Insert one portfolio; Markets records its manager (ADR 0060)."""
+
+        return super().create(refuse_managed_by(_payload_values(payload, kwargs)))
+
+    @classmethod
+    def upsert(cls, payload: Payload = None, **kwargs: Any) -> Portfolio:
+        """Insert or update one portfolio by ``unique_identifier``; its manager never changes."""
+
+        return super().upsert(refuse_managed_by(_payload_values(payload, kwargs)))
+
+    @classmethod
+    def update(cls, uid: uuid.UUID | str, payload: Payload = None, **kwargs: Any) -> Portfolio:
+        """Update one portfolio by UID; ``assign_manager`` changes its manager."""
+
+        return super().update(uid, refuse_managed_by(_payload_values(payload, kwargs)))
+
+    @classmethod
+    def upsert_many(cls, payloads: Sequence[BaseModel | Mapping[str, Any]]) -> list[Portfolio]:
+        """Upsert many portfolios on ``unique_identifier``; their managers never change."""
+
+        for payload in payloads:
+            if isinstance(payload, Mapping):
+                refuse_managed_by(dict(payload))
+        return super().upsert_many(payloads)
+
+    @classmethod
+    def assign_manager(cls, uid: uuid.UUID | str, managed_by: str) -> Portfolio:
+        """Make ``managed_by`` (``branch:<uid>`` or ``user:<uid>``) the portfolio's manager.
+
+        Only an Organization admin may call it through the Markets API (ADR 0060).
+        """
+
+        from msm.repositories.crud import update_model
+
+        require_assigning_admin()
+        result = update_model(
+            cls._active_context(),
+            model=cls.__table__,
+            uid=uid,
+            values={"managed_by": validate_principal(managed_by)},
+        )
+        return cls._from_operation_result(result)
+
+
+register_managed_rows("portfolio", Portfolio, "unique_identifier")
 
 
 class PortfolioCreate(PayloadWithRenamedFields):

@@ -44,7 +44,11 @@ table. It does not decide which namespaces the tables are in: each model declare
 own, and a table can be in several. See [Put tables in namespaces](#put-tables-in-namespaces).
 
 The scaffold creates a provider, model registry, Alembic environment, revision
-template, and versions directory under the chosen source root. Edit its
+template, and versions directory under the chosen source root. The provider is a
+`build_metatable_migration_provider` call, which accepts every option of
+`AlembicMetaTableMigration`. Add `--branch-access ledger=editor` (repeat it per
+namespace) to declare the roles of every workload deployed from the repository's
+branch; see [Migrate in the deployment workflow](deploy-application-migrations.md#give-the-job-access). Edit its
 `registry.py` to return the intended `Account` and `Balance` models. Scaffold
 creation alone does not select all imported models or migrate a database.
 Use `--source-root` and `--code-repository-root` if your layout differs from `src/`.

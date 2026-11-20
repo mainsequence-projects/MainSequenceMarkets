@@ -14,7 +14,7 @@ import pytest
 
 from msm.time_index.assets import snapshots as snapshot_module
 from msm.time_index.assets.snapshots import changed_asset_snapshots
-from tests.msm.repositories.test_sqlite_snapshot_writes import _asset, _insert, make_sqlite_markets
+from tests.support.sqlite_markets import _asset, _insert
 
 T1 = dt.datetime(2026, 11, 1, tzinfo=dt.UTC)
 T2 = dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
@@ -22,11 +22,10 @@ T3 = dt.datetime(2026, 11, 3, tzinfo=dt.UTC)
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    markets = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(sqlite_markets):
     for identifier in ("A", "B"):
-        _asset(markets.engine, identifier)
-    return markets
+        _asset(sqlite_markets.engine, identifier)
+    return sqlite_markets
 
 
 def _store(markets, time_index, asset_identifier="A", **values) -> None:

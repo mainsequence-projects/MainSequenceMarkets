@@ -18,10 +18,17 @@ the API does not define HTML rendering semantics for signal descriptions.
   `msm_portfolios.time_index.signals.storage.SignalWeightsStorage`.
 
 `SignalWeightsStorage.signal_uid` references `SignalMetadataTable.signal_uid`.
-Deleting a signal metadata row therefore first clears matching signal-weight
-storage rows through `TimeIndexMetaTable.delete_after_date(None,
-dimension_filters=...)`, scoped by `signal_uid`, before deleting the metadata
-row.
+Deleting a signal metadata row therefore deletes the signal's weight rows and
+then the metadata row, in one transaction.
+
+A signal's weights are published to Markets' own `SignalWeightsStorage`
+through the `signal-weights` row operations
+([Row Operations](rows.md#published-series)); Markets reads no other
+application's table. `SignalMetadata.managed_by` names the principal that
+created the row, recorded by Markets from the acting identity of the create
+call; no create or update payload sets it. Only that
+principal deletes the signal or its weights; any other caller, and every caller
+while the row has no manager, gets `403`.
 
 ## List Portfolio Signals
 
@@ -120,11 +127,7 @@ Deletes historical `SignalWeightsStorage` rows for the metadata row's
 When `weights_date` is omitted, all weight rows for the signal are deleted.
 When `weights_date` is provided, rows at or after that timestamp are deleted.
 The API never calls `delete_after_date(None)` without a `signal_uid` dimension
-scope.
-
-When `SignalMetadata.meta_table_uid` names a `SignalWeightsTS` instance another
-application owns (ADR 0047), the route returns 409, deletes nothing and names
-the table. Delete those rows through the application that owns the table.
+scope. Only the signal's manager may delete its weights (`403` otherwise).
 
 Response:
 
@@ -144,10 +147,9 @@ Response:
 DELETE /api/v1/portfolio-signal/{uid}/
 ```
 
-Deletes one signal metadata row and all matching historical
-`SignalWeightsStorage` rows. Storage cleanup uses
-`TimeIndexMetaTable.delete_after_date(None, dimension_filters=...)`, scoped by
-the signal's `signal_uid`.
+Deletes one signal metadata row and all its `SignalWeightsStorage` rows in
+one transaction, or nothing. `SignalMetadata.end(signal_uid)` and
+`msm_portfolios.recipes.end_signal` do the same by `signal_uid`.
 
 Response:
 
@@ -157,14 +159,10 @@ Response:
   "signal_metadata_uid": "signal-metadata-uid",
   "signal_uid": "canonical-signal-key",
   "deleted_count": 1,
-  "deleted_weights_count": 12,
-  "retained_datasets": []
+  "deleted_weights_count": 12
 }
 ```
 
-When the signal's weights live in a `SignalWeightsTS` instance another
-application owns, the route still deletes the metadata row and any core rows,
-leaves the instance's rows in place and lists the table in `retained_datasets`
-(`signal_uid`, `dataset: "signal_weights"`, `meta_table_uid`).
-
-Missing metadata rows return 404. Protected delete conflicts return 409.
+Missing metadata rows return 404. A caller that does not manage the signal gets
+403. A portfolio that still names the signal refuses the delete with 409, and
+nothing is deleted.

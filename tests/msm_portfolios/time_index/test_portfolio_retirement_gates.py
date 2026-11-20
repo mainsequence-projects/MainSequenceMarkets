@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from tests.identity.test_pinned_identities import _bound
+from tests.support.pinned_identities import _bound
 from msm_portfolios.retirement import (
     drop_retired_rows,
     end_before_retirement,

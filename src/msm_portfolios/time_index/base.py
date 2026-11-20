@@ -4,7 +4,7 @@ import datetime as dt
 from typing import Any
 
 import pandas as pd
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict
 
 from metatables import dtype_codec as dc
 from metatables import (
@@ -38,13 +38,16 @@ class PortfolioCanonicalUpdaterConfiguration(TimeIndexTableUpdateConfig):
     """Update-scoped configuration base for canonical Portfolios updaters."""
 
 
-class SignalWeightsConfiguration(PortfolioCanonicalUpdaterConfiguration):
-    """Canonical SignalWeights table config plus runtime signal input."""
+class SignalWeightsConfiguration(BaseModel):
+    """The configuration of a ``SignalWeights`` node: the signal's own configuration.
 
-    signal_configuration: Any | None = Field(
-        default=None,
-        json_schema_extra={"hash_excluded": True},
-    )
+    A signal's identity is ``signal_uid``, the hash of its class and
+    ``signal_configuration``; the node is bound to no table (ADR 0060).
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    signal_configuration: Any | None = None
 
 
 class PortfolioCanonicalUpdater(TimeIndexTableUpdater):

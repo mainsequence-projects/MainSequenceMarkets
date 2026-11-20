@@ -285,7 +285,8 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     IMPORTANT (Portfolios design)
     ----------------------
     Portfolios uses **direct injection** (instances), not string lookups:
-    - `signal_weights_instance` is a SignalWeights TimeIndexTableUpdater
+    - `signal_weights_instance` is a SignalWeights node, whose weights are the
+      published `SignalWeightsSeries` of its `signal_uid` (ADR 0060)
     - `rebalance_strategy_instance` is a RebalanceStrategyBase state machine whose
       declared updater dependencies are serialized as part of its identity
 
@@ -294,8 +295,8 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
             Rebalance strategy instance controlling observed inputs, target activation,
             event selection, partial execution, and unfinished state.
         signal_weights_instance:
-            Signal strategy instance producing `signal_weight` per asset and time.
-            This is typically also a TDAG TimeIndexTableUpdater and is serialized using its own configuration schema.
+            Signal node producing `signal_weight` per asset and time. It is serialized
+            from its own signal configuration.
     """
 
     model_config = ConfigDict(
@@ -319,9 +320,8 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
         SignalWeights,
         Field(
             description=(
-                "Instance of a signal weights TimeIndexTableUpdater. "
-                "It is serialized from its concrete signal configuration while "
-                "stored in the canonical SignalWeights table."
+                "Instance of a SignalWeights node. It is serialized from its concrete "
+                "signal configuration; its weights are published to Markets."
             ),
             examples=[
                 # Example is intentionally schematic; actual fields depend on the strategy class.
@@ -337,7 +337,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
         return_type=dict[str, Any],
     )
     def ser_signal_weights(self, v: SignalWeights) -> dict[str, Any]:
-        """Serialize the concrete signal identity, not the canonical table identity."""
+        """Serialize the concrete signal identity."""
         return canonical_signal_configuration(v)
 
     @field_serializer(

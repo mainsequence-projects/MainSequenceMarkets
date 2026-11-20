@@ -4,16 +4,22 @@ The delete is an ordered statement list that MetaTables runs in one transaction 
 PostgreSQL and on SQLite (MetaTables ADR 0026). Every statement targets a table in
 the Markets namespace. Rows in another application's table are removed only by a
 foreign key that table carries; Markets sends it no statement.
+
+The statements and the read are public so that the delete of an account with the
+portfolios only it used, which the portfolio package owns, can extend them into the
+same single read and single transaction (issue 91).
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import String, Uuid, bindparam, delete, func, select
+from sqlalchemy import String, Uuid, bindparam, delete, func, literal, select
+from sqlalchemy.orm import aliased
+from sqlalchemy.sql import Select
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
@@ -22,6 +28,7 @@ from msm.models import (
     AccountTable,
     AccountTargetAllocationTable,
     OrderManagerTable,
+    PortfolioTable,
     PositionSetTable,
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
@@ -41,10 +48,11 @@ from .base import (
     execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
+    with_delete_deadline,
 )
 
 ACCOUNT_DELETE_GUARD = "account"
-"""Guard label of the last statement: the account row, with the identifier read before."""
+"""Guard label of the account statement: the account row, with the identifier read before."""
 
 
 @dataclass(frozen=True)
@@ -77,6 +85,9 @@ ACCOUNT_DELETE_TABLES: tuple[AccountDeleteTable, ...] = (
 )
 """Every Markets table the delete touches, in the order its statements run."""
 
+ACCOUNT_HISTORY_KEYS = tuple(table.key for table in ACCOUNT_DELETE_TABLES if table.key != "accounts")
+"""The account's history: every table above but the account's own."""
+
 ACCOUNT_DELETE_BLOCKER_KEYS = (
     "other_account_orders",
     "other_account_virtual_fund_holdings_sets",
@@ -84,18 +95,46 @@ ACCOUNT_DELETE_BLOCKER_KEYS = (
 )
 """Markets rows of other accounts whose ``RESTRICT`` keys refuse the delete."""
 
+ACCOUNT_HISTORY_REFERENCES: tuple[tuple[str, type[Any], str], ...] = (
+    ("virtual_funds", VirtualFundTable, "target_portfolio_uid"),
+    ("target_positions", TargetPositionsStorage, "portfolio_uid"),
+)
+"""Account history that references ``Portfolio.uid`` with ``RESTRICT``, by its key in
+`ACCOUNT_DELETE_TABLES`. Only the account delete removes it (ADR 0049 decision 1)."""
+
+
+def account_history_reference(model: type[Any], column: str) -> Any:
+    """Whether a row of ``model`` names the portfolio row of the enclosing statement."""
+
+    return (
+        select(literal(1))
+        .select_from(model)
+        .where(getattr(model, column) == PortfolioTable.uid)
+        .exists()
+    )
+
 
 @dataclass(frozen=True)
 class _AccountScope:
-    """The account's keys as bound parameters, and the selects the statements share."""
+    """The account's keys as bound parameters, and the selects the statements share.
+
+    Without ``unique_identifier`` the identifier is read from the account row in the
+    same statement, as the read does.
+    """
 
     uid: uuid.UUID
-    unique_identifier: str
+    unique_identifier: str | None
 
     def account_uid(self) -> Any:
         return bindparam("account_uid", value=self.uid, type_=Uuid(as_uuid=True))
 
     def account_identifier(self) -> Any:
+        if self.unique_identifier is None:
+            return (
+                select(AccountTable.unique_identifier)
+                .where(AccountTable.uid == self.account_uid())
+                .scalar_subquery()
+            )
         return bindparam("account_identifier", value=self.unique_identifier, type_=String())
 
     def order_identifiers(self) -> Any:
@@ -202,6 +241,19 @@ def _blocker_filters(scope: _AccountScope) -> dict[str, tuple[type[Any], Callabl
     }
 
 
+def account_history_filters(uid: uuid.UUID | str) -> dict[str, Callable[[], Any]]:
+    """The ``WHERE`` clause that selects the account's rows in each table, by table key.
+
+    The account's identifier is read from its row in the same statement, so the filters
+    serve a read that knows only the uid.
+    """
+
+    return _row_filters(_AccountScope(uid=uuid.UUID(str(uid)), unique_identifier=None))
+
+
+# The delete ------------------------------------------------------------------------------
+
+
 def account_delete_statements(
     *,
     uid: uuid.UUID | str,
@@ -212,8 +264,9 @@ def account_delete_statements(
     Children go before the rows their ``RESTRICT`` keys reference: orders, trades and
     the events of those orders; order managers; virtual funds with their holdings;
     target allocations with their position sets and target rows; holdings sets with
-    their rows; the account. The last statement is guarded: it must delete exactly the
-    account read before, with the same ``unique_identifier``, or nothing is deleted.
+    their rows; the account. The account statement is guarded: it must delete exactly
+    the account read before, with the same ``unique_identifier``, or nothing is deleted.
+    MetaTables checks a guard after each statement, so statements may follow it.
     """
 
     scope = _scope(uid, unique_identifier)
@@ -247,7 +300,7 @@ def build_delete_account_operation(
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
     return compile_markets_statements(
         account_delete_statements(uid=uid, unique_identifier=unique_identifier),
-        context=context,
+        context=with_delete_deadline(context),
         operation="delete",
         data_source_uid=data_source_uid,
         dialect=dialect,
@@ -274,67 +327,105 @@ def delete_account(
     )
 
 
-def build_count_account_delete_rows_operation(
+# The read --------------------------------------------------------------------------------
+
+
+def account_delete_read_statement(uid: uuid.UUID | str) -> Select:
+    """The account delete's read: the account, the rows its delete removes, and the rows
+    of other accounts that block it, labelled by the keys of `ACCOUNT_HISTORY_KEYS` and
+    `ACCOUNT_DELETE_BLOCKER_KEYS`.
+
+    Each count is a subquery on the bound account uid alone (the identifier is read in
+    the same statement), so the database runs each once, whatever columns and joins a
+    caller adds. No row means no account.
+    """
+
+    account = aliased(AccountTable, name="deleted_account")
+    filters = account_history_filters(uid)
+    scope = _AccountScope(uid=uuid.UUID(str(uid)), unique_identifier=None)
+    return (
+        select(
+            account.uid.label("uid"),
+            account.unique_identifier.label("unique_identifier"),
+            *(
+                select(func.count())
+                .select_from(table.model)
+                .where(filters[table.key]())
+                .scalar_subquery()
+                .label(table.key)
+                for table in ACCOUNT_DELETE_TABLES
+                if table.key != "accounts"
+            ),
+            *(
+                select(func.count()).select_from(model).where(where()).scalar_subquery().label(key)
+                for key, (model, where) in _blocker_filters(scope).items()
+            ),
+        )
+        .select_from(account)
+        .where(account.uid == scope.account_uid())
+    )
+
+
+def account_delete_read_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The account's ``uid``, ``unique_identifier`` and ``counts`` from a read row."""
+
+    return {
+        "uid": str(uuid.UUID(str(row["uid"]))),
+        "unique_identifier": str(row.get("unique_identifier") or ""),
+        "counts": {
+            key: int(row.get(key) or 0) for key in (*ACCOUNT_HISTORY_KEYS, *ACCOUNT_DELETE_BLOCKER_KEYS)
+        },
+    }
+
+
+def build_read_account_delete_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
-    unique_identifier: str,
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MetaTableCompiledSQLOperation:
-    """One read that counts the rows the delete would remove, and the rows that block it."""
+    """Compile the account delete's read, run with the delete's deadline."""
 
-    scope = _scope(uid, unique_identifier)
-    filters = _row_filters(scope)
-    counts = [
-        select(func.count())
-        .select_from(table.model)
-        .where(filters[table.key]())
-        .scalar_subquery()
-        .label(table.key)
-        for table in ACCOUNT_DELETE_TABLES
-    ]
-    counts.extend(
-        select(func.count()).select_from(model).where(where()).scalar_subquery().label(key)
-        for key, (model, where) in _blocker_filters(scope).items()
-    )
     return compile_markets_statement(
-        select(*counts),
-        context=context,
+        account_delete_read_statement(uid),
+        context=with_delete_deadline(context),
         operation="select",
         dialect=dialect,
     )
 
 
-def count_account_delete_rows(
+def read_account_delete(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
-    unique_identifier: str,
-) -> dict[str, int]:
-    """Rows per table the delete would remove, and per blocker key the rows that block it."""
+) -> dict[str, Any] | None:
+    """What deleting the account removes and what blocks it, in one read.
+
+    Answers ``None`` when the account does not exist, else `account_delete_read_row`.
+    """
 
     result = execute_markets_operation(
-        build_count_account_delete_rows_operation(
-            context,
-            uid=uid,
-            unique_identifier=unique_identifier,
-        ),
+        build_read_account_delete_operation(context, uid=uid),
         context=context,
     )
     rows = result.get("rows") or []
-    row = rows[0] if rows else {}
-    keys = [table.key for table in ACCOUNT_DELETE_TABLES] + list(ACCOUNT_DELETE_BLOCKER_KEYS)
-    return {key: int(row.get(key) or 0) for key in keys}
+    return account_delete_read_row(rows[0]) if rows else None
 
 
 __all__ = [
     "ACCOUNT_DELETE_BLOCKER_KEYS",
     "ACCOUNT_DELETE_GUARD",
     "ACCOUNT_DELETE_TABLES",
+    "ACCOUNT_HISTORY_KEYS",
+    "ACCOUNT_HISTORY_REFERENCES",
     "AccountDeleteTable",
+    "account_delete_read_row",
+    "account_delete_read_statement",
     "account_delete_statements",
-    "build_count_account_delete_rows_operation",
+    "account_history_filters",
+    "account_history_reference",
     "build_delete_account_operation",
-    "count_account_delete_rows",
+    "build_read_account_delete_operation",
     "delete_account",
+    "read_account_delete",
 ]

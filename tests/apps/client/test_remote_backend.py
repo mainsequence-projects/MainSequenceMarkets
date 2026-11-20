@@ -1,0 +1,927 @@
+"""The remote row backend gives ``msm.api`` row classes the same behaviour over HTTP.
+
+Each test selects the remote backend with an in-process ``TestClient`` of
+``apps/v1`` as the transport. The Markets API side runs the row API on its
+runtime backend, whose MetaTables calls are replaced by fakes exactly as the
+runtime ``msm.api`` tests do, so a test proves the full path: row class method,
+client, ``POST /rows/{resource}/{operation}/``, runtime row method, result.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import uuid
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from apps.v1.main import app
+from msm.api.accounts import Account
+from msm.api.assets import Asset, AssetCategory, CurrencySpot
+from msm.api.remote import (
+    MarketsAccessError,
+    is_markets_owned,
+    use_remote_backend,
+    use_runtime_backend,
+)
+from msm.client import MarketsClient, tabular_frame_to_pandas
+
+
+@pytest.fixture
+def remote(monkeypatch):
+    """Use the remote backend against an in-process Markets API; record runtime calls."""
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        "msm.bootstrap.resolve_runtime",
+        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    )
+    client = MarketsClient("http://testserver", session=TestClient(app))
+    use_remote_backend(client.backend)
+    try:
+        yield SimpleNamespace(client=client, calls=calls)
+    finally:
+        use_runtime_backend()
+
+
+def _row(**values: Any) -> dict[str, Any]:
+    return {"rows": [{"uid": str(uuid.uuid4()), **values}]}
+
+
+def test_upsert_runs_on_the_markets_runtime_and_returns_the_row(monkeypatch, remote) -> None:
+    def upsert_model(context, *, model, values, conflict_columns):
+        remote.calls.append(("upsert", {"model": model.__name__, "values": values}))
+        return _row(**values)
+
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", upsert_model)
+
+    asset = Asset.upsert(unique_identifier="ACME", asset_type="Equity")
+
+    assert isinstance(asset, Asset)
+    assert asset.unique_identifier == "ACME"
+    assert asset.asset_type == "equity"
+    assert remote.calls == [
+        ("upsert", {"model": "AssetTable", "values": {"unique_identifier": "ACME", "asset_type": "equity"}})
+    ]
+
+
+def test_payload_models_keep_exclude_unset_semantics(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetUpsert
+
+    seen: dict[str, Any] = {}
+
+    def upsert_model(context, *, model, values, conflict_columns):
+        seen.update(values)
+        return _row(**values)
+
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", upsert_model)
+
+    Asset.upsert(AssetUpsert(unique_identifier="ACME"))
+
+    assert seen == {"unique_identifier": "ACME"}
+
+
+@pytest.mark.parametrize("as_payload", [False, True], ids=["kwargs", "payload"])
+def test_write_values_reach_the_runtime_typed_by_the_row_fields(
+    monkeypatch, remote, as_payload
+) -> None:
+    """JSON strings of datetime and uuid fields become datetimes and uuids again.
+
+    SQLite's ``DateTime`` refuses an ISO string, so a remote write must not hand
+    one to the statement (issue #73).
+    """
+
+    from msm.api.execution import OrderManager
+
+    seen: dict[str, Any] = {}
+
+    def upsert_model(context, *, model, values, conflict_columns):
+        seen.update(values)
+        return _row(**values)
+
+    monkeypatch.setattr("msm.repositories.crud.upsert_model", upsert_model)
+    now = dt.datetime(2026, 11, 15, 14, 30, tzinfo=dt.UTC)
+    account_uid = uuid.uuid4()
+    values = {
+        "unique_identifier": "PROBE_BATCH",
+        "target_account_uid": account_uid,
+        "target_time": now,
+        "order_received_time": now,
+        "status": "submitted",
+        "metadata_json": {"note": "2026-11-15T14:30:00+00:00"},
+    }
+
+    batch = OrderManager.create_batch(values) if as_payload else OrderManager.create_batch(**values)
+
+    assert seen == values
+    assert isinstance(seen["target_time"], dt.datetime)
+    assert isinstance(seen["target_account_uid"], uuid.UUID)
+    assert batch.target_time == now
+
+
+def test_get_by_uid_returns_the_row_or_none(monkeypatch, remote) -> None:
+    uid = uuid.uuid4()
+    rows = {str(uid): {"uid": str(uid), "unique_identifier": "ACME", "asset_type": "equity"}}
+    monkeypatch.setattr(
+        "msm.repositories.crud.get_model_by_uid",
+        lambda context, *, model, uid: {"rows": [rows[str(uid)]] if str(uid) in rows else []},
+    )
+
+    assert Asset.get_by_uid(uid) == Asset.model_validate(rows[str(uid)])
+    assert Asset.get_by_uid(uuid.uuid4()) is None
+
+
+def test_filter_values_are_typed_by_the_row_fields(monkeypatch, remote) -> None:
+    account_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def search_model(context, *, model, filters=None, contains_filters=None, limit=None, **kwargs):
+        seen.update({"filters": filters, "contains": contains_filters, "limit": limit})
+        return {"rows": [{"uid": str(account_uid), "unique_identifier": "ACC-1", "account_name": "A"}]}
+
+    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+
+    accounts = Account.filter(uid=str(account_uid), account_name_contains="A", limit=5)
+
+    assert [account.unique_identifier for account in accounts] == ["ACC-1"]
+    assert seen == {"filters": {"uid": account_uid}, "contains": {"account_name": "A"}, "limit": 5}
+
+
+def test_get_many_by_unique_identifier_returns_a_mapping(monkeypatch, remote) -> None:
+    monkeypatch.setattr(
+        "msm.repositories.crud.search_model",
+        lambda context, *, model, in_filters=None, limit=None, **kwargs: {
+            "rows": [
+                {"uid": str(uuid.uuid4()), "unique_identifier": value, "asset_type": "equity"}
+                for value in in_filters["unique_identifier"]
+            ]
+        },
+    )
+
+    rows = Asset.get_many_by_unique_identifier(["A", "B", "A"])
+
+    assert sorted(rows) == ["A", "B"]
+    assert all(isinstance(row, Asset) for row in rows.values())
+
+
+def test_composite_upsert_runs_remotely(monkeypatch, remote) -> None:
+    base, quote = uuid.uuid4(), uuid.uuid4()
+    pair_uid = uuid.uuid4()
+
+    def upsert_model(context, *, model, values, conflict_columns):
+        name = model.__name__
+        remote.calls.append((name, values))
+        if name == "AssetTable":
+            return {"rows": [{"uid": str(pair_uid), **values}]}
+        if name == "CurrencySpotAssetDetailsTable":
+            return {"rows": [{"uid": str(uuid.uuid4()), **{k: str(v) for k, v in values.items()}}]}
+        return {"rows": [values]}
+
+    monkeypatch.setattr("msm.api.assets.upsert_model", upsert_model)
+
+    spot = CurrencySpot.upsert(
+        unique_identifier="EUR/USD", base_currency_uid=base, quote_currency_uid=quote
+    )
+
+    assert isinstance(spot, CurrencySpot)
+    assert spot.uid == pair_uid
+    assert (spot.base_currency_uid, spot.quote_currency_uid) == (base, quote)
+    assert [name for name, _ in remote.calls] == [
+        "AssetTypeTable",
+        "AssetTable",
+        "CurrencySpotAssetDetailsTable",
+    ]
+
+
+def test_extra_operations_decode_their_return_type(monkeypatch, remote) -> None:
+    from msm.services.indices import RelatedMetaTable
+
+    uid = uuid.uuid4()
+    monkeypatch.setattr(
+        "msm.repositories.crud.get_model_by_uid",
+        lambda context, *, model, uid: {"rows": [{"uid": str(uid), "unique_identifier": "ACME"}]},
+    )
+    related = RelatedMetaTable(
+        key="prices",
+        label="Prices",
+        owning_package="my-provider",
+        storage_kind="related_reference_table",
+        identifier="my-provider.PricesTS",
+        relationship_type="registered_foreign_key",
+        join_kind="unique_identifier",
+        join_column="asset_identifier",
+        on_delete="RESTRICT",
+        authoritative=False,
+        discovery_source="inferred",
+        exploration_capability="none",
+        delete_capability="none",
+    )
+    monkeypatch.setattr(
+        "msm.services.related_meta_tables.list_reference_meta_tables",
+        lambda **kwargs: (related,),
+    )
+
+    result = Asset.list_related_meta_tables(uid)
+
+    assert isinstance(result, tuple)
+    assert result == (related,)
+
+
+def test_delete_uses_the_service_delete(monkeypatch, remote) -> None:
+    uid = str(uuid.uuid4())
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        "apps.v1.services.asset_categories.delete_asset_category",
+        lambda *, uid: deleted.append(uid) or True,
+    )
+
+    result = AssetCategory.delete(uid)
+
+    assert deleted == [uid]
+    assert result["deleted_count"] == 1
+
+
+def test_a_calendar_exception_is_deleted_through_markets(monkeypatch, remote) -> None:
+    """Deleting a user's exception is how a user restores the library's answer (ADR 0055)."""
+
+    from msm.api.calendars import CalendarException, CalendarSessionRule
+
+    deleted: list[tuple[str, str]] = []
+
+    def delete_model(context, *, model, uid):
+        deleted.append((model.__name__, str(uid)))
+        return {"ok": True, "row_count": 1}
+
+    monkeypatch.setattr("msm.repositories.crud.delete_model", delete_model)
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    exception_uid, rule_uid = uuid.uuid4(), uuid.uuid4()
+
+    CalendarException.delete(exception_uid)
+    CalendarSessionRule.delete(rule_uid)
+
+    assert recording.calls == [("calendar-exception", "delete"), ("calendar-session-rule", "delete")]
+    assert deleted == [
+        ("CalendarExceptionTable", str(exception_uid)),
+        ("CalendarSessionRuleTable", str(rule_uid)),
+    ]
+
+
+def test_assets_are_linked_to_a_calendar_in_bulk_through_markets(monkeypatch, remote) -> None:
+    """ADR 0057: one call links many assets, named by identifier, and unlinking works."""
+
+    from msm.api.assets import AssetCalendar, AssetCalendarLinkResult
+
+    calendar_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def link(context, **kwargs):
+        seen["link"] = kwargs
+        return {
+            "calendar_uid": calendar_uid,
+            "linked": ["A0"],
+            "moved": [],
+            "unchanged": ["A1"],
+            "kept": [],
+            "unknown": ["NOPE"],
+        }
+
+    def delete_model(context, *, model, uid):
+        seen["delete"] = (model.__name__, str(uid))
+        return {"ok": True, "row_count": 1}
+
+    monkeypatch.setattr("msm.services.asset_calendars.link_assets_to_calendar", link)
+    monkeypatch.setattr("msm.repositories.crud.delete_model", delete_model)
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    asset_uid = uuid.uuid4()
+
+    result = AssetCalendar.link_many(["A0", "A1", "NOPE"], calendar_identifier="NYSE")
+    AssetCalendar.delete(asset_uid)
+
+    assert recording.calls == [("asset-calendar", "link_many"), ("asset-calendar", "delete")]
+    assert isinstance(result, AssetCalendarLinkResult)
+    assert (result.calendar_uid, result.linked, result.unknown) == (calendar_uid, ["A0"], ["NOPE"])
+    assert seen["link"] == {
+        "asset_identifiers": ["A0", "A1", "NOPE"],
+        "calendar_uid": None,
+        "calendar_identifier": "NYSE",
+        "relink": True,
+    }
+    assert seen["delete"] == ("AssetCalendarTable", str(asset_uid))
+
+
+def test_delete_without_a_service_route_is_not_offered(remote) -> None:
+    from msm.api.accounts import AccountGroup
+    from msm.api.remote import MarketsOperationUnsupported
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        AccountGroup.delete(uuid.uuid4())
+
+    assert str(refused.value) == "AccountGroup.delete is not offered remotely."
+
+
+@pytest.mark.parametrize(
+    "row_class_name",
+    [
+        "accounts.AccountHoldingsSet",
+        "accounts.AccountTargetAllocation",
+        "accounts.PositionSet",
+        "virtual_funds.VirtualFund",
+        "virtual_funds.VirtualFundHoldingsSet",
+    ],
+)
+def test_account_history_rows_refuse_delete_as_the_runtime_does(
+    monkeypatch, remote, row_class_name
+) -> None:
+    import importlib
+
+    from msm.api.base import delete_refusal
+    from msm.api.remote import MarketsOperationUnsupported
+
+    module_name, class_name = row_class_name.split(".")
+    row_class = getattr(importlib.import_module(f"msm.api.{module_name}"), class_name)
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: remote.calls.append(("delete", {"uid": uid})),
+    )
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        row_class.delete(uuid.uuid4())
+
+    assert str(refused.value) == delete_refusal(row_class)
+    assert "account history" in str(refused.value)
+    assert remote.calls == []
+
+
+def test_account_delete_runs_the_cascading_delete_remotely(monkeypatch, remote) -> None:
+    uid = str(uuid.uuid4())
+    calls: list[tuple[str, Any]] = []
+
+    def delete_account(context, *, uid):
+        calls.append(("delete", str(uid)))
+        return {"detail": "deleted", "uid": str(uid), "deleted_count": 1, "deleted_rows": {"orders": 2}}
+
+    def bulk_delete_accounts(context, *, uids):
+        calls.append(("bulk_delete", list(uids)))
+        return {"detail": "deleted", "deleted_count": len(uids), "deleted": [], "failed": []}
+
+    monkeypatch.setattr("msm.services.delete_account", delete_account, raising=False)
+    monkeypatch.setattr("msm.services.bulk_delete_accounts", bulk_delete_accounts, raising=False)
+
+    assert Account.delete(uid)["deleted_rows"] == {"orders": 2}
+    assert Account.bulk_delete(uids=[uid])["deleted_count"] == 1
+    assert calls == [("delete", uid), ("bulk_delete", [uid])]
+
+
+def test_account_delete_conflicts_and_missing_accounts_come_back_typed(monkeypatch, remote) -> None:
+    from msm.api.remote import MarketsConflictError
+    from msm.services import AccountDeleteConflictError
+
+    def refused(context, *, uid):
+        raise AccountDeleteConflictError("Account 'a' cannot be deleted; nothing was deleted.")
+
+    monkeypatch.setattr("msm.services.delete_account", refused, raising=False)
+    with pytest.raises(MarketsConflictError, match="nothing was deleted"):
+        Account.delete(uuid.uuid4())
+
+    monkeypatch.setattr("msm.services.delete_account", lambda context, *, uid: None, raising=False)
+    assert Account.delete(uuid.uuid4()) is None
+
+
+def test_portfolio_delete_is_refused_remotely_as_the_runtime_refuses_it(monkeypatch, remote) -> None:
+    """`POST /rows/portfolio/delete/` answers 501 and runs no delete; only the portfolio
+    routes delete a portfolio, with its datasets (ADR 0049)."""
+
+    from msm.api.base import delete_refusal
+    from msm.api.portfolios import Portfolio
+    from msm.api.remote import MarketsOperationUnsupported
+
+    def delete_portfolio_record(context, *, uid):
+        remote.calls.append(("delete_portfolio_record", {"uid": str(uid)}))
+
+    monkeypatch.setattr(
+        "msm_portfolios.services.delete_portfolio_record", delete_portfolio_record, raising=False
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.delete_model",
+        lambda context, *, model, uid: remote.calls.append(("delete", {"uid": uid})),
+    )
+
+    with pytest.raises(MarketsOperationUnsupported) as refused:
+        Portfolio.delete(uuid.uuid4())
+
+    assert str(refused.value) == delete_refusal(Portfolio)
+    assert "DELETE /api/v1/portfolio/{uid}/" in str(refused.value)
+    assert remote.calls == []
+
+
+def test_currency_get_or_create_runs_remotely_and_conflicts_come_back_typed(monkeypatch, remote) -> None:
+    from msm.api.remote import MarketsConflictError
+    from msm.services import AssetTypeConflictError
+
+    uid = str(uuid.uuid4())
+    calls: list[str] = []
+
+    def get_or_create(context, *, code):
+        calls.append(code)
+        if code == "BTC":
+            raise AssetTypeConflictError("Asset 'BTC' exists with an asset_type other than 'currency'.")
+        return {"uid": uid, "unique_identifier": code, "asset_type": "currency"}
+
+    monkeypatch.setattr("msm.services.get_or_create_currency_asset", get_or_create, raising=False)
+
+    asset = Asset.get_or_create_currency("USD")
+
+    assert isinstance(asset, Asset)
+    assert (str(asset.uid), asset.unique_identifier, asset.asset_type) == (uid, "USD", "currency")
+    with pytest.raises(MarketsConflictError, match="other than 'currency'"):
+        Asset.get_or_create_currency("BTC")
+    assert calls == ["USD", "BTC"]
+
+
+def test_validation_errors_come_back_as_value_errors(remote) -> None:
+    with pytest.raises(ValueError):
+        Asset.upsert(asset_type="equity")
+
+
+def test_start_engine_attaches_nothing_under_the_remote_backend(monkeypatch, remote) -> None:
+    monkeypatch.setattr(
+        "msm.bootstrap.start_engine",
+        lambda **kwargs: pytest.fail("the remote backend must not attach tables"),
+    )
+
+    assert Asset.start_engine() is None
+
+
+def test_rows_describe_their_remote_operations(remote) -> None:
+    described = {item["resource"]: item for item in remote.client.describe_row_operations()}
+
+    assert {"asset", "account", "portfolio", "currency-spot", "index", "calendar"} <= set(described)
+    asset_operations = {operation["name"]: operation for operation in described["asset"]["operations"]}
+    assert asset_operations["upsert"]["write"] is True
+    assert asset_operations["get_by_uid"]["write"] is False
+    assert "delete" in asset_operations
+    account_operations = {operation["name"] for operation in described["account"]["operations"]}
+    assert {"delete", "bulk_delete"} <= account_operations
+    fund_operations = {operation["name"] for operation in described["virtual-fund"]["operations"]}
+    assert "delete" not in fund_operations
+    portfolio_operations = {operation["name"] for operation in described["portfolio"]["operations"]}
+    assert "delete" not in portfolio_operations
+
+
+def test_provider_row_classes_keep_the_runtime_backend(remote) -> None:
+    provider_table = SimpleNamespace(__table__=SimpleNamespace(info={"namespace": "my-provider"}))
+    markets_table = SimpleNamespace(__table__=SimpleNamespace(info={"namespace": "mainsequence.markets"}))
+
+    assert is_markets_owned(type("ProviderRow", (), {"__table__": provider_table})) is False
+    assert is_markets_owned(type("CoreRow", (), {"__table__": markets_table})) is True
+    assert is_markets_owned(Asset) is True
+
+
+def test_unknown_resource_and_operation_raise_lookup_errors(remote) -> None:
+    with pytest.raises(LookupError, match="Unknown row resource"):
+        remote.client.run_row_operation("no-such-resource", "get_by_uid", {})
+    with pytest.raises(LookupError, match="no remote operation"):
+        remote.client.run_row_operation("asset", "_active_context", {})
+
+
+def test_portfolio_frames_convert_to_pandas() -> None:
+    frame = tabular_frame_to_pandas(
+        {
+            "columns": ["time_index", "portfolio_identifier", "close"],
+            "rows": [{"time_index": dt.datetime(2026, 1, 2).isoformat(), "portfolio_identifier": "P", "close": 1.5}],
+        }
+    )
+
+    assert list(frame.columns) == ["time_index", "portfolio_identifier", "close"]
+    assert frame.iloc[0]["close"] == 1.5
+
+
+def test_pricing_composites_run_remotely_including_their_own_delete(monkeypatch, remote) -> None:
+    from msm_pricing.api.market_data_bindings import PricingMarketDataSet
+
+    set_uid = uuid.uuid4()
+    row = {"uid": str(set_uid), "set_key": "default", "display_name": "Default"}
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.search_model",
+        lambda context, *, model, filters, limit, **kwargs: {"rows": [row] if filters["set_key"] == "default" else []},
+    )
+    monkeypatch.setattr(
+        "msm_pricing.api.market_data_bindings.delete_model",
+        lambda context, *, model, uid: deleted.append(str(uid)) or {"deleted_count": 1},
+    )
+    monkeypatch.setattr(
+        PricingMarketDataSet,
+        "_active_context",
+        classmethod(lambda cls: SimpleNamespace(timeout=None)),
+    )
+
+    found = PricingMarketDataSet.get_by_key("default")
+
+    assert isinstance(found, PricingMarketDataSet)
+    assert found.uid == set_uid
+    assert PricingMarketDataSet.get_by_key("missing") is None
+    assert PricingMarketDataSet.delete(set_uid) == {"deleted_count": 1}
+    assert deleted == [str(set_uid)]
+
+
+def test_bulk_count_and_ordering_run_remotely(monkeypatch, remote) -> None:
+    from msm.api.accounts import AccountHoldingsSet
+
+    account_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "msm.repositories.crud.bulk_upsert_model",
+        lambda context, *, model, values, conflict_columns: {
+            "rows": [{"uid": str(uuid.uuid4()), **value} for value in values]
+        },
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model",
+        lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 3}]},
+    )
+    monkeypatch.setattr(
+        "msm.repositories.crud.search_model",
+        lambda context, **kwargs: seen.setdefault("search", kwargs) and {"rows": []},
+    )
+
+    rows = Asset.upsert_many([{"unique_identifier": "A", "asset_type": "Equity"}])
+    total = AccountHoldingsSet.count(account_uid=str(account_uid))
+    AccountHoldingsSet.filter(account_uid=str(account_uid), order_by="-time_index", offset=5)
+
+    assert [row.asset_type for row in rows] == ["equity"]
+    assert total == 3
+    assert seen["count"]["filters"] == {"account_uid": account_uid}
+    assert seen["search"]["order_by"] == ["-time_index"] and seen["search"]["offset"] == 5
+
+
+def test_holdings_and_snapshots_publish_through_markets(monkeypatch, remote) -> None:
+    from msm.api.accounts import AccountHoldingsSnapshots
+    from msm.api.assets import AssetSnapshotPublication, AssetSnapshots
+
+    account_uid = str(uuid.uuid4())
+    published: dict[str, Any] = {}
+
+    def add_snapshot(context, **kwargs):
+        published["holdings"] = kwargs
+        return {"account_uid": kwargs["account_uid"], "holdings": [{"asset_identifier": "A"}]}
+
+    def changed_asset_snapshots(snapshots, *, repository_context):
+        published["compared"] = snapshots
+        return [row for row in snapshots if row["asset_identifier"] == "A"]
+
+    class FakeSnapshotUpdater:
+        def set_snapshots(self, rows):
+            published["snapshots"] = rows
+            return self
+
+        def run(self):
+            return False, None
+
+    monkeypatch.setattr("msm.services.add_account_holdings_snapshot_response", add_snapshot)
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots", changed_asset_snapshots
+    )
+    monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", FakeSnapshotUpdater)
+
+    snapshot = AccountHoldingsSnapshots.publish(
+        account_uid=account_uid,
+        holdings_date=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
+        positions=[{"asset_identifier": "A", "quantity": "10", "extra_details": {"source": "feed"}}],
+    )
+    publication = AssetSnapshots.publish(
+        [{"asset_identifier": "A", "name": "Acme"}, {"asset_identifier": "B", "name": "Beta"}]
+    )
+
+    assert snapshot["holdings"] == [{"asset_identifier": "A"}]
+    assert published["holdings"]["account_uid"] == account_uid
+    assert published["holdings"]["positions"][0]["extra_details"] == {"source": "feed"}
+    assert published["holdings"]["holdings_date"] == dt.datetime(2026, 1, 2, tzinfo=dt.UTC)
+    assert publication == AssetSnapshotPublication(written=1, skipped=1)
+    assert published["compared"] == [
+        {"asset_identifier": "A", "name": "Acme"},
+        {"asset_identifier": "B", "name": "Beta"},
+    ]
+    assert published["snapshots"] == [{"asset_identifier": "A", "name": "Acme"}]
+
+
+def test_unchanged_snapshots_publish_without_an_update_run(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshotPublication, AssetSnapshots
+
+    def no_update_run():
+        raise AssertionError("an unchanged publication must not start an update run")
+
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots",
+        lambda snapshots, *, repository_context: [],
+    )
+    monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", no_update_run)
+
+    publication = AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
+
+    assert publication == AssetSnapshotPublication(written=0, skipped=1)
+
+
+def test_a_snapshot_repeated_with_other_values_is_a_400(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshots
+
+    def changed_asset_snapshots(snapshots, *, repository_context):
+        raise ValueError("AssetSnapshot rows already exist with different values for ...")
+
+    monkeypatch.setattr(
+        "msm.time_index.assets.snapshots.changed_asset_snapshots", changed_asset_snapshots
+    )
+
+    with pytest.raises(ValueError, match="already exist with different values"):
+        AssetSnapshots.publish([{"asset_identifier": "A", "name": "Acme"}])
+
+
+@pytest.mark.parametrize(
+    ("resource", "operation", "arguments"),
+    [
+        ("asset-snapshots", "publish", {"snapshots": [{"asset_identifier": "A"}]}),
+        (
+            "account-holdings",
+            "publish",
+            {"account_uid": str(uuid.uuid4()), "holdings_date": "2026-01-02T00:00:00Z", "positions": []},
+        ),
+        ("signal-weights", "publish", {"key": "s", "rows": []}),
+        ("portfolio-values", "delete_after", {"key": "p", "time": "2026-01-02T00:00:00Z"}),
+        ("asset", "upsert_many", {"payloads": [{"unique_identifier": "A"}]}),
+        ("asset", "get_or_create_currency", {"code": "USD"}),
+        ("portfolio", "assign_manager", {"uid": str(uuid.uuid4()), "managed_by": "user:x"}),
+        ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
+        ("signal-metadata", "end", {"signal_uid": "s"}),
+        ("currency-spot", "upsert_many", {"payloads": []}),
+        ("future", "upsert_many", {"payloads": []}),
+        ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),
+    ],
+)
+def test_every_publication_and_manager_write_is_a_registry_write(
+    monkeypatch, remote, resource, operation, arguments
+) -> None:
+    from msm.api.remote import WRITE_OPERATIONS
+
+    def resolve() -> None:
+        raise PermissionError("registry_write resolved the acting identity")
+
+    # registry_write resolves the acting identity before the operation runs; the
+    # refusal comes back as the client's PermissionError.
+    monkeypatch.setattr("apps.v1.identity.acting_identity", resolve)
+
+    assert operation in WRITE_OPERATIONS
+    with pytest.raises(MarketsAccessError, match="registry_write resolved the acting identity"):
+        remote.client.run_row_operation(resource, operation, arguments)
+
+
+class _Recording:
+    """Remote backend that records each resource and operation it sends."""
+
+    def __init__(self, backend: Any) -> None:
+        self.backend = backend
+        self.calls: list[tuple[str, str]] = []
+
+    def call(self, resource: str, operation: str, arguments: Any) -> Any:
+        self.calls.append((resource, operation))
+        return self.backend.call(resource, operation, arguments)
+
+
+def test_range_filters_reach_the_runtime_typed(monkeypatch, remote) -> None:
+    from msm.api.calendars import CalendarException
+
+    calendar_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def search_model(context, **kwargs):
+        seen["search"] = kwargs
+        return {
+            "rows": [
+                {
+                    "uid": str(uuid.uuid4()),
+                    "calendar_uid": str(calendar_uid),
+                    "local_date": "2026-01-05",
+                    "session_label": "regular",
+                    "exception_type": "EARLY_CLOSE",
+                    "closes_at_local": "13:00:00",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+    monkeypatch.setattr(
+        "msm.repositories.crud.count_model",
+        lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 2}]},
+    )
+
+    exceptions = CalendarException.filter(
+        calendar_uid=calendar_uid,
+        local_date__gte=dt.date(2026, 1, 1),
+        local_date__lte=dt.date(2026, 1, 31),
+        order_by="local_date",
+    )
+    total = CalendarException.count(calendar_uid=calendar_uid, local_date__lt=dt.date(2026, 2, 1))
+
+    assert [row.local_date for row in exceptions] == [dt.date(2026, 1, 5)]
+    assert seen["search"]["filters"] == {"calendar_uid": calendar_uid}
+    assert seen["search"]["range_filters"] == {
+        "local_date": {"gte": dt.date(2026, 1, 1), "lte": dt.date(2026, 1, 31)}
+    }
+    assert seen["count"]["range_filters"] == {"local_date": {"lt": dt.date(2026, 2, 1)}}
+    assert total == 2
+
+
+def test_persisted_calendar_schedule_computes_sessions_through_markets(monkeypatch, remote) -> None:
+    import pandas as pd
+
+    from msm.api.calendars import Calendar
+    from msm.services.calendars import CalendarDefinition
+    from msm_portfolios.services.calendars import PersistedCalendarSchedule
+
+    calendar_uid = uuid.uuid4()
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    seen: dict[str, Any] = {}
+
+    def definition(cls, uid, start_date, end_date):
+        seen["window"] = (str(uid), start_date, end_date)
+        return CalendarDefinition.from_rows(
+            timezone="America/New_York",
+            rules=[
+                {
+                    "effective_from": "1990-01-01",
+                    "weekdays": "1111100",
+                    "opens_at_local": "09:30:00",
+                    "closes_at_local": "16:00:00",
+                }
+            ],
+            exceptions=[
+                {"local_date": "2026-01-06", "exception_type": "CLOSED", "source": "user"}
+            ],
+        )
+
+    monkeypatch.setattr(Calendar, "_definition", classmethod(definition))
+
+    frame = PersistedCalendarSchedule(
+        calendar=SimpleNamespace(uid=calendar_uid, unique_identifier="XNYS")
+    ).schedule("2026-01-05", "2026-01-06")
+
+    # One call: the Markets API computes the sessions from the rules and exceptions.
+    assert recording.calls == [("calendar", "sessions")]
+    assert seen["window"] == (str(calendar_uid), dt.date(2026, 1, 5), dt.date(2026, 1, 6))
+    assert list(frame.index) == [dt.date(2026, 1, 5)]
+    assert frame.loc[dt.date(2026, 1, 5), "market_open"] == pd.Timestamp("2026-01-05T14:30:00Z")
+    assert frame.loc[dt.date(2026, 1, 5), "market_close"] == pd.Timestamp("2026-01-05T21:00:00Z")
+
+
+def test_formula_activation_and_retirement_run_remotely(monkeypatch, remote) -> None:
+    from msm.analytics.indices import IndexFormulaDefinition
+    from msm.api import formula_indices as formula_api
+
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    definition_uid = uuid.uuid4()
+    draft = IndexFormulaDefinition(
+        uid=definition_uid,
+        index_uid=uuid.uuid4(),
+        version=1,
+        valid_from=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        formula='asset["BOND"].yield',
+    )
+    retired_at = dt.datetime(2027, 1, 1, tzinfo=dt.UTC)
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        formula_api,
+        "activate_formula_definition",
+        lambda context, *, definition_uid: draft.model_copy(update={"status": "active"}),
+    )
+
+    def retire(context, *, definition_uid, valid_to):
+        seen["retire"] = (definition_uid, valid_to)
+        return draft.model_copy(update={"status": "retired", "valid_to": retired_at})
+
+    monkeypatch.setattr(formula_api, "retire_formula_definition", retire)
+
+    active = formula_api.FormulaIndex.activate_definition(definition_uid)
+    retired = formula_api.FormulaIndex.retire_definition(definition_uid, valid_to=retired_at)
+
+    assert isinstance(active, IndexFormulaDefinition) and active.status == "active"
+    assert retired.status == "retired" and retired.valid_to == retired_at
+    assert str(seen["retire"][0]) == str(definition_uid)
+    assert recording.calls == [
+        ("formula-index", "activate_definition"),
+        ("formula-index", "retire_definition"),
+    ]
+
+
+def test_latest_asset_snapshots_read_through_markets(monkeypatch, remote) -> None:
+    from msm.api.assets import AssetSnapshotReference, AssetSnapshots
+
+    asset_uid = uuid.uuid4()
+    seen: dict[str, Any] = {}
+
+    def by_ticker(tickers, *, repository_context):
+        seen["tickers"] = list(tickers)
+        return ["FIGI-1"]
+
+    def details(identifiers, *, repository_context):
+        seen["identifiers"] = list(identifiers)
+        return [
+            {
+                "asset_uid": str(asset_uid),
+                "asset_identifier": "FIGI-1",
+                "asset_type": "equity",
+                "snapshot_time": "2026-01-02T00:00:00Z",
+                "time_index": "2026-01-02T00:00:00Z",
+                "name": "Acme",
+                "ticker": "ACME",
+                "exchange_code": None,
+                "asset_ticker_group_id": None,
+            }
+        ]
+
+    monkeypatch.setattr("msm.services.assets.asset_identifiers_by_ticker", by_ticker)
+    monkeypatch.setattr("msm.services.assets.asset_reference_details", details)
+
+    rows = AssetSnapshots.latest(tickers=["ACME"])
+
+    assert rows == [
+        AssetSnapshotReference(
+            asset_uid=asset_uid,
+            asset_identifier="FIGI-1",
+            asset_type="equity",
+            snapshot_time=dt.datetime(2026, 1, 2, tzinfo=dt.UTC),
+            name="Acme",
+            ticker="ACME",
+        )
+    ]
+    assert seen == {"tickers": ["ACME"], "identifiers": ["FIGI-1"]}
+    with pytest.raises(ValueError, match="exactly one"):
+        AssetSnapshots.latest()
+
+
+def test_portfolio_values_page_past_one_request() -> None:
+    sent: list[dict[str, Any]] = []
+
+    class Session:
+        def request(self, method, url, *, json=None, params=None, headers=None):
+            query = dict(params)
+            sent.append(query)
+            start = query.get("offset", 0)
+            available = max(0, 12_000 - start)
+            rows = [{"time_index": str(start + i)} for i in range(min(query["limit"], available))]
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"columns": ["time_index"], "rows": rows, "meta": {"page": start}},
+            )
+
+    client = MarketsClient("http://markets", session=Session())
+
+    frame = client.portfolio_values(["p"], limit=20_000)
+
+    assert [(query["limit"], query.get("offset", 0)) for query in sent] == [
+        (5000, 0),
+        (5000, 5000),
+        (5000, 10_000),
+    ]
+    assert len(frame["rows"]) == 12_000 and frame["columns"] == ["time_index"]
+    sent.clear()
+    client.portfolio_values(["p"], limit=10, offset=30)
+    assert sent == [{"portfolio_uid__in": "p", "limit": 10, "offset": 30}]
+
+
+def test_composite_batches_and_holdings_snapshots_run_remotely(monkeypatch, remote) -> None:
+    from msm.api import assets as assets_api
+    from msm.api.accounts import AccountHoldingsSnapshots
+
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+    base, quote, pair = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    monkeypatch.setattr(
+        assets_api,
+        "search_model",
+        lambda context, *, model, **kwargs: {
+            "rows": [
+                {"uid": str(pair), "unique_identifier": "EUR/USD", "asset_type": "currency_spot"}
+                if model.__name__ == "AssetTable"
+                else {"asset_uid": str(pair), "base_currency_uid": str(base), "quote_currency_uid": str(quote)}
+            ]
+        },
+    )
+    seen: dict[str, Any] = {}
+
+    def snapshots(context, **kwargs):
+        seen.update(kwargs)
+        return [{"holdings_set_uid": "s", "holdings_date": "2026-01-02T00:00:00Z", "holdings": []}]
+
+    monkeypatch.setattr("msm.services.get_account_holdings_snapshots_response", snapshots)
+
+    spots = CurrencySpot.filter(asset_uids=[pair])
+    history = AccountHoldingsSnapshots.get_many(account_uid=str(uuid.uuid4()), limit=3)
+
+    assert [(spot.uid, spot.base_currency_uid) for spot in spots] == [(pair, base)]
+    assert history[0]["holdings_set_uid"] == "s" and seen["limit"] == 3
+    assert recording.calls == [("currency-spot", "filter"), ("account-holdings", "get_many")]

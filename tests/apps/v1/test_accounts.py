@@ -1,0 +1,3048 @@
+from __future__ import annotations
+
+import datetime as dt
+import uuid
+from types import SimpleNamespace
+
+import pytest
+from fastapi.testclient import TestClient
+
+from apps.v1.main import app
+
+
+def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.list_accounts",
+        lambda **kwargs: {
+            "count": 1,
+            "results": [
+                {
+                    "uid": str(account_uid),
+                    "unique_identifier": "some-account",
+                    "account_name": "Some account",
+                    "is_paper": False,
+                    "account_is_active": True,
+                    "account_group_uid": None,
+                    "holdings_storage_table_uid": None,
+                    "holdings_data_node_uid": None,
+                    "metadata_json": None,
+                }
+            ],
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/account/", params={"limit": 25, "offset": 0})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {
+                "uid": str(account_uid),
+                "unique_identifier": "some-account",
+                "account_name": "Some account",
+                "is_paper": False,
+                "account_is_active": True,
+                "account_group_uid": None,
+                "holdings_storage_table_uid": None,
+                "holdings_data_node_uid": None,
+                "metadata_json": None,
+            }
+        ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 25,
+            "totalItems": 1,
+            "hasNextPage": False,
+            "hasPreviousPage": False,
+        },
+    }
+
+
+def test_get_accounts_passes_query_params(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_list_accounts(**kwargs):
+        captured.update(kwargs)
+        return {"count": 0, "results": []}
+
+    monkeypatch.setattr("apps.v1.routers.accounts.list_accounts", fake_list_accounts)
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/account/",
+        params={"search": "some", "limit": 10, "offset": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "pageInfo": {
+            "pageIndex": 1,
+            "pageSize": 10,
+            "totalItems": 0,
+            "hasNextPage": False,
+            "hasPreviousPage": True,
+        },
+    }
+    assert captured == {"search": "some", "limit": 10, "offset": 10}
+
+
+def test_account_service_maps_account_rows(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+
+    monkeypatch.setattr("apps.v1.services.accounts._get_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._list_account_rows_response",
+        lambda context, **kwargs: {
+            "count": 1,
+            "results": [
+                {
+                    "uid": str(account_uid),
+                    "unique_identifier": "some-account",
+                    "account_name": "Some account",
+                    "is_paper": False,
+                    "account_is_active": True,
+                    "account_group_uid": None,
+                    "holdings_storage_table_uid": None,
+                    "holdings_data_node_uid": None,
+                    "metadata_json": {"source": "test"},
+                }
+            ],
+        },
+    )
+
+    from apps.v1.services.accounts import list_accounts
+
+    response = list_accounts(limit=25, offset=0)
+
+    assert {
+        "count": response["count"],
+        "results": [row.model_dump(mode="json") for row in response["results"]],
+    } == {
+        "count": 1,
+        "results": [
+            {
+                "uid": str(account_uid),
+                "unique_identifier": "some-account",
+                "account_name": "Some account",
+                "is_paper": False,
+                "account_is_active": True,
+                "account_group_uid": None,
+                "holdings_storage_table_uid": None,
+                "holdings_data_node_uid": None,
+                "metadata_json": {"source": "test"},
+            }
+        ],
+    }
+
+
+def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_summary",
+        lambda uid: {
+            "entity": {
+                "id": str(account_uid),
+                "type": "account",
+                "title": "Some account",
+            },
+            "badges": [
+                {
+                    "key": "account_is_active",
+                    "label": "Active",
+                    "tone": "success",
+                },
+                {
+                    "key": "is_paper",
+                    "label": "Live",
+                    "tone": "success",
+                },
+            ],
+            "inline_fields": [
+                {
+                    "key": "uid",
+                    "label": "UID",
+                    "value": str(account_uid),
+                    "kind": "code",
+                }
+            ],
+            "highlight_fields": [
+                {
+                    "key": "display_name",
+                    "label": "Display name",
+                    "value": "Some account",
+                    "kind": "text",
+                    "icon": "database",
+                }
+            ],
+            "stats": [],
+            "label_management": {
+                "labels": [],
+                "add_label_url": None,
+                "remove_label_url": None,
+            },
+            "summary_warning": None,
+            "extensions": {
+                "holdings_storage_table_uid": None,
+                "holdings_data_node_uid": None,
+                "metadata_json": None,
+            },
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/api/v1/account/{account_uid}/summary/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "entity": {
+            "id": str(account_uid),
+            "type": "account",
+            "title": "Some account",
+        },
+        "badges": [
+            {
+                "key": "account_is_active",
+                "label": "Active",
+                "tone": "success",
+                "link_url": None,
+            },
+            {
+                "key": "is_paper",
+                "label": "Live",
+                "tone": "success",
+                "link_url": None,
+            },
+        ],
+        "inline_fields": [
+            {
+                "key": "uid",
+                "label": "UID",
+                "value": str(account_uid),
+                "kind": "code",
+                "icon": None,
+                "link_url": None,
+            }
+        ],
+        "highlight_fields": [
+            {
+                "key": "display_name",
+                "label": "Display name",
+                "value": "Some account",
+                "kind": "text",
+                "icon": "database",
+                "link_url": None,
+            }
+        ],
+        "stats": [],
+        "label_management": {
+            "labels": [],
+            "add_label_url": None,
+            "remove_label_url": None,
+        },
+        "summary_warning": None,
+        "extensions": {
+            "holdings_storage_table_uid": None,
+            "holdings_data_node_uid": None,
+            "metadata_json": None,
+        },
+    }
+
+
+def test_get_account_summary_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_summary",
+        lambda uid: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/account/missing-account/summary/")
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_search_account_target_allocation_targets_returns_candidates(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_search_targets(**kwargs):
+        captured.update(kwargs)
+        response = {
+            "count": 2,
+            "results": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
+                    "identifier": "example-asset-btc",
+                    "display_label": "Bitcoin",
+                    "secondary_label": "BTC",
+                    "current_snapshot": {
+                        "name": "Bitcoin",
+                        "ticker": "BTC",
+                    },
+                    "metadata": {"asset_type": "crypto"},
+                },
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "asset_uid": None,
+                    "portfolio_uid": str(portfolio_uid),
+                    "identifier": "example-sleeve",
+                    "display_label": "example-sleeve",
+                    "secondary_label": None,
+                    "current_snapshot": None,
+                    "metadata": {"published_index_uid": None},
+                },
+            ],
+        }
+
+        response["results"] = response["results"][: kwargs["limit"]]
+        return response
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.search_account_target_allocation_targets",
+        fake_search_targets,
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/account/target-allocation/targets/",
+        params={
+            "search": "btc",
+            "target_type": "all",
+            "limit": 1,
+            "offset": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "search": "btc",
+        "target_type": "all",
+        "limit": 1,
+        "offset": 0,
+        "include_retired": False,
+    }
+    assert response.json() == {
+        "items": [
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "identifier": "example-asset-btc",
+                "display_label": "Bitcoin",
+                "secondary_label": "BTC",
+                "current_snapshot": {
+                    "name": "Bitcoin",
+                    "ticker": "BTC",
+                },
+                "metadata": {"asset_type": "crypto"},
+            }
+        ],
+        "pageInfo": {
+            "pageIndex": 0,
+            "pageSize": 1,
+            "totalItems": 2,
+            "hasNextPage": True,
+            "hasPreviousPage": False,
+        },
+    }
+
+
+def test_search_account_target_allocation_targets_validates_target_type() -> None:
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/account/target-allocation/targets/",
+        params={"target_type": "bad"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_account_target_allocation_targets_service_maps_candidates(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_target_allocation_candidates_runtime",
+        lambda: runtime,
+    )
+
+    def fake_search_account_target_allocation_candidates(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "count": 1,
+            "results": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
+                    "identifier": "example-asset-btc",
+                    "display_label": "Bitcoin",
+                    "secondary_label": "BTC",
+                    "current_snapshot": {
+                        "name": "Bitcoin",
+                        "ticker": "BTC",
+                    },
+                    "metadata": {"asset_type": "crypto"},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._search_account_target_allocation_candidates",
+        fake_search_account_target_allocation_candidates,
+    )
+
+    from apps.v1.services.accounts import search_account_target_allocation_targets
+
+    response = search_account_target_allocation_targets(
+        search="btc",
+        target_type="asset",
+        limit=10,
+        offset=5,
+    )
+
+    assert captured == {
+        "context": runtime.context,
+        "search": "btc",
+        "target_type": "asset",
+        "limit": 10,
+        "offset": 5,
+        "include_retired": False,
+    }
+    assert {
+        "count": response["count"],
+        "results": [row.model_dump(mode="json") for row in response["results"]],
+    } == {
+        "count": 1,
+        "results": [
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "identifier": "example-asset-btc",
+                "display_label": "Bitcoin",
+                "secondary_label": "BTC",
+                "current_snapshot": {
+                    "name": "Bitcoin",
+                    "ticker": "BTC",
+                },
+                "metadata": {"asset_type": "crypto"},
+            }
+        ],
+    }
+
+
+def test_get_account_holdings_returns_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_holdings",
+        lambda **kwargs: {
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-01T10:30:00Z",
+            "holdings": [
+                {
+                    "time_index": "2026-06-01T10:30:00Z",
+                    "asset_identifier": "btc_spot",
+                    "asset": {
+                        "uid": str(asset_uid),
+                        "asset_identifier": "btc_spot",
+                        "current_snapshot": {
+                            "name": "Bitcoin spot",
+                            "ticker": "BTC",
+                        },
+                    },
+                    "position_type": "units",
+                    "price": None,
+                    "quantity": "12.0",
+                    "direction": -1,
+                    "signed_quantity": "-12.0",
+                    "missing_price": True,
+                    "target_trade_time": None,
+                    "extra_details": {"source": "test"},
+                }
+            ],
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/account/{account_uid}/holdings/",
+        params={"order": "desc", "limit": 1, "include_asset_detail": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["holdings_set_uid"] == "holdings-set-uid"
+    assert body["holdings"][0]["asset_identifier"] == "btc_spot"
+    assert body["holdings"][0]["asset"]["uid"] == str(asset_uid)
+    assert body["holdings"][0]["asset"]["asset_identifier"] == "btc_spot"
+    assert body["holdings"][0]["asset"]["current_snapshot"] == {
+        "name": "Bitcoin spot",
+        "ticker": "BTC",
+    }
+    assert body["holdings"][0]["quantity"] == "12.0"
+    assert body["holdings"][0]["direction"] == -1
+    assert body["holdings"][0]["signed_quantity"] == "-12.0"
+
+
+def test_get_account_holdings_passes_query_params(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_get_account_holdings(**kwargs):
+        captured.update(kwargs)
+        return {
+            "holdings_set_uid": None,
+            "holdings_date": None,
+            "holdings": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_holdings",
+        fake_get_account_holdings,
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/account/{account_uid}/holdings/",
+        params={
+            "order": "asc",
+            "limit": 1,
+            "include_asset_detail": False,
+            "holdings_date": "2026-06-01T10:30:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "account_uid": str(account_uid),
+        "order": "asc",
+        "limit": 1,
+        "include_asset_detail": False,
+        "holdings_date": dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC),
+    }
+
+
+def test_get_account_holdings_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_holdings",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/account/missing-account/holdings/")
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_get_account_holdings_by_fund_returns_grouped_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    virtual_fund_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_get_account_holdings_by_fund(**kwargs):
+        captured.update(kwargs)
+        return {
+            "account_uid": str(account_uid),
+            "source_account_holdings_set_uid": "source-holdings-set-uid",
+            "holdings_date": "2026-06-08T10:30:00Z",
+            "funds": [
+                {
+                    "virtual_fund_uid": str(virtual_fund_uid),
+                    "virtual_fund_unique_identifier": "account-alpha__sleeve",
+                    "target_portfolio_uid": str(portfolio_uid),
+                    "holdings_set_uid": "virtual-fund-holdings-set-uid",
+                    "holdings": [
+                        {
+                            "time_index": "2026-06-08T10:30:00Z",
+                            "asset_identifier": "example-asset-btc",
+                            "asset": {
+                                "uid": str(asset_uid),
+                                "asset_identifier": "example-asset-btc",
+                                "current_snapshot": {
+                                    "name": "Bitcoin",
+                                    "ticker": "BTC",
+                                },
+                            },
+                            "quantity": "10.0",
+                            "allocation_strategy": "proportional_attribution",
+                            "direction": 1,
+                            "signed_quantity": "10.0",
+                            "target_trade_time": None,
+                            "extra_details": {
+                                "position_set_uid": "position-set-uid",
+                                "target_row_key": "row-key",
+                                "target_gap_signed_quantity": "0.0",
+                                "scale": "1.0",
+                            },
+                            "allocation": {
+                                "target_gap_signed_quantity": "0.0",
+                                "scale": "1.0",
+                                "target_row_key": "row-key",
+                                "position_set_uid": "position-set-uid",
+                            },
+                        }
+                    ],
+                }
+            ],
+            "residuals": [
+                {
+                    "asset_identifier": "example-asset-eth",
+                    "source_signed_quantity": "25.0",
+                    "allocated_signed_quantity": "20.0",
+                    "residual_signed_quantity": "5.0",
+                    "asset": None,
+                }
+            ],
+            "allocation_warnings": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_holdings_by_fund",
+        fake_get_account_holdings_by_fund,
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/account/{account_uid}/holdings/by-fund/",
+        params={
+            "order": "asc",
+            "limit": 1,
+            "include_asset_detail": True,
+            "holdings_date": "2026-06-08T10:30:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["account_uid"] == str(account_uid)
+    assert body["source_account_holdings_set_uid"] == "source-holdings-set-uid"
+    assert body["funds"][0]["virtual_fund_uid"] == str(virtual_fund_uid)
+    assert body["funds"][0]["holdings"][0]["asset"]["uid"] == str(asset_uid)
+    assert body["funds"][0]["holdings"][0]["allocation_strategy"] == ("proportional_attribution")
+    assert body["funds"][0]["holdings"][0]["signed_quantity"] == "10.0"
+    assert body["funds"][0]["holdings"][0]["allocation"] == {
+        "target_gap_signed_quantity": "0.0",
+        "scale": "1.0",
+        "target_row_key": "row-key",
+        "position_set_uid": "position-set-uid",
+    }
+    assert body["residuals"][0]["residual_signed_quantity"] == "5.0"
+    assert "id" not in body["funds"][0]["holdings"][0]["asset"]
+    assert captured == {
+        "account_uid": str(account_uid),
+        "order": "asc",
+        "limit": 1,
+        "include_asset_detail": True,
+        "holdings_date": dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC),
+    }
+
+
+def test_get_account_holdings_by_fund_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_holdings_by_fund",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/account/missing-account/holdings/by-fund/")
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_add_account_holdings_returns_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+
+    def fake_add_account_holdings(*, account_uid, payload):
+        assert payload.holdings_date == dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+        assert payload.overwrite is True
+        assert payload.positions[0].asset_identifier == "example-asset-btc"
+        assert payload.positions[0].asset_uid == str(asset_uid)
+        assert payload.positions[0].direction == -1
+        return {
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "holdings": [
+                {
+                    "time_index": "2026-06-05T08:00:00Z",
+                    "asset_identifier": "example-asset-btc",
+                    "asset": {
+                        "uid": str(asset_uid),
+                        "asset_identifier": "example-asset-btc",
+                        "current_snapshot": {
+                            "name": "Bitcoin",
+                            "ticker": "BTC",
+                        },
+                    },
+                    "position_type": "units",
+                    "price": None,
+                    "quantity": "10.0",
+                    "direction": -1,
+                    "signed_quantity": "-10.0",
+                    "missing_price": True,
+                    "target_trade_time": "2026-06-05T08:00:00Z",
+                    "extra_details": {},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        fake_add_account_holdings,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/account/{account_uid}/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "asset_uid": str(asset_uid),
+                    "position_type": "units",
+                    "quantity": "10",
+                    "direction": -1,
+                    "target_trade_time": "2026-06-05T08:00:00.000Z",
+                    "extra_details": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["holdings_set_uid"] == "holdings-set-uid"
+    assert body["holdings"][0]["asset_identifier"] == "example-asset-btc"
+    assert body["holdings"][0]["quantity"] == "10.0"
+    assert body["holdings"][0]["direction"] == -1
+    assert body["holdings"][0]["signed_quantity"] == "-10.0"
+
+
+def test_add_account_holdings_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/account/missing-account/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "quantity": "10",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_add_account_holdings_returns_409_when_snapshot_exists(monkeypatch) -> None:
+    from msm.services import accounts as account_services
+
+    def fake_add_account_holdings(**kwargs):
+        raise account_services.AccountHoldingsSnapshotExistsError("snapshot exists")
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_holdings",
+        fake_add_account_holdings,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/account/some-account/add-holdings/",
+        json={
+            "holdings_date": "2026-06-05T08:00:00.000Z",
+            "overwrite": False,
+            "positions": [
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "quantity": "10",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "snapshot exists" in response.json()["detail"]
+
+
+def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_target_positions",
+        lambda **kwargs: {
+            "related_account_uid": str(account_uid),
+            "target_positions_date": "2026-06-02T10:30:00Z",
+            "position_set_uid": "position-set-uid",
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
+                    "unique_identifier": "btc_spot",
+                    "weight_notional_exposure": "0.55",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": {
+                        "uid": str(asset_uid),
+                        "unique_identifier": "btc_spot",
+                        "current_snapshot": {
+                            "name": "Bitcoin spot",
+                            "ticker": "BTC",
+                        },
+                    },
+                    "portfolio": None,
+                },
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "asset_uid": None,
+                    "portfolio_uid": str(portfolio_uid),
+                    "unique_identifier": "example-sleeve",
+                    "weight_notional_exposure": "0.45",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": {
+                        "uid": str(portfolio_uid),
+                        "unique_identifier": "example-sleeve",
+                        "published_index_uid": None,
+                    },
+                },
+            ],
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/account/{account_uid}/target-positions/",
+        params={"order": "desc", "limit": 1, "include_asset_detail": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["related_account_uid"] == str(account_uid)
+    assert body["position_set_uid"] == "position-set-uid"
+    assert body["positions"][0]["asset"] == {
+        "uid": str(asset_uid),
+        "unique_identifier": "btc_spot",
+        "current_snapshot": {
+            "name": "Bitcoin spot",
+            "ticker": "BTC",
+        },
+    }
+    assert body["positions"][1]["portfolio"] == {
+        "uid": str(portfolio_uid),
+        "unique_identifier": "example-sleeve",
+        "published_index_uid": None,
+    }
+    assert "figi" not in body["positions"][0]["asset"]
+    assert "id" not in body["positions"][0]["asset"]
+
+
+def test_get_account_target_positions_passes_query_params(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_get_account_target_positions(**kwargs):
+        captured.update(kwargs)
+        return {
+            "related_account_uid": str(account_uid),
+            "target_positions_date": None,
+            "position_set_uid": None,
+            "positions": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_target_positions",
+        fake_get_account_target_positions,
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        f"/api/v1/account/{account_uid}/target-positions/",
+        params={
+            "order": "asc",
+            "limit": 1,
+            "include_asset_detail": False,
+            "target_positions_date": "2026-06-02T10:30:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "account_uid": str(account_uid),
+        "order": "asc",
+        "limit": 1,
+        "include_asset_detail": False,
+        "target_positions_date": dt.datetime(2026, 6, 2, 10, 30, tzinfo=dt.UTC),
+    }
+
+
+def test_get_account_target_positions_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.get_account_target_positions",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/account/missing-account/target-positions/")
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_add_account_target_positions(*, account_uid, payload):
+        captured["account_uid"] = account_uid
+        captured["target_positions_date"] = payload.target_positions_date
+        captured["overwrite"] = payload.overwrite
+        captured["positions"] = [position.model_dump() for position in payload.positions]
+        return {
+            "related_account_uid": account_uid,
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "position_set_uid": "position-set-uid",
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
+                    "unique_identifier": "btc_spot",
+                    "weight_notional_exposure": "0.6",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": None,
+                },
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "asset_uid": None,
+                    "portfolio_uid": str(portfolio_uid),
+                    "unique_identifier": "example-sleeve",
+                    "weight_notional_exposure": "0.4",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": None,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_target_positions",
+        fake_add_account_target_positions,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/account/{account_uid}/add-target-positions/",
+        json={
+            "target_positions_date": "2026-06-08T10:30:00.000Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "weight_notional_exposure": "0.60",
+                    "metadata_json": {},
+                },
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "portfolio_uid": str(portfolio_uid),
+                    "weight_notional_exposure": "0.40",
+                    "metadata_json": {"portfolio_role": "satellite_sleeve"},
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["related_account_uid"] == str(account_uid)
+    assert body["position_set_uid"] == "position-set-uid"
+    assert captured["account_uid"] == str(account_uid)
+    assert captured["target_positions_date"] == dt.datetime(
+        2026,
+        6,
+        8,
+        10,
+        30,
+        tzinfo=dt.UTC,
+    )
+    assert captured["overwrite"] is True
+    assert captured["positions"] == [
+        {
+            "target_uid": str(asset_uid),
+            "weight_notional_exposure": "0.60",
+            "constant_notional_exposure": None,
+            "single_asset_quantity": None,
+            "metadata_json": {},
+            "target_type": "asset",
+            "asset_uid": str(asset_uid),
+            "portfolio_uid": None,
+        },
+        {
+            "target_uid": str(portfolio_uid),
+            "weight_notional_exposure": "0.40",
+            "constant_notional_exposure": None,
+            "single_asset_quantity": None,
+            "metadata_json": {"portfolio_role": "satellite_sleeve"},
+            "target_type": "portfolio",
+            "asset_uid": None,
+            "portfolio_uid": str(portfolio_uid),
+        },
+    ]
+
+
+def test_add_account_target_positions_rejects_parent_fields() -> None:
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/account/{uuid.uuid4()}/add-target-positions/",
+        json={
+            "account_allocation_model_uid": str(uuid.uuid4()),
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": True,
+            "positions": [],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "account_allocation_model_uid" in response.text
+
+
+def test_add_account_target_positions_rejects_portfolio_units() -> None:
+    portfolio_uid = uuid.uuid4()
+
+    client = TestClient(app)
+    response = client.post(
+        f"/api/v1/account/{uuid.uuid4()}/add-target-positions/",
+        json={
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "portfolio_uid": str(portfolio_uid),
+                    "single_asset_quantity": "1",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "cannot use single_asset_quantity" in response.text
+
+
+def test_add_account_target_positions_returns_404_when_account_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_target_positions",
+        lambda **kwargs: None,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/account/missing-account/add-target-positions/",
+        json={
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(uuid.uuid4()),
+                    "asset_uid": str(uuid.uuid4()),
+                    "weight_notional_exposure": "1.0",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+    assert "missing-account" in response.json()["detail"]
+
+
+def test_add_account_target_positions_returns_409_when_snapshot_exists(monkeypatch) -> None:
+    from msm.services import target_positions as target_position_services
+
+    def fake_add_account_target_positions(**kwargs):
+        raise target_position_services.AccountTargetPositionsSnapshotExistsError(
+            "target snapshot exists"
+        )
+
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.add_account_target_positions",
+        fake_add_account_target_positions,
+    )
+
+    client = TestClient(app)
+    target_uid = uuid.uuid4()
+    response = client.post(
+        "/api/v1/account/some-account/add-target-positions/",
+        json={
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": False,
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(target_uid),
+                    "asset_uid": str(target_uid),
+                    "weight_notional_exposure": "1.0",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "target snapshot exists" in response.json()["detail"]
+
+
+def test_account_holdings_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+
+    monkeypatch.setattr("apps.v1.services.accounts._get_holdings_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_account_holdings_snapshot_response",
+        lambda context, **kwargs: {
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-01T10:30:00Z",
+            "holdings": [
+                {
+                    "time_index": "2026-06-01T10:30:00Z",
+                    "asset_identifier": "btc_spot",
+                    "asset": None,
+                    "position_type": "units",
+                    "price": None,
+                    "quantity": "12.0",
+                    "direction": 1,
+                    "signed_quantity": "12.0",
+                    "missing_price": True,
+                    "target_trade_time": None,
+                    "extra_details": {},
+                }
+            ],
+        },
+    )
+
+    from apps.v1.services.accounts import get_account_holdings
+
+    response = get_account_holdings(
+        account_uid=str(account_uid),
+        order="desc",
+        limit=1,
+        include_asset_detail=False,
+    )
+
+    assert response is not None
+    payload = response.model_dump(mode="json")
+    assert payload["holdings_set_uid"] == "holdings-set-uid"
+    assert payload["holdings"][0]["asset_identifier"] == "btc_spot"
+    assert payload["holdings"][0]["asset"] is None
+
+
+def test_account_holdings_by_fund_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    virtual_fund_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_holdings_by_fund_runtime",
+        lambda: runtime,
+    )
+
+    def fake_get_account_holdings_by_fund_response(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "account_uid": str(account_uid),
+            "source_account_holdings_set_uid": "source-holdings-set-uid",
+            "holdings_date": "2026-06-08T10:30:00Z",
+            "funds": [
+                {
+                    "virtual_fund_uid": str(virtual_fund_uid),
+                    "virtual_fund_unique_identifier": "fund-key",
+                    "target_portfolio_uid": str(uuid.uuid4()),
+                    "holdings_set_uid": "fund-set",
+                    "holdings": [],
+                }
+            ],
+            "residuals": [],
+            "allocation_warnings": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_account_holdings_by_fund_response",
+        fake_get_account_holdings_by_fund_response,
+    )
+
+    from apps.v1.services.accounts import get_account_holdings_by_fund
+
+    response = get_account_holdings_by_fund(
+        account_uid=str(account_uid),
+        order="desc",
+        limit=1,
+        include_asset_detail=False,
+    )
+
+    assert captured == {
+        "context": runtime.context,
+        "account_uid": str(account_uid),
+        "order": "desc",
+        "limit": 1,
+        "include_asset_detail": False,
+        "holdings_date": None,
+    }
+    assert response is not None
+    payload = response.model_dump(mode="json")
+    assert payload["account_uid"] == str(account_uid)
+    assert payload["funds"][0]["virtual_fund_uid"] == str(virtual_fund_uid)
+
+
+def test_add_account_holdings_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("apps.v1.services.accounts._get_holdings_runtime", lambda: runtime)
+
+    def fake_add_account_holdings_snapshot_response(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "holdings_set_uid": "holdings-set-uid",
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "holdings": [],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._add_account_holdings_snapshot_response",
+        fake_add_account_holdings_snapshot_response,
+    )
+
+    from apps.v1.schemas.accounts import AccountAddHoldingsRequest
+    from apps.v1.services.accounts import add_account_holdings
+
+    payload = AccountAddHoldingsRequest.model_validate(
+        {
+            "holdings_date": "2026-06-05T08:00:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "quantity": "10",
+                    "direction": -1,
+                    "target_trade_time": "2026-06-05T08:00:00Z",
+                }
+            ],
+        }
+    )
+    response = add_account_holdings(account_uid=str(account_uid), payload=payload)
+
+    assert captured["context"] is runtime.context
+    assert captured["account_uid"] == str(account_uid)
+    assert captured["holdings_date"] == dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    assert captured["overwrite"] is True
+    assert captured["include_asset_detail"] is True
+    assert response is not None
+    assert response.model_dump(mode="json")["holdings_set_uid"] == "holdings-set-uid"
+
+
+def test_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_target_positions_runtime",
+        lambda: runtime,
+    )
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_account_target_positions_snapshot_response",
+        lambda context, **kwargs: {
+            "related_account_uid": str(account_uid),
+            "target_positions_date": "2026-06-02T10:30:00Z",
+            "position_set_uid": "position-set-uid",
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": "asset-target-uid",
+                    "asset_uid": "asset-target-uid",
+                    "portfolio_uid": None,
+                    "unique_identifier": "btc_spot",
+                    "weight_notional_exposure": "0.55",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": None,
+                }
+            ],
+        },
+    )
+
+    from apps.v1.services.accounts import get_account_target_positions
+
+    response = get_account_target_positions(
+        account_uid=str(account_uid),
+        order="desc",
+        limit=1,
+        include_asset_detail=False,
+    )
+
+    assert response is not None
+    payload = response.model_dump(mode="json")
+    assert payload["related_account_uid"] == str(account_uid)
+    assert payload["position_set_uid"] == "position-set-uid"
+    assert payload["positions"][0]["asset"] is None
+
+
+def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    target_uid = uuid.uuid4()
+    runtime = SimpleNamespace(context=object())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._get_target_positions_runtime",
+        lambda: runtime,
+    )
+
+    def fake_add_account_target_positions_snapshot_response(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "related_account_uid": str(account_uid),
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "position_set_uid": "position-set-uid",
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(target_uid),
+                    "asset_uid": str(target_uid),
+                    "portfolio_uid": None,
+                    "unique_identifier": "btc_spot",
+                    "weight_notional_exposure": "1.0",
+                    "constant_notional_exposure": None,
+                    "single_asset_quantity": None,
+                    "asset": None,
+                    "portfolio": None,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "apps.v1.services.accounts._add_account_target_positions_snapshot_response",
+        fake_add_account_target_positions_snapshot_response,
+    )
+
+    from apps.v1.schemas.accounts import AccountAddTargetPositionsRequest
+    from apps.v1.services.accounts import add_account_target_positions
+
+    payload = AccountAddTargetPositionsRequest.model_validate(
+        {
+            "target_positions_date": "2026-06-08T10:30:00Z",
+            "overwrite": True,
+            "positions": [
+                {
+                    "target_type": "asset",
+                    "target_uid": str(target_uid),
+                    "asset_uid": str(target_uid),
+                    "weight_notional_exposure": "1.0",
+                }
+            ],
+        }
+    )
+    response = add_account_target_positions(account_uid=str(account_uid), payload=payload)
+
+    assert captured["context"] is runtime.context
+    assert captured["account_uid"] == str(account_uid)
+    assert captured["target_positions_date"] == dt.datetime(
+        2026,
+        6,
+        8,
+        10,
+        30,
+        tzinfo=dt.UTC,
+    )
+    assert captured["overwrite"] is True
+    assert captured["include_asset_detail"] is True
+    assert captured["positions"] == [
+        {
+            "target_uid": str(target_uid),
+            "weight_notional_exposure": "1.0",
+            "constant_notional_exposure": None,
+            "single_asset_quantity": None,
+            "metadata_json": {},
+            "target_type": "asset",
+            "asset_uid": str(target_uid),
+            "portfolio_uid": None,
+        }
+    ]
+    assert response is not None
+    assert response.model_dump(mode="json")["position_set_uid"] == "position-set-uid"
+
+
+def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    older_time = dt.datetime(2026, 5, 31, 10, 30, tzinfo=dt.UTC)
+    latest_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_search_account_holdings_rows",
+        lambda context, account_uid, limit, **_kwargs: [
+            {
+                "time_index": older_time,
+                "account_uid": str(account_uid),
+                "asset_identifier": "eth_spot",
+                "holdings_set_uid": "older-set",
+                "is_trade_snapshot": False,
+                "quantity": 2.0,
+                "direction": 1,
+                "target_trade_time": None,
+                "extra_details": {},
+            },
+            {
+                "time_index": latest_time,
+                "account_uid": str(account_uid),
+                "asset_identifier": "btc_spot",
+                "holdings_set_uid": "latest-set",
+                "is_trade_snapshot": False,
+                "quantity": 12.0,
+                "direction": -1,
+                "target_trade_time": None,
+                "extra_details": {"source": "test"},
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_snapshot_references_by_unique_identifier",
+        lambda context, rows: {
+            "btc_spot": {
+                "uid": str(asset_uid),
+                "asset_identifier": "btc_spot",
+                "current_snapshot": {
+                    "name": "Bitcoin spot",
+                    "ticker": "BTC",
+                },
+            }
+        },
+    )
+
+    snapshot = account_services.get_account_holdings_snapshot_response(
+        object(),
+        account_uid=str(account_uid),
+    )
+
+    assert snapshot == {
+        "holdings_set_uid": "latest-set",
+        "holdings_date": latest_time,
+        "holdings": [
+            {
+                "time_index": latest_time,
+                "asset_identifier": "btc_spot",
+                "asset": {
+                    "uid": str(asset_uid),
+                    "asset_identifier": "btc_spot",
+                    "current_snapshot": {
+                        "name": "Bitcoin spot",
+                        "ticker": "BTC",
+                    },
+                },
+                "position_type": "units",
+                "price": None,
+                "quantity": "12.0",
+                "direction": -1,
+                "signed_quantity": "-12.0",
+                "missing_price": True,
+                "target_trade_time": None,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    }
+
+
+def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    source_holdings_set_uid = uuid.uuid4()
+    virtual_fund_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    btc_uid = uuid.uuid4()
+    eth_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC)
+    context = object()
+
+    from msm.services.accounts import virtual_funds_public_api as virtual_fund_services
+
+    def fake_get_model_by_uid(context, model, uid):
+        assert model.__name__ == "AccountTable"
+        assert uid == str(account_uid)
+        return {"row": {"uid": str(account_uid)}}
+
+    def fake_search_model(context, model, filters=None, in_filters=None, limit=None):
+        model_name = model.__name__
+        if model_name == "AccountHoldingsSetTable":
+            assert filters == {"account_uid": str(account_uid)}
+            return {
+                "rows": [
+                    {
+                        "uid": str(source_holdings_set_uid),
+                        "account_uid": str(account_uid),
+                        "time_index": holdings_date,
+                    }
+                ]
+            }
+        if model_name == "AccountHoldingsStorage":
+            assert filters == {
+                "account_uid": str(account_uid),
+                "holdings_set_uid": str(source_holdings_set_uid),
+            }
+            return {
+                "rows": [
+                    {
+                        "time_index": holdings_date,
+                        "account_uid": str(account_uid),
+                        "asset_identifier": "example-asset-btc",
+                        "holdings_set_uid": str(source_holdings_set_uid),
+                        "quantity": 10.0,
+                        "direction": 1,
+                        "target_trade_time": None,
+                        "extra_details": {},
+                    },
+                    {
+                        "time_index": holdings_date,
+                        "account_uid": str(account_uid),
+                        "asset_identifier": "example-asset-eth",
+                        "holdings_set_uid": str(source_holdings_set_uid),
+                        "quantity": 25.0,
+                        "direction": 1,
+                        "target_trade_time": None,
+                        "extra_details": {},
+                    },
+                ]
+            }
+        if model_name == "VirtualFundTable":
+            assert filters == {"account_uid": str(account_uid)}
+            return {
+                "rows": [
+                    {
+                        "uid": str(virtual_fund_uid),
+                        "unique_identifier": "fund-key",
+                        "account_uid": str(account_uid),
+                        "target_portfolio_uid": str(portfolio_uid),
+                    }
+                ]
+            }
+        if model_name == "VirtualFundHoldingsSetTable":
+            assert filters == {"source_account_holdings_set_uid": str(source_holdings_set_uid)}
+            assert in_filters == {"virtual_fund_uid": [str(virtual_fund_uid)]}
+            return {
+                "rows": [
+                    {
+                        "uid": "virtual-fund-holdings-set-uid",
+                        "virtual_fund_uid": str(virtual_fund_uid),
+                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
+                        "time_index": holdings_date,
+                    }
+                ]
+            }
+        if model_name == "VirtualFundHoldingsStorage":
+            assert filters == {"source_account_holdings_set_uid": str(source_holdings_set_uid)}
+            assert in_filters == {"virtual_fund_uid": [str(virtual_fund_uid)]}
+            return {
+                "rows": [
+                    {
+                        "time_index": holdings_date,
+                        "virtual_fund_uid": str(virtual_fund_uid),
+                        "asset_identifier": "example-asset-btc",
+                        "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
+                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
+                        "allocated_quantity": 6.0,
+                        "allocation_strategy": "proportional_attribution",
+                        "direction": 1,
+                        "target_trade_time": None,
+                        "extra_details": {
+                            "position_set_uid": "position-set-uid",
+                            "target_row_key": "btc-row",
+                            "target_gap_signed_quantity": "0.0",
+                            "scale": "1.0",
+                        },
+                    },
+                    {
+                        "time_index": holdings_date,
+                        "virtual_fund_uid": str(virtual_fund_uid),
+                        "asset_identifier": "example-asset-eth",
+                        "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
+                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
+                        "allocated_quantity": 20.0,
+                        "allocation_strategy": "proportional_attribution",
+                        "direction": 1,
+                        "target_trade_time": None,
+                        "extra_details": {
+                            "position_set_uid": "position-set-uid",
+                            "target_row_key": "eth-row",
+                            "target_gap_signed_quantity": "5.0",
+                            "scale": "0.8",
+                        },
+                    },
+                ]
+            }
+        raise AssertionError(f"Unexpected model {model_name}")
+
+    monkeypatch.setattr(virtual_fund_services, "get_model_by_uid", fake_get_model_by_uid)
+    monkeypatch.setattr(virtual_fund_services, "search_model", fake_search_model)
+    monkeypatch.setattr(
+        virtual_fund_services,
+        "_asset_references_by_unique_identifier",
+        lambda context, rows: {
+            "example-asset-btc": {
+                "uid": str(btc_uid),
+                "asset_identifier": "example-asset-btc",
+                "current_snapshot": {
+                    "name": "Bitcoin",
+                    "ticker": "BTC",
+                },
+            },
+            "example-asset-eth": {
+                "uid": str(eth_uid),
+                "asset_identifier": "example-asset-eth",
+                "current_snapshot": {
+                    "name": "Ethereum",
+                    "ticker": "ETH",
+                },
+            },
+        },
+    )
+
+    response = virtual_fund_services.get_account_holdings_by_fund_response(
+        context,
+        account_uid=str(account_uid),
+        order="desc",
+        limit=1,
+        include_asset_detail=True,
+    )
+
+    assert response is not None
+    assert response["account_uid"] == str(account_uid)
+    assert response["source_account_holdings_set_uid"] == str(source_holdings_set_uid)
+    assert response["holdings_date"] == holdings_date
+    assert response["allocation_warnings"] == []
+    assert response["funds"] == [
+        {
+            "virtual_fund_uid": str(virtual_fund_uid),
+            "virtual_fund_unique_identifier": "fund-key",
+            "target_portfolio_uid": str(portfolio_uid),
+            "holdings_set_uid": "virtual-fund-holdings-set-uid",
+            "holdings": [
+                {
+                    "time_index": holdings_date,
+                    "asset_identifier": "example-asset-btc",
+                    "asset": {
+                        "uid": str(btc_uid),
+                        "asset_identifier": "example-asset-btc",
+                        "current_snapshot": {
+                            "name": "Bitcoin",
+                            "ticker": "BTC",
+                        },
+                    },
+                    "quantity": "6.0",
+                    "allocation_strategy": "proportional_attribution",
+                    "direction": 1,
+                    "signed_quantity": "6.0",
+                    "target_trade_time": None,
+                    "extra_details": {
+                        "position_set_uid": "position-set-uid",
+                        "target_row_key": "btc-row",
+                        "target_gap_signed_quantity": "0.0",
+                        "scale": "1.0",
+                    },
+                    "allocation": {
+                        "target_gap_signed_quantity": "0.0",
+                        "scale": "1.0",
+                        "target_row_key": "btc-row",
+                        "position_set_uid": "position-set-uid",
+                    },
+                },
+                {
+                    "time_index": holdings_date,
+                    "asset_identifier": "example-asset-eth",
+                    "asset": {
+                        "uid": str(eth_uid),
+                        "asset_identifier": "example-asset-eth",
+                        "current_snapshot": {
+                            "name": "Ethereum",
+                            "ticker": "ETH",
+                        },
+                    },
+                    "quantity": "20.0",
+                    "allocation_strategy": "proportional_attribution",
+                    "direction": 1,
+                    "signed_quantity": "20.0",
+                    "target_trade_time": None,
+                    "extra_details": {
+                        "position_set_uid": "position-set-uid",
+                        "target_row_key": "eth-row",
+                        "target_gap_signed_quantity": "5.0",
+                        "scale": "0.8",
+                    },
+                    "allocation": {
+                        "target_gap_signed_quantity": "5.0",
+                        "scale": "0.8",
+                        "target_row_key": "eth-row",
+                        "position_set_uid": "position-set-uid",
+                    },
+                },
+            ],
+        }
+    ]
+    assert response["residuals"] == [
+        {
+            "asset_identifier": "example-asset-btc",
+            "source_signed_quantity": "10.0",
+            "allocated_signed_quantity": "6.0",
+            "residual_signed_quantity": "4.0",
+            "asset": {
+                "uid": str(btc_uid),
+                "asset_identifier": "example-asset-btc",
+                "current_snapshot": {
+                    "name": "Bitcoin",
+                    "ticker": "BTC",
+                },
+            },
+        },
+        {
+            "asset_identifier": "example-asset-eth",
+            "source_signed_quantity": "25.0",
+            "allocated_signed_quantity": "20.0",
+            "residual_signed_quantity": "5.0",
+            "asset": {
+                "uid": str(eth_uid),
+                "asset_identifier": "example-asset-eth",
+                "current_snapshot": {
+                    "name": "Ethereum",
+                    "ticker": "ETH",
+                },
+            },
+        },
+    ]
+
+
+def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    holdings_set_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    context = object()
+    captured: dict[str, object] = {}
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
+        },
+    )
+    monkeypatch.setattr(
+        account_services,
+        "uuid",
+        SimpleNamespace(uuid4=lambda: holdings_set_uid),
+    )
+
+    def fake_build_account_holdings_frame(**kwargs):
+        captured["frame_kwargs"] = kwargs
+        return SimpleNamespace(
+            reset_index=lambda: SimpleNamespace(
+                to_dict=lambda orient: [
+                    {
+                        "asset_identifier": "example-asset-btc",
+                        "quantity": 10.0,
+                        "direction": -1,
+                        "target_trade_time": holdings_date,
+                        "extra_details": {"source": "test"},
+                    }
+                ]
+            )
+        )
+
+    def fake_replace_account_holdings_snapshot(context, **kwargs):
+        captured["write_context"] = context
+        captured["write_kwargs"] = kwargs
+        return {
+            "rows": [
+                {
+                    "time_index": holdings_date.isoformat(),
+                    "account_uid": str(account_uid),
+                    "asset_identifier": "example-asset-btc",
+                    "holdings_set_uid": str(holdings_set_uid),
+                    "is_trade_snapshot": False,
+                    "quantity": 10.0,
+                    "direction": -1,
+                    "target_trade_time": holdings_date.isoformat(),
+                    "extra_details": {"source": "test"},
+                }
+            ]
+        }
+
+    def no_read_back(context, **kwargs):
+        raise AssertionError("The snapshot comes from the write's rows, not a read.")
+
+    monkeypatch.setattr(
+        account_services,
+        "_build_account_holdings_frame",
+        fake_build_account_holdings_frame,
+    )
+    monkeypatch.setattr(
+        account_services.account_repository,
+        "replace_account_holdings_snapshot",
+        fake_replace_account_holdings_snapshot,
+    )
+    monkeypatch.setattr(account_services, "_search_account_holdings_rows", no_read_back)
+
+    snapshot = account_services.add_account_holdings_snapshot_response(
+        context,
+        account_uid=str(account_uid),
+        holdings_date=holdings_date,
+        overwrite=True,
+        positions=[
+            {
+                "asset_identifier": "example-asset-btc",
+                "asset_uid": str(asset_uid),
+                "position_type": "units",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    )
+
+    assert captured["frame_kwargs"] == {
+        "holdings_date": holdings_date,
+        "account_uid": str(account_uid),
+        "holdings_set_uid": str(holdings_set_uid),
+        "positions": [
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    }
+    assert captured["write_context"] is context
+    assert captured["write_kwargs"] == {
+        "holdings_set_uid": str(holdings_set_uid),
+        "account_uid": str(account_uid),
+        "holdings_date": holdings_date,
+        "positions": [
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": 10.0,
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+        "overwrite": True,
+    }
+    assert snapshot == {
+        "holdings_set_uid": str(holdings_set_uid),
+        "holdings_date": holdings_date,
+        "holdings": [
+            {
+                "time_index": holdings_date,
+                "asset_identifier": "example-asset-btc",
+                "asset": {
+                    "uid": str(asset_uid),
+                    "asset_identifier": "example-asset-btc",
+                    "current_snapshot": {"name": None, "ticker": None},
+                },
+                "position_type": "units",
+                "price": None,
+                "quantity": "10.0",
+                "direction": -1,
+                "signed_quantity": "-10.0",
+                "missing_price": True,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    }
+
+
+def test_core_add_account_holdings_snapshot_rejects_existing_without_overwrite(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+    captured: dict[str, object] = {}
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
+        },
+    )
+
+    def fake_build_account_holdings_frame(**kwargs):
+        captured["frame_kwargs"] = kwargs
+        return SimpleNamespace(
+            reset_index=lambda: SimpleNamespace(
+                to_dict=lambda orient: [
+                    {
+                        "asset_identifier": "example-asset-btc",
+                        "quantity": 10.0,
+                        "direction": 1,
+                        "target_trade_time": holdings_date,
+                        "extra_details": {},
+                    }
+                ]
+            )
+        )
+
+    monkeypatch.setattr(
+        account_services,
+        "_build_account_holdings_frame",
+        fake_build_account_holdings_frame,
+    )
+    monkeypatch.setattr(
+        account_services.account_repository,
+        "replace_account_holdings_snapshot",
+        lambda context, **kwargs: {"rows": []},
+    )
+
+    with pytest.raises(account_services.AccountHoldingsSnapshotExistsError):
+        account_services.add_account_holdings_snapshot_response(
+            object(),
+            account_uid=str(account_uid),
+            holdings_date=holdings_date,
+            overwrite=False,
+            positions=[
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "asset_uid": str(asset_uid),
+                    "quantity": "10",
+                }
+            ],
+        )
+    assert captured["frame_kwargs"]["account_uid"] == str(account_uid)
+
+
+def test_account_repository_builds_atomic_holdings_replacement_operation(
+    offline_postgresql_runtime,
+) -> None:
+    from msm.repositories import accounts as account_repository
+
+    class FakeContext:
+        data_source_uid = None
+        limits = None
+
+    holdings_set_uid = uuid.uuid4()
+    account_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+
+    operation = account_repository.build_replace_account_holdings_snapshot_operation(
+        FakeContext(),
+        holdings_set_uid=holdings_set_uid,
+        account_uid=account_uid,
+        holdings_date=holdings_date,
+        overwrite=True,
+        positions=[
+            {
+                "asset_identifier": "example-asset-btc",
+                "quantity": "10",
+                "direction": -1,
+                "target_trade_time": holdings_date,
+                "extra_details": {"source": "test"},
+            }
+        ],
+    )
+
+    sql = operation.statement.sql
+    assert operation.operation == "upsert"
+    assert "WITH holdings_set AS" in sql
+    assert "ON CONFLICT (account_uid, time_index)" in sql
+    assert "WHERE %(overwrite)s" in sql
+    assert "DELETE FROM" in sql
+    assert "deleted_gate AS" in sql
+    assert "INSERT INTO" in sql
+    assert "WITH inserted AS" not in sql
+    assert "FROM inserted" not in sql
+    assert "JOIN holdings_set ON true" in sql
+    assert "JOIN deleted_gate ON true" in sql
+    assert "CAST(%(quantity_0)s AS FLOAT)" in sql
+    assert "CAST(%(direction_0)s::SMALLINT AS SMALLINT)" in sql
+    assert operation.statement.parameters["holdings_set_uid"] == holdings_set_uid
+    assert operation.statement.parameters["account_uid"] == account_uid
+    assert operation.statement.parameters["overwrite"] is True
+    assert operation.statement.parameters["asset_identifier_0"] == "example-asset-btc"
+    # MetaTables 0.1.65 types JSON parameters, so PostgreSQL binds a list as JSON.
+    assert operation.statement.parameter_types == {
+        "holdings_date": "timestamp with time zone",
+        "target_trade_time_0": "timestamp with time zone",
+        "extra_details_0": "json",
+    }
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
+
+
+def test_core_add_account_holdings_snapshot_rejects_asset_uid_mismatch(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    wrong_asset_uid = uuid.uuid4()
+    holdings_date = dt.datetime(2026, 6, 5, 8, tzinfo=dt.UTC)
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_asset_reference_details_by_identifier",
+        lambda context, identifiers: {
+            identifier: {"asset_uid": str(asset_uid), "asset_identifier": identifier}
+            for identifier in identifiers
+        },
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        account_services.add_account_holdings_snapshot_response(
+            object(),
+            account_uid=str(account_uid),
+            holdings_date=holdings_date,
+            overwrite=True,
+            positions=[
+                {
+                    "asset_identifier": "example-asset-btc",
+                    "asset_uid": str(wrong_asset_uid),
+                    "quantity": "10",
+                }
+            ],
+        )
+
+
+def test_core_search_account_target_allocation_candidates_maps_rows(monkeypatch) -> None:
+    asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    from msm.services import target_positions as target_position_services
+
+    def fake_repository_search_candidates(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {
+            "rows": [
+                {
+                    "row_kind": "__count__",
+                    "total_count": 2,
+                },
+                {
+                    "row_kind": "data",
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "portfolio_uid": None,
+                    "identifier": "example-asset-btc",
+                    "display_label": "Bitcoin",
+                    "secondary_label": "BTC",
+                    "snapshot_name": "Bitcoin",
+                    "snapshot_ticker": "BTC",
+                    "asset_type": "crypto",
+                    "published_index_uid": None,
+                },
+                {
+                    "row_kind": "data",
+                    "target_type": "portfolio",
+                    "target_uid": str(portfolio_uid),
+                    "asset_uid": None,
+                    "portfolio_uid": str(portfolio_uid),
+                    "identifier": "example-sleeve",
+                    "display_label": "example-sleeve",
+                    "secondary_label": None,
+                    "snapshot_name": None,
+                    "snapshot_ticker": None,
+                    "asset_type": None,
+                    "published_index_uid": None,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(
+        "msm.repositories.accounts.search_account_target_allocation_candidates",
+        fake_repository_search_candidates,
+    )
+
+    context = object()
+    response = target_position_services.search_account_target_allocation_candidates(
+        context,
+        search="btc",
+        target_type="all",
+        limit=25,
+        offset=0,
+    )
+
+    assert captured == {
+        "context": context,
+        "search": "btc",
+        "target_type": "all",
+        "limit": 25,
+        "offset": 0,
+        "include_retired": False,
+    }
+    assert response == {
+        "count": 2,
+        "results": [
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "identifier": "example-asset-btc",
+                "display_label": "Bitcoin",
+                "secondary_label": "BTC",
+                "current_snapshot": {
+                    "name": "Bitcoin",
+                    "ticker": "BTC",
+                },
+                "metadata": {"asset_type": "crypto"},
+            },
+            {
+                "target_type": "portfolio",
+                "target_uid": str(portfolio_uid),
+                "asset_uid": None,
+                "portfolio_uid": str(portfolio_uid),
+                "identifier": "example-sleeve",
+                "display_label": "example-sleeve",
+                "secondary_label": None,
+                "current_snapshot": None,
+                "metadata": {"published_index_uid": None},
+            },
+        ],
+    }
+
+
+def test_account_repository_builds_single_target_candidate_search_operation(
+    offline_postgresql_runtime,
+) -> None:
+    from msm.repositories import accounts as account_repository
+
+    class FakeContext:
+        data_source_uid = None
+        limits = None
+
+    operation = account_repository.build_search_account_target_allocation_candidates_operation(
+        FakeContext(),
+        search="btc",
+        target_type="all",
+        limit=25,
+        offset=5,
+    )
+
+    sql = operation.statement.sql
+    assert operation.operation == "select"
+    assert "UNION ALL" in sql
+    assert "account_target_allocation_candidates" in sql
+    assert "ranked_asset_snapshots" in sql
+    assert "paged_account_target_allocation_candidates" in sql
+    assert "row_number()" in sql.lower()
+    assert "LIMIT" in sql
+    assert "OFFSET" in sql
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
+
+
+def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+    target_allocation_uid = uuid.uuid4()
+    older_position_set_uid = uuid.uuid4()
+    latest_position_set_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    portfolio_uid = uuid.uuid4()
+    older_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
+    latest_time = dt.datetime(2026, 6, 2, 10, 30, tzinfo=dt.UTC)
+
+    from msm.services import target_positions as target_position_services
+
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_search_active_account_target_allocation_rows",
+        lambda context, account_uid: [{"uid": str(target_allocation_uid)}],
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_search_position_set_rows_for_target_allocations",
+        lambda context, target_allocation_uids, position_set_time: [
+            {
+                "uid": str(older_position_set_uid),
+                "account_target_allocation_uid": str(target_allocation_uid),
+                "position_set_time": older_time,
+            },
+            {
+                "uid": str(latest_position_set_uid),
+                "account_target_allocation_uid": str(target_allocation_uid),
+                "position_set_time": latest_time,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_search_target_position_rows",
+        lambda context, position_set_uid, target_positions_date, limit: [
+            {
+                "time_index": latest_time,
+                "position_set_uid": position_set_uid,
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "weight_notional_exposure": 0.55,
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "metadata_json": {},
+            },
+            {
+                "time_index": latest_time,
+                "position_set_uid": position_set_uid,
+                "target_type": "portfolio",
+                "target_uid": str(portfolio_uid),
+                "asset_uid": None,
+                "portfolio_uid": str(portfolio_uid),
+                "weight_notional_exposure": 0.45,
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "metadata_json": {},
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_asset_references_by_uid",
+        lambda context, rows: {
+            str(asset_uid): {
+                "uid": str(asset_uid),
+                "unique_identifier": "btc_spot",
+                "current_snapshot": {
+                    "name": "Bitcoin spot",
+                    "ticker": "BTC",
+                },
+            }
+        },
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_portfolio_references_by_uid",
+        lambda context, rows: {
+            str(portfolio_uid): {
+                "uid": str(portfolio_uid),
+                "unique_identifier": "example-sleeve",
+                "published_index_uid": None,
+            }
+        },
+    )
+
+    snapshot = target_position_services.get_account_target_positions_snapshot_response(
+        object(),
+        account_uid=str(account_uid),
+    )
+
+    assert snapshot == {
+        "related_account_uid": str(account_uid),
+        "target_positions_date": latest_time,
+        "position_set_uid": str(latest_position_set_uid),
+        "positions": [
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "unique_identifier": "btc_spot",
+                "weight_notional_exposure": "0.55",
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "asset": {
+                    "uid": str(asset_uid),
+                    "unique_identifier": "btc_spot",
+                    "current_snapshot": {
+                        "name": "Bitcoin spot",
+                        "ticker": "BTC",
+                    },
+                },
+                "portfolio": None,
+            },
+            {
+                "target_type": "portfolio",
+                "target_uid": str(portfolio_uid),
+                "asset_uid": None,
+                "portfolio_uid": str(portfolio_uid),
+                "unique_identifier": "example-sleeve",
+                "weight_notional_exposure": "0.45",
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "asset": None,
+                "portfolio": {
+                    "uid": str(portfolio_uid),
+                    "unique_identifier": "example-sleeve",
+                    "published_index_uid": None,
+                },
+            },
+        ],
+    }
+
+
+def test_core_account_holdings_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+
+    from msm.services import accounts as account_services
+
+    monkeypatch.setattr(
+        account_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        account_services,
+        "_search_account_holdings_rows",
+        lambda context, account_uid, limit, **_kwargs: [],
+    )
+
+    snapshot = account_services.get_account_holdings_snapshot_response(
+        object(),
+        account_uid=str(account_uid),
+    )
+
+    assert snapshot == {
+        "holdings_set_uid": None,
+        "holdings_date": None,
+        "holdings": [],
+    }
+
+
+def test_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
+    account_uid = uuid.uuid4()
+
+    from msm.services import target_positions as target_position_services
+
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_by_uid",
+        lambda context, uid: {"row": {"uid": str(account_uid)}},
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "_search_active_account_target_allocation_rows",
+        lambda context, account_uid: [],
+    )
+
+    snapshot = target_position_services.get_account_target_positions_snapshot_response(
+        object(),
+        account_uid=str(account_uid),
+    )
+
+    assert snapshot == {
+        "related_account_uid": str(account_uid),
+        "target_positions_date": None,
+        "position_set_uid": None,
+        "positions": [],
+    }
+
+
+def test_core_add_account_target_positions_snapshot_derives_parent_rows(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    target_positions_date = dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC)
+    captured: dict[str, object] = {}
+
+    from msm.services import target_positions as target_position_services
+
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_by_uid",
+        lambda context, uid: {
+            "row": {
+                "uid": str(account_uid),
+                "account_name": "Some account",
+            }
+        },
+    )
+
+    def fake_replace_account_target_positions_snapshot(context, **kwargs):
+        captured["context"] = context
+        captured.update(kwargs)
+        return {"rows": [{"target_uid": str(asset_uid)}]}
+
+    monkeypatch.setattr(
+        "msm.repositories.accounts.replace_account_target_positions_snapshot",
+        fake_replace_account_target_positions_snapshot,
+    )
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_target_positions_snapshot_response",
+        lambda context, **kwargs: {
+            "related_account_uid": str(account_uid),
+            "target_positions_date": target_positions_date,
+            "position_set_uid": "position-set-uid",
+            "positions": [],
+        },
+    )
+
+    snapshot = target_position_services.add_account_target_positions_snapshot_response(
+        object(),
+        account_uid=str(account_uid),
+        target_positions_date=target_positions_date,
+        overwrite=True,
+        positions=[
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "weight_notional_exposure": "1.0",
+            }
+        ],
+    )
+
+    assert snapshot is not None
+    assert snapshot["position_set_uid"] == "position-set-uid"
+    assert uuid.UUID(str(captured["account_allocation_model_uid"]))
+    assert uuid.UUID(str(captured["account_target_allocation_uid"]))
+    assert uuid.UUID(str(captured["position_set_uid"]))
+    assert captured["account_uid"] == str(account_uid)
+    assert captured["account_name"] == "Some account"
+    assert captured["target_positions_date"] == target_positions_date
+    assert captured["overwrite"] is True
+    assert captured["positions"] == [
+        {
+            "target_type": "asset",
+            "target_uid": str(asset_uid),
+            "asset_uid": str(asset_uid),
+            "portfolio_uid": None,
+            "weight_notional_exposure": 1.0,
+            "constant_notional_exposure": None,
+            "single_asset_quantity": None,
+            "metadata_json": {},
+        }
+    ]
+
+
+def test_core_add_account_target_positions_returns_none_for_missing_account(
+    monkeypatch,
+) -> None:
+    from msm.services import target_positions as target_position_services
+
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_by_uid",
+        lambda context, uid: {"rows": []},
+    )
+
+    snapshot = target_position_services.add_account_target_positions_snapshot_response(
+        object(),
+        account_uid=str(uuid.uuid4()),
+        target_positions_date=dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC),
+        positions=[],
+    )
+
+    assert snapshot is None
+
+
+def test_core_add_account_target_positions_raises_conflict_when_snapshot_exists(
+    monkeypatch,
+) -> None:
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+
+    from msm.services import target_positions as target_position_services
+
+    monkeypatch.setattr(
+        target_position_services,
+        "get_account_by_uid",
+        lambda context, uid: {
+            "row": {
+                "uid": str(account_uid),
+                "account_name": "Some account",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "msm.repositories.accounts.replace_account_target_positions_snapshot",
+        lambda context, **kwargs: {"rows": []},
+    )
+
+    with pytest.raises(target_position_services.AccountTargetPositionsSnapshotExistsError):
+        target_position_services.add_account_target_positions_snapshot_response(
+            object(),
+            account_uid=str(account_uid),
+            target_positions_date=dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC),
+            overwrite=False,
+            positions=[
+                {
+                    "target_type": "asset",
+                    "target_uid": str(asset_uid),
+                    "asset_uid": str(asset_uid),
+                    "weight_notional_exposure": "1.0",
+                }
+            ],
+        )
+
+
+def test_account_repository_builds_atomic_target_positions_replacement_operation(
+    offline_postgresql_runtime,
+) -> None:
+    from msm.repositories import accounts as account_repository
+
+    class FakeContext:
+        data_source_uid = None
+        limits = None
+
+    account_uid = uuid.uuid4()
+    asset_uid = uuid.uuid4()
+    target_positions_date = dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC)
+
+    operation = account_repository.build_replace_account_target_positions_snapshot_operation(
+        FakeContext(),
+        account_allocation_model_uid=uuid.uuid4(),
+        account_target_allocation_uid=uuid.uuid4(),
+        position_set_uid=uuid.uuid4(),
+        account_uid=account_uid,
+        account_name="Some account",
+        target_positions_date=target_positions_date,
+        overwrite=True,
+        positions=[
+            {
+                "target_type": "asset",
+                "target_uid": str(asset_uid),
+                "asset_uid": str(asset_uid),
+                "portfolio_uid": None,
+                "weight_notional_exposure": "1.0",
+                "constant_notional_exposure": None,
+                "single_asset_quantity": None,
+                "metadata_json": {"source": "test"},
+            }
+        ],
+    )
+
+    sql = operation.statement.sql
+    assert operation.operation == "upsert"
+    assert "WITH account_allocation_model AS" in sql
+    assert "account_target_allocation AS" in sql
+    assert "position_set AS" in sql
+    assert "ON CONFLICT (allocation_model_name)" in sql
+    assert "ON CONFLICT (unique_identifier)" in sql
+    assert "ON CONFLICT (account_target_allocation_uid, position_set_time)" in sql
+    assert "FROM account_allocation_model ON CONFLICT" in sql
+    assert "FROM account_target_allocation ON CONFLICT" in sql
+    assert "WHERE %(overwrite)s" in sql
+    assert "DELETE FROM" in sql
+    assert "deleted_gate AS" in sql
+    assert "INSERT INTO" in sql
+    assert "WITH inserted AS" not in sql
+    assert "FROM inserted" not in sql
+    assert "JOIN position_set ON true" in sql
+    assert "JOIN deleted_gate ON true" in sql
+    assert operation.statement.parameters["account_uid"] == account_uid
+    assert operation.statement.parameters["account_name"] == "Some account"
+    assert operation.statement.parameters["target_positions_date"] == "2026-06-08T10:30:00Z"
+    assert operation.statement.parameters["target_type_0"] == "asset"
+    assert operation.statement.parameters["target_uid_0"] == asset_uid
+    assert operation.statement.parameters["asset_uid_0"] == asset_uid
+    assert operation.statement.parameters["portfolio_uid_0"] is None
+    assert operation.statement.parameters["weight_notional_exposure_0"] == "1.0"
+    assert operation.statement.parameters["metadata_json_0"] == {"source": "test"}
+    assert operation.statement.parameter_types == {
+        "target_positions_date": "timestamp with time zone",
+        "account_allocation_model_metadata_json": "json",
+        "account_target_allocation_metadata_json": "json",
+        "metadata_json_0": "json",
+        "position_set_metadata_json": "json",
+    }
+    assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
+
+
+def _account_payload(account_uid: uuid.UUID) -> dict[str, object]:
+    return {
+        "uid": str(account_uid),
+        "unique_identifier": "broker-paper-1",
+        "account_name": "Broker paper",
+        "is_paper": True,
+        "account_is_active": False,
+        "account_group_uid": None,
+        "holdings_storage_table_uid": None,
+        "holdings_data_node_uid": None,
+        "metadata_json": {"provider": "broker"},
+    }
+
+
+def test_create_account_returns_created_row(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountCreate
+
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_create(*, payload):
+        captured["payload"] = payload
+        return Account.model_validate(_account_payload(account_uid))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.create_account", fake_create)
+
+    response = TestClient(app).post(
+        "/api/v1/account/",
+        json={
+            "unique_identifier": "broker-paper-1",
+            "account_name": "Broker paper",
+            "metadata_json": {"provider": "broker"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == _account_payload(account_uid)
+    assert isinstance(captured["payload"], AccountCreate)
+    assert captured["payload"].unique_identifier == "broker-paper-1"
+    assert captured["payload"].is_paper is True
+
+
+def test_create_account_rejects_unknown_fields_and_reports_conflicts(monkeypatch) -> None:
+    response = TestClient(app).post(
+        "/api/v1/account/", json={"unique_identifier": "x", "account_name": "x", "extra": 1}
+    )
+    assert response.status_code == 422
+
+    def failing_create(*, payload):
+        raise RuntimeError("duplicate key value violates unique constraint")
+
+    monkeypatch.setattr("apps.v1.routers.accounts.create_account", failing_create)
+    response = TestClient(app).post(
+        "/api/v1/account/", json={"unique_identifier": "x", "account_name": "x"}
+    )
+    assert response.status_code == 409
+
+
+def test_update_account_patches_mutable_fields(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountUpdate
+
+    account_uid = uuid.uuid4()
+    captured: dict[str, object] = {}
+
+    def fake_update(*, uid, payload):
+        captured.update(uid=uid, payload=payload)
+        row = _account_payload(account_uid)
+        row["account_is_active"] = True
+        return Account.model_validate(row)
+
+    monkeypatch.setattr("apps.v1.routers.accounts.update_account", fake_update)
+
+    response = TestClient(app).patch(
+        f"/api/v1/account/{account_uid}/", json={"account_is_active": True}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["account_is_active"] is True
+    assert captured["uid"] == str(account_uid)
+    assert isinstance(captured["payload"], AccountUpdate)
+    assert captured["payload"].account_is_active is True
+    assert captured["payload"].account_name is None
+
+
+def test_update_account_returns_404_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr("apps.v1.routers.accounts.update_account", lambda *, uid, payload: None)
+
+    response = TestClient(app).patch(f"/api/v1/account/{uuid.uuid4()}/", json={"is_paper": False})
+
+    assert response.status_code == 404
+
+
+def test_account_create_and_update_services_use_the_typed_row_api(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import Account, AccountCreate, AccountUpdate
+    from apps.v1.services import accounts as account_service
+
+    account_uid = uuid.uuid4()
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(account_service, "_get_runtime", lambda: SimpleNamespace(context=object()))
+    monkeypatch.setattr(
+        Account, "create", classmethod(lambda cls, payload: calls.append(("create", payload)) or Account.model_validate(_account_payload(account_uid)))
+    )
+    monkeypatch.setattr(
+        Account, "update", classmethod(lambda cls, uid, payload: calls.append(("update", (uid, payload))) or Account.model_validate(_account_payload(account_uid)))
+    )
+    monkeypatch.setattr(account_service, "get_account", lambda *, uid: Account.model_validate(_account_payload(account_uid)) if uid == str(account_uid) else None)
+
+    created = account_service.create_account(payload=AccountCreate(unique_identifier="a", account_name="A"))
+    updated = account_service.update_account(uid=str(account_uid), payload=AccountUpdate(is_paper=False))
+    missing = account_service.update_account(uid=str(uuid.uuid4()), payload=AccountUpdate(is_paper=False))
+
+    assert created.uid == account_uid and updated.uid == account_uid and missing is None
+    assert [name for name, _ in calls] == ["create", "update"]
+    assert account_service.create_account.__registry_write__ == ("account", "create")
+    assert account_service.update_account.__registry_write__ == ("account", "update")
+
+
+# Account delete (ADR 0050) -----------------------------------------------------------------
+
+
+def _deleted(uid: str, **values) -> dict:
+    return {
+        "detail": "Account 'a' deleted with its history.",
+        "uid": uid,
+        "unique_identifier": "a",
+        "deleted_count": 1,
+        "deleted_rows": {"orders": 2, "holdings": 3},
+        "deleted_portfolios": [],
+        "kept_portfolios": [],
+        **values,
+    }
+
+
+def test_delete_account_returns_what_it_deleted(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import AccountDeleteResponse
+
+    uid = str(uuid.uuid4())
+    calls: list[bool] = []
+
+    def delete(*, uid, delete_portfolios=False):
+        calls.append(delete_portfolios)
+        return AccountDeleteResponse.model_validate(_deleted(uid))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", delete)
+
+    response = TestClient(app).delete(f"/api/v1/account/{uid}/")
+
+    assert response.status_code == 200
+    assert response.json() == _deleted(uid)
+    assert calls == [False]
+
+
+def test_delete_account_with_its_portfolios_reports_what_it_deleted_and_kept(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import AccountDeleteResponse
+
+    uid, deleted_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
+    portfolios = {
+        "detail": "Account 'a' deleted with its history and 1 portfolio. 1 portfolio it used was kept.",
+        "deleted_portfolios": [
+            {"uid": deleted_uid, "unique_identifier": "sleeve", "deleted_rows": {"weights": 4, "values": 2}}
+        ],
+        "kept_portfolios": [
+            {
+                "uid": kept_uid,
+                "unique_identifier": "shared",
+                "reason": "1 virtual fund of other accounts targets it.",
+            }
+        ],
+    }
+    calls: list[bool] = []
+
+    def delete(*, uid, delete_portfolios=False):
+        calls.append(delete_portfolios)
+        return AccountDeleteResponse.model_validate(_deleted(uid, **portfolios))
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", delete)
+
+    response = TestClient(app).delete(f"/api/v1/account/{uid}/?delete_portfolios=true")
+
+    assert response.status_code == 200
+    assert response.json() == _deleted(uid, **portfolios)
+    assert calls == [True]
+
+
+def test_the_delete_services_run_the_portfolio_package_delete_with_the_option(monkeypatch) -> None:
+    """Core deletes the account alone; `msm_portfolios` owns the delete with its portfolios."""
+
+    from apps.v1.services import accounts as account_service
+
+    uid = str(uuid.uuid4())
+    calls: list[tuple[str, str]] = []
+    answers = {
+        "delete_account": lambda kwargs: _deleted(kwargs["uid"]),
+        "bulk_delete_accounts": lambda kwargs: {"detail": "Deleted.", "deleted_count": 0},
+        "preflight_bulk_delete_accounts": lambda kwargs: {
+            "allowed": True,
+            "matched_count": 0,
+            "blockers": [],
+            "warnings": [],
+        },
+    }
+
+    def recorded(name, answer):
+        def run(context, **kwargs):
+            calls.append((name, context))
+            return answer(kwargs)
+
+        return run
+
+    monkeypatch.setattr(account_service, "_get_delete_runtime", lambda: SimpleNamespace(context="runtime"))
+    for name, answer in answers.items():
+        monkeypatch.setattr(f"msm.services.{name}", recorded(name, answer), raising=False)
+        monkeypatch.setattr(
+            f"msm_portfolios.services.{name}_with_portfolios",
+            recorded(f"{name}_with_portfolios", answer),
+            raising=False,
+        )
+
+    for delete_portfolios in (False, True):
+        account_service.delete_account(uid=uid, delete_portfolios=delete_portfolios)
+        account_service.bulk_delete_accounts(uids=[uid], delete_portfolios=delete_portfolios)
+        account_service.preflight_bulk_delete_accounts(uids=[uid], delete_portfolios=delete_portfolios)
+
+    assert calls == [
+        ("delete_account", "runtime"),
+        ("bulk_delete_accounts", "runtime"),
+        ("preflight_bulk_delete_accounts", "runtime"),
+        ("delete_account_with_portfolios", "runtime"),
+        ("bulk_delete_accounts_with_portfolios", "runtime"),
+        ("preflight_bulk_delete_accounts_with_portfolios", "runtime"),
+    ]
+
+
+def test_delete_account_answers_404_409_and_400(monkeypatch) -> None:
+    from msm.services import AccountDeleteConflictError
+
+    client = TestClient(app)
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", lambda *, uid, delete_portfolios: None)
+    assert client.delete(f"/api/v1/account/{uuid.uuid4()}/").status_code == 404
+
+    def refused(*, uid, delete_portfolios):
+        raise AccountDeleteConflictError("Account 'a' cannot be deleted; nothing was deleted.")
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", refused)
+    response = client.delete(f"/api/v1/account/{uuid.uuid4()}/")
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Account 'a' cannot be deleted; nothing was deleted."}
+
+    def invalid(*, uid, delete_portfolios):
+        raise ValueError("badly formed hexadecimal UUID string")
+
+    monkeypatch.setattr("apps.v1.routers.accounts.delete_account", invalid)
+    assert client.delete("/api/v1/account/not-a-uid/").status_code == 400
+
+
+def _selection(*uids, **options) -> dict:
+    return {"selection": {"mode": "explicit", "uids": [str(uid) for uid in uids]}, "options": options}
+
+
+def _preflight(**values):
+    from apps.v1.schemas.accounts import AccountDeletePreflightResponse
+
+    return AccountDeletePreflightResponse.model_validate(
+        {"allowed": True, "matched_count": 1, "blockers": [], "warnings": [], **values}
+    )
+
+
+def test_bulk_delete_accounts_runs_after_an_allowed_preflight(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import AccountBulkDeleteResponse
+
+    uid = str(uuid.uuid4())
+    calls: list[tuple[str, list[str], bool]] = []
+
+    def preflight(*, uids, delete_portfolios):
+        calls.append(("preflight", uids, delete_portfolios))
+        return _preflight()
+
+    def bulk_delete(*, uids, delete_portfolios):
+        calls.append(("delete", uids, delete_portfolios))
+        return AccountBulkDeleteResponse.model_validate(
+            {"detail": "Deleted 1 account with their history.", "deleted_count": 1, "deleted": [_deleted(uid)]}
+        )
+
+    monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", preflight)
+    monkeypatch.setattr("apps.v1.routers.accounts.bulk_delete_accounts", bulk_delete)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/account/bulk-delete/", json=_selection(uid))
+    with_portfolios = client.post("/api/v1/account/bulk-delete/", json=_selection(uid, delete_portfolios=True))
+
+    assert response.status_code == 200 and with_portfolios.status_code == 200
+    assert response.json()["deleted"][0]["deleted_rows"] == {"orders": 2, "holdings": 3}
+    assert "other_namespace_cascades" not in response.json()
+    assert calls == [
+        ("preflight", [uid], False),
+        ("delete", [uid], False),
+        ("preflight", [uid], True),
+        ("delete", [uid], True),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("options", "detail"),
+    [
+        ({"cascade": True}, "does not support options: cascade"),
+        ({"delete_portfolios": "yes"}, "'delete_portfolios' must be true or false"),
+    ],
+)
+def test_bulk_delete_accounts_refuses_an_undeclared_or_mistyped_option(monkeypatch, options, detail) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda **kwargs: pytest.fail("an invalid option must be refused first"),
+    )
+    client = TestClient(app)
+
+    for path in ("/api/v1/account/bulk-delete/", "/api/v1/account/bulk-delete/preflight/"):
+        response = client.post(path, json=_selection(uuid.uuid4(), **options))
+
+        assert response.status_code == 400
+        assert detail in response.json()["detail"]
+
+
+def test_bulk_delete_accounts_refuses_a_blocked_selection(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda *, uids, delete_portfolios: _preflight(allowed=False, blockers=["Account 'a': 1 orders of other accounts name its order managers (ON DELETE RESTRICT)."]),
+    )
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.bulk_delete_accounts",
+        lambda *, uids, delete_portfolios: pytest.fail("a blocked selection must not be deleted"),
+    )
+
+    response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uuid.uuid4()))
+
+    assert response.status_code == 409
+    assert "orders of other accounts" in response.json()["detail"]
+
+
+def test_bulk_delete_accounts_answers_409_when_an_account_fails(monkeypatch) -> None:
+    from apps.v1.schemas.accounts import AccountBulkDeleteResponse
+
+    uid = str(uuid.uuid4())
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda *, uids, delete_portfolios: _preflight(),
+    )
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.bulk_delete_accounts",
+        lambda *, uids, delete_portfolios: AccountBulkDeleteResponse.model_validate(
+            {
+                "detail": "No accounts were deleted. 1 could not be deleted.",
+                "failed": [{"uid": uid, "detail": "Account 'a' cannot be deleted; nothing was deleted."}],
+            }
+        ),
+    )
+
+    response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uid))
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "No accounts were deleted. 1 could not be deleted. Not deleted: "
+        f"{uid}: Account 'a' cannot be deleted; nothing was deleted."
+    )
+
+
+def test_bulk_delete_preflight_reports_counts_and_other_namespaces(monkeypatch) -> None:
+    uid, portfolio_uid, kept_uid = (str(uuid.uuid4()) for _ in range(3))
+    calls: list[bool] = []
+
+    def preflight(*, uids, delete_portfolios):
+        calls.append(delete_portfolios)
+        return _preflight(
+            accounts=[
+                {
+                    "uid": uid,
+                    "unique_identifier": "a",
+                    "row_counts": {"orders": 2},
+                    "blockers": [],
+                    "portfolios": [
+                        {"uid": portfolio_uid, "unique_identifier": "sleeve", "row_counts": {"weights": 4}}
+                    ],
+                    "kept_portfolios": [
+                        {"uid": kept_uid, "unique_identifier": "shared", "reason": "Another account uses it."}
+                    ],
+                }
+            ],
+            other_namespace_cascades=["provider.account-sidecar"],
+            other_namespace_restricts=["provider.orders"],
+        )
+
+    monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", preflight)
+
+    response = TestClient(app).post(
+        "/api/v1/account/bulk-delete/preflight/", json=_selection(uid, delete_portfolios=True)
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accounts"][0]["row_counts"] == {"orders": 2}
+    assert body["accounts"][0]["portfolios"][0]["row_counts"] == {"weights": 4}
+    assert body["accounts"][0]["kept_portfolios"][0]["reason"] == "Another account uses it."
+    assert body["other_namespace_cascades"] == ["provider.account-sidecar"]
+    assert body["other_namespace_restricts"] == ["provider.orders"]
+    assert calls == [True]

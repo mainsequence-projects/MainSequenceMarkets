@@ -114,9 +114,11 @@ against the branch's workflow template before committing it.
 
 ## Give the Job access
 
-The Job runs as its own workload User. A workload never grants roles and never creates
-a table outside a namespace ([ADR 0024](../adr/api/0024-namespace-and-table-access-roles.md)).
-It creates its namespace by registering its first table there:
+The Job runs as its own workload User. A workload never grants roles through the access
+routes and never creates a table outside a namespace
+([ADR 0024](../adr/api/0024-namespace-and-table-access-roles.md)). It creates its namespace
+by registering its first table there, and declares its branch's roles
+([ADR 0029](../adr/api/0029-roles-for-a-branchs-workloads.md)):
 
 1. **Push the workflow file.** Applying it creates the Job, the FastAPI release and
    their workload Users before any step runs.
@@ -125,29 +127,92 @@ It creates its namespace by registering its first table there:
    it and grants the Job `editor`. The namespace records the Job as its creating
    workload. Later runs and new tables need nothing more. A provider whose tables
    declare several namespaces creates each missing one the same way.
-3. **Grant the other workloads, and an owner.** The people who manage the Job in the
-   platform manage the namespace's access. In that Environment's Admin, open the
-   namespace's **Access** panel, find each workload by its Job or release name, and
-   grant `data_writer` to every resource that only reads and writes rows, such as the
-   FastAPI release. Grant `owner` to yourself or to a Team you belong to, so the
-   namespace keeps an owner if the Job is recreated. From Python, pass each resource's
-   `workload_user_uid`, which the Main Sequence SDK returns on the Job and the
-   ResourceRelease. The FastAPI's requests are refused until then, and succeed on the
-   next request after the grant, with no redeployment.
+3. **The migration gives the branch's workloads their roles.** The provider declares
+   `branch_access`, and after each finalization the Job gives those roles to every
+   workload of its own code repository branch. In the provider the scaffold wrote:
 
-Repeat step 3 in every Environment, done by someone who manages the Job there: each
-Environment has its own MetaTables and its own workload Users.
+   ```python
+   migration = build_metatable_migration_provider(
+       ...,
+       branch_access={"ledger": "editor"},
+   )
+   ```
+
+   `metatables migrations scaffold --branch-access ledger=editor` writes it for a new
+   provider, and `AlembicMetaTableMigration(..., branch_access=...)` takes the same
+   mapping. The FastAPI release and the other Jobs of the workflow file have the role on
+   their first request. Each role is at most the Job's own and never `owner`. The next
+   migration's declaration replaces this one. A refused namespace fails the Job with
+   `BranchAccessRefused` after finalization.
+
+   Each declaration replaces the branch's whole set, so every provider the Job runs
+   declares the same mapping. Keep it in one constant that each provider imports. A
+   provider whose mapping differs from one an earlier provider sent in the same run
+   fails with `BranchAccessConflict` before it sends anything.
+4. **Grant an owner.** The people who manage the Job in the platform manage the
+   namespace's access. In that Environment's Admin, open the namespace's **Access**
+   panel and grant `owner` to yourself or to a Team you belong to, so the namespace
+   keeps an owner if the Job is recreated.
+
+Repeat step 4 in every Environment, done by someone who manages the Job there: each
+Environment has its own MetaTables and its own workload Users. Steps 1 to 3 need nobody.
 
 ```python
 from metatables import Namespace
 
 ledger = next(n for n in Namespace.filter(search="ledger") if n.name == "ledger")
-ledger.grant_role(api_workload_user_uid, "data_writer")       # step 3
-ledger.grant_role(your_user_uid, "owner")
+ledger.grant_role(your_user_uid, "owner")                       # step 4
+ledger.grant_role(billing_branch_uid, "data_viewer", principal_kind="branch")  # another repository
 ```
 
 Managing the Job lets you manage the namespace's access only: it gives you no access
 to its tables until you grant yourself a role.
+
+### Why the branch and not each workload
+
+An `orders` repository deploys three workloads from one workflow file: the migration
+Job `migrate-orders`, the FastAPI `orders-api` and the Job `nightly-settlement`. The API
+and the settlement Job read and write the tables of namespace `orders`.
+
+Without `branch_access`, each workload User is granted by hand:
+
+```text
+first deploy in an Environment
+  migrate-orders registers its tables -> creates namespace orders, gets editor
+  orders-api, nightly-settlement      -> refused until a person grants them roles
+  a person who manages migrate-orders -> grants both, in this Environment
+
+later: nightly-settlement is renamed settlement in the workflow file
+  the platform creates a new Job with a new workload User -> no role
+  settlement cannot see its tables. A Job that reads "no table" as "nothing to do"
+  reports success and does nothing, until someone notices and grants again
+```
+
+Every new Environment and every rename needs a person, and the broken state looks like
+success. With `branch_access={"orders": "editor"}`:
+
+```text
+first deploy in an Environment
+  migrate-orders registers its tables -> creates namespace orders, gets editor
+  finalization declares                -> branch orders-service: editor on orders
+  orders-api, nightly-settlement       -> have editor on their first request
+
+later: nightly-settlement is renamed settlement
+  same branch -> settlement has editor on its first request, nobody acts
+```
+
+A billing repository that reads `orders` gets one grant from that namespace's owner, to
+its branch, in each Environment. After that, its renames and redeployments need nothing.
+
+**When not to rely on the branch.** Every workload of a branch gets the same role on a
+namespace. When one resource of the branch must not hold another's role, leave that
+namespace out of `branch_access` and grant each workload User by hand, as below.
+
+**Granting workload Users by hand.** In the namespace's **Access** panel, find each
+workload by its Job or release name and grant it a role; from Python, pass its
+`workload_user_uid`, which the Main Sequence SDK returns on the Job and the
+ResourceRelease. Such a grant names one workload User: a recreated Job or release needs
+it again. A grant takes effect on the next request, with no redeployment.
 
 **Optionally, a Team.** Grant the roles to a Team you belong to instead of to the
 workload Users, and add the workload Users to that Team: any person can create a Team

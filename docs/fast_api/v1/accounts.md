@@ -70,8 +70,9 @@ direct account snapshots and virtual-fund-grouped views.
     `created` and `changed`
   - audited as `registry_write("account", "register")`, with one record per
     row created or changed, each carrying the account's `unique_identifier`
-  - writes only Markets tables: a provider writes its own account sidecar
-    afterwards with the returned account uid (ADR 0047)
+  - writes only Markets tables: an application keeps its own data about the
+    account in its own tables, keyed by the returned account uid, and serves it
+    itself (ADR 0060)
   - `MarketsClient.register_account(...)` calls this route and returns
     `AccountRegistrationResponse`
 - `GET /api/v1/account/by-uids/?uid__in=<uid>&uid__in=<uid>`
@@ -82,17 +83,8 @@ direct account snapshots and virtual-fund-grouped views.
   - a bounded lookup for consumers that hydrate core columns from their own
     rows, not a browsable collection: no `limit`, `offset`, search or
     discovery route
-  - `include=<sidecar MetaTable uid>` (repeated or comma-separated, at most
-    10) attaches provider sidecar rows under `includes[<uid>]` on every item
-    (`null` when the sidecar has no row). A sidecar is a provider table with a
-    single-column foreign key to this resource's `uid`, proven from the
-    MetaTables catalog; each sidecar is read once for all returned uids. The
-    Markets workload needs `data_viewer` on the sidecar (`409` otherwise,
-    `404` for a uid that is not a visible MetaTable, `400` for a table that is
-    not a sidecar of this resource). Plain columns come back as stored; Markets
-    never decrypts a provider column, never selects a column the catalog marks
-    as application-encrypted and drops any encryption-envelope value, so
-    `include` never returns ciphertext. `includes` is `{}` when nothing is included
+  - returns Markets' rows only. Data an application keeps about a row, in its
+    own tables, is read from that application; Markets never reads it (ADR 0060)
 - `GET /api/v1/account/{uid}/`
   - returns one canonical `Account` row by uid
 - `PATCH /api/v1/account/{uid}/`
@@ -109,15 +101,31 @@ direct account snapshots and virtual-fund-grouped views.
     target rows, holdings sets with their rows, then the account
   - only Markets tables receive statements. A table in another namespace loses
     rows only through its own foreign key: a `CASCADE` key deletes them with
-    their parent, and the response lists that table in
-    `other_namespace_cascades`; a `RESTRICT` key refuses the whole delete. Rows
-    with no key, such as order events in a provider's copy of the events
-    storage, stay
+    their parent, and a `RESTRICT` key refuses the whole delete. Rows with no
+    key, such as order events in a provider's copy of the events storage, stay
+  - `delete_portfolios=true` (query parameter, `false` by default) also deletes,
+    in the same transaction and with all their data, the portfolios that the
+    account's virtual funds or target rows name and that nothing else uses: their
+    rows in the seven portfolio datasets, their group memberships, then the
+    portfolio. A portfolio is kept when another account's virtual fund or target
+    rows name it, or when the caller does not manage it (`Portfolio.managed_by`,
+    ADR 0060). Markets reads no other application's table: when an
+    application's own table holds a portfolio's rows under a `RESTRICT` key, the
+    database refuses, the transaction deletes nothing and a second one deletes
+    the account alone; the portfolios are kept.
+    The route then runs the portfolio package's
+    `msm_portfolios.services.delete_account_with_portfolios`, which Python code
+    with a portfolio runtime calls directly; `Account.delete` deletes the account
+    alone
   - returns `deleted_rows`, the Markets rows per table counted just before the
-    delete ran
-  - `404` when the uid is unknown; `409` when a key refuses the delete,
-    including orders of other accounts that name its order managers or virtual
-    funds of other accounts allocated from its holdings sets; nothing is deleted
+    delete ran, `deleted_portfolios` (each with its `deleted_rows` per dataset)
+    and `kept_portfolios` (each with its `reason`)
+  - one delete sends MetaTables one read and one transaction, and asks for no
+    impact; both run with MetaTables' longest deadline, 60 seconds
+  - `404` when the uid is unknown; `409` when a key refuses the account's
+    delete, including orders of other accounts that name its order managers or
+    virtual funds of other accounts allocated from its holdings sets; nothing is
+    deleted. On PostgreSQL the `409` names the constraint that refused
   - there is no delete for a single virtual fund, target allocation, position
     set or holdings set: an account's history is kept for as long as the account
     exists ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
@@ -128,10 +136,22 @@ direct account snapshots and virtual-fund-grouped views.
     tables in other namespaces it reaches (`other_namespace_cascades`,
     `other_namespace_restricts`). Markets cannot count rows in those tables, so
     they are warnings, not blockers
+  - with `options: {"delete_portfolios": true}`, each account also lists the
+    portfolios its delete would remove (`accounts[].portfolios`, with their
+    `row_counts` per dataset) and keep (`accounts[].kept_portfolios`, with the
+    `reason`); a warning names each. Each account is read as if it were deleted
+    alone
+  - one read per account; MetaTables' impact is asked for once and reused for
+    five minutes
 - `POST /api/v1/account/bulk-delete/`
   - runs the preflight, answers `409` when it reports a blocker, then deletes
     each account as `DELETE /api/v1/account/{uid}/` does, each in its own
-    transaction; `409` lists any account that could not be deleted
+    transaction, in the order selected; `409` lists any account that could not
+    be deleted
+  - `options: {"delete_portfolios": true}` applies the option to every account.
+    A portfolio that only selected accounts use goes with the last of them. Any
+    other option, or a value that is not a boolean, answers `400`
+  - asks MetaTables for the impact at most once, in its preflight
   - the same identities that may delete a portfolio may delete an account; both
     routes are registry writes that record the acting identity
 - `GET /api/v1/account/{uid}/summary/`

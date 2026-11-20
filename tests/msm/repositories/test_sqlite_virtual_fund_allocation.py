@@ -21,7 +21,7 @@ from msm.services.accounts.account_virtual_allocations import (
 )
 from msm.services.accounts.allocation_policies import AllocationError
 from msm.services.portfolio_lifecycle import PortfolioRetiredError
-from tests.msm.repositories.test_sqlite_snapshot_writes import (
+from tests.support.sqlite_markets import (
     WHEN,
     _account,
     _asset,
@@ -30,7 +30,6 @@ from tests.msm.repositories.test_sqlite_snapshot_writes import (
     _rows,
     _write_holdings,
     _write_target,
-    make_sqlite_markets,
 )
 
 FUND_TABLES = (
@@ -57,11 +56,6 @@ def _stored_lines(engine):
         for row in _rows(engine, LINES_SQL)
     }
 HELD = {"AAPL": 1_100.0, "MSFT": 600.0, "JNJ": 750.0, "TSLA": 1_100.0}
-
-
-@pytest.fixture
-def sqlite_markets(tmp_path, monkeypatch):
-    return make_sqlite_markets(tmp_path, monkeypatch)
 
 
 def _exposure_row(portfolio, **exposure):

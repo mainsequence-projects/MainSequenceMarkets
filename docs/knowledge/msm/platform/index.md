@@ -41,8 +41,12 @@ Platform utilities answer these questions:
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
   host CodeRepository, `msm rename-preflight` for moving a host project to
   the 3.0 names ([Upgrading To 3.0](../../../upgrading-to-3.md)), and
-  `msm series move|rollback` for moving a provider's existing time-series rows
-  into its own instances and back (`msm.storage_copies`).
+  `msm series publish` for publishing an application's existing signal and
+  portfolio history to Markets (`msm_portfolios.series_history`),
+  `msm registry assign-manager` for setting the manager of a portfolio or
+  signal, and `msm series move|rollback` for copying a provider's
+  time-series rows between two tables with the operator's own access
+  (`msm.storage_copies`).
 
 ## Key Contracts
 

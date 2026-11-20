@@ -20,8 +20,9 @@ manage the namespace's access. They can see the namespace and its bindings and g
 or revoke any role on it, `owner` included, but get no access to its tables until they
 grant themselves a role.
 
-Workload Users never create tables outside a namespace, never grant roles and are never
-granted `owner`. An existing namespace needs `editor` from its owners, its creating
+Workload Users never create tables outside a namespace, never grant roles through the
+access routes and are never granted `owner`. A migration Job declares roles only for its
+own branch's workloads ([Branches](#branches)). An existing namespace needs `editor` from its owners, its creating
 workload's managers or a Team. See [Namespaces and applications](#namespaces-and-applications).
 
 ## Roles and bindings
@@ -38,8 +39,9 @@ A **binding** grants one role to one principal on one object:
 | --- | --- |
 | `uid` | Binding identity |
 | object | The namespace or table |
-| `principal_kind` | `user` (a person or a workload User) or `team` |
-| `principal_uid` | Platform User or Team UID |
+| `principal_kind` | `user` (a person or a workload User), `team` or `branch` |
+| `principal_uid` | Platform User, Team or code repository branch UID |
+| `grant_source` | `explicit` (granted by a person), `creator` (given to the object's creator), `converted` (rewritten from an older role) or `declared` (a branch's role declared by its own migration) |
 | `role` | One of the five roles |
 | `granted_by_user_uid` | Who granted it or last changed it |
 | `created_at`, `updated_at` | When it was created or changed |
@@ -81,7 +83,8 @@ To grant a role on a namespace or table, the caller must:
 
 A non-admin grants roles only to Teams they belong to, checked with the platform when
 they grant, and to people and workload Users they can find in their own platform
-directory. Workloads never grant or revoke roles, whatever they hold; a Team holding
+directory. A branch is granted by its UID, by callers who hold `set_access` or manage the
+namespace's creating workload, and never `owner`. Workloads never grant or revoke roles, whatever they hold; a Team holding
 `owner` gives its workload members no access management.
 
 Anyone can revoke their own binding, and a workload's manager can lower or revoke that
@@ -102,7 +105,29 @@ a Team:
 
 Workload Users change with each Environment and each recreated Job. A direct binding
 to one needs granting again for its replacement; through a Team, the replacement
-needs only membership.
+needs only membership; through its branch, nothing.
+
+## Branches
+
+A `branch` binding gives its role to every active workload User declared on that code
+repository branch ([ADR 0029](../adr/api/0029-roles-for-a-branchs-workloads.md)). Membership
+is computed on each request, as for a Team, so a renamed or recreated Job, release or
+Agent of the branch has the role on its first request. It never matches a person, and an
+Environment is bound to one branch, so a binding never matches another Environment's
+workloads.
+
+- **Declared.** A migration provider's `branch_access` declares roles for its own branch
+  after each finalization. Each is at most the Job's own role and never `owner`, and needs
+  `tables.create` on the namespace. The next declaration replaces it. These bindings are
+  `declared`.
+- **Explicit.** An owner, an admin or a manager of the creating workload grants a branch
+  any role but `owner` by its UID, for example another repository's workloads reading the
+  namespace. A person's change makes a declared binding `explicit`, and no migration
+  changes it afterwards.
+
+Removing a `declared` binding by hand lasts until the next migration that still declares
+it. Every workload of a branch gets the same role; use per-workload grants where that is
+too much.
 
 The MetaTables Analyst ([ADR 0019](../adr/agent/0019-metatables-analyst-agent.md)) is
 a workload that holds no roles: it reads as the person it is answering
@@ -178,12 +203,13 @@ tables without a namespace.
 1. Pushing the workflow file creates the workload Users.
 2. The first deployment's migration Job registers its tables in `crm`, which creates
    the namespace and gives the Job `editor`.
-3. A person who manages the Job grants `data_writer` to the workload Users that only
-   read and write rows, and `owner` to themselves or to a Team they belong to. They can
-   instead grant these roles to a Team that contains the workloads.
+3. The provider's `branch_access` gives the application's other workloads their roles,
+   in every Environment and after any rename.
+4. A person who manages the Job grants `owner` to themselves or to a Team they belong to.
 
-This needs no Organization admin and no namespace created by hand. A Team is optional: it saves granting again when a
-workload User changes. Teams are Organization-wide and a workload reaches only its
+This needs no Organization admin and no namespace created by hand. Without
+`branch_access`, the person also grants each workload User, or a Team that contains them,
+again whenever a workload User changes. Teams are Organization-wide and a workload reaches only its
 own Environment's MetaTables, so one Team can hold the application's roles in every
 Environment's catalog. Another application gets read access through one `data_viewer`
 binding on the namespace; revoking it removes access to every table at once. See
@@ -289,6 +315,7 @@ and review intervening changes.
 | `POST /namespaces/` | Any person (`namespaces.create`); never a workload |
 | `GET /meta-tables/{uid}/access/`, `GET /namespaces/{uid}/access/` | `get_access` on the object, or a manager of the namespace's creating workload |
 | `POST /meta-tables/{uid}/access/changes/`, `POST /namespaces/{uid}/access/changes/` | `set_access`, a manager of the namespace's creating workload, or a workload's manager for that workload; never a workload |
+| `POST /namespaces/branch-access/` | A workload with a branch, for its own branch only: `tables.create` on each namespace, roles up to its own, never `owner` |
 | `GET .../access/me/` | Any caller who can see the object |
 | `GET .../access/explain/?action=...&user_uid=...` | Yourself: anyone who can see the object; another User: `get_access` |
 | `POST /meta-tables/{uid}/namespaces/changes/` | Add: `tables.update` on the table and `tables.create` on the namespace. Remove: `tables.create` on the namespace |

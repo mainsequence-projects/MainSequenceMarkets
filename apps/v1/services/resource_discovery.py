@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from msm.api.http import (
+    BulkActionOption,
     ResourceDiscovery,
     ResourceDiscoverySpec,
     build_bulk_delete_action,
@@ -76,6 +77,17 @@ _PORTFOLIO_GROUP_DELETE = build_bulk_delete_action(
     confirmation_title="Delete portfolio groups",
     confirmation_warning="Deleted portfolio groups cannot be restored.",
 )
+ACCOUNT_DELETE_PORTFOLIOS_OPTION = BulkActionOption(
+    key="delete_portfolios",
+    type="boolean",
+    default=False,
+    label="Also delete their portfolios",
+    description=(
+        "Also delete, with all their data, the portfolios each account's targets or "
+        "virtual funds name and nothing else uses. A portfolio another account uses, or "
+        "whose data another application's table holds, is kept."
+    ),
+)
 _ACCOUNT_DELETE = build_bulk_delete_action(
     action_id="bulk-delete-accounts",
     label="Delete selected",
@@ -84,8 +96,11 @@ _ACCOUNT_DELETE = build_bulk_delete_action(
     confirmation_title="Delete accounts",
     confirmation_warning=(
         "Deleted accounts cannot be restored. Each account's orders, trades, order "
-        "managers, virtual funds, targets and holdings history are deleted with it."
+        "managers, virtual funds, targets and holdings history are deleted with it. "
+        "With the portfolio option, the portfolios only they used are deleted too, "
+        "with all their data."
     ),
+    options=[ACCOUNT_DELETE_PORTFOLIOS_OPTION],
 )
 _PORTFOLIO_DELETE = build_bulk_delete_action(
     action_id="bulk-delete-portfolios",
@@ -93,7 +108,10 @@ _PORTFOLIO_DELETE = build_bulk_delete_action(
     endpoint="/api/v1/portfolio/bulk-delete/",
     preflight_endpoint="/api/v1/portfolio/bulk-delete/preflight/",
     confirmation_title="Delete portfolios",
-    confirmation_warning="Deleted portfolios cannot be restored.",
+    confirmation_warning=(
+        "Deleted portfolios cannot be restored. Each portfolio's weights, values, "
+        "rebalance state, analytics, ledger, state and cash flows are deleted with it."
+    ),
 )
 
 
@@ -553,4 +571,4 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
 }
 
 
-__all__ = ["RESOURCE_DISCOVERY_SPECS", "get_resource_discovery"]
+__all__ = ["ACCOUNT_DELETE_PORTFOLIOS_OPTION", "RESOURCE_DISCOVERY_SPECS", "get_resource_discovery"]

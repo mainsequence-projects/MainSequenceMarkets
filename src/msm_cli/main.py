@@ -27,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "rename-preflight" and args.preflight:
         return rename_preflight_command(args)
+    if args.command == "series" and args.series == "publish":
+        return series_publish_command(args)
+    if args.command == "registry" and args.registry == "assign-manager":
+        return assign_manager_command(args)
     if args.command == "series" and args.series:
         return series_command(args)
     parser.print_help()
@@ -85,8 +89,81 @@ def rename_preflight_command(args: argparse.Namespace) -> int:
     return 0 if all(r["classification"] == "TimeIndexMetaTable" for r in report) else 1
 
 
+def series_publish_command(args: argparse.Namespace) -> int:
+    """Run ``msm series publish`` over what an operator callable returns (ADR 0060, decision 9)."""
+
+    import importlib
+
+    from msm.storage_copies import run_series_publishes
+
+    module_name, _, attribute = args.publishes.partition(":")
+    if not module_name or not attribute:
+        raise SystemExit("Pass the publishes as module:callable.")
+    produced = getattr(importlib.import_module(module_name), attribute)()
+    report = run_series_publishes(
+        list(produced) if isinstance(produced, (list, tuple, set, frozenset)) else [produced],
+        dry_run=not args.execute,
+    )
+    if args.emit_json:
+        print(json.dumps(report.summary(), indent=2, default=str))
+        return 0 if report.succeeded else 1
+    _print_table(
+        f"Publish of series history{' (dry run: nothing written)' if report.dry_run else ''}",
+        ["Publish", "Key", "Source rows", "Written", "Skipped", "Markets rows", "Verified", "Error"],
+        [
+            [
+                label,
+                key.key,
+                key.source_rows,
+                key.written,
+                key.skipped,
+                key.markets_rows,
+                key.verified,
+                key.error,
+            ]
+            for label, key in report.results
+        ],
+    )
+    return 0 if report.succeeded else 1
+
+
+def assign_manager_command(args: argparse.Namespace) -> int:
+    """Run ``msm registry assign-manager`` (ADR 0060, decision 9)."""
+
+    import importlib
+
+    from msm.api.managers import assign_managers
+
+    if args.attach:
+        module_name, _, attribute = args.attach.partition(":")
+        if not module_name or not attribute:
+            raise SystemExit("Pass --attach as module:callable.")
+        getattr(importlib.import_module(module_name), attribute)()
+    try:
+        assignments = assign_managers(
+            args.manager,
+            keys={"portfolio": args.portfolio or (), "signal": args.signal or ()},
+            unmanaged=args.unmanaged,
+            dry_run=not args.execute,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.emit_json:
+        print(json.dumps([assignment.__dict__ for assignment in assignments], indent=2))
+    else:
+        _print_table(
+            f"Manager assignment{' (dry run: nothing changed)' if not args.execute else ''}",
+            ["Kind", "Key", "UID", "Previous", "Manager", "Assigned", "Detail"],
+            [
+                [a.kind, a.key, a.uid, a.previous, a.managed_by, a.assigned, a.detail]
+                for a in assignments
+            ],
+        )
+    return 0 if all(a.uid is not None for a in assignments) else 1
+
+
 def series_command(args: argparse.Namespace) -> int:
-    """Run ``msm series move|rollback`` over the moves a provider callable returns (ADR 0047)."""
+    """Run ``msm series move|rollback`` over the moves an operator callable returns."""
 
     import importlib
     import inspect
@@ -320,30 +397,88 @@ def _build_parser() -> argparse.ArgumentParser:
 
     series_parser = subparsers.add_parser(
         "series",
-        help="Move time series into a provider's instances, or roll them back (ADR 0047).",
+        help=(
+            "Publish an application's series history to Markets (ADR 0060), or copy time "
+            "series between two tables with the operator's own access."
+        ),
     )
     series = series_parser.add_subparsers(dest="series")
+    publish_parser = series.add_parser(
+        "publish",
+        help=(
+            "Read an application's own table with the operator's access, publish its rows to "
+            "the Markets series key by key, and compare the bounds. The source is unchanged."
+        ),
+    )
+    publish_parser.add_argument(
+        "publishes",
+        help=(
+            "module:callable returning the publishes to run, after attaching the operator's "
+            "runtime. Each is an object of the package that defines the series, with "
+            "run(dry_run=...)."
+        ),
+    )
+    publish_parser.add_argument(
+        "--execute", action="store_true", help="Publish; without it only read and compare."
+    )
+    publish_parser.add_argument(
+        "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
+    )
     for name, help_text in (
-        ("move", "Copy core rows into the instances, then record them in Markets."),
-        ("rollback", "Copy the instances' new rows back, then remove the Markets records."),
+        ("move", "Copy the rows of some keys from one table into another."),
+        ("rollback", "Copy the rows the target gained back into the source."),
     ):
         sub = series.add_parser(name, help=help_text)
         sub.add_argument(
             "moves",
             help=(
-                "module:callable returning TableSeriesMove, PortfolioSeriesMove or "
-                "SignalSeriesMove objects, after attaching the provider's runtime; "
-                "it receives rollback= when it accepts that argument."
+                "module:callable returning TableSeriesMove objects, after attaching "
+                "the operator's runtime; it receives rollback= when it accepts that "
+                "argument."
             ),
         )
         sub.add_argument(
             "--execute",
             action="store_true",
-            help="Copy and update Markets; without it only count the rows.",
+            help="Copy; without it only count the rows.",
         )
         sub.add_argument(
             "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
         )
+    registry_parser = subparsers.add_parser(
+        "registry", help="Operate on Markets registry rows (ADR 0060)."
+    )
+    registry = registry_parser.add_subparsers(dest="registry")
+    assign = registry.add_parser(
+        "assign-manager",
+        help=(
+            "Set managed_by on portfolios and signals, for example rows created before it "
+            "existed. Through the Markets API only an Organization admin may."
+        ),
+    )
+    assign.add_argument(
+        "--manager", required=True, help="The principal: branch:<uid> or user:<uid>."
+    )
+    assign.add_argument(
+        "--portfolio", action="append", help="Portfolio unique_identifier; repeatable."
+    )
+    assign.add_argument("--signal", action="append", help="SignalMetadata signal_uid; repeatable.")
+    assign.add_argument(
+        "--attach",
+        help=(
+            "module:callable run first: it attaches the operator's runtime and imports the "
+            "packages whose rows are assigned. Signals need the package that serves them."
+        ),
+    )
+    assign.add_argument(
+        "--unmanaged", action="store_true", help="Also every portfolio and signal without a manager."
+    )
+    assign.add_argument(
+        "--execute", action="store_true", help="Assign; without it only list the rows."
+    )
+    assign.add_argument(
+        "--json", dest="emit_json", action="store_true", help="Emit machine-readable JSON."
+    )
     return parser
 
 

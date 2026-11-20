@@ -58,10 +58,15 @@ Recommended sections:
 - [0057. Asset Calendar Links In Bulk And At Registration](0057-asset-calendar-links-in-bulk-and-at-registration.md)
 - [0058. Trade At The Next Observed Price](0058-trade-at-the-next-observed-price.md)
 - [0059. Portfolio Currency, FX, Cash Limits And Drifting Weights](0059-portfolio-currency-fx-and-drifting-weights.md)
+- [0060. Producers Publish, Markets Reads Only Its Own Tables](0060-producers-publish-markets-reads-only-its-own-tables.md)
 
 ## Command Center Decisions
 
 - [0034. Command Center Asset Monitor Helpers](0034-command-center-asset-monitor-helpers.md)
+
+## Execution Engine Decisions
+
+- [0001. Execution Engine Architecture](execution_engine/0001-execution-engine-architecture.md)
 
 ## FastAPI v1 Decisions
 

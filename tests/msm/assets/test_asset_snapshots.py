@@ -21,8 +21,6 @@ from msm.time_index.assets import (
 from msm.time_index.assets.snapshots import AssetTimestampedUpdater
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.services.assets.openfigi import build_asset_snapshot_frame_from_openfigi_result
-from msm_pricing.time_index import AssetPricingDetail, AssetPricingDetailConfiguration
-from msm_pricing.time_index.pricing_details.storage import AssetPricingDetailsStorage
 
 
 def test_asset_snapshot_uses_table_update_run_hook(monkeypatch) -> None:
@@ -81,24 +79,6 @@ def test_asset_snapshot_resolves_storage_first_surface(monkeypatch) -> None:
         "ticker",
         "exchange_code",
         "asset_ticker_group_id",
-    ]
-
-
-def test_asset_pricing_detail_resolves_storage_first_surface() -> None:
-    assert AssetPricingDetail._required_output_table() is AssetPricingDetailsStorage
-    assert issubclass(
-        AssetPricingDetail.configuration_class,
-        AssetPricingDetailConfiguration,
-    )
-    assert [column.name for column in AssetPricingDetailsStorage.__table__.columns] == [
-        "time_index",
-        "asset_identifier",
-        "instrument_dump",
-        "instrument_type",
-        "serialization_format",
-        "pricing_package_version",
-        "source",
-        "metadata",
     ]
 
 

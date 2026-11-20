@@ -14,7 +14,8 @@ runs the row class's own ``delete`` where the class defines one (``Account``
 and the composites), else the resource's service delete with its preflight
 checks, and is offered only where one of them exists. The account-history rows
 refuse ``delete`` under every backend (``__delete_refusal__``, ADR 0049): only
-the account delete removes them.
+the account delete removes them. ``Portfolio`` refuses it too: only the portfolio
+routes delete a portfolio, with its datasets.
 """
 
 from __future__ import annotations
@@ -75,9 +76,9 @@ def _load_row_classes() -> dict[str, type]:
     import msm.api.issuers  # noqa: F401
     import msm.api.portfolios  # noqa: F401
     import msm.api.virtual_funds  # noqa: F401
-    import msm_portfolios.api.datasets  # noqa: F401
     import msm_portfolios.api.market_metadata  # noqa: F401
     import msm_portfolios.api.portfolios  # noqa: F401
+    import msm_portfolios.api.series  # noqa: F401
     import msm_pricing.api.curve_building_details  # noqa: F401
     import msm_pricing.api.curves  # noqa: F401
     import msm_pricing.api.index_convention_details  # noqa: F401
@@ -90,14 +91,12 @@ def _load_row_classes() -> dict[str, type]:
 
 def _service_deletes() -> dict[str, Callable[[str], Any]]:
     from apps.v1.services import asset_categories, assets, calendars, indices, portfolio_groups
-    from apps.v1.services import portfolios
 
     return {
         "asset": lambda uid: assets.delete_asset(uid=uid),
         "asset-category": lambda uid: asset_categories.delete_asset_category(uid=uid),
         "calendar": lambda uid: calendars.delete_calendar(uid=uid),
         "index": lambda uid: indices.delete_index(uid=uid),
-        "portfolio": lambda uid: portfolios.delete_portfolio(uid=uid),
         "portfolio-group": lambda uid: portfolio_groups.delete_portfolio_group(uid=uid),
     }
 

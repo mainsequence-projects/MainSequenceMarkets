@@ -121,6 +121,12 @@ MarketsOperationContext = MarketsRepositoryContext | MarketsMetaTableHandle
 
 MarketsCompiledWrite = MetaTableCompiledSQLOperation | MetaTableCompiledSQLTransaction
 
+DELETE_DEADLINE_MS = 60_000
+"""MetaTables' longest deadline, in milliseconds, for a delete's read and transaction.
+
+Its 15 s default covers a whole statement list; deleting a portfolio's datasets can take
+longer (issue 91)."""
+
 
 def with_max_rows[ContextT: (MarketsRepositoryContext, MarketsMetaTableHandle)](
     context: ContextT, max_rows: int
@@ -131,6 +137,20 @@ def with_max_rows[ContextT: (MarketsRepositoryContext, MarketsMetaTableHandle)](
     if limits.max_rows >= max_rows:
         return context
     return replace(context, limits=limits.model_copy(update={"max_rows": max_rows}))
+
+
+def with_delete_deadline[ContextT: (MarketsRepositoryContext, MarketsMetaTableHandle)](
+    context: ContextT,
+) -> ContextT:
+    """``context`` whose operations may run for `DELETE_DEADLINE_MS`."""
+
+    limits = MetaTableOperationLimits.model_validate(context.limits or {})
+    if limits.statement_timeout_ms >= DELETE_DEADLINE_MS:
+        return context
+    return replace(
+        context,
+        limits=limits.model_copy(update={"statement_timeout_ms": DELETE_DEADLINE_MS}),
+    )
 
 
 def resolve_markets_sql_target(
@@ -265,6 +285,7 @@ def execute_markets_write(
 
 
 __all__ = [
+    "DELETE_DEADLINE_MS",
     "MarketsCompiledWrite",
     "MarketsMetaTableHandle",
     "MarketsOperationContext",
@@ -275,5 +296,6 @@ __all__ = [
     "execute_markets_write",
     "resolve_markets_sql_target",
     "values_parameter",
+    "with_delete_deadline",
     "with_max_rows",
 ]

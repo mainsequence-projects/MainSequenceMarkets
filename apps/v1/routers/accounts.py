@@ -11,7 +11,6 @@ from apps.v1.schemas.accounts import (
     Account,
     AccountCreate,
     AccountUpdate,
-    AccountWithIncludes,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -54,7 +53,7 @@ from apps.v1.services.accounts import (
     search_account_target_allocation_targets,
     update_account,
 )
-from apps.v1.services.includes import SidecarReadError
+from apps.v1.services.resource_discovery import ACCOUNT_DELETE_PORTFOLIOS_OPTION
 from msm.services.accounts.allocation_policies import AllocationError
 from msm.api.http import (
     BULK_ACTION_PREFLIGHT_CONTRACT,
@@ -65,6 +64,7 @@ from msm.api.http import (
     ResourceCollection,
     api_error_with_inputs,
     blocked_preflight_detail,
+    bulk_action_option_values,
     explicit_uuid_selection,
     resource_collection_response,
 )
@@ -256,7 +256,7 @@ def get_virtual_fund_allocation_policy_route(
 
 @router.get(
     "/by-uids/",
-    response_model=ResourceCollection[AccountWithIncludes],
+    response_model=ResourceCollection[Account],
     summary="Look up accounts by uid",
     description=(
         "Return the accounts whose uid is listed in `uid__in` (repeated or comma-separated, "
@@ -265,9 +265,8 @@ def get_virtual_fund_allocation_policy_route(
     ),
     operation_id="getAccountsByUids",
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid `uid__in` or `include`."},
-        404: {"model": ErrorResponse, "description": "An included MetaTable is not visible."},
-        409: {"model": ErrorResponse, "description": "An included sidecar could not be read."},
+        400: {"model": ErrorResponse, "description": "Invalid `uid__in`."},
+        409: {"model": ErrorResponse, "description": "A stored row is invalid."},
     },
 )
 def get_accounts_by_uid_list(
@@ -275,21 +274,9 @@ def get_accounts_by_uid_list(
         list[str],
         Query(alias="uid__in", description="Account uids, repeated or comma-separated."),
     ],
-    include: Annotated[
-        list[str] | None,
-        Query(
-            description=(
-                "Provider sidecar MetaTable uids (repeated or comma-separated, at most 10) keyed "
-                "by this resource's uid; their rows are attached under `includes`. The Markets "
-                "workload needs `data_viewer` on each sidecar."
-            ),
-        ),
-    ] = None,
-) -> ResourceCollection[AccountWithIncludes]:
+) -> ResourceCollection[Account]:
     try:
-        items = get_accounts_by_uids(uids=uid__in, include=include)
-    except SidecarReadError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        items = get_accounts_by_uids(uids=uid__in)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -343,9 +330,24 @@ _ACCOUNT_DELETE_DESCRIPTION = (
     "trades and their order events, order managers, virtual funds, target allocations, "
     "position sets, holdings sets and their rows (ADR 0050). Only Markets tables receive "
     "statements. A table in another namespace loses rows only through its own foreign key: "
-    "a CASCADE key deletes them and is listed in `other_namespace_cascades`, and a "
-    "RESTRICT key refuses the delete."
+    "a CASCADE key deletes them, and a RESTRICT key refuses the delete. With "
+    "`delete_portfolios`, the same transaction also deletes, with all their data, the "
+    "portfolios the account's virtual funds or target rows name and nothing else uses; "
+    "the answer lists them in `deleted_portfolios`, and in `kept_portfolios`, with the "
+    "reason, those another account uses, whose values or weights another application's "
+    "table holds, or whose delete a foreign key refuses (then the account is deleted "
+    "alone). One delete sends MetaTables one read and one transaction."
 )
+_ACCOUNT_DELETE_OPTIONS = (ACCOUNT_DELETE_PORTFOLIOS_OPTION,)
+
+
+def _account_bulk_selection(payload: BulkActionExecutionRequest) -> tuple[list[str], bool]:
+    try:
+        uids = explicit_uuid_selection(payload, options=_ACCOUNT_DELETE_OPTIONS)
+        options = bulk_action_option_values(payload, _ACCOUNT_DELETE_OPTIONS)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return uids, options[ACCOUNT_DELETE_PORTFOLIOS_OPTION.key]
 
 
 @router.post(
@@ -353,8 +355,10 @@ _ACCOUNT_DELETE_DESCRIPTION = (
     response_model=AccountBulkDeleteResponse,
     summary="Bulk delete accounts",
     description=(
-        "Delete the selected accounts. " + _ACCOUNT_DELETE_DESCRIPTION + " The route runs "
-        "the preflight first and answers 409 when it reports a blocker."
+        "Delete the selected accounts. " + _ACCOUNT_DELETE_DESCRIPTION + " The option "
+        "`delete_portfolios` in `options` applies it to every selected account. The route "
+        "runs the preflight first and answers 409 when it reports a blocker; MetaTables' "
+        "delete impact is asked for at most once."
     ),
     operation_id="bulkDeleteAccounts",
     responses={
@@ -368,14 +372,11 @@ def bulk_delete_account_rows(
         Body(description="Command Center bulk-action execution request."),
     ],
 ) -> AccountBulkDeleteResponse:
-    try:
-        uids = explicit_uuid_selection(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = preflight_bulk_delete_accounts(uids=uids)
+    uids, delete_portfolios = _account_bulk_selection(payload)
+    preflight = preflight_bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
     if not preflight.allowed:
         raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
-    response = bulk_delete_accounts(uids=uids)
+    response = bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
     if response.failed:
         details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
         raise HTTPException(
@@ -392,7 +393,10 @@ def bulk_delete_account_rows(
     description=(
         "Report, without deleting, the Markets rows each selected account's delete would "
         "remove, the rows of other accounts that block it, and the tables in other "
-        "namespaces it reaches through their own foreign keys."
+        "namespaces it reaches through their own foreign keys. With the option "
+        "`delete_portfolios`, each account also lists the portfolios its delete would "
+        "remove (`portfolios`) and the ones it would keep, with the reason "
+        "(`kept_portfolios`); warnings name both."
     ),
     operation_id="preflightBulkDeleteAccounts",
     openapi_extra={"x-ui-contract": BULK_ACTION_PREFLIGHT_CONTRACT},
@@ -404,11 +408,8 @@ def preflight_account_bulk_delete(
         Body(description="Command Center bulk-action execution request to preflight."),
     ],
 ) -> AccountDeletePreflightResponse:
-    try:
-        uids = explicit_uuid_selection(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return preflight_bulk_delete_accounts(uids=uids)
+    uids, delete_portfolios = _account_bulk_selection(payload)
+    return preflight_bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
 
 
 @router.delete(
@@ -424,9 +425,21 @@ def preflight_account_bulk_delete(
         409: {"model": ErrorResponse, "description": "A foreign key refuses the delete."},
     },
 )
-def remove_account(uid: str) -> AccountDeleteResponse:
+def remove_account(
+    uid: str,
+    delete_portfolios: Annotated[
+        bool,
+        Query(
+            description=(
+                "Also delete, in the same transaction and with all their data, the "
+                "portfolios the account's virtual funds or target rows name and nothing "
+                "else uses."
+            ),
+        ),
+    ] = False,
+) -> AccountDeleteResponse:
     try:
-        response = delete_account(uid=uid)
+        response = delete_account(uid=uid, delete_portfolios=delete_portfolios)
     except ValueError as exc:
         status_code = 409 if exc.__class__.__name__ == "AccountDeleteConflictError" else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc

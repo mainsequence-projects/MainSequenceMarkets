@@ -111,16 +111,18 @@ Portfolios answer these questions:
 - `msm_portfolios.configuration`: portfolio configuration models.
 - `msm_portfolios.time_index`: canonical updaters for portfolios, portfolio
   weights, signal weights, storage initialization, and identity helpers.
-- `msm_portfolios.time_index.contract_instances`: factories that build a
-  provider-owned instance of the `PortfoliosTS`, `PortfolioWeightsTS` and
-  `SignalWeightsTS` contracts (ADR 0047). An instance has the indexes of its
-  contract: the unique time-leading one, and for the two weights contracts a
-  second one that leads with the series, `(signal_uid, time_index)` or
-  `(portfolio_identifier, time_index)`. The provider's own migration creates
-  them.
-- `msm_portfolios.services.portfolio_datasets`: the Markets catalog of which
-  instance holds each portfolio's datasets, with register, reconcile and list
-  services.
+- `msm_portfolios.api.series`: `SignalWeightsSeries`, `PortfolioWeightsSeries`
+  and `PortfolioValuesSeries`, which publish and read the three published
+  series in Markets' own tables (ADR 0060).
+- `msm_portfolios.recipes`: what an application reuses around the series:
+  publish a signal, read history, run a portfolio, end a signal, delete its
+  private rows.
+- `msm_portfolios.time_index.contract_instances`: factories that build an
+  application's private state tables (rebalance state, calendar events, event
+  ledger) in its own namespace.
+- `msm_portfolios.series_history`: `SeriesHistoryPublish`, the object
+  `msm series publish` runs to publish an application's existing history to
+  Markets.
 - `msm_portfolios.rebalance_strategy`: rebalance strategy base classes and
   built-in strategies.
 - `msm.models.portfolios`: core SQLAlchemy MetaTable declaration for portfolio
@@ -397,54 +399,134 @@ signal = signal_weights(
 )
 ```
 
-Every read first resolves, in one statement, which table holds each
-portfolio's rows: `PortfolioTable` left-joined to its
-`PortfolioDatasetAvailabilityTable` row and to `SignalMetadataTable`
-(`resolve_portfolio_dataset_tables(...)`). The requested portfolios are then
-grouped by table uid:
+Every read is compiled SQL on Markets' own tables (`PortfoliosStorage`,
+`PortfolioWeightsStorage`, `SignalWeightsStorage`) and on nothing else. A
+published series is stored only there, whichever application computed it.
 
-- a group with a catalogued table uid is read once by uid through
-  `metatables.TimeIndexTableRef`, filtered by `portfolio_identifier` (or
-  `signal_uid`), on the contract columns only; extra provider columns are
-  ignored;
-- the group with no catalog row reads the Markets-owned core table
-  (`PortfoliosStorage`, `PortfolioWeightsStorage`, `SignalWeightsStorage`)
-  through compiled SQL, as before.
-
-The result is one ordered list of row dictionaries with `portfolio_uid`
-attached, however many instances served it. The fan-out is bounded by the
-number of distinct tables, not of portfolios.
-
-`latest_portfolio_weights(...)` reads the `PortfolioWeightsTS` instance by
+`latest_portfolio_weights(...)` reads portfolio weights by
 `PortfolioTable.unique_identifier`, which is the storage-facing
 `portfolio_identifier`. Pass `as_of=True` for latest-at-or-before snapshot
 selection, `as_of=False` for exact timestamp matching, and `order="asc"` for
-the earliest snapshot when no `weights_date` is given. On a catalogued table
-the latest snapshot time comes from `get_last_observation`, and the snapshot
-rows from one bounded `get_df_between_dates` call.
+the earliest snapshot when no `weights_date` is given.
 
 `portfolio_values(...)` reads value rows for one or more portfolios, with
 optional `start`, `end`, `latest_only` and `limit`. `signal_weights(...)`
-reads one signal's rows; the instance is the caller's `meta_table_uid` (from
-the portfolio's catalog row), else `SignalMetadataTable.meta_table_uid`, else
-the core table. These helpers return market-domain row dictionaries. Command
-Center tabular frames and dashboard formatting are consumer concerns.
+reads one signal's rows, newest first unless `order="asc"`, with optional
+`start`, `end` and `limit`. These helpers return market-domain row
+dictionaries. Command Center tabular frames and dashboard formatting are
+consumer concerns.
 
 Use an explicit `repository_context` for live platform reads. Tests and
-downstream adapters may pass an `executor` callable for the SQL statements and
-a `dataset_reader` callable (uid to `TimeIndexTableRef`-like reader) for the
-catalogued tables, as `tests/msm_portfolios/services/test_portfolio_reads.py`
-does. See `examples/msm_portfolios/portfolio_read_services.py` for an offline
-example with injected executors.
+downstream adapters may pass an `executor` callable for the SQL statements, as
+`tests/msm_portfolios/services/test_portfolio_reads.py` does. See
+`examples/msm_portfolios/portfolio_read_services.py` for an offline example
+with injected executors. An application on the `remote` row backend reads the
+same rows with the series operations and recipes below.
 
-## Contract Instances And The Dataset Catalog
+## Published Series
 
-ADR 0047 makes `PortfoliosTS`, `PortfolioWeightsTS` and `SignalWeightsTS`
-storage contracts with any number of instances. ms-markets owns the contract:
-columns, dtypes, nullability, time index and index names. The core tables are
-the Markets-owned instance for portfolios Markets computes itself. A provider
-owns its instances, in its own MetaTables namespace, migrated by its own
-Alembic provider and written by its own nodes with `output_table=`.
+Markets reads and writes only its own tables (ADR 0060). Signal weights,
+portfolio weights and portfolio values of a registered signal or portfolio are
+stored once, in `SignalWeightsStorage`, `PortfolioWeightsStorage` and
+`PortfoliosStorage`. An application publishes their rows to Markets and reads
+them back from Markets; it has no table for them and keeps no copy. Publishing
+shares the rows with every reader of Markets, so a portfolio that must not be
+shared is not registered. The skill
+`.agents/skills/ms_markets/platform/producer_boundary/SKILL.md` teaches the
+pattern to an application that builds on ms-markets.
+
+`msm_portfolios.api` has one row class per series. Under the `runtime` backend
+each operation is compiled SQL on Markets' table; under `remote` it is
+`POST /api/v1/rows/{resource}/{operation}/`
+([Row Operations](../../../fast_api/v1/rows.md)).
+
+| Row class | Resource | Key | Rows |
+| --- | --- | --- | --- |
+| `SignalWeightsSeries` | `signal-weights` | `SignalMetadata.signal_uid` | `time_index`, `asset_identifier`, `signal_weight` |
+| `PortfolioWeightsSeries` | `portfolio-weights` | `Portfolio.unique_identifier` | `time_index`, `asset_identifier`, `weight`, `weight_before`, `price_current`, `price_before`, `volume_current`, `volume_before`, `held_shares`, `book_cash` |
+| `PortfolioValuesSeries` | `portfolio-values` | `Portfolio.unique_identifier` | `time_index`, `close`, `return`, `calculated_close`, `close_time`, `valuation_stale` |
+
+| Operation | What it does |
+| --- | --- |
+| `publish(key, rows)` | Writes rows of one key in one transaction. A row equal to the stored row of the same time (and asset) is skipped; a different one refuses the call and nothing is written. At most `PUBLISH_MAX_ROWS` (10,000) rows per call. Answers a `SeriesPublication`: rows written and skipped, and the key's first time, last time and row count after the call. |
+| `window(keys, start, end, columns, ...)` | Rows of several keys with `start <= time_index <= end`, one page of at most `limit` rows (default 5,000, at most `READ_MAX_ROWS`, 9,000) from `offset`; `newest_first` reverses the order. The two weights series also take `assets`. |
+| `last(keys, at, ...)` | The last rows at or before `at` (before it with `inclusive=False`): per key, or per asset with `by="asset"` on the two weights series. At most 9,000 rows. |
+| `bounds(keys)` | First time, last time and row count of each key, in the order given. |
+| `assets(key)` | Every asset the key has ever had a row for. The values series answers the assets of the portfolio's weights. |
+| `delete_after(key, time)` | Deletes the key's rows after `time`, so they can be published again. |
+
+`publish` on signal weights applies the signal rules in Markets: times carry a
+timezone, weights are finite numbers, assets are registered, an asset the
+signal held and an observation leaves out is written at `0`, and an
+observation at or before the signal's last stored time is refused unless it
+equals what is stored. `publish` on the two portfolio series refuses rows at or
+after the portfolio's retirement. `SeriesRows.frame()` gives a DataFrame
+indexed like the table.
+
+### Managers
+
+`Portfolio.managed_by` and `SignalMetadata.managed_by` name the principal that
+created the row (`msm.api.managers`). The Markets API records it from the
+acting identity of the create call: `branch:<uid>` for a workload of a code
+repository branch (every Job, release and Agent of one application in one
+Environment), `user:<uid>` for a person or any other identity. A caller never
+sends it: a payload that carries `managed_by` is refused.
+
+Through the Markets API, `publish`, `delete_after` and the delete of the row
+are refused with 403 for any caller but the manager. A row with no manager
+accepts none of them until an Organization admin assigns one with
+`Portfolio.assign_manager(uid, managed_by)` or
+`SignalMetadata.assign_manager(uid, managed_by)`. Outside the Markets API (the
+`runtime` backend in a script, a Job or a test) nothing is checked, because
+that process reaches the tables with its own MetaTables grants, and a row it
+creates has no manager.
+
+### The Engine Publishes
+
+`SignalWeights` and its subclasses, `PortfolioWeights` and `PortfoliosUpdater`
+are not `TimeIndexTableUpdater`s: they are bound to no table and MetaTables
+keeps no update record of them (`msm_portfolios.series_nodes`).
+`run()` runs the node's dependencies, computes `update()` and publishes the
+rows through the series row class. A node's progress is the series itself
+(`bounds` and `last`). A row at or before the key's last stored time is not
+published again, so running the same window twice writes nothing. The same
+code runs in an application under the `remote` backend and in the Markets
+deployment under `runtime`.
+
+`PortfoliosUpdater.run()` answers `portfolio_weights`, `portfolio_values` (the
+values' `SeriesPublication`, `None` when nothing was new) and `portfolio`.
+With `update_pointers=True`, the default, it records the portfolio's signal on
+its `Portfolio` row. The nodes do not fill the `*_table_update_uid` columns of
+`PortfolioTable`.
+
+### Recipes
+
+`msm_portfolios.recipes` holds what an application reuses around the series.
+Each recipe is built only on the series operations, the registry row classes
+and the engine nodes, so it works the same under both backends. The
+application applies its own rules (which assets or owners it accepts) before
+it calls one.
+
+| Recipe | What it does |
+| --- | --- |
+| `publish_signal_weights(signal_uid, observations, *, description=None)` | Creates the signal's `SignalMetadata` row on its first publication (its manager is the caller), publishes `{time: {asset: weight}}` observations, and answers rows written and skipped, the assets, and the first and last time. |
+| `signal_history(signal_uids, *, latest=0)` | First and last observation of many signals in one call; with `latest`, each signal's latest observations as a time by asset matrix. |
+| `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
+| `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
+| `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
+| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, ...)` | Runs the chain in order from the signal's first observation, creates the `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values, and answers what was written and whether a first rebalance happened. |
+| `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
+| `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
+
+## Private State Tables
+
+Rebalance state, calendar events and the event ledger are private to the
+application that runs the portfolio. `msm_portfolios.time_index.contract_instances`
+builds them as instances of the `PortfolioRebalanceStateTS`,
+`PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` contracts, in the
+application's own MetaTables namespace, migrated by its own Alembic provider.
+ms-markets owns each contract: columns, dtypes, nullability, time index and
+index names.
 
 ```python
 from sqlalchemy import MetaData
@@ -454,9 +536,6 @@ from metatables import sqlalchemy_naming_convention
 from msm_portfolios.time_index import PortfoliosUpdater
 from msm_portfolios.time_index.contract_instances import (
     configured_portfolio_rebalance_state_storage,
-    configured_portfolio_weights_storage,
-    configured_portfolios_storage,
-    configured_signal_weights_storage,
 )
 
 
@@ -464,200 +543,84 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ProviderPortfoliosStorage = configured_portfolios_storage(
+ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
     instance_key="main",
     namespace="my-provider",
     storage_app="my_provider",
     base=ProviderBase,
 )
-ProviderPortfolioWeightsStorage = configured_portfolio_weights_storage(
-    instance_key="main", namespace="my-provider",
-    storage_app="my_provider", base=ProviderBase,
-)
-ProviderSignalWeightsStorage = configured_signal_weights_storage(
-    instance_key="main", namespace="my-provider",
-    storage_app="my_provider", base=ProviderBase,
-)
-```
-
-Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
-`<storage_app>__<contract>__<instance_key>` (here
-`my_provider__portfoliosts__main`), whose MetaTable identifier is
-`<Contract>.<instance_key>` prefixed with the namespace when it is not the
-default Markets one (`my-provider.PortfoliosTS.main`), and whose
-columns, dtypes, foreign keys to the core registries (`Portfolio`,
-`Asset`, `SignalMetadata`) and unique grain index equal the contract's. With
-`base=`, the referenced core tables are copied into the provider's metadata so
-the foreign keys resolve without importing the core classes into the
-provider's migration scope. Without `base=` the instance is registered in the
-Markets registry; the Markets migration provider still lists only the core
-tables. The provider may add columns beyond the contract; Markets reads the
-contract columns and ignores the rest. `PortfolioCanonicalUpdater` subclasses
-accept the instance through `output_table=`.
-
-The engine outputs are contracts too: `configured_portfolio_rebalance_state_storage`,
-`configured_portfolio_calendar_events_storage` and
-`configured_portfolio_event_ledger_storage` build `PortfolioRebalanceStateTS`,
-`PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` instances with the same
-arguments. `PortfoliosUpdater` builds its own `PortfolioWeights` and
-`PortfolioRebalance` updaters, so it takes their instances as well:
-
-```python
-ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
-    instance_key="main", namespace="my-provider",
-    storage_app="my_provider", base=ProviderBase,
-)
 
 updater = PortfoliosUpdater(
     portfolio_configuration=portfolio_configuration,
-    output_table=ProviderPortfoliosStorage,
-    weights_output_table=ProviderPortfolioWeightsStorage,
     rebalance_output_table=ProviderRebalanceStateStorage,
 )
 ```
 
-Do not pass `namespace=` to the updater: on an updater it is the MetaTables
-hash namespace, which changes `update_hash`. The instance's namespace comes from
-its factory.
+Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
+`<storage_app>__<contract>__<instance_key>` and whose MetaTable identifier is
+`<Contract>.<instance_key>`, prefixed with the namespace when it is not the
+default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). With
+`base=`, the referenced core tables are copied into the application's metadata
+so the foreign keys resolve without importing the core classes into its
+migration scope. `configured_portfolio_calendar_events_storage` and
+`configured_portfolio_event_ledger_storage` take the same arguments.
+`configured_time_index_instance` (`msm.storage_instances`) builds an instance
+of any other Markets storage.
 
-`PortfolioWeights` alone takes `output_table=` and `rebalance_output_table=`.
-`InterpolatedPrices` takes `storage_namespace=`, `storage_app=` and
-`storage_base=` to keep its derived table in the provider's namespace; the
-table keeps its storage identity and identifier suffix, and none of the three
-enters `update_hash`.
+Bind the engine to them with `rebalance_output_table=` on `PortfoliosUpdater`,
+`PortfolioWeights` and `run_portfolio`, and with `output_table=` on the
+calendar events and ledger updaters. `namespace=` on a node is the MetaTables
+hash namespace of the chain, not a table's namespace; a private table's
+namespace comes from its factory. `InterpolatedPrices` takes
+`storage_namespace=`, `storage_app=` and `storage_base=` to keep its derived
+table in the application's namespace; the table keeps its storage identity and
+identifier suffix, and none of the three enters `update_hash`.
 
-An application on the remote row backend registers and reconciles the catalog
-with `msm_portfolios.api.datasets.PortfolioDatasets.register(...)`,
-`.reconcile(...)` and `.get(...)`, which run the services below on the Markets
-API. `register` binds the
-portfolio's current signal; `PortfolioDatasets.register_signal({"signal_uid":
-..., "signal_meta_table_uid": ...})` binds any other signal, such as the earlier
-signals of a producer whose signal uid changes each run, after verifying the
-table against the signal weights contract. `PortfolioDatasets.unregister(portfolio_uid=...)`
-removes the catalog row (and the signal binding to the catalogued signal
-instance) to roll a move back; reads return to the core tables.
-`PortfolioDatasets.unregister_signal(signal_uid=...)` clears any other signal's
-binding, undoing `register_signal`.
-Instance tables change where rows land, not identities: none of them enters
-`update_hash`, and MetaTables keys each update record by update hash and output
-table.
+A private table may reference a registry row with a physical foreign key (the
+factories copy the contract's keys to `Portfolio.unique_identifier`, `Asset`
+and `Calendar`) and declares its delete action. That key points from the
+application to Markets and is the only coupling between them. Markets does not
+discover, count or name the table:
 
-Markets keeps the catalog in `PortfolioDatasetAvailabilityTable`
-(`msm.models.portfolio_dataset_availability`, identifier
-`PortfolioDatasetAvailability`, mirroring `IndexDatasetAvailabilityTable`).
-One row per portfolio records the values, weights and signal instance uids and
-the reconciled population state of the values instance: `populated`,
-`compatible_empty` or `unavailable`, with row count, earliest and latest time
-index, reconciled time and error fields. `SignalMetadataTable.meta_table_uid`
-records the signal's instance so a signal can be read without its portfolio.
-
-```python
-from msm_portfolios.services import (
-    list_portfolio_dataset_states,
-    reconcile_portfolio_dataset_availability,
-    register_portfolio_datasets,
-)
-
-state = register_portfolio_datasets(
-    runtime.context,
-    {
-        "portfolio_uid": portfolio.uid,
-        "values_meta_table_uid": ProviderPortfoliosStorage.get_meta_table_uid(),
-        "weights_meta_table_uid": ProviderPortfolioWeightsStorage.get_meta_table_uid(),
-        "signal_meta_table_uid": ProviderSignalWeightsStorage.get_meta_table_uid(),
-    },
-)
-result = reconcile_portfolio_dataset_availability(
-    runtime.context, portfolio_uids=[portfolio.uid]
-)
-```
-
-`register_portfolio_datasets` checks that each declared table is a visible
-`TimeIndexMetaTable` that exposes the contract columns and index names, upserts
-the catalog row, binds `SignalMetadata.meta_table_uid` when the portfolio has a
-signal, and reconciles. `reconcile_portfolio_dataset_availability` groups the
-requested portfolios by values table uid and aggregates each instance once with
-one `count`, `min` and `max` statement grouped by `portfolio_identifier`; an
-instance the Markets workload cannot read yields `unavailable` rows carrying the
-error. Portfolios without a catalog row are reported in
-`skipped_portfolio_uids` and keep reading the core tables. The provider calls
-these through the Markets API after creating the portfolio and after each run.
-
-Who may read is a separate, narrow grant: the Markets workload needs
-`data_viewer` on each provider's time-series tables, or the call is
-requester-bound and the person's own grants apply.
+- a registry delete deletes Markets' own rows and lets the database apply
+  every key;
+- a `RESTRICT` key that refuses answers 409 with the database's message;
+- the application deletes its own rows first, with `delete_private_series`.
 
 ### Moving Existing History
 
-A portfolio that was already built into the core tables keeps its history
-there until it is copied: portfolio and signal history is not recomputed.
-`msm_portfolios.services.series_moves` moves it and rolls it back the same way
-for every provider:
+Nothing moves by itself. A person runs each step, in each Environment:
 
-```python
-from msm_portfolios.services.series_moves import (
-    PortfolioSeriesMove,
-    PortfolioSeriesTables,
-    SignalSeriesMove,
-)
-from msm.storage_copies import run_series_moves
+1. `msm registry assign-manager --manager branch:<uid>` with `--portfolio
+   <unique_identifier>`, `--signal <signal_uid>` (both repeatable) or
+   `--unmanaged` (every portfolio and signal with no manager) lists the rows;
+   with `--execute` it assigns the manager (`msm.api.managers.assign_managers`).
+   The `msm` command imports only `msm`: to assign signals, pass
+   `--attach module:callable`, a callable that attaches the runtime and imports
+   `msm_portfolios.api`. Through the Markets API only an Organization admin may
+   assign one.
+2. `msm series publish module:callable` reads an application's own table with
+   the operator's own MetaTables access and compares it with the series in
+   Markets; with `--execute` it publishes the rows key by key and compares
+   `bounds` again. The callable returns
+   `msm_portfolios.series_history.SeriesHistoryPublish(source=<storage class>,
+   series="signal-weights" | "portfolio-weights" | "portfolio-values",
+   keys=[...])`; with no `keys`, every key of the source is published. The
+   source is unchanged, and publishing the same history again writes nothing.
+3. The application drops its own table in a later revision of its own, once
+   every key is verified.
 
-instances = PortfolioSeriesTables(
-    values=ProviderPortfoliosStorage,
-    weights=ProviderPortfolioWeightsStorage,
-    rebalance_state=ProviderPortfolioRebalanceStateStorage,
-    signal_weights=ProviderSignalWeightsStorage,
-)
-moves = [
-    PortfolioSeriesMove(
-        portfolio.unique_identifier,
-        instances,
-        portfolio_uid=portfolio.uid,
-        signal_uids=earlier_signal_uids,
-        with_current_signal=True,
-        on_copied=lambda: use_provider_tables(portfolio),
-        on_rolled_back=lambda: use_core_tables(portfolio),
-    ),
-]
-report = run_series_moves(moves, dry_run=True)  # counts only
-report = run_series_moves(moves, dry_run=False)
-report = run_series_moves(moves, rollback=True, dry_run=False)
-```
-
-A move copies, per key, the signal weights of the signals that move with the
-portfolio, then its rebalance state, weights, values and event ledger, writing
-only the rows the instance lacks (`msm.storage_copies.copy_time_index_rows`).
-When every key is complete it calls `on_copied`, where the provider points its
-updaters at the instances, binds the moved signals that are not the portfolio's
-current one with `register_signal`, and writes the catalog row last with
-`register`. If a key is still missing rows the move stops as `incomplete` and
-nothing in Markets changes; running it again copies only the gaps. Before
-`on_copied` it checks that every signal it will bind has a `SignalMetadata`
-row, so a signal that never ran fails the move before the provider switches.
-
-A rollback copies the rows the instances gained since the move back into the
-core tables, removes the catalog row (`unregister(..., unbind_signal=False)`),
-clears the bindings of the signals that moved with the portfolio
-(`unregister_signal`) and calls `on_rolled_back`; a signal moved on its own keeps
-its binding until its own `SignalSeriesMove` rolls back. The instances keep
-their rows. Every move takes `keys_per_read` and `deadline_seconds` for its
-reads. `SignalSeriesMove` does the same for signals moved on their own;
-`run_series_moves` runs signals before portfolios on a move and portfolios
-first on a rollback. Calendar events are not copied: the engine rebuilds them.
-
-`msm series move module:callable [--execute]` and `msm series rollback ...`
-run the moves a provider callable returns (it receives `rollback=` when it
-accepts that argument); without `--execute` they only count.
-The operator needs `data_viewer` on the tables read, write access to the tables
-written (a rollback writes the core tables); pause the provider's runs while a
-move or rollback runs.
+Both commands take `--json`. `msm series move` and `msm series rollback` copy
+rows between two tables with the operator's own access
+(`msm.storage_copies.TableSeriesMove`, `copy_time_index_rows`); Markets takes
+no part in them.
 
 ## Weights An Application Publishes
 
 `ApplicationWeights` (`msm_portfolios.contrib.signals`) is the signal for
-weights a provider receives rather than computes: chosen by a person, a model
-or another system. The provider binds it to its own `SignalWeightsTS` instance
-and calls `publish` whenever it has a new set.
+weights an application receives rather than computes: chosen by a person, a
+model or another system. The application calls `publish` whenever it has a
+new set; the weights go to `SignalWeightsSeries`.
 
 ```python
 import datetime as dt
@@ -666,7 +629,6 @@ from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeight
 
 signal_weights = ApplicationWeights.from_signal_configuration(
     ApplicationWeightsConfig(provider="my-provider", key="model-7"),
-    output_table=ProviderSignalWeightsStorage,
 )
 signal_weights.publish(
     {
@@ -676,6 +638,10 @@ signal_weights.publish(
     description="Weights chosen by the model-7 committee.",
 )
 ```
+
+`publish` is `publish_signal_weights` for that signal: the first publication
+creates its `SignalMetadata` row, described from the configuration when no
+`description` is given.
 
 The configuration names the stream and never the weights, so the signal uid
 does not change when the weights do. `provider` is part of it because signal
@@ -688,18 +654,18 @@ depend on where a provider's code lives.
 | A weight is keyed by the asset's `unique_identifier`, exactly as given. | A provider names its assets its own way; no FIGI translation. |
 | An unknown asset identifier refuses the whole call (`LookupError`). | A typo must not become a missing position. |
 | One observation is the whole set. An asset the previous observation held and this one leaves out is written at `0`; an empty observation closes every held asset. | Otherwise forward fill keeps the old weight and the portfolio never leaves the asset. |
-| Several observations in one call are one write, applied in time order. | A portfolio can start with a history. |
+| Several observations in one call are applied in time order. | A portfolio can start with a history. |
 | Times must carry a timezone and are stored in UTC. | Naive times are refused. |
-| An observation at or before the signal's last stored time is refused (`ValueError`) and nothing is written. | The updaters keep only rows newer than their last stored row, and a portfolio that already rebalanced on an observation is not recomputed, so a restatement would never reach it. |
+| An observation at or before the signal's last stored time is refused (`ValueError`) and nothing is written. | The nodes publish only rows newer than the last stored one, and a portfolio that already rebalanced on an observation is not recomputed, so a restatement would never reach it. |
 | Weights are stored as given: no normalisation, negatives allowed; they must be finite numbers. | Whether weights sum to one, or may be short, is the provider's rule. |
 
 The signal has no dependencies, reads no price and values nothing. Its
 weights stand until the next observation (`maximum_forward_fill` is 36,500
 days), and `get_asset_list()` is every asset it has published. When the
 portfolio trades is the rebalance strategy's decision, from the latest
-observation at or before each event. The signal offers no HTTP route: a
-provider puts its own route, with its own authorisation, in front of
-`publish`.
+observation at or before each event. The signal offers no HTTP route of its
+own: an application puts its own route, with its own authorisation, in front
+of `publish`.
 
 `FixedWeights` keeps weights in its configuration, so new weights are a new
 signal; `ExternalWeights` stays the signal for weights in a CSV artifact keyed
@@ -748,8 +714,8 @@ after the previous portfolio has been replayed and verified.
 
 Portfolio registry tables are regular platform-managed MetaTables. They describe
 portfolio identity and relationships; they do not store historical portfolio
-values. Historical values, weights, and signal outputs live in time-index-table output
-tables.
+values. Historical values, weights, and signal weights live in the published
+series tables.
 
 Portfolio identity is core reference data and lives under:
 
@@ -759,14 +725,14 @@ src/msm/models/portfolios/
 ├── core.py       PortfolioTable
 ├── groups.py     PortfolioGroupTable, PortfolioGroupMembershipTable
 └── signals.py    SignalMetadataTable
-src/msm/models/portfolio_dataset_availability.py
-                  PortfolioDatasetAvailabilityTable
 ```
 
 `PortfolioTable` is the canonical portfolio identity row. It is keyed by
 `unique_identifier` and stores optional `published_index_uid` linkage to
-`IndexTable`, an optional `signal_uid` linkage to `SignalMetadataTable`, plus
-TimeIndexTableUpdater UIDs for canonical portfolio outputs. A portfolio is not an asset. The
+`IndexTable`, an optional `signal_uid` linkage to `SignalMetadataTable`, and
+`managed_by`, the principal that publishes to its series (see
+[Managers](#managers)). `SignalMetadataTable` has `managed_by` too. The
+`*_table_update_uid` columns are not filled by the engine nodes. A portfolio is not an asset. The
 optional published index link is metadata for workflows that want to expose the
 portfolio as an index-like observable; core portfolio weights, values, account
 expansion, and virtual-fund allocation use `PortfolioTable.uid` /
@@ -807,10 +773,8 @@ Portfolio identity, required calendar linkage, and optional published-index link
 | uid PK                      |                                  | uid PK                      |
 | unique_identifier unique    |                                  | unique_identifier unique    |
 | calendar_uid FK NOT NULL ---+----+                             | index_type                  |
-| portfolio_weights_table_update_uid |--> PortfolioWeights       +-----------------------------+
-| signal_weights_table_update_uid    |--> SignalWeights
-| signal_uid FK nullable ---------+----------------------------+
-| portfolio_table_update_uid         |--> PortfoliosUpdater
+| signal_uid FK nullable -----+-----------------------------+    +-----------------------------+
+| managed_by                  |
 | backtest_table_price_column_name|
 +-----------------------------+
                                   |
@@ -832,6 +796,7 @@ Portfolio identity, required calendar linkage, and optional published-index link
                          | uid PK                      |
                          | signal_uid unique           |
                          | signal_description          |
+                         | managed_by                  |
                          +-----------------------------+
 ```
 
@@ -889,7 +854,7 @@ MetaTables:
 | External price updaters     |------------------------------->| ExternalPricesStorage                |
 | InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
 +-----------------------------+                                +--------------------------------------+
-          TimeIndexTableUpdater update logic                                  PlatformTimeIndexMetaTable
+          engine node                                                         PlatformTimeIndexMetaTable
 
 +-----------------------------+        required parent          +--------------------------------------+
 | SignalMetadataTable         |<-------------------------------| SignalWeightsStorage                 |
@@ -899,6 +864,10 @@ MetaTables:
 | signal_description          |                                | asset_identifier                     |
 +-----------------------------+                                +--------------------------------------+
 ```
+
+`PortfolioWeights`, `SignalWeights` and `PortfoliosUpdater` write through the
+series operations ([Published Series](#published-series)); the other nodes are
+`TimeIndexTableUpdater`s bound to their table.
 
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
@@ -1174,19 +1143,17 @@ is valued from the book's shares and cash, which `PortfolioWeights` projects
 (`held_shares`, `book_cash`): its value is the cash plus each asset's shares at
 its price, so weights drift with prices between rebalances (ADR 0059). Weights
 without a book are valued from constant weights. `fail_on_missing_values` (default `False`) refuses a
-stale observation instead, as an option of the policy. A provider
-that owns `PortfoliosTS` instances adds the `valuation_stale` column to them in
-its own migration.
+stale observation instead, as an option of the policy.
 
 `portfolio_prices_frequency` and `PriceAlignmentPolicy` were removed. Use
 `ValuationAlignmentPolicy` for source freshness and `PortfolioAnalytics` for
 daily, weekly, monthly, or other reporting frequency conversion.
 
-Existing portfolio output progress is scoped by `portfolio_identifier` because
-`PortfoliosStorage` is keyed by `(time_index, portfolio_identifier)`. A later
-row for another portfolio in the shared storage table must not move this
-portfolio's start date; if this portfolio has no progress entry, the workflow
-treats it as a fresh portfolio rather than using the table-wide maximum.
+Portfolio output progress is the portfolio's own series: `bounds` and `last`
+of `PortfolioValuesSeries` and `PortfolioWeightsSeries` under its
+`portfolio_identifier`. A later row for another portfolio in the shared storage
+table does not move this portfolio's start date; a portfolio with no rows is a
+fresh portfolio.
 
 Signal output progress is scoped by `signal_uid` because `SignalWeightsStorage`
 is keyed by `(time_index, signal_uid, asset_identifier)`. `signal_uid` is a
@@ -1268,9 +1235,22 @@ retired, an exclusive end, and is null while it is live
   before `retired_at` and drop any row dated at or after it
   (`msm_portfolios.retirement`). A run after the portfolio has caught up reads
   only the empty window up to the boundary; `PortfolioEngine` replays up to it.
-  The storage tables do not enforce the boundary, so a direct table write
-  bypasses it.
-- A portfolio is deleted only when nothing references it.
+  `publish` on `PortfolioWeightsSeries` and `PortfolioValuesSeries` refuses
+  rows at or after it. The storage tables do not enforce the boundary, so a
+  direct table write bypasses it.
+- A portfolio is deleted only when nothing references it. The delete removes
+  its rows in its seven datasets with the row, in one transaction. It is
+  refused while account history references it, when the caller does not manage
+  it, and when the database refuses it because an application's own table
+  still holds rows of it
+  ([Delete Portfolio](../../../fast_api/v1/portfolio.md#delete-portfolio)).
+  Only the Markets API's portfolio routes delete a portfolio; `Portfolio.delete`
+  raises `MarketsOperationUnsupported` under both backends.
+- An account delete can take the portfolios only that account used, in the same
+  transaction: `msm_portfolios.services.delete_account_with_portfolios` and
+  `bulk_delete_accounts_with_portfolios`, which the account routes run with
+  `delete_portfolios`
+  ([ADR 0050](../../../ADR/0050-account-deletion.md) decision 9).
 
 ## Portfolio Construction And Account Virtual-Fund Allocation Boundary
 
@@ -1310,25 +1290,19 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
         | PortfolioTable                                          |
         | - portfolio identity                                    |
-        | - signal_weights_table_update_uid                       |
-        | - portfolio_weights_table_update_uid                    |
-        | - portfolio_table_update_uid                            |
+        | - signal_uid -> SignalMetadataTable.signal_uid          |
+        | - managed_by                                            |
         | - optional published_index_uid -> IndexTable.uid        |
         +---------------------------------------------------------+
 ```
 
-`PortfoliosUpdater.run(..., update_pointers=True)` updates the
-`PortfolioTable` TimeIndexTableUpdater pointer fields after the portfolio graph has
-published. This is enabled by default for portfolio-configuration runs, so
-examples and callers do not need to manually re-upsert the portfolio row after
-execution. Pass `update_pointers=False` only when deliberately running the graph
-without updating portfolio registry links.
-
-When a run publishes no new executed weights, the workflow must not require a
-fresh `PortfolioWeights` TimeIndexTableUpdate. It preserves the existing
-`PortfolioTable.portfolio_weights_table_update_uid` and still updates the signal
-and portfolio-values pointers from the TimeIndexTableUpdate records produced by the current
-graph run.
+`SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater` publish their rows
+to `SignalWeightsSeries`, `PortfolioWeightsSeries` and `PortfolioValuesSeries`.
+`PortfoliosUpdater.run(..., update_pointers=True)`, the default, records the
+portfolio's signal on its `PortfolioTable` row after the values are published,
+so callers do not re-upsert the portfolio row after execution. Pass
+`update_pointers=False` only when deliberately running the graph without
+updating the portfolio row.
 
 Virtual-fund allocation is a separate relationship over account holdings and a
 target portfolio:
@@ -1398,7 +1372,7 @@ from `pandas_market_calendars`, publishes example OHLCV bars to
 `ExternalPricesStorage`, interpolates those prices, runs
 `PortfolioCalendarEvents`, `SignalWeights`, `PortfolioRebalance`,
 `PortfolioWeights`, and `PortfoliosUpdater`, and upserts the
-`Portfolio` row with `calendar_uid` plus the published TimeIndexTableUpdater update UIDs.
+`Portfolio` row with `calendar_uid` and its signal.
 The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.
 It does not create virtual funds or virtual-fund allocation rows; those require

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -10,18 +9,13 @@ from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     Portfolio,
     PortfolioBulkDeleteResponse,
-    PortfolioDatasetReconciliationResult,
-    PortfolioDatasetReconcileRequest,
-    PortfolioDatasetRegistrationRequest,
-    PortfolioDatasetState,
+    PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
     PortfolioWeightsDeleteResponse,
     PortfolioWeightsSnapshotResponse,
-    PortfolioWithIncludes,
 )
 from msm.api.http import (
-    BulkDeletePreflightResponse,
     TabularFrameResponse,
     build_tabular_field,
     build_tabular_frame,
@@ -210,28 +204,15 @@ def get_portfolio_values_frame(
     return TabularFrameResponse.model_validate(response)
 
 
-def get_portfolios_by_uids(
-    *, uids: Sequence[str], include: Sequence[str] | None = None
-) -> list[PortfolioWithIncludes]:
-    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted.
+def get_portfolios_by_uids(*, uids: Sequence[str]) -> list[Portfolio]:
+    """Return the portfolios whose uid is listed, in request order; unknown uids are omitted."""
 
-    ``include`` names provider sidecar MetaTables keyed by `Portfolio.uid` whose
-    rows are attached under ``includes`` (ADR 0047 `include` hydration).
-    """
-
-    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
     from msm.models import PortfolioTable
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=PortfolioTable, uids=normalize_lookup_uids(uids))
-    return hydrate(
-        runtime.context,
-        model_cls=PortfolioWithIncludes,
-        core_model=PortfolioTable,
-        items=[_validate_portfolio_row(row) for row in rows],
-        include=include,
-    )
+    return [_validate_portfolio_row(row) for row in rows]
 
 
 def get_portfolios_values_frame(
@@ -245,11 +226,10 @@ def get_portfolios_values_frame(
 ) -> TabularFrameResponse:
     """Return one `core.tabular_frame@v1` of values for several portfolios.
 
-    ADR 0047: the portfolios are grouped by the `PortfoliosTS` instance the
-    catalog records for them; each instance is read once and the rows are
-    merged. Every requested uid must be a portfolio. The merged rows are
-    ordered by (`time_index`, `portfolio_identifier`) and `offset` skips that
-    many of them, so a caller pages through a window longer than `limit`.
+    The rows come from Markets' own `PortfoliosTS` table (ADR 0060). Every
+    requested uid must be a portfolio. The rows are ordered by (`time_index`,
+    `portfolio_identifier`) and `offset` skips that many of them, so a caller
+    pages through a window longer than `limit`.
     """
 
     portfolios = _required_portfolios(uids)
@@ -404,58 +384,6 @@ def get_portfolios_weights_frame(
     )
 
 
-@registry_write("portfolio", "register:datasets")
-def register_portfolio_dataset_catalog(
-    *,
-    uid: str,
-    payload: PortfolioDatasetRegistrationRequest,
-) -> PortfolioDatasetState:
-    """Record which instance tables hold one portfolio's datasets (ADR 0047)."""
-
-    from msm_portfolios.services import register_portfolio_datasets
-
-    return register_portfolio_datasets(
-        _get_runtime().context,
-        {
-            "portfolio_uid": uuid.UUID(str(uid)),
-            "values_meta_table_uid": payload.values_meta_table_uid,
-            "weights_meta_table_uid": payload.weights_meta_table_uid,
-            "signal_meta_table_uid": payload.signal_meta_table_uid,
-        },
-        reconcile=payload.reconcile,
-    )
-
-
-def get_portfolio_dataset_state(*, uid: str) -> PortfolioDatasetState | None:
-    """Return the catalog row of one portfolio, or ``None`` when it reads the core tables.
-
-    Raises ``LookupError`` when the portfolio does not exist.
-    """
-
-    from msm_portfolios.services import list_portfolio_dataset_states
-
-    if get_portfolio_detail(uid=uid) is None:
-        raise LookupError(f"Portfolio {uid!r} was not found.")
-    states = list_portfolio_dataset_states(_get_runtime().context, portfolio_uids=[uid])
-    return states[0] if states else None
-
-
-@registry_write("portfolio", "reconcile:datasets")
-def reconcile_portfolio_dataset_catalog(
-    *,
-    payload: PortfolioDatasetReconcileRequest,
-) -> PortfolioDatasetReconciliationResult:
-    """Reconcile the values instance of the selected catalogued portfolios."""
-
-    from msm_portfolios.services import reconcile_portfolio_dataset_availability
-
-    return reconcile_portfolio_dataset_availability(
-        _get_runtime().context,
-        portfolio_uids=payload.portfolio_uids,
-        portfolio_identifiers=payload.portfolio_identifiers,
-    )
-
-
 def _required_portfolios(uids: Sequence[str]) -> list[Portfolio]:
     from apps.v1.services.lookups import normalize_lookup_uids
 
@@ -503,7 +431,7 @@ def _json_uid(value: Any) -> str | None:
 
 @registry_write("portfolio", "delete")
 def delete_portfolio(*, uid: str) -> PortfolioDeleteResponse | None:
-    runtime = _get_runtime()
+    runtime = _get_delete_runtime()
     deleted = _delete_portfolio_record(runtime.context, uid=uid)
     if not deleted:
         return None
@@ -524,45 +452,31 @@ def delete_portfolio_weights(
 
 
 @registry_write("portfolio", "bulk-delete")
-def bulk_delete_portfolios(*, uids: list[str]) -> PortfolioBulkDeleteResponse:
-    runtime = _get_runtime()
-    response = _bulk_delete_portfolio_records(runtime.context, uids=uids)
+def bulk_delete_portfolios(*, uids: list[str], plan: Any = None) -> PortfolioBulkDeleteResponse:
+    """Delete the selection; with ``plan`` from `plan_bulk_delete_portfolios`, by its checks."""
+
+    runtime = _get_delete_runtime()
+    response = _bulk_delete_portfolio_records(runtime.context, uids=uids, plan=plan)
     return PortfolioBulkDeleteResponse.model_validate(response)
 
 
-def preflight_bulk_delete_portfolios(*, uids: list[str]) -> BulkDeletePreflightResponse:
-    runtime = _get_runtime()
-    target_uids = list(dict.fromkeys(uids))
-    matched_count = 0
-    blockers: list[str] = []
-    warnings: list[str] = []
-    for uid in target_uids:
-        exists, resource_blockers, resource_warnings = _portfolio_delete_preflight_item(
-            runtime.context,
-            uid=uid,
-        )
-        if not exists:
-            blockers.append(f"Portfolio {uid} was not found.")
-            continue
-        matched_count += 1
-        blockers.extend(f"Portfolio {uid}: {blocker}" for blocker in resource_blockers)
-        warnings.extend(f"Portfolio {uid}: {warning}" for warning in resource_warnings)
-    impact = _portfolio_delete_impact()
-    blockers.extend(impact.blockers)
+def plan_bulk_delete_portfolios(*, uids: list[str]) -> Any:
+    """Run the delete's checks for the selection once (issue 96).
 
-    allowed = bool(target_uids) and not blockers
-    detail = (
-        f"{matched_count} portfolio{' is' if matched_count == 1 else 's are'} ready for deletion."
-        if allowed
-        else "The portfolio selection cannot be deleted as submitted."
-    )
-    return BulkDeletePreflightResponse(
-        allowed=allowed,
-        detail=detail,
-        matched_count=matched_count,
-        blockers=blockers,
-        warnings=[*warnings, *impact.warnings],
-        impact=impact.impact,
+    The plan's ``preflight()`` is the preflight report, and `bulk_delete_portfolios`
+    deletes by the plan without counting the selection again.
+    """
+
+    runtime = _get_delete_runtime()
+    return _plan_portfolio_deletes(runtime.context, uids=uids)
+
+
+def preflight_bulk_delete_portfolios(*, uids: list[str]) -> PortfolioDeletePreflightResponse:
+    """Run the delete's checks for the selection without deleting (issue 93)."""
+
+    runtime = _get_delete_runtime()
+    return PortfolioDeletePreflightResponse.model_validate(
+        _preflight_bulk_delete_portfolio_records(runtime.context, uids=uids)
     )
 
 
@@ -572,7 +486,6 @@ def _get_runtime():
     return resolve_apps_v1_portfolio_runtime(
         models=[
             "Portfolio",
-            "PortfolioDatasetAvailability",
             "Index",
             "Asset",
             "AssetSnapshotsStorage",
@@ -585,6 +498,28 @@ def _get_runtime():
             "VirtualFund",
         ],
         row_model_name="GET /api/v1/portfolio/",
+    )
+
+
+def _get_delete_runtime():
+    """The runtime with every table the portfolio delete reads or deletes from."""
+
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
+
+    return resolve_apps_v1_portfolio_runtime(
+        models=[
+            "Portfolio",
+            "PortfolioWeightsStorage",
+            "PortfoliosStorage",
+            "PortfolioRebalanceStateStorage",
+            "PortfolioAnalyticsStorage",
+            "PortfolioEventLedgerStorage",
+            "PortfolioStateStorage",
+            "PortfolioCashFlowsStorage",
+            "TargetPositionsStorage",
+            "VirtualFund",
+        ],
+        row_model_name="DELETE /api/v1/portfolio/{uid}/",
     )
 
 
@@ -642,38 +577,16 @@ def _bulk_delete_portfolio_records(context, **kwargs):
     return bulk_delete_portfolio_records(context, **kwargs)
 
 
-def _portfolio_delete_impact():
-    from msm.models import PortfolioTable
-    from msm.services import delete_rows_impact
+def _preflight_bulk_delete_portfolio_records(context, **kwargs):
+    from msm_portfolios.services import preflight_bulk_delete_portfolio_records
 
-    return delete_rows_impact(PortfolioTable)
+    return preflight_bulk_delete_portfolio_records(context, **kwargs)
 
 
-def _portfolio_delete_preflight_item(
-    context,
-    *,
-    uid: str,
-) -> tuple[bool, list[str], list[str]]:
-    from msm_portfolios.services import public_api
+def _plan_portfolio_deletes(context, **kwargs):
+    from msm_portfolios.services import plan_portfolio_deletes
 
-    existing = public_api._get_portfolio_row(context, uid=uid)
-    if existing is None:
-        return False, [], []
-    portfolio = public_api._build_portfolio_row(existing)
-    portfolio_uid = uuid.UUID(str(portfolio["uid"]))
-    portfolio_identifier = str(portfolio.get("unique_identifier") or "")
-    blockers = public_api._portfolio_delete_blockers(context, portfolio_uid=portfolio_uid)
-    retained = public_api._retained_portfolio_datasets(
-        public_api._portfolio_dataset_tables(context, portfolio_identifier=portfolio_identifier),
-        portfolio_uid=portfolio_uid,
-        portfolio_identifier=portfolio_identifier,
-    )
-    warnings = [
-        f"its {item['dataset']} rows in table {item['meta_table_uid']} stay in place; "
-        "the application that owns that table deletes them."
-        for item in retained
-    ]
-    return True, blockers, warnings
+    return plan_portfolio_deletes(context, **kwargs)
 
 
 def _validate_portfolio_row(row: object) -> Portfolio:

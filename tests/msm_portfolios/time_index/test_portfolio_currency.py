@@ -42,30 +42,22 @@ from msm_portfolios.time_index.portfolios.rebalance import (
     quote_currencies,
     read_rebalance_input,
 )
-from tests.msm_portfolios.accounting.test_accounting import (
-    _legacy_build_configuration,
-    always_open_strategy,
-)
-from tests.msm_portfolios.time_index.test_execution_policy import (
-    SWAP,
+from tests.support.accounting import _legacy_build_configuration, always_open_strategy
+from tests.support.portfolio_values import asset_frame, portfolio_values_node_for_frames
+from tests.support.rebalance import (
     HALTED_SELL,
-    position_deltas,
-    prices,
-    progress,
-    rounded,
-)
-from tests.msm_portfolios.time_index.test_next_observed_price import (
+    SWAP,
     PublishedTable,
     book,
     calendar,
     marks,
+    position_deltas,
+    prices,
+    progress,
+    rounded,
     signal_frame,
     stock_strategy,
     utc,
-)
-from tests.msm_portfolios.time_index.test_portfolio_contracts import (
-    asset_frame,
-    portfolio_values_node_for_frames,
 )
 
 
@@ -342,7 +334,6 @@ def test_portfolio_rebalance_reads_the_portfolios_fx_source() -> None:
     )
 
     assert node.dependencies() == {
-        "signal_weights": signal,
         "valuation_source": source,
         "fx_source": fx,
         "calendar_events": events,

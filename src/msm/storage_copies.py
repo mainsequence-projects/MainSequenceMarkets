@@ -1,9 +1,10 @@
-"""Move a time series between a Markets core table and a provider instance (ADR 0047).
+"""Copy a time series between two tables with the operator's own access (ADR 0047, 0060).
 
-A provider that moves a series into its own instance of a Markets storage
-(``msm.storage_instances``, or the portfolio contract instances) copies the rows it already produced into the core table, because that history
-is not recomputed, and copies the rows the instance gained back to roll the move
-back. ``copy_time_index_rows`` is that copy: it reads both tables through
+An operator that moves a series into an application's own instance of a Markets
+storage (``msm.storage_instances``, or a private portfolio state table) copies the
+rows already produced, because that history is not recomputed, and copies the rows
+the instance gained back to roll the move back. Markets takes no part: nothing here
+calls the Markets API. ``copy_time_index_rows`` is that copy: it reads both tables through
 MetaTables, writes only the rows of the selected keys that the target lacks,
 through ``TimeIndexRowsCopy`` bound to the target, and counts both sides again,
 so a copy that stopped part-way, or a second pass after more rows arrived, fills
@@ -11,9 +12,9 @@ exactly the gaps.
 
 ``TableSeriesMove`` moves the rows of some keys of one table and rolls them back;
 ``run_series_moves`` runs a list of moves (``msm series move|rollback`` on the
-command line). The portfolio and signal moves, which also update the Markets
-portfolio catalog, are ``PortfolioSeriesMove`` and ``SignalSeriesMove`` in the
-portfolios package's ``services.series_moves``.
+command line). Signal weights, portfolio weights and portfolio values are never
+moved into an instance: they are published to Markets (``msm series publish``,
+ADR 0060).
 
 The person or Job that runs a copy needs read access to the source table and
 write access to the target table.
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Literal
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -260,12 +261,11 @@ def _index_rows_per_key(index: pd.Index, key_column: str) -> dict[str, int]:
 
 @dataclass
 class SeriesMoveResult:
-    """What one move or rollback did: its copies, catalog calls and final status."""
+    """What one move or rollback did: its copies and final status."""
 
     kind: str
     label: str
     copies: list[TimeIndexCopyReport] = field(default_factory=list)
-    catalog: list[Any] = field(default_factory=list)
     status: MoveStatus = "planned"
     detail: str = ""
 
@@ -281,7 +281,6 @@ class SeriesMoveResult:
             "complete": self.complete,
             "detail": self.detail,
             "copies": [copy.summary() for copy in self.copies],
-            "catalog": [_json_state(item) for item in self.catalog],
         }
 
 
@@ -318,8 +317,6 @@ class TableSeriesMove:
     market-data set binding, an Index dataset catalog row) are re-bound by the
     provider in those callbacks.
     """
-
-    move_order: ClassVar[int] = 0
 
     core: type[Any]
     instance: type[Any]
@@ -359,18 +356,8 @@ def finish_move(
     rollback: bool,
     dry_run: bool,
     after_copy: Callable[[], Any] | None = None,
-    catalog: Callable[[], Iterable[Any]] | None = None,
-    catalog_first: bool = False,
-    preflight: Callable[[], Any] | None = None,
 ) -> SeriesMoveResult:
-    """Set a move's status once its copies ran; on success run its callback and catalog calls.
-
-    ``preflight`` runs first and raises when a catalog call would fail, so a
-    refused move never reaches ``after_copy``. A move runs ``after_copy`` then
-    ``catalog`` (the catalog row is written last); a rollback (``catalog_first``)
-    removes the catalog row first, so Markets reads the core tables again before
-    the provider's updaters do.
-    """
+    """Set a move's status once its copies ran; on success run its callback."""
 
     if dry_run:
         result.status = "planned"
@@ -379,15 +366,8 @@ def finish_move(
         result.status = "incomplete"
         result.detail = "rows are still missing in the target after the copy"
         return result
-    if preflight is not None:
-        preflight()
-    steps = [catalog, after_copy] if catalog_first else [after_copy, catalog]
-    for step in steps:
-        if step is None:
-            continue
-        produced = step()
-        if step is catalog:
-            result.catalog.extend(produced or ())
+    if after_copy is not None:
+        after_copy()
     result.status = "rolled_back" if rollback else "moved"
     return result
 
@@ -400,14 +380,12 @@ def run_series_moves(
     stop_on_error: bool = False,
     emit: Callable[[str], None] | None = None,
 ) -> SeriesMoveReport:
-    """Run moves (``TableSeriesMove`` and the portfolio and signal moves) in dependency order.
+    """Run ``TableSeriesMove``s in order, or in reverse order for a rollback.
 
-    A move runs signals before portfolios, so a catalog row never names a signal
-    table that does not hold the signal yet; a rollback runs portfolios first.
     One failed move is reported and the others continue unless ``stop_on_error``.
     """
 
-    ordered = sorted(moves, key=lambda move: move.move_order, reverse=rollback)
+    ordered = list(moves)[::-1] if rollback else list(moves)
     report = SeriesMoveReport(rollback=rollback, dry_run=dry_run)
     for move in ordered:
         try:
@@ -427,14 +405,101 @@ def run_series_moves(
     return report
 
 
-def _json_state(value: Any) -> Any:
-    dump = getattr(value, "model_dump", None)
-    return dump(mode="json") if callable(dump) else value
+@dataclass(frozen=True)
+class KeyPublication:
+    """One key: rows in the source, rows written and skipped, and the series in Markets."""
+
+    key: str
+    source_rows: int
+    written: int
+    skipped: int
+    source_first: Any
+    source_last: Any
+    markets_first: Any
+    markets_last: Any
+    markets_rows: int
+    error: str = ""
+
+    @property
+    def verified(self) -> bool:
+        """Markets holds the source's span and at least its rows.
+
+        Signal weights may hold more: Markets closes a dropped asset at ``0``.
+        """
+
+        return (
+            not self.error
+            and _same_time(self.source_first, self.markets_first)
+            and _same_time(self.source_last, self.markets_last)
+            and self.markets_rows >= self.source_rows
+        )
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "source_rows": self.source_rows,
+            "written": self.written,
+            "skipped": self.skipped,
+            "source_first": _iso(self.source_first),
+            "source_last": _iso(self.source_last),
+            "markets_first": _iso(self.markets_first),
+            "markets_last": _iso(self.markets_last),
+            "markets_rows": self.markets_rows,
+            "verified": self.verified,
+            "error": self.error,
+        }
+
+
+@dataclass
+class SeriesHistoryReport:
+    """Every key of every publish of one ``run_series_publishes``."""
+
+    dry_run: bool
+    results: list[tuple[str, KeyPublication]] = field(default_factory=list)
+
+    @property
+    def succeeded(self) -> bool:
+        if self.dry_run:
+            return all(not key.error for _, key in self.results)
+        return all(key.verified for _, key in self.results)
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "dry_run": self.dry_run,
+            "succeeded": self.succeeded,
+            "results": [{"label": label, **key.summary()} for label, key in self.results],
+        }
+
+
+def run_series_publishes(publishes: Iterable[Any], *, dry_run: bool = True) -> SeriesHistoryReport:
+    """Run the publishes an operator callable returns, in order (ADR 0060, decision 9).
+
+    Each publish is an object of the package that defines the published series. Its
+    ``run(dry_run=...)`` answers ``(label, KeyPublication)`` for each key it publishes, so
+    this module names no series of another package. ``dry_run`` reads and compares only.
+    """
+
+    report = SeriesHistoryReport(dry_run=dry_run)
+    for publish in publishes:
+        report.results.extend(publish.run(dry_run=dry_run))
+    return report
+
+
+def _same_time(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return pd.Timestamp(left) == pd.Timestamp(right)
+
+
+def _iso(value: Any) -> str | None:
+    return None if value is None else pd.Timestamp(value).isoformat()
 
 
 __all__ = [
     "DEFAULT_KEYS_PER_READ",
     "KeyCopy",
+    "KeyPublication",
+    "SeriesHistoryReport",
     "SeriesMoveReport",
     "SeriesMoveResult",
     "TableSeriesMove",
@@ -445,4 +510,5 @@ __all__ = [
     "finish_move",
     "registered_time_index_meta_table",
     "run_series_moves",
+    "run_series_publishes",
 ]

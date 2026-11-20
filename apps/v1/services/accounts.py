@@ -10,7 +10,6 @@ from apps.v1.schemas.accounts import (
     Account,
     AccountCreate,
     AccountUpdate,
-    AccountWithIncludes,
     AccountHoldingsByFundResponse,
     AccountHoldingsSnapshotResponse,
     AccountTargetAllocationCandidate,
@@ -59,28 +58,15 @@ def get_account(*, uid: str) -> Account | None:
     return Account.model_validate(rows[0])
 
 
-def get_accounts_by_uids(
-    *, uids: Sequence[str], include: Sequence[str] | None = None
-) -> list[AccountWithIncludes]:
-    """Return the accounts whose uid is listed, in request order; unknown uids are omitted.
+def get_accounts_by_uids(*, uids: Sequence[str]) -> list[Account]:
+    """Return the accounts whose uid is listed, in request order; unknown uids are omitted."""
 
-    ``include`` names provider sidecar MetaTables keyed by `Account.uid` whose rows
-    are attached under ``includes`` (ADR 0047 `include` hydration).
-    """
-
-    from apps.v1.services.includes import hydrate
     from apps.v1.services.lookups import normalize_lookup_uids, rows_by_uids
     from msm.models import AccountTable
 
     runtime = _get_runtime()
     rows = rows_by_uids(runtime.context, model=AccountTable, uids=normalize_lookup_uids(uids))
-    return hydrate(
-        runtime.context,
-        model_cls=AccountWithIncludes,
-        core_model=AccountTable,
-        items=[Account.model_validate(row) for row in rows],
-        include=include,
-    )
+    return [Account.model_validate(row) for row in rows]
 
 
 @registry_write("account", "create")
@@ -373,41 +359,60 @@ def search_account_target_allocation_targets(
 
 
 @registry_write("account", "delete")
-def delete_account(*, uid: str) -> AccountDeleteResponse | None:
-    """Delete one account with its whole history (ADR 0050)."""
+def delete_account(*, uid: str, delete_portfolios: bool = False) -> AccountDeleteResponse | None:
+    """Delete one account with its whole history, and on request the portfolios only it
+    used (ADR 0050)."""
 
-    from msm.services import delete_account as delete_account_record
+    if delete_portfolios:
+        from msm_portfolios.services import delete_account_with_portfolios as delete_record
+    else:
+        from msm.services import delete_account as delete_record
 
     runtime = _get_delete_runtime()
-    deleted = delete_account_record(runtime.context, uid=uid)
+    deleted = delete_record(runtime.context, uid=uid)
     if deleted is None:
         return None
     return AccountDeleteResponse.model_validate(deleted)
 
 
 @registry_write("account", "bulk-delete")
-def bulk_delete_accounts(*, uids: list[str]) -> AccountBulkDeleteResponse:
-    from msm.services import bulk_delete_accounts as bulk_delete_account_records
+def bulk_delete_accounts(
+    *,
+    uids: list[str],
+    delete_portfolios: bool = False,
+) -> AccountBulkDeleteResponse:
+    if delete_portfolios:
+        from msm_portfolios.services import bulk_delete_accounts_with_portfolios as bulk_delete
+    else:
+        from msm.services import bulk_delete_accounts as bulk_delete
 
     runtime = _get_delete_runtime()
-    return AccountBulkDeleteResponse.model_validate(
-        bulk_delete_account_records(runtime.context, uids=uids)
-    )
+    return AccountBulkDeleteResponse.model_validate(bulk_delete(runtime.context, uids=uids))
 
 
-def preflight_bulk_delete_accounts(*, uids: list[str]) -> AccountDeletePreflightResponse:
-    from msm.services import preflight_bulk_delete_accounts as preflight_account_records
+def preflight_bulk_delete_accounts(
+    *,
+    uids: list[str],
+    delete_portfolios: bool = False,
+) -> AccountDeletePreflightResponse:
+    if delete_portfolios:
+        from msm_portfolios.services import (
+            preflight_bulk_delete_accounts_with_portfolios as preflight,
+        )
+    else:
+        from msm.services import preflight_bulk_delete_accounts as preflight
 
     runtime = _get_delete_runtime()
-    return AccountDeletePreflightResponse.model_validate(
-        preflight_account_records(runtime.context, uids=uids)
-    )
+    return AccountDeletePreflightResponse.model_validate(preflight(runtime.context, uids=uids))
 
 
 def _get_delete_runtime():
-    from apps.v1.runtime_bootstrap import resolve_apps_v1_runtime
+    """The runtime with every table the account delete reads or deletes from, the
+    portfolio tables included for ``delete_portfolios`` (issue 91)."""
 
-    return resolve_apps_v1_runtime(
+    from apps.v1.runtime_bootstrap import resolve_apps_v1_portfolio_runtime
+
+    return resolve_apps_v1_portfolio_runtime(
         models=[
             "Account",
             "AccountHoldingsSet",
@@ -423,6 +428,14 @@ def _get_delete_runtime():
             "OrdersStorage",
             "TradesStorage",
             "OrderEventsStorage",
+            "Portfolio",
+            "PortfolioWeightsStorage",
+            "PortfoliosStorage",
+            "PortfolioRebalanceStateStorage",
+            "PortfolioAnalyticsStorage",
+            "PortfolioEventLedgerStorage",
+            "PortfolioStateStorage",
+            "PortfolioCashFlowsStorage",
         ],
         row_model_name="DELETE /api/v1/account/{uid}/",
     )

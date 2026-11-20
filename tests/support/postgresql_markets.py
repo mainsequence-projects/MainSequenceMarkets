@@ -1,0 +1,109 @@
+"""Markets on a disposable PostgreSQL database, the hosted dialect.
+
+The `postgresql_markets` fixture (`tests/conftest.py`) needs
+``MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL``, an empty, disposable ``markets_*``
+database on localhost; tests that use it are skipped otherwise. For each test it migrates
+the database to head and sends every compiled statement the way MetaTables' PostgreSQL
+backend does: values bound by its ``parameters_for``, each statement executed with
+``prepare=True``, a statement list in one transaction with its row guards, and the rows
+answered in their wire form. Portfolio dataset rows and plans are in
+`tests/support/postgresql_portfolios.py`.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+import sqlalchemy as sa
+from alembic import command
+from sqlalchemy.engine import make_url
+
+import metatables.runtime_context
+from metatables import (
+    MetaTable,
+    MetaTableCompiledSQLOperation,
+    MetaTableCompiledSQLTransaction,
+    MetaTableTransactionGuardError,
+)
+from metatables.runtime_contract import RuntimeContext
+from msm.repositories.base import MarketsRepositoryContext
+from tests.support.migrations import _config
+
+URL_VARIABLE = "MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL"
+
+
+def postgresql_markets(monkeypatch):
+    """Yield the engine, a repository context and the list of MetaTables requests.
+
+    The `postgresql_markets` fixture in `tests/conftest.py` runs this.
+    """
+
+    url = os.environ.get(URL_VARIABLE)
+    if not url:
+        pytest.skip(f"Set {URL_VARIABLE} to a disposable PostgreSQL database")
+    parsed = make_url(url)
+    if parsed.host not in {"localhost", "127.0.0.1"} or not (parsed.database or "").startswith("markets_"):
+        pytest.fail("These tests accept only a disposable markets_* database on localhost")
+
+    import psycopg
+    from metatables.api.backend.backends.restricted_sql import json_value, parameters_for
+
+    engine = sa.create_engine(parsed.set(drivername="postgresql+psycopg"))
+    with engine.connect() as connection:
+        connection.exec_driver_sql("DROP SCHEMA public CASCADE")
+        connection.exec_driver_sql("CREATE SCHEMA public")
+        connection.commit()
+        command.upgrade(_config(connection), "head")
+        connection.commit()
+
+    runtime = RuntimeContext(
+        git_source=None,
+        dialect="postgresql",
+        paramstyle="pyformat",
+        data_source={"uid": "00000000-0000-0000-0000-000000000063"},
+        default_schema="public",
+    )
+    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
+    dsn = parsed.set(drivername="postgresql").render_as_string(hide_password=False)
+    operations: list[str] = []
+
+    def run(statements, *, guarded):
+        with psycopg.connect(dsn) as connection, connection.cursor() as cursor:
+            rows, names = [], []
+            for index, statement in enumerate(statements):
+                values = parameters_for(statement.parameters, statement.parameter_types, "postgresql")
+                cursor.execute(statement.sql, values or None, prepare=True)
+                rows = cursor.fetchall() if cursor.description else []
+                names = [column.name for column in cursor.description or ()]
+                expected = getattr(statement, "expect_rows", None) if guarded else None
+                count = len(rows) if cursor.description else max(cursor.rowcount, 0)
+                if expected is not None and count != expected:
+                    connection.rollback()
+                    raise MetaTableTransactionGuardError(
+                        "guard", statement_index=index, label=statement.label,
+                        expect_rows=expected, row_count=count,
+                    )
+            return {"ok": True, "rows": [json_value(dict(zip(names, row))) for row in rows]}
+
+    def execute_operation(cls, operation, *, timeout=None):
+        operations.append("read" if operation.operation == "select" else operation.operation)
+        wire = MetaTableCompiledSQLOperation.model_validate_json(operation.model_dump_json())
+        return run([wire.statement], guarded=False)
+
+    def execute_transaction(cls, transaction, *, timeout=None):
+        operations.append("transaction")
+        wire = MetaTableCompiledSQLTransaction.model_validate_json(transaction.model_dump_json())
+        return run(wire.statements, guarded=True)
+
+    monkeypatch.setattr(MetaTable, "execute_operation", classmethod(execute_operation))
+    monkeypatch.setattr(MetaTable, "execute_transaction", classmethod(execute_transaction))
+    yield engine, MarketsRepositoryContext(), operations
+    engine.dispose()
+
+
+def _scalar_rows(engine, sql):
+    with engine.connect() as connection:
+        return [tuple(row) for row in connection.exec_driver_sql(sql)]
+
+

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,66 +21,8 @@ def _portfolio_metadata_contract():
     return PortfolioMetadata
 
 
-def _portfolio_dataset_contracts():
-    prepare_apps_v1_import_namespace()
-    from msm_portfolios.services.portfolio_datasets import (
-        PortfolioDatasetReconciliationResult,
-        PortfolioDatasetState,
-    )
-
-    return PortfolioDatasetState, PortfolioDatasetReconciliationResult
-
-
 Portfolio = _portfolio_contract()
 PortfolioMetadata = _portfolio_metadata_contract()
-PortfolioDatasetState, PortfolioDatasetReconciliationResult = _portfolio_dataset_contracts()
-
-
-class PortfolioWithIncludes(Portfolio):
-    """`Portfolio` plus the provider sidecar rows requested with `include` (ADR 0047)."""
-
-    includes: dict[str, dict[str, Any] | None] = Field(
-        default_factory=dict,
-        description=(
-            "Provider sidecar rows requested with `include`, keyed by sidecar MetaTable uid; "
-            "`null` when the sidecar has no row for this uid. Empty when nothing was included."
-        ),
-    )
-
-
-class PortfolioDatasetRegistrationRequest(BaseModel):
-    """The instance tables a producer declares for one portfolio (ADR 0047)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    values_meta_table_uid: str = Field(
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the PortfoliosTS instance holding the values.",
-    )
-    weights_meta_table_uid: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the PortfolioWeightsTS instance, if any.",
-    )
-    signal_meta_table_uid: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        description="TimeIndexMetaTable uid of the SignalWeightsTS instance, if any.",
-    )
-    reconcile: bool = Field(
-        default=True,
-        description="Reconcile the values instance at once; false records the row as not reconciled.",
-    )
-
-
-class PortfolioDatasetReconcileRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    portfolio_uids: list[str] = Field(default_factory=list, max_length=500)
-    portfolio_identifiers: list[str] = Field(default_factory=list, max_length=500)
 
 
 class PortfolioDetailTab(BaseModel):
@@ -153,49 +94,75 @@ class PortfolioWeightsSnapshotResponse(BaseModel):
     weights: list[PortfolioWeightRow] = Field(default_factory=list)
 
 
-class PortfolioDeleteFailure(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    uid: str
-    reason: str
-
-
-class RetainedPortfolioDataset(BaseModel):
-    """A portfolio dataset a delete left in a table another application owns (ADR 0047)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    portfolio_uid: str
-    portfolio_identifier: str | None = None
-    dataset: Literal["values", "weights"] = Field(
-        description="Which catalogued dataset the table holds for this portfolio."
-    )
-    meta_table_uid: str = Field(
-        description=(
-            "TimeIndexMetaTable uid of the contract instance. Markets does not delete its rows; "
-            "the application that owns the table does."
-        )
-    )
+PortfolioDeletedRows = dict[str, int]
 
 
 class PortfolioDeleteResponse(BaseModel):
+    """One portfolio deleted with its datasets in one transaction (ADR 0049, issue 93)."""
+
     model_config = ConfigDict(extra="ignore")
 
     detail: str
-    deleted_count: int = 0
-    deleted_weights_count: int = 0
-    deleted_values_count: int = 0
-    retained_datasets: list[RetainedPortfolioDataset] = Field(
-        default_factory=list,
+    uid: str
+    unique_identifier: str
+    deleted_count: int = 1
+    deleted_rows: PortfolioDeletedRows = Field(
+        default_factory=dict,
         description=(
-            "Catalogued datasets whose rows stay in tables other applications own. "
-            "The deleted counts cover only the Markets core tables."
+            "The portfolio's rows deleted with it, per dataset: weights, values, "
+            "rebalance_state, analytics, event_ledger, state and cash_flows. Counted "
+            "just before the delete ran."
         ),
     )
 
 
-class PortfolioBulkDeleteResponse(PortfolioDeleteResponse):
+class PortfolioDeleteFailure(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    detail: str
+
+
+class PortfolioBulkDeleteResponse(BaseModel):
+    """Portfolios deleted with their datasets, each in its own transaction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    deleted_count: int = 0
+    deleted: list[PortfolioDeleteResponse] = Field(default_factory=list)
     failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
+
+
+class PortfolioDeletePreflightItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    unique_identifier: str
+    row_counts: PortfolioDeletedRows = Field(
+        default_factory=dict,
+        description="The portfolio's rows the delete would remove, per dataset.",
+    )
+    blockers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Account history that names the portfolio, and tables of other applications "
+            "whose RESTRICT keys reference it and that hold rows of it or cannot be checked."
+        ),
+    )
+
+
+def _bulk_delete_preflight_response() -> type[BaseModel]:
+    prepare_apps_v1_import_namespace()
+    from msm.api.http import BulkDeletePreflightResponse
+
+    return BulkDeletePreflightResponse
+
+
+class PortfolioDeletePreflightResponse(_bulk_delete_preflight_response()):
+    """What deleting the selected portfolios removes and what blocks it (issue 93)."""
+
+    portfolios: list[PortfolioDeletePreflightItem] = Field(default_factory=list)
 
 
 class PortfolioWeightsDeleteResponse(BaseModel):

@@ -143,7 +143,7 @@ against an empty disposable PostgreSQL database on localhost:
 
 ```bash
 MS_MARKETS_LEGACY_TEST_POSTGRES_URL=postgresql+psycopg2://localhost/markets_migration_test \
-  uv run --frozen --all-extras pytest -q tests/msm/maintenance/test_legacy_schema_migration.py
+  uv run --frozen --all-extras pytest -q tests/msm_migrations/test_legacy_schema_migration.py
 ```
 
 Confirm the development migration succeeds and its API remains healthy before
@@ -179,8 +179,8 @@ persistent temporary failures also stop startup. Normal requests do not use this
 ### Upgrading the migration client
 
 The project requires `mainsequence>=9.0.31,<10` and
-`mainsequence-metatable>=0.1.66,<0.2`; `uv.lock` and `requirements.txt` select
-`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.67. Move the SDK and the
+`mainsequence-metatable>=0.1.71,<0.2`; `uv.lock` and `requirements.txt` select
+`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.71. Move the SDK and the
 client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.60
 and later require SDK 9.0.31 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
 which raise on the request identity's Teams. After changing the dependency, run
@@ -294,10 +294,17 @@ Environment from an owner of `mainsequence.markets`:
 
 | Consumer workload | Role |
 | --- | --- |
+| Producer that publishes signal weights, portfolio weights or portfolio values through the Markets API (`msm.client`, remote backend) | none on `mainsequence.markets`; it needs only access to the Markets API |
 | Migration Job that registers tables in `mainsequence.markets` | `editor` on the namespace |
-| Updater producer that writes an ms-markets table | table `editor` on each output table, plus `data_viewer` on the namespace |
+| Updater producer that writes an ms-markets table directly | table `editor` on each output table, plus `data_viewer` on the namespace |
 | Row writer (assets, OpenFIGI details, categories, calendars, Index rows) | `data_writer` on the namespace |
 | Reader | `data_viewer` on the namespace |
+
+The grants go one way. Markets workloads (`migrate-markets`, `markets-api`,
+`resync-calendars`) never get a role on an application's namespace or tables:
+Markets reads and writes only its own tables
+([ADR 0060](ADR/0060-producers-publish-markets-reads-only-its-own-tables.md)), so
+a new Environment needs no person's step for Markets to read a producer.
 
 Prefer table `editor` for producers: namespace `editor` would also let them delete
 every table in the namespace. Grant before the consumer's push when its workload

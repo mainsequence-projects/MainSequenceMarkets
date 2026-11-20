@@ -60,14 +60,18 @@ class SignalMetadataTable(MarketsMetaTableMixin, MarketsBase):
             ),
         },
     )
-    meta_table_uid: Mapped[str | None] = mapped_column(
+    managed_by: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
         info={
-            "label": "MetaTable UID",
+            "label": "Managed By",
             "description": (
-                "TimeIndexMetaTable uid of the SignalWeightsTS instance that holds this "
-                "signal's weight rows (ADR 0047). Null means the Markets-owned core table."
+                "The principal that manages this signal (ADR 0060): `branch:<uid>` for a "
+                "workload of a code repository branch, `user:<uid>` for a person or another "
+                "identity. Recorded from the acting identity of the create call; only the "
+                "manager publishes the signal's weights or deletes them. Null on rows "
+                "created before it existed, which accept no publish until an Organization "
+                "admin assigns a manager."
             ),
         },
     )

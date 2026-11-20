@@ -1,19 +1,24 @@
-"""Contract-plus-instance factories for the portfolio time-series contracts (ADR 0047).
+"""Factories for an application's private portfolio state tables (ADR 0060, decision 7).
 
-``PortfoliosTS``, ``PortfolioWeightsTS``, ``SignalWeightsTS`` and the engine
-outputs ``PortfolioRebalanceStateTS``, ``PortfolioCalendarEventsTS`` and
+``PortfolioRebalanceStateTS``, ``PortfolioCalendarEventsTS`` and
 ``PortfolioEventLedgerTS`` are storage contracts: ms-markets owns their columns,
-dtypes, time index, index names and storage layout. The core tables declared in
-``msm_portfolios.time_index.portfolios.storage`` and
-``msm_portfolios.time_index.signals.storage`` are the Markets-owned instance. A
-provider builds its own instance with the factories here, under its own
-MetaTables namespace and physical-name app segment, migrates it with its own
-provider and binds its updaters to it with ``output_table=``.
-``PortfoliosUpdater`` also takes ``weights_output_table=`` and
-``rebalance_output_table=`` for the updaters it builds internally. The MetaTable
-identifier of an instance is stable and derived from the contract name and the
-instance key: ``PortfoliosTS.<instance_key>``, prefixed with the namespace when
-that namespace is not the default Markets one.
+dtypes, time index, index names and storage layout. An application that runs a
+portfolio keeps this state private: it builds its own instance with the factories
+here, under its own MetaTables namespace and physical-name app segment, migrates it
+with its own provider, and binds the engine to it (``rebalance_output_table=``, the
+calendar events and ledger updaters' ``output_table=``). The MetaTable identifier
+of an instance is stable and derived from the contract name and the instance key:
+``PortfolioRebalanceStateTS.<instance_key>``, prefixed with the namespace when that
+namespace is not the default Markets one.
+
+An instance may reference a registry row with the contract's foreign keys; that key,
+from the private table to Markets, is the only coupling between them. Markets never
+discovers, counts or reads such a table. The application deletes its private rows
+before it deletes a registry row (``msm_portfolios.recipes.delete_private_series``).
+
+Signal weights, portfolio weights and portfolio values are not instances: they are
+published to Markets' own tables (``msm_portfolios.api.SignalWeightsSeries`` and the
+two portfolio series).
 """
 
 from __future__ import annotations
@@ -33,24 +38,17 @@ from msm.base import MARKETS_TABLE_APP, MarketsBase, MarketsTimeIndexMetaTableMi
 from msm.models.assets.core import AssetTable
 from msm.models.calendars import CalendarTable
 from msm.models.portfolios.core import PortfolioTable
-from msm.models.portfolios.signals import SignalMetadataTable
 from msm.settings import markets_identifier, markets_namespace
 from msm.storage_instances import markets_reference_table
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioEventLedgerStorage,
     PortfolioRebalanceStateStorage,
-    PortfoliosStorage,
-    PortfolioWeightsStorage,
 )
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 
 CONTRACT_INSTANCE_CONTRACT_COMPONENT = "storage_contract"
 CONTRACT_INSTANCE_KEY_COMPONENT = "instance_key"
 
-PORTFOLIOS_CONTRACT = "PortfoliosTS"
-PORTFOLIO_WEIGHTS_CONTRACT = "PortfolioWeightsTS"
-SIGNAL_WEIGHTS_CONTRACT = "SignalWeightsTS"
 PORTFOLIO_REBALANCE_STATE_CONTRACT = "PortfolioRebalanceStateTS"
 PORTFOLIO_CALENDAR_EVENTS_CONTRACT = "PortfolioCalendarEventsTS"
 PORTFOLIO_EVENT_LEDGER_CONTRACT = "PortfolioEventLedgerTS"
@@ -100,32 +98,6 @@ class PortfolioStorageContract:
 
 
 PORTFOLIO_STORAGE_CONTRACTS: Mapping[str, PortfolioStorageContract] = {
-    PORTFOLIOS_CONTRACT: PortfolioStorageContract(
-        name=PORTFOLIOS_CONTRACT,
-        core_storage=PortfoliosStorage,
-        foreign_keys=(
-            ContractForeignKey("portfolio_identifier", PortfolioTable, "unique_identifier"),
-        ),
-        dimension="portfolio_identifier",
-    ),
-    PORTFOLIO_WEIGHTS_CONTRACT: PortfolioStorageContract(
-        name=PORTFOLIO_WEIGHTS_CONTRACT,
-        core_storage=PortfolioWeightsStorage,
-        foreign_keys=(
-            ContractForeignKey("portfolio_identifier", PortfolioTable, "unique_identifier"),
-            ContractForeignKey("asset_identifier", AssetTable, "unique_identifier"),
-        ),
-        dimension="portfolio_identifier",
-    ),
-    SIGNAL_WEIGHTS_CONTRACT: PortfolioStorageContract(
-        name=SIGNAL_WEIGHTS_CONTRACT,
-        core_storage=SignalWeightsStorage,
-        foreign_keys=(
-            ContractForeignKey("signal_uid", SignalMetadataTable, "signal_uid"),
-            ContractForeignKey("asset_identifier", AssetTable, "unique_identifier"),
-        ),
-        dimension="signal_uid",
-    ),
     PORTFOLIO_REBALANCE_STATE_CONTRACT: PortfolioStorageContract(
         name=PORTFOLIO_REBALANCE_STATE_CONTRACT,
         core_storage=PortfolioRebalanceStateStorage,
@@ -227,7 +199,7 @@ def configured_contract_instance_storage(
     ``namespace`` is the MetaTables namespace that owns the instance; it defaults
     to the active Markets namespace, which is right only for the Markets
     deployment itself. ``storage_app`` is the physical-name app segment, for
-    example ``my_provider``. ``base`` is the provider's SQLAlchemy
+    example ``my_app``. ``base`` is the application's SQLAlchemy
     declarative base when the provider migrates the instance with its own
     Alembic provider; the contract's foreign-key target tables are copied into
     that base's metadata so SQLAlchemy can resolve the constraints, exactly as
@@ -251,60 +223,6 @@ def configured_contract_instance_storage(
         resolved_namespace,
         resolved_app,
         base or MarketsBase,
-    )
-
-
-def configured_portfolios_storage(
-    *,
-    instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
-) -> type[PlatformTimeIndexMetaTable]:
-    """Build one ``PortfoliosTS`` instance (portfolio values)."""
-
-    return configured_contract_instance_storage(
-        PORTFOLIOS_CONTRACT,
-        instance_key=instance_key,
-        namespace=namespace,
-        storage_app=storage_app,
-        base=base,
-    )
-
-
-def configured_portfolio_weights_storage(
-    *,
-    instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
-) -> type[PlatformTimeIndexMetaTable]:
-    """Build one ``PortfolioWeightsTS`` instance (executed portfolio weights)."""
-
-    return configured_contract_instance_storage(
-        PORTFOLIO_WEIGHTS_CONTRACT,
-        instance_key=instance_key,
-        namespace=namespace,
-        storage_app=storage_app,
-        base=base,
-    )
-
-
-def configured_signal_weights_storage(
-    *,
-    instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
-) -> type[PlatformTimeIndexMetaTable]:
-    """Build one ``SignalWeightsTS`` instance (raw signal weights)."""
-
-    return configured_contract_instance_storage(
-        SIGNAL_WEIGHTS_CONTRACT,
-        instance_key=instance_key,
-        namespace=namespace,
-        storage_app=storage_app,
-        base=base,
     )
 
 
@@ -360,17 +278,6 @@ def configured_portfolio_event_ledger_storage(
         storage_app=storage_app,
         base=base,
     )
-
-
-def contract_columns_satisfied(contract: str, column_names: Any) -> bool:
-    """Return whether a registered table exposes every contract column.
-
-    A provider may add columns beyond the contract; Markets reads the contract
-    columns and ignores the rest.
-    """
-
-    definition = portfolio_storage_contract(contract)
-    return set(definition.column_names).issubset({str(name) for name in column_names or ()})
 
 
 @lru_cache(maxsize=256)
@@ -475,23 +382,16 @@ def _copy_contract_table(
 __all__ = [
     "CONTRACT_INSTANCE_CONTRACT_COMPONENT",
     "CONTRACT_INSTANCE_KEY_COMPONENT",
-    "PORTFOLIOS_CONTRACT",
     "PORTFOLIO_CALENDAR_EVENTS_CONTRACT",
     "PORTFOLIO_EVENT_LEDGER_CONTRACT",
     "PORTFOLIO_REBALANCE_STATE_CONTRACT",
     "PORTFOLIO_STORAGE_CONTRACTS",
-    "PORTFOLIO_WEIGHTS_CONTRACT",
-    "SIGNAL_WEIGHTS_CONTRACT",
     "ContractForeignKey",
     "PortfolioStorageContract",
     "configured_contract_instance_storage",
     "configured_portfolio_calendar_events_storage",
     "configured_portfolio_event_ledger_storage",
     "configured_portfolio_rebalance_state_storage",
-    "configured_portfolio_weights_storage",
-    "configured_portfolios_storage",
-    "configured_signal_weights_storage",
-    "contract_columns_satisfied",
     "contract_instance_identifier",
     "contract_instance_identity_components",
     "contract_instance_key",

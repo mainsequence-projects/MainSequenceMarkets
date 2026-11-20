@@ -114,6 +114,7 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
     def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
+        # The signal is a published series (ADR 0060): it is read, never run, here.
         declared = self.rebalance_strategy.declared_dependencies()
         for reserved in ("signal_weights", "valuation_source", "fx_source"):
             if reserved in declared:
@@ -128,7 +129,7 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 "Rebalance dependencies must be TimeIndexTableUpdater or "
                 "TimeIndexTableRef instances: " + ", ".join(sorted(invalid))
             )
-        dependencies = {"signal_weights": self.signal_weights}
+        dependencies: dict[str, TimeIndexTableUpdater | TimeIndexTableRef] = {}
         if self.rebalance_strategy.own_execution_prices() is None:
             # Each asset trades at its next observed price in the valuation source.
             dependencies["valuation_source"] = self.valuation_source

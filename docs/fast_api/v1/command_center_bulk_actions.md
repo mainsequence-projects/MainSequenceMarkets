@@ -35,21 +35,27 @@ Preflight and execution receive the same
 }
 ```
 
-The selected resources use UUID identities and currently advertise no options.
-Unknown options, numeric identifiers, and unadvertised selection modes are
-rejected. The former `{ "uids": [...], "select_all": false }` HTTP payload is
+The selected resources use UUID identities. Only the account delete advertises
+an option, `delete_portfolios` (boolean, `false` by default): it also deletes
+the portfolios only those accounts used
+([ADR 0050](../../ADR/0050-account-deletion.md) decision 9). Options an action
+does not advertise, values of the wrong type, numeric identifiers, and
+unadvertised selection modes are rejected. The former `{ "uids": [...], "select_all": false }` HTTP payload is
 not part of this contract.
 
 ## Preflight and execution
 
 Preflight returns `command-center.bulk_action_preflight@v1`. It resolves every
 selected UID and reports `allowed`, `matched_count`, `blockers`, and `warnings`
-without mutating data. Portfolio preflight also evaluates protected
-VirtualFund and target-position references.
+without mutating data. Portfolio preflight also lists, per portfolio, the rows
+its delete removes from each of its datasets (`portfolios[].row_counts`) and what
+refuses it: account history that references it, and tables of other applications
+that hold its rows or cannot be checked.
 
 Each bulk-delete preflight also reports what deleting rows from the resource's
 table reaches through foreign keys. It asks MetaTables
-(`MetaTable.get_impact(action="delete_rows")`) and adds:
+(`MetaTable.get_impact(action="delete_rows")`), reuses the answer for that
+table for five minutes, and adds:
 
 - `impact`: the MetaTables impact graph. Nodes are the tables the delete
   reaches, with their effects and whether the caller may write each one. Edges
@@ -71,7 +77,8 @@ Deleting portfolios or portfolio groups cascades to their
 `AssetCategoryMembership` rows. Deleting accounts removes their whole history
 ([ADR 0050](../../ADR/0050-account-deletion.md)); its preflight also lists, per
 account, the Markets rows it removes (`accounts[].row_counts`), the rows of other
-accounts that block it, and the tables in other namespaces that its foreign keys
+accounts that block it, the portfolios it would delete and keep with
+`delete_portfolios`, and the tables in other namespaces that its foreign keys
 reach (`other_namespace_cascades`, `other_namespace_restricts`). If MetaTables cannot compute the impact,
 `impact` is `null` and a warning says so. The preflight is not blocked, because
 the database still applies and enforces every foreign-key action.
@@ -85,7 +92,10 @@ table's owner.
 Execution repeats preflight immediately before invoking domain deletion. A
 blocked selection returns HTTP `409` and does not call the delete service. The
 underlying delete operation still performs its own conflict checks, protecting
-against authorization or reference changes between preflight and execution.
+against authorization or reference changes between preflight and execution. The
+portfolio bulk delete deletes by its preflight's counts instead of reading them
+again; each portfolio's guarded statement and the database's `RESTRICT` keys
+refuse a portfolio whose references changed in between.
 
 Request validation errors return `422`. Unsupported modes or options return
 `400`. A preflight that discovers missing or protected rows returns `200` with

@@ -23,6 +23,12 @@ namespace gives the table role of the same name on its current and future tables
 Revoking it, or removing a table from the namespace, removes that contribution;
 independent direct or Team bindings remain.
 
+A namespace's bindings can name a code repository branch: every workload of that branch
+holds the role ([ADR 0029](../adr/api/0029-roles-for-a-branchs-workloads.md)). An
+application's migration declares its own branch's roles with `branch_access`; an owner
+grants another repository's branch. This does not tie the namespace to that repository:
+any branch can hold roles on any namespace.
+
 A table can be in several namespaces
 ([ADR 0028](../adr/api/0028-tables-in-several-namespaces.md)). Its role for a caller is
 the strongest across all of them. An application shares part of its tables by declaring

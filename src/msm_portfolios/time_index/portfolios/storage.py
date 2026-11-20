@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import datetime
-from typing import ClassVar
+from dataclasses import dataclass
+from typing import Any, ClassVar
 
 from sqlalchemy import (
     BigInteger,
@@ -227,6 +228,10 @@ class PortfolioRebalanceStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase
         "target intent, and asset. Rows record target activation, partial execution, "
         "remaining weight, observed execution capacity, and strategy-owned restart state."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -412,6 +417,10 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "portfolio_identifier). Stores close, return, calculated close, and close "
         "timestamp for canonical portfolio value series."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = ["time_index", PORTFOLIO_IDENTIFIER_DIMENSION]
 
@@ -486,6 +495,10 @@ class PortfolioAnalyticsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "and analysis_identifier. Each time_index is the actual final canonical "
         "portfolio observation selected for the analytical period."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -580,6 +593,10 @@ class PortfolioEventLedgerStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "Versioned portfolio accounting event records. Complete event envelopes and "
         "typed economic records support deterministic restart and corrected replay."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -908,6 +925,10 @@ class PortfolioStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
 
     __metatable_identifier__ = "PortfolioStateTS"
     __metatable_description__ = "Ledger-derived valued portfolio state by stable state identity."
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -1018,6 +1039,10 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Ledger-derived settled portfolio cash movements with event lineage."
     )
+    # The unique index leads with time, so it cannot find one portfolio's rows without
+    # walking other portfolios' rows. This one can: counts, reads and deletes of one
+    # portfolio, and the RESTRICT check of a portfolio row's delete (issue 96).
+    __table_args__ = (Index(None, PORTFOLIO_IDENTIFIER_DIMENSION, "time_index"),)
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
         "time_index",
@@ -1098,8 +1123,35 @@ class PortfolioCashFlowsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+@dataclass(frozen=True)
+class PortfolioDatasetTable:
+    """One of the portfolio's own Markets datasets, keyed by ``portfolio_identifier``."""
+
+    key: str
+    model: type[Any]
+
+    @property
+    def table_name(self) -> str:
+        return str(self.model.__table__.name)
+
+
+PORTFOLIO_DATASET_TABLES: tuple[PortfolioDatasetTable, ...] = (
+    PortfolioDatasetTable("weights", PortfolioWeightsStorage),
+    PortfolioDatasetTable("values", PortfoliosStorage),
+    PortfolioDatasetTable("rebalance_state", PortfolioRebalanceStateStorage),
+    PortfolioDatasetTable("analytics", PortfolioAnalyticsStorage),
+    PortfolioDatasetTable("event_ledger", PortfolioEventLedgerStorage),
+    PortfolioDatasetTable("state", PortfolioStateStorage),
+    PortfolioDatasetTable("cash_flows", PortfolioCashFlowsStorage),
+)
+"""The portfolio's own Markets datasets, keyed by ``portfolio_identifier`` with a
+``RESTRICT`` key on ``Portfolio.unique_identifier``, in the order a delete clears them."""
+
+
 __all__ = [
+    "PORTFOLIO_DATASET_TABLES",
     "PORTFOLIO_IDENTIFIER_DIMENSION",
+    "PortfolioDatasetTable",
     "PortfolioAnalyticsStorage",
     "PortfolioCashFlowsStorage",
     "PortfolioCalendarEventsStorage",

@@ -20,15 +20,12 @@ from msm.services.calendars import (
     CalendarRangeError,
     sync_pandas_market_calendar,
 )
-from tests.msm.repositories.test_postgresql_account_registration import (  # noqa: F401
-    postgresql_markets,
-)
 
 UTC = dt.UTC
 
 
 @pytest.fixture
-def markets(postgresql_markets, monkeypatch):  # noqa: F811
+def markets(postgresql_markets, monkeypatch):
     engine, context, operations = postgresql_markets
     monkeypatch.setattr(
         "msm.bootstrap.resolve_runtime",

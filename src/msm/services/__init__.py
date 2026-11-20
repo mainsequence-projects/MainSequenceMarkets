@@ -86,7 +86,6 @@ _EXPORTS = {
     "register_account": ".accounts",
     "delete_calendar": ".reference_data",
     "delete_openfigi_details": ".provider_details",
-    "delete_portfolio": ".portfolios",
     "delete_portfolio_group": ".portfolios",
     "delete_portfolio_group_membership": ".portfolios",
     "delete_portfolio_group_membership_by_pair": ".portfolios",

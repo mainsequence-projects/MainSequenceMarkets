@@ -132,6 +132,12 @@ except MetaTableTransactionGuardError as error:
 - **Result.** The last statement's rows, in the `execute_operation` response shape.
   `limits` cover the whole list: one time limit for every statement, and `max_rows`
   for the last statement's rows.
+- **Time-index statistics.** Like every compiled write, a list rebuilds the stored
+  statistics of each time-index table it changed, so an updater never resumes after
+  rows that are gone. `result["index_statistics"]` maps each such table's UID to
+  `rebuilt`, or to why its statistics stayed as they were:
+  `too_many_index_coordinates`, `not_readable` or `reconciliation_required`. The
+  write stands either way. A table that keeps no statistics is not listed.
 - **Writes only.** `operation` is `insert`, `update`, `delete` or `upsert`; it
   selects the write identity, as in `execute_operation`.
 - **Engines.** PostgreSQL and SQLite, including the local runtime. MySQL and SQL
@@ -204,6 +210,9 @@ A `None` cutoff is allowed only with explicit dimension or coordinate scope.
 `delete_after_date(None)` without scope is rejected. Physical deletion is followed
 by recalculation of progress statistics; partial/uncertain failures require
 inspection rather than assuming the previous client statistics remain current.
+A compiled write that deletes time-index rows recalculates them too
+([several statements in one transaction](#several-statements-in-one-transaction)),
+so it needs no `delete_after_date` call afterwards to refresh them.
 
 ## Bounded results
 

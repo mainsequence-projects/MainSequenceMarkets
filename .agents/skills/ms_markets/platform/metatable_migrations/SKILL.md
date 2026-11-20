@@ -118,10 +118,20 @@ it if it attaches the tables at startup.
 | Updater producer that writes an ms-markets table | table `editor` on each output table, plus `data_viewer` on the namespace for its inputs |
 | Row writer (asset or OpenFIGI registration, categories, calendars, Index rows) | `data_writer` |
 | Reader | `data_viewer` |
+| Application that publishes signals or portfolios through the Markets API (`msm.client`) | none: it calls the Markets API |
 
 Prefer table `editor` for producers: namespace `editor` also allows deleting every
-table in the namespace. The project's own tables belong in its own namespace, which
-its first migration creates (see `.agents/skills/metatables/metatables-migrations/SKILL.md`).
+table in the namespace. Signal weights, portfolio weights and portfolio values are
+never written with a role: they are published through the Markets API
+(`SignalWeightsSeries`, `PortfolioWeightsSeries`, `PortfolioValuesSeries`, ADR 0060).
+The project's own tables belong in its own namespace, which its first migration
+creates (see `.agents/skills/metatables/metatables-migrations/SKILL.md`).
+
+The other direction never exists: a Markets workload (`markets-api`,
+`migrate-markets`) gets no role on a project's tables or namespace, and a project
+never registers a table with Markets or sends it a table uid. Markets reads and writes
+only its own tables; read `.agents/skills/ms_markets/platform/producer_boundary/SKILL.md`
+before designing how a project meets it.
 
 Refusals name what is missing:
 

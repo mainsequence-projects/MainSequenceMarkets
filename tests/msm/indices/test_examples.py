@@ -12,7 +12,6 @@ from examples.msm.indices import (  # noqa: E402
     delta_hedged_option_index,
     extension_owned_index_storage,
     formula_index,
-    index_values_frequency_migration,
     plain_index_values,
 )
 
@@ -50,13 +49,6 @@ def test_plain_index_values_share_identity_across_frequencies() -> None:
         "USD_SWAP_10Y_METHOD_A",
         "USD_SWAP_10Y_METHOD_B",
     )
-
-
-def test_frequency_storage_models_are_built_before_migration_provider() -> None:
-    models = index_values_frequency_migration.FREQUENCY_STORAGE_MODELS
-
-    assert list(index_values_frequency_migration.migration.metatable_models) == list(models)
-    assert [model.__cadence__ for model in models] == ["1m", "1d"]
 
 
 def test_extension_can_publish_a_unit_free_canonical_projection() -> None:

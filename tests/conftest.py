@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 
 import jwt
@@ -90,6 +91,21 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def fresh_delete_rows_impacts():
+    """Each test asks MetaTables for its own delete impacts (`msm.services.table_impact`
+    reuses one per table for a while)."""
+
+    def clear() -> None:
+        module = sys.modules.get("msm.services.table_impact")
+        if module is not None:
+            module.clear_delete_rows_impact_cache()
+
+    clear()
+    yield
+    clear()
+
+
 @pytest.fixture
 def caller_assertions() -> GatewayCallerAssertions:
     """Sign caller assertions the API under test accepts."""
@@ -129,3 +145,58 @@ def offline_postgresql_runtime(monkeypatch):
 
     monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", get_runtime_context)
     return runtime
+
+
+@pytest.fixture(scope="session")
+def sqlite_revisions(tmp_path_factory):
+    """SQLite files migrated from an empty database to a revision, once per session.
+
+    `sqlite_revisions.engine(path, revision)` copies the file at ``revision`` to
+    ``path``; `sqlite_revisions.file("head")` is the template every `sqlite_markets`
+    copies. See `tests.support.migrations.SQLiteRevisions`.
+    """
+
+    from tests.support.migrations import SQLiteRevisions
+
+    return SQLiteRevisions(tmp_path_factory.mktemp("sqlite-revisions"))
+
+
+@pytest.fixture
+def sqlite_markets_prepare():
+    """What `sqlite_markets` runs on its copy before building the execution identity.
+
+    Nothing, unless a module overrides this fixture with a callable that takes the
+    engine, for example to create triggers or tables first.
+    """
+
+    return None
+
+
+@pytest.fixture
+def sqlite_markets(tmp_path, monkeypatch, sqlite_revisions, sqlite_markets_prepare):
+    """A copy of a SQLite file migrated to head, served by MetaTables' own server code.
+
+    See `tests.support.sqlite_markets.make_sqlite_markets`.
+    """
+
+    from tests.support.sqlite_markets import make_sqlite_markets
+
+    return make_sqlite_markets(
+        tmp_path,
+        monkeypatch,
+        template=sqlite_revisions.file("head"),
+        prepare=sqlite_markets_prepare,
+    )
+
+
+@pytest.fixture
+def postgresql_markets(monkeypatch):
+    """Markets on the disposable PostgreSQL database in
+    ``MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL``; skipped when it is not set.
+
+    See `tests.support.postgresql_markets.postgresql_markets`.
+    """
+
+    from tests.support.postgresql_markets import postgresql_markets
+
+    yield from postgresql_markets(monkeypatch)

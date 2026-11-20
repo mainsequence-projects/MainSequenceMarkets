@@ -38,9 +38,9 @@ previews are queries that persist nothing.
 `GET /api/v1/index/by-uids/?uid__in=<uid>&uid__in=<uid>` is a bounded batch
 lookup (ADR 0047): `uid__in` is repeated or comma-separated, at most 500, the
 matching rows return in request order inside a `ResourceCollection`, unknown
-uids are omitted, and there is no paging, search or discovery route.
-`include=<sidecar MetaTable uid>` attaches provider sidecar rows under
-`includes[<uid>]`, as described for [accounts](accounts.md).
+uids are omitted, and there is no paging, search or discovery route. It
+returns Markets' rows only: data an application keeps about an Index is read
+from that application (ADR 0060).
 
 ## Identity Payload
 
