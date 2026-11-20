@@ -31,23 +31,21 @@ from msm_portfolios.services import (
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES, PortfoliosStorage
 from tests.support.account_delete import (
-    DATASETS,
     MARKETS_TABLES,
     _account_rows,
     _catalog,
     _create_provider_tables,
-    _dataset_rows,
     _exists,
     _history,
     _identifier,
     _impact_unavailable,
     _order,
     _portfolio_identifier,
-    _portfolio_with_data,
     _progress,
     _provider_statements,
     account_markets,
 )
+from tests.support.account_portfolio_delete import DATASETS, _dataset_rows, _portfolio_with_data
 from tests.support.portfolio_delete import series_index
 from tests.support.sqlite_markets import (
     WHEN,

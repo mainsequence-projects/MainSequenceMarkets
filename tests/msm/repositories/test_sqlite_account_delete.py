@@ -35,18 +35,14 @@ from msm.services import (
 from msm.services.accounts import deletion
 from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 from tests.support.account_delete import (
-    DATASETS,
     MARKETS_TABLES,
     _account_rows,
     _create_provider_tables,
-    _dataset_rows,
-    _exists,
     _history,
     _identifier,
     _impact_unavailable,
     _order,
     _order_event,
-    _portfolio_with_data,
     _progress,
     _provider_statements,
     account_markets,
@@ -161,20 +157,6 @@ def test_one_delete_sends_one_read_and_one_transaction(sqlite_markets) -> None:
     delete_account(sqlite_markets.context, uid=account)
 
     assert sqlite_markets.requests == ["read", f"transaction:{len(ACCOUNT_DELETE_TABLES)}"]
-
-
-def test_the_portfolios_its_history_names_stay_with_their_data(sqlite_markets) -> None:
-    engine = sqlite_markets.engine
-    account = _account(engine)
-    portfolio, identifier = _portfolio_with_data(engine)
-    _history(sqlite_markets, account, portfolio)
-
-    deleted = delete_account(sqlite_markets.context, uid=account)
-
-    assert "deleted_portfolios" not in deleted
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-    assert not _rows(engine, "SELECT uid FROM ms_markets__account WHERE uid = :uid", uid=account.hex)
 
 
 def test_an_account_changed_in_between_deletes_nothing(sqlite_markets, monkeypatch) -> None:

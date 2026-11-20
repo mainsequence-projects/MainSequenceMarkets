@@ -102,7 +102,7 @@ When adding or changing an `apps/v1` route:
   `QUERY_OPERATION_IDS` or `MUTATION_OPERATION_IDS`
 - classify read/list/detail/calculation endpoints as query operations
 - classify create/update/delete/write endpoints as mutation operations
-- add or update tests under `tests/msm/fastapi/v1/` proving the operation is
+- add or update tests under `tests/apps/v1/` proving the operation is
   present in `/.well-known/command-center/connection-contract`
 - verify the OpenAPI route and Command Center contract stay aligned
 
@@ -144,13 +144,13 @@ When reproducing legacy endpoints inside `apps/v1`:
 
 For every `apps/v1` change, run focused validation:
 
-- route tests under `tests/msm/fastapi/v1/`
+- route tests under `tests/apps/v1/`
 - import sanity for `apps.v1.main`
 - `git diff --check`
 
 When adding a new endpoint, add focused tests in:
 
-- `tests/msm/fastapi/v1/`
+- `tests/apps/v1/`
 
 Do not place `apps/v1` tests as random top-level test files.
 

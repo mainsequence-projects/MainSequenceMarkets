@@ -24,7 +24,7 @@ from msm_portfolios.repositories import account_portfolio_deletion as portfolio_
 from msm_portfolios.services import delete_account_with_portfolios
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
-from tests.support.postgresql_markets import (
+from tests.support.postgresql_portfolios import (
     _count,
     _dataset_rows,
     _datasets,

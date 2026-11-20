@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -30,21 +29,29 @@ from msm_portfolios.services import (
     preflight_bulk_delete_portfolio_records,
 )
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
-from tests.support.portfolio_delete import series_index
+from tests.support.portfolio_delete import (
+    DATASETS,
+    _dataset_row,
+    _dataset_rows,
+    _deletes,
+    _exists,
+    _identifier,
+    _portfolio_with,
+    _reads,
+    portfolio_markets,
+    series_index,
+)
 from tests.support.sqlite_markets import (
     WHEN,
     _account,
-    _asset,
     _count,
     _insert,
     _portfolio,
     _portfolio_position,
-    _rows,
     _write_target,
     table_reads,
 )
 
-DATASETS = {table.key: table.table_name for table in PORTFOLIO_DATASET_TABLES}
 MARKETS_TABLES = {*DATASETS.values(), "ms_markets__portfolio", "ms_markets__virtualfund", "ms_markets__targetpositionsts"}
 PORTFOLIO_TABLE_UID = "0e0e0e0e-0000-4000-8000-000000000001"
 PROVIDER_VALUES_UID = "1b1b1b1b-0000-4000-8000-000000000002"
@@ -69,62 +76,10 @@ PROVIDER_TABLES = (
 def markets(sqlite_markets, monkeypatch):
     """The harness, with no MetaTables impact and no delete-after-date call allowed."""
 
-    from metatables import TimeIndexMetaTable
-
-    def refuse_delete_after_date(self, *args, **kwargs):
-        raise AssertionError("The portfolio delete must not call delete_after_date.")
-
-    monkeypatch.setattr(TimeIndexMetaTable, "delete_after_date", refuse_delete_after_date)
-    monkeypatch.setattr(PortfolioTable, "get_meta_table", classmethod(lambda cls: None))
-    _asset(sqlite_markets.engine, "AAA")
-    return sqlite_markets
+    return portfolio_markets(sqlite_markets, monkeypatch)
 
 
 # Data ------------------------------------------------------------------------------------
-
-
-def _identifier(engine, portfolio: uuid.UUID) -> str:
-    (row,) = _rows(
-        engine,
-        "SELECT unique_identifier FROM ms_markets__portfolio WHERE uid = :uid",
-        uid=portfolio.hex,
-    )
-    return row["unique_identifier"]
-
-
-def _dataset_row(engine, key: str, identifier: str, *, when: dt.datetime = WHEN) -> None:
-    table_name = DATASETS[key]
-    assets = {
-        foreign_key["constrained_columns"][0]: "AAA"
-        for foreign_key in sa.inspect(engine).get_foreign_keys(table_name)
-        if foreign_key["referred_table"] == "ms_markets__asset"
-    }
-    _insert(engine, table_name, time_index=when, portfolio_identifier=identifier, **assets)
-
-
-def _portfolio_with(engine, *keys: str) -> tuple[uuid.UUID, str]:
-    portfolio = _portfolio(engine)
-    identifier = _identifier(engine, portfolio)
-    for key in keys:
-        _dataset_row(engine, key, identifier)
-    return portfolio, identifier
-
-
-def _dataset_rows(engine, identifier: str) -> dict[str, int]:
-    with engine.connect() as connection:
-        return {
-            key: connection.execute(
-                sa.text(f"SELECT count(*) FROM {table_name} WHERE portfolio_identifier = :identifier"),
-                {"identifier": identifier},
-            ).scalar_one()
-            for key, table_name in DATASETS.items()
-        }
-
-
-def _exists(engine, portfolio: uuid.UUID) -> bool:
-    return bool(
-        _rows(engine, "SELECT uid FROM ms_markets__portfolio WHERE uid = :uid", uid=portfolio.hex)
-    )
 
 
 def _virtual_fund(engine, portfolio: uuid.UUID) -> None:
@@ -135,10 +90,6 @@ def _virtual_fund(engine, portfolio: uuid.UUID) -> None:
         account_uid=_account(engine).hex,
         target_portfolio_uid=portfolio.hex,
     )
-
-
-def _deletes(markets) -> list[str]:
-    return [sql for sql in markets.statements if sql.lstrip().upper().startswith("DELETE")]
 
 
 def _preflight(markets, portfolio: uuid.UUID) -> dict:
@@ -764,10 +715,6 @@ def _counted(portfolio: uuid.UUID, identifier: str, **rows: int) -> dict:
     }
 
 
-def _reads(markets) -> list[str]:
-    return [sql for sql in markets.statements if sql.lstrip().upper().startswith("SELECT")]
-
-
 def test_one_read_counts_each_selected_portfolio_in_each_dataset(markets) -> None:
     engine = markets.engine
     first, first_identifier = _portfolio_with(engine, "weights", "values")
@@ -814,37 +761,6 @@ def test_each_count_reads_the_portfolios_rows_through_the_series_index(markets) 
         (step,) = reads[table.table_name]
         assert step.startswith("SEARCH") and series_index(table) in step, step
         assert "(portfolio_identifier=?)" in step, step
-
-
-def test_the_bulk_delete_route_counts_the_selection_once(markets, monkeypatch) -> None:
-    from fastapi.testclient import TestClient
-
-    from apps.v1.main import app
-    from apps.v1.services import portfolios as portfolio_service
-
-    engine = markets.engine
-    first, first_identifier = _portfolio_with(engine, *DATASETS)
-    second, second_identifier = _portfolio_with(engine, "values")
-    monkeypatch.setattr(
-        portfolio_service, "_get_delete_runtime", lambda: SimpleNamespace(context=markets.context)
-    )
-    markets.statements.clear()
-
-    response = TestClient(app).post(
-        "/api/v1/portfolio/bulk-delete/",
-        json={"selection": {"mode": "explicit", "uids": [str(first), str(second)]}, "options": {}},
-    )
-
-    assert response.status_code == 200, response.text
-    assert {item["uid"]: item["deleted_rows"] for item in response.json()["deleted"]} == {
-        str(first): {key: 1 for key in DATASETS},
-        str(second): {key: int(key == "values") for key in DATASETS},
-    }
-    # The preflight's read, then one transaction per portfolio.
-    assert len(_reads(markets)) == 1
-    assert len(_deletes(markets)) == 2 * (len(DATASETS) + 1)
-    assert not _exists(engine, first) and set(_dataset_rows(engine, first_identifier).values()) == {0}
-    assert not _exists(engine, second) and set(_dataset_rows(engine, second_identifier).values()) == {0}
 
 
 def test_deleting_by_an_earlier_plan_still_refuses_a_portfolio_referenced_since(markets) -> None:

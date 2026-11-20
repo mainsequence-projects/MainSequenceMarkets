@@ -39,7 +39,7 @@ from msm.api.http import tabular as tabular_models
 
 COMMAND_CENTER_SDK_TAG = "v0.1.13"
 COMMAND_CENTER_SDK_COMMIT = "f11c0ea8c5d3fc267997e476aa1522c798fdaced"
-CONTRACTS_ROOT = Path(__file__).parents[3] / "contracts" / "command-center-sdk-v0.1.13"
+CONTRACTS_ROOT = Path(__file__).parents[2] / "contracts" / "command-center-sdk-v0.1.13"
 
 _CONTRACT_MODELS = {
     RESOURCE_COLLECTION_CONTRACT: ResourceCollection[dict[str, Any]],

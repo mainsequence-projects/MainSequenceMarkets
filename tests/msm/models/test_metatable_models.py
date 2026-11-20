@@ -6,7 +6,7 @@ from typing import ClassVar
 import datetime as dt
 
 import pytest
-from metatables import TimeIndexMetaTable, PlatformManagedMetaTable, PlatformTimeIndexMetaTable
+from metatables import TimeIndexMetaTable, PlatformManagedMetaTable
 from pydantic import AliasChoices, Field
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -26,7 +26,6 @@ from msm.base import (
     markets_table_storage_name,
 )
 from msm.time_index.accounts.storage import AccountHoldingsStorage
-from msm_migrations.registry import metatable_provider_models
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
@@ -58,8 +57,6 @@ from msm.models import (
     VirtualFundTable,
     markets_sqlalchemy_models,
 )
-from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
-from msm_pricing.meta_tables import pricing_sqlalchemy_models
 from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 
 
@@ -124,31 +121,6 @@ def test_time_index_models_use_package_owned_table_names() -> None:
         MARKETS_TABLE_APP,
         AccountHoldingsStorage.__metatable_identifier__.rsplit(".", 1)[-1],
     )
-
-
-def test_time_index_provider_models_have_valid_storage_layouts() -> None:
-    # Run the API's own layout check: without __storage_layout__, MetaTables
-    # derives the lookup index name from the identity dimensions and rejects
-    # it when it exceeds PostgreSQL's 63-character limit.
-    from metatables.api.backend.contracts.storage_layouts import parse_storage_layout
-
-    time_index_models = [
-        model
-        for model in metatable_provider_models()
-        if issubclass(model, PlatformTimeIndexMetaTable)
-    ]
-    assert PortfolioEventLedgerStorage in time_index_models
-
-    for model in time_index_models:
-        layout = parse_storage_layout(
-            getattr(model, "__storage_layout__", None),
-            time_index_name=model.__time_index_name__,
-            index_names=model.__index_names__,
-            columns_by_name={column.name: column for column in model.__table__.columns},
-        )
-        for secondary_index in layout.secondary_indexes:
-            # The physical index is "<name>_idx" and must not be truncated.
-            assert len(f"{secondary_index.name}_idx") <= 63, model.__name__
 
 
 def test_markets_table_name_applies_optional_suffix() -> None:
@@ -283,27 +255,6 @@ def test_markets_models_declare_metatable_descriptions() -> None:
         assert len(description.split()) >= 8, model.__name__
         if is_time_index_meta_table_model(model):
             assert "keyed by" in description.lower(), model.__name__
-
-
-def test_built_in_metatables_declare_column_descriptions() -> None:
-    seen: set[type] = set()
-    models = []
-    for model in [
-        *markets_sqlalchemy_models(),
-        *pricing_sqlalchemy_models(),
-    ]:
-        if model in seen:
-            continue
-        seen.add(model)
-        models.append(model)
-
-    for model in models:
-        for column in model.__table__.columns:
-            description = column.info.get("description")
-
-            assert isinstance(description, str), f"{model.__name__}.{column.name}"
-            assert description.strip() == description, f"{model.__name__}.{column.name}"
-            assert len(description.split()) >= 5, f"{model.__name__}.{column.name}"
 
 
 def test_timestamped_execution_fact_tables_are_not_domain_metatables() -> None:
@@ -1101,14 +1052,6 @@ def test_markets_registration_builders_do_not_force_default_schema(monkeypatch) 
 
     assert calls
     assert all("schema" not in kwargs for kwargs in calls)
-
-
-def test_migration_registry_models_use_sdk_base_metatable_classes() -> None:
-    registry = metatable_provider_models()
-    assert registry
-    assert AccountHoldingsStorage in registry
-    assert all(issubclass(model, PlatformManagedMetaTable) for model in registry)
-    assert issubclass(AccountHoldingsStorage, PlatformTimeIndexMetaTable)
 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order(

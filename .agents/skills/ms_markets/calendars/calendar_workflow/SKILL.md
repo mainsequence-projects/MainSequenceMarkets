@@ -358,8 +358,8 @@ In ms-markets:
 
 ```bash
 .venv/bin/pytest tests/msm/services/calendars tests/msm/api/calendars tests/msm/models/calendars -q
-.venv/bin/pytest tests/msm/maintenance/test_calendar_rules_migration.py tests/msm/maintenance/test_resync_calendars_job.py -q
-.venv/bin/pytest tests/msm/fastapi/v1/test_calendars.py tests/msm_portfolios/services/test_calendars.py -q
+.venv/bin/pytest tests/msm_migrations/test_calendar_rules_migration.py tests/msm/maintenance/test_resync_calendars_job.py -q
+.venv/bin/pytest tests/apps/v1/test_calendars.py tests/msm_portfolios/services/test_calendars.py -q
 ```
 
 In a project that uses ms-markets, check that:

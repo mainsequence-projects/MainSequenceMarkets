@@ -14,7 +14,6 @@ import sqlalchemy as sa
 
 from msm.repositories.account_deletion import ACCOUNT_DELETE_TABLES
 from msm.services.accounts import deletion
-from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.support.sqlite_markets import (
     WHEN,
     _asset,
@@ -27,7 +26,6 @@ from tests.support.sqlite_markets import (
 )
 
 MARKETS_TABLES = {table.model.__table__.name for table in ACCOUNT_DELETE_TABLES}
-DATASETS = {table.key: table.table_name for table in PORTFOLIO_DATASET_TABLES}
 
 
 def account_markets(markets, monkeypatch) -> SimpleNamespace:
@@ -237,32 +235,6 @@ def _account_rows(engine, account: uuid.UUID, identifier: str) -> dict[str, int]
 def _portfolio_identifier(engine, portfolio: uuid.UUID) -> str:
     (row,) = _rows(engine, "SELECT unique_identifier FROM ms_markets__portfolio WHERE uid = :uid", uid=portfolio.hex)
     return row["unique_identifier"]
-
-
-def _portfolio_with_data(engine) -> tuple[uuid.UUID, str]:
-    """A portfolio with one row in each of its datasets."""
-
-    portfolio = _portfolio(engine)
-    identifier = _portfolio_identifier(engine, portfolio)
-    for table_name in DATASETS.values():
-        assets = {
-            foreign_key["constrained_columns"][0]: "AAA"
-            for foreign_key in sa.inspect(engine).get_foreign_keys(table_name)
-            if foreign_key["referred_table"] == "ms_markets__asset"
-        }
-        _insert(engine, table_name, time_index=WHEN, portfolio_identifier=identifier, **assets)
-    return portfolio, identifier
-
-
-def _dataset_rows(engine, identifier: str) -> dict[str, int]:
-    with engine.connect() as connection:
-        return {
-            key: connection.execute(
-                sa.text(f"SELECT count(*) FROM {table_name} WHERE portfolio_identifier = :identifier"),
-                {"identifier": identifier},
-            ).scalar_one()
-            for key, table_name in DATASETS.items()
-        }
 
 
 def _exists(engine, portfolio: uuid.UUID) -> bool:

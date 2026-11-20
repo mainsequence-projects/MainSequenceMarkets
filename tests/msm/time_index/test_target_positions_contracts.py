@@ -10,19 +10,13 @@ from msm.time_index.accounts import TargetPositions, TargetPositionsConfiguratio
 from msm.time_index.accounts.constants import TARGET_TYPE_ASSET, TARGET_TYPE_PORTFOLIO
 from msm.time_index.accounts.storage import TargetPositionsStorage
 from msm.time_index.utils.storage_schema import storage_column_dtypes_map
-from msm.models import AssetTable, PortfolioTable, PositionSetTable, markets_sqlalchemy_models
+from msm.models import AssetTable, PortfolioTable, PositionSetTable
 from msm.models.registration import markets_foreign_key_target_identifiers
 from msm.services.target_positions import (
     build_target_positions_frame,
     expand_portfolio_target_positions,
     validate_target_position_payload,
 )
-from msm_portfolios.models import portfolio_sqlalchemy_models
-
-
-def test_target_positions_storage_belongs_to_core_account_model_graph() -> None:
-    assert TargetPositionsStorage in set(markets_sqlalchemy_models())
-    assert TargetPositionsStorage in set(portfolio_sqlalchemy_models())
 
 
 def test_target_positions_storage_declares_target_foreign_keys() -> None:

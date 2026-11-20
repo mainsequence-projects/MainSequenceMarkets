@@ -143,7 +143,7 @@ against an empty disposable PostgreSQL database on localhost:
 
 ```bash
 MS_MARKETS_LEGACY_TEST_POSTGRES_URL=postgresql+psycopg2://localhost/markets_migration_test \
-  uv run --frozen --all-extras pytest -q tests/msm/maintenance/test_legacy_schema_migration.py
+  uv run --frozen --all-extras pytest -q tests/msm_migrations/test_legacy_schema_migration.py
 ```
 
 Confirm the development migration succeeds and its API remains healthy before

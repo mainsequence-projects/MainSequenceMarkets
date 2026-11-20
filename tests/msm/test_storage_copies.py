@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 from types import SimpleNamespace
 from typing import Any
 
@@ -16,18 +15,11 @@ from msm.storage_copies import (
     copy_time_index_rows,
     run_series_moves,
 )
-
-INDEX = ["time_index", "portfolio_identifier", "asset_identifier"]
-DAY = [dt.datetime(2026, 1, day, tzinfo=dt.UTC) for day in (1, 2, 3)]
+from tests.support.storage_copies import DAY, INDEX, _frame
 
 
 def _storage(name: str, index_names: list[str] = INDEX) -> type:
     return type(name, (), {"__index_names__": index_names, "__table__": SimpleNamespace(name=name)})
-
-
-def _frame(rows: list[tuple[Any, ...]]) -> pd.DataFrame:
-    frame = pd.DataFrame(rows, columns=[*INDEX, "weight"])
-    return frame.set_index(INDEX)
 
 
 class _Tables:
@@ -200,39 +192,3 @@ def test_run_series_moves_orders_moves_and_reports_failures() -> None:
     assert calls[0] == ("portfolio", True)
     with pytest.raises(LookupError):
         run_series_moves(moves, dry_run=False, stop_on_error=True)
-
-
-def test_the_real_copier_keeps_one_identity_per_source_and_target() -> None:
-    from metatables import TimeIndexMetaTable
-    from msm.storage_copies import TimeIndexRowsCopy, registered_time_index_meta_table
-    from msm_portfolios.time_index.contract_instances import configured_portfolio_weights_storage
-
-    instance = configured_portfolio_weights_storage(
-        instance_key="copytest", namespace="my-provider", storage_app="my_provider"
-    )
-    before = dict(vars(instance))
-    instance._bind_meta_table(
-        TimeIndexMetaTable.model_construct(
-            uid="instance-uid",
-            data_source_uid="00000000-0000-0000-0000-000000000001",
-            identifier=instance.__metatable_identifier__,
-        )
-    )
-    try:
-        def copier(source_uid: str) -> TimeIndexRowsCopy:
-            config = TimeIndexRowsCopyConfiguration(
-                source_table_uid=source_uid, key_column="portfolio_identifier"
-            )
-            return TimeIndexRowsCopy(config, output_table=instance)
-
-        first = copier("core-uid").set_rows(_frame([(DAY[0], "P1", "A", 0.5)]))
-        assert first.update_hash == copier("core-uid").update_hash
-        assert first.update_hash != copier("other-uid").update_hash
-        assert len(first.update()) == 1 and first.dependencies() == {}
-        assert registered_time_index_meta_table(instance).uid == "instance-uid"
-    finally:
-        for name in set(vars(instance)) - set(before):
-            delattr(instance, name)
-        for name, value in before.items():
-            if vars(instance).get(name) is not value:
-                setattr(instance, name, value)

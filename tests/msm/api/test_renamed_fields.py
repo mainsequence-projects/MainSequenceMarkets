@@ -12,10 +12,8 @@ from msm.api.base import _row_values
 from msm.api.portfolios import Portfolio, PortfolioUpdate
 from msm.api.virtual_funds import _renamed_updater_argument
 from msm.settings import markets_data_node_identifier, markets_identifier
-from msm_pricing.api.market_data_bindings import PricingMarketDataSet, PricingMarketDataSetBinding
-from msm_pricing.config import PricingMarketDataConfiguration
+from tests.support.renamed_fields import STORAGE_TABLE_UID
 
-STORAGE_TABLE_UID = uuid.UUID("6c1e0f2d-7a3b-4c5d-9e8f-1a2b3c4d5e6f")
 PRE_3_0_STORAGE_TABLE_UID = uuid.UUID("0f2d6c1e-7a3b-4c5d-9e8f-1a2b3c4d5e6f")
 
 
@@ -91,41 +89,6 @@ def test_row_keyword_writes_warn_on_pre_3_0_column_names() -> None:
                 "portfolio_data_node_uid": STORAGE_TABLE_UID,
             },
         )
-
-
-def test_pricing_binding_rows_and_resolution_keep_the_pre_3_0_names(monkeypatch) -> None:
-    binding = PricingMarketDataSetBinding.model_validate(
-        {
-            "uid": uuid.uuid4(),
-            "market_data_set_uid": uuid.uuid4(),
-            "concept_key": "discount_curves",
-            "data_node_uid": STORAGE_TABLE_UID,
-        }
-    )
-    monkeypatch.setattr(PricingMarketDataSet, "resolve_uid", classmethod(lambda cls, _: uuid.uuid4()))
-    monkeypatch.setattr(
-        PricingMarketDataSetBinding,
-        "get_by_set_and_concept",
-        classmethod(lambda cls, **_kwargs: binding),
-    )
-
-    assert binding.storage_table_uid == STORAGE_TABLE_UID
-    with pytest.warns(DeprecationWarning, match="resolve_data_node_uid is deprecated"):
-        resolved = PricingMarketDataSetBinding.resolve_data_node_uid(concept_key="discount_curves")
-    assert resolved == STORAGE_TABLE_UID
-
-
-def test_pricing_configuration_keeps_the_pre_3_0_names() -> None:
-    with pytest.warns(DeprecationWarning, match="data_node_uids is deprecated"):
-        configuration = PricingMarketDataConfiguration(
-            data_node_uids={"discount_curves": str(STORAGE_TABLE_UID)}
-        )
-
-    assert configuration.storage_table_uids == {"discount_curves": STORAGE_TABLE_UID}
-    with pytest.warns(DeprecationWarning, match="data_node_uids is deprecated"):
-        assert configuration.data_node_uids == {"discount_curves": STORAGE_TABLE_UID}
-    with pytest.warns(DeprecationWarning, match="direct_data_node_uid_for is deprecated"):
-        assert configuration.direct_data_node_uid_for("discount_curves") == STORAGE_TABLE_UID
 
 
 def test_markets_data_node_identifier_is_a_deprecated_alias() -> None:

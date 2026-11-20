@@ -1012,7 +1012,7 @@ def test_calendar_exception_returns_404_when_missing(monkeypatch) -> None:
 def _resource_discovery_validator() -> Draft202012Validator:
     """The vendored Command Center SDK schema of `command-center.resource_discovery@v1`."""
 
-    contracts = Path(__file__).parents[3] / "contracts" / "command-center-sdk-v0.1.13"
+    contracts = Path(__file__).parents[2] / "contracts" / "command-center-sdk-v0.1.13"
     schemas = [json.loads(path.read_text()) for path in (contracts / "schemas").glob("*.json")]
     manifest = json.loads((contracts / "manifest.json").read_text())
     entry = next(

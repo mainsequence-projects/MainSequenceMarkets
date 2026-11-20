@@ -6,7 +6,7 @@ from api.main import app as deployment_app
 from apps.v1.main import app as application_app
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_deployment_entrypoint_exposes_apps_v1_application() -> None:

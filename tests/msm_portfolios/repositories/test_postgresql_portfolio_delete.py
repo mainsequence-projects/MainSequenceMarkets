@@ -16,7 +16,7 @@ import pytest
 from msm.models import PortfolioTable
 from msm_portfolios.repositories import portfolio_deletion as repository
 from msm_portfolios.services import PortfolioDeleteConflictError, delete_portfolio_record
-from tests.support.postgresql_markets import (
+from tests.support.postgresql_portfolios import (
     DATASETS,
     WHEN,
     _count,
