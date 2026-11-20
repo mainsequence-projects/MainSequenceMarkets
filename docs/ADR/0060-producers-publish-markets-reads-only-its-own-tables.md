@@ -23,7 +23,8 @@ it settled.
 - It changes the delete notes of [ADR 0049](0049-portfolio-lifecycle-and-account-history.md)
   and [ADR 0050](0050-account-deletion.md) where they count rows in another application's
   table.
-- Execution Engine ADR 0001 (proposed, not in this repository) already records orders and
+- [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md)
+  (proposed) already records orders and
   trades this way: a recorder writes Markets' tables
   through the API.
 

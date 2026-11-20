@@ -143,6 +143,8 @@ nav:
       - Portfolio Currency, FX And Drifting Weights: ADR/0059-portfolio-currency-fx-and-drifting-weights.md
       - Producers Publish, Markets Reads Only Its Own Tables: ADR/0060-producers-publish-markets-reads-only-its-own-tables.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
+      - Execution Engine:
+          - Execution Engine Architecture: ADR/execution_engine/0001-execution-engine-architecture.md
       - FastAPI v1:
           - Calendar CRUD Route: ADR/fast_api/v1/0001-calendar-crud-route.md
           - Command Center Adapter Discovery: ADR/fast_api/v1/0002-command-center-adapter-discovery.md

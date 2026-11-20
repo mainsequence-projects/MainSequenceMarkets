@@ -64,6 +64,10 @@ Recommended sections:
 
 - [0034. Command Center Asset Monitor Helpers](0034-command-center-asset-monitor-helpers.md)
 
+## Execution Engine Decisions
+
+- [0001. Execution Engine Architecture](execution_engine/0001-execution-engine-architecture.md)
+
 ## FastAPI v1 Decisions
 
 - [0001. Calendar CRUD And Summary Route](fast_api/v1/0001-calendar-crud-route.md)
