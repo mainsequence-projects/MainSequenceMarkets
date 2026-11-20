@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-20
+
 ### Added
 
 - **`MarketsClient.delete_portfolio(uid)` and `MarketsClient.bulk_delete_portfolios(uids)`**
