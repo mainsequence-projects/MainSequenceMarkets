@@ -42,6 +42,14 @@ and this project follows versioned releases.
   statement that breaks a constraint answers `500` too. Other refusals (permissions, a
   missing table, a conflict) still answer `502` and failures `503`, as
   `MarketsUpstreamError`.
+- **A Markets API in local mode records and checks managers again**
+  ([#101](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/101)). In
+  4.2.0 it answered `500` to every operation that needs the acting manager: creating or
+  upserting a portfolio or signal, `publish`, `delete_after`, deleting a portfolio or
+  signal, and `assign_manager`. A local request carries no caller assertion, and
+  `caller_principal` read the caller's User row as the caller, which the SDK allows only
+  with one. A caller without an assertion is now `user:<uid>`, with no directory read.
+  On a hosted request, a failed read of the caller still raises.
 
 ## [4.2.0] - 2026-11-20
 

@@ -20,6 +20,7 @@ it deploys.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import threading
@@ -172,6 +173,12 @@ def caller_principal(uid: str) -> str:
     is bound to one branch). Any other User, a person included, is ``user:<uid>``. The
     row is read as the caller, once per process: a User's identity type and branch
     never change. A failed read raises; it is never taken for "no branch".
+
+    A request without a caller assertion, which is every request to an API in local
+    mode, cannot read as the caller, and the platform's directory is not read for it
+    as the application either: the caller is ``user:<uid>`` (#101). A local API writes
+    to a local MetaTables, so that principal never meets a hosted ``branch:`` one. The
+    Markets API serves no WebSocket route, the other request without an assertion.
     """
 
     with _caller_principals_lock:
@@ -180,7 +187,17 @@ def caller_principal(uid: str) -> str:
         return cached
     from mainsequence.server.fastapi import reads_as_caller
 
-    with reads_as_caller():
+    with contextlib.ExitStack() as reading:
+        try:
+            reading.enter_context(reads_as_caller())
+        except RequestIdentityError:
+            # reads_as_caller() also refuses outside a request and on a requester-bound
+            # one; get_requester() raises in the first case and names the requester in
+            # the second, so only a missing assertion is answered here. Not cached: the
+            # answer belongs to the request, not to the User.
+            if User.get_requester() is not None:
+                raise
+            return principal("user", uid)
         user = _DirectoryUser.get_by_uid(uid)
     branch = (
         getattr(user, "code_repository_branch_uid", None)

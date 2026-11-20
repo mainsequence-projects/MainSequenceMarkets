@@ -366,6 +366,49 @@ def test_a_person_caller_manages_as_itself(monkeypatch) -> None:
     assert identity.acting_manager_of(requester).is_organization_admin is True
 
 
+def test_a_local_caller_manages_as_itself(markets, monkeypatch) -> None:
+    # In local mode the caller is whoever holds the Bearer token, as the platform's
+    # users/me answers; no caller assertion arrives, so nothing reads the directory (#101).
+    import requests
+
+    from apps.v1 import identity
+    from apps.v1.main import create_app
+    from msm.api.portfolios import Portfolio
+    from msm.client import MarketsClient
+
+    platform = "http://platform.test"
+
+    def users_me(url, *, headers, **_kwargs):
+        assert (url, headers) == (
+            f"{platform}/api/v1/users/me/",
+            {"Authorization": "Bearer developer-token"},
+        )
+        return SimpleNamespace(status_code=200, json=lambda: {"uid": CALLER_UID})
+
+    monkeypatch.setenv("MAINSEQUENCE_CALLER_AUTH_MODE", "local")
+    monkeypatch.setenv("MAINSEQUENCE_ENDPOINT", platform)
+    monkeypatch.setattr(requests, "get", users_me)
+    monkeypatch.setattr(identity, "_caller_principals", {})
+    local_api = MarketsClient(
+        "http://testserver",
+        headers=lambda _force: {"Authorization": "Bearer developer-token"},
+        session=TestClient(create_app()),
+    )
+    calendar = _insert(markets.engine, "ms_markets__calendar")
+
+    use_remote_backend(local_api.backend)
+    try:
+        portfolio = Portfolio.upsert(
+            unique_identifier="local", calendar_uid=uuid.UUID(calendar["uid"])
+        )
+        published = PortfolioValuesSeries.publish("local", [{"time_index": T0, "close": 1.0}])
+    finally:
+        use_runtime_backend()
+
+    assert portfolio.managed_by == f"user:{CALLER_UID}"
+    assert published.written == 1
+
+
 class _no_op_context:
     def __enter__(self):
         return self

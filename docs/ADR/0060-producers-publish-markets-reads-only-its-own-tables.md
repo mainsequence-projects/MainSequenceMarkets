@@ -491,7 +491,12 @@ Both default to a dry run.
   declares `code_repository_branch_uid`; the SDK's `User` (mainsequence 9.0.40) does not
   declare that field, so this relies on the platform returning it on workload rows, as
   MetaTables does. A person, or a workload without a branch, is `user:<uid>`; a requester
-  is `user:<requester uid>`. It was not run against a live platform. Outside a Markets API
+  is `user:<requester uid>`. A request without a caller assertion (an API in local mode)
+  cannot read as the caller, so its caller is `user:<uid>` with no read (#101); 4.2.0
+  answered `500` there instead. A local API writes to a local MetaTables, so that
+  principal never meets a hosted `branch:` one, and no local caller is an Organization
+  admin, so `msm registry assign-manager` assigns managers locally. The hosted read
+  was not run against a live platform. Outside a Markets API
   request (the `runtime` backend in a script or Job) no manager is bound: nothing is
   checked, and a row created that way has no manager until one is assigned.
 - Still not verified: the cost of a run through the API and of publishing a long history
