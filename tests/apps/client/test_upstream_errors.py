@@ -1,4 +1,7 @@
-"""A MetaTables refusal behind the Markets API reaches a row call typed (MainSequenceMarkets#84)."""
+"""A MetaTables refusal behind the Markets API reaches a row call typed.
+
+MainSequenceMarkets#84, and #87 for an invalid statement.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ from apps.v1.main import app
 from msm.api.assets import Asset
 from msm.api.remote import (
     MarketsApiError,
+    MarketsInvalidStatementError,
     MarketsUpstreamError,
     raise_for_error,
     use_remote_backend,
@@ -77,3 +81,39 @@ def test_a_502_without_the_error_type_is_not_an_upstream_error() -> None:
         raise_for_error(502, "Bad Gateway", None)
 
     assert not isinstance(raised.value, MarketsUpstreamError)
+
+
+def test_an_invalid_statement_raises_the_markets_apis_own_error(monkeypatch, remote) -> None:
+    """MetaTables rejecting a compiled statement is the Markets API's fault (#87)."""
+
+    _fail_bulk_upsert(
+        monkeypatch,
+        sdk_error(
+            400,
+            {
+                "detail": {
+                    "code": "compiled_sql_database_error",
+                    "detail": 'syntax error at or near "WHERE"',
+                }
+            },
+        ),
+    )
+
+    with pytest.raises(
+        MarketsInvalidStatementError, match='syntax error at or near "WHERE"'
+    ) as raised:
+        Asset.upsert_many(ROWS)
+
+    assert raised.value.status_code == 500
+    assert not raised.value.retryable
+    assert isinstance(raised.value, MarketsApiError)
+    assert not isinstance(
+        raised.value, (MarketsUpstreamError, ValueError, LookupError, PermissionError)
+    )
+
+
+def test_a_500_without_the_error_type_is_not_an_invalid_statement() -> None:
+    with pytest.raises(MarketsApiError, match="Markets API returned 500") as raised:
+        raise_for_error(500, "Internal Server Error", None)
+
+    assert not isinstance(raised.value, MarketsInvalidStatementError)

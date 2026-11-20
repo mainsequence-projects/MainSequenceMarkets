@@ -47,6 +47,19 @@ never imports another test module. Shared fixtures are in `tests/conftest.py`:
 - `postgresql_markets`: the disposable PostgreSQL database in
   `MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL`; tests that use it are skipped without it.
 
+`tests/apps/conftest.py` holds what only the API needs: the stand-in for the platform
+gateway that signs caller assertions, and the `caller_assertions` fixture. A run outside
+`tests/apps` does not load the SDK's server modules.
+
+## One test per behaviour
+
+Each behaviour is checked once against a real database: SQLite, through MetaTables' own
+server code. A PostgreSQL test checks only what SQLite cannot show: the SQL compiled
+for PostgreSQL, its plans, its error text and its size limits. A route test patches the
+service it calls and checks the status code, the detail and the arguments it passes; a
+Job test does the same with the Job's service. Before adding a test, look for the one
+that already checks the behaviour at another layer.
+
 ## What to run for a change
 
 Run the tests of the package you changed, and the tests elsewhere that import what you

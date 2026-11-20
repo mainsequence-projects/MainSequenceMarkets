@@ -7,6 +7,52 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-20
+
+### Added
+
+- **`MarketsClient.delete_portfolio(uid)` and `MarketsClient.bulk_delete_portfolios(uids)`**
+  call `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`, in place
+  of the refused `Portfolio.delete`. They return `PortfolioDeleteResponse` and
+  `PortfolioBulkDeleteResponse`, which moved from the API app's schemas into
+  `msm.api.portfolios`. `delete_portfolio` raises `LookupError` for a missing portfolio;
+  both raise `MarketsConflictError` when a reference refuses the delete, and
+  `bulk_delete_portfolios` also when a selected portfolio is missing.
+
+### Changed
+
+- **`import msm` loads only the package's constants and version** (157 modules instead
+  of 1,531). `msm.start_engine` is imported on first use, and with it MetaTables,
+  SQLAlchemy, pandas and the Main Sequence SDK; `msm.start_engine(...)` and
+  `from msm import start_engine` work as before. The SDK now sets up its logging when
+  `start_engine` or a Markets model is first imported, not at `import msm`.
+- The test suite checks each behaviour once (see the testing page): duplicated
+  PostgreSQL, SQLite and app tests are removed, the calendar re-sync Job tests check the
+  Job's wiring, and only `tests/apps` loads the SDK's server modules (#99).
+
+### Fixed
+
+- **A statement MetaTables rejects as invalid answers `500`, not `502`**
+  ([#87](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/87)). When
+  MetaTables refuses a statement the Markets API compiled, with
+  `compiled_sql_database_error` or a code of its checks before the statement runs
+  (`invalid_sql`, `empty_sql`, `invalid_sql_parameters`, ...), the fault is the Markets
+  API's and a retry fails the same way. The API answers `500` with `error_type`
+  `InvalidStatementError`, a `detail` that says so and keeps MetaTables' reason, and
+  `upstream_status`; `msm.client` raises the new `MarketsInvalidStatementError`
+  (`MarketsApiError`, not retryable) for it. MetaTables gives no SQLSTATE, so a
+  statement that breaks a constraint answers `500` too. Other refusals (permissions, a
+  missing table, a conflict) still answer `502` and failures `503`, as
+  `MarketsUpstreamError`.
+- **A Markets API in local mode records and checks managers again**
+  ([#101](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/101)). In
+  4.2.0 it answered `500` to every operation that needs the acting manager: creating or
+  upserting a portfolio or signal, `publish`, `delete_after`, deleting a portfolio or
+  signal, and `assign_manager`. A local request carries no caller assertion, and
+  `caller_principal` read the caller's User row as the caller, which the SDK allows only
+  with one. A caller without an assertion is now `user:<uid>`, with no directory read.
+  On a hosted request, a failed read of the caller still raises.
+
 ## [4.2.0] - 2026-11-20
 
 This release breaks every producer of signals and portfolios

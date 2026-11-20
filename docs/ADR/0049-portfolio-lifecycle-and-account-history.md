@@ -494,3 +494,13 @@ tables already reach portfolios through the Markets API (ADR 0047).
 - The unused one-row helpers `msm.services.delete_portfolio`,
   `msm.repositories.delete_portfolio` and
   `msm.repositories.build_delete_portfolio_operation` are removed.
+
+### 2026-11-20: unreleased, `MarketsClient` calls the portfolio delete routes
+
+- `MarketsClient.delete_portfolio` and `MarketsClient.bulk_delete_portfolios` call
+  `DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/` from
+  Python and return `PortfolioDeleteResponse` and `PortfolioBulkDeleteResponse`. Those
+  response models moved from the API app's schemas into `msm.api.portfolios`, where the
+  client takes its models; the wire contract is unchanged.
+- `Portfolio.delete`'s refusal, and the `501` of `POST /api/v1/rows/portfolio/delete/`,
+  name the two methods next to the routes.

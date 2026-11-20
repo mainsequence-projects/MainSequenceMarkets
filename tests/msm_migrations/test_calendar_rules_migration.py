@@ -21,10 +21,10 @@ NEW_YORK = "America/New_York"
 UTC = dt.UTC
 
 
-def _tables(connection) -> dict[str, sa.Table]:
-    metadata = sa.MetaData()
-    metadata.reflect(connection)
-    return dict(metadata.tables)
+def _table(connection, name: str) -> sa.Table:
+    # Only the table at hand: reflecting the whole schema for each seeded row was most
+    # of these tests' time.
+    return sa.Table(name, sa.MetaData(), autoload_with=connection, resolve_fks=False)
 
 
 def _uid(connection) -> object:
@@ -36,7 +36,7 @@ def _uid(connection) -> object:
 def _calendar(connection, identifier: str, **values) -> object:
     uid = _uid(connection)
     connection.execute(
-        _tables(connection)[REVISION.CALENDAR_TABLE].insert(),
+        _table(connection, REVISION.CALENDAR_TABLE).insert(),
         {
             "uid": uid,
             "unique_identifier": identifier,
@@ -56,7 +56,7 @@ def _calendar(connection, identifier: str, **values) -> object:
 def _date(connection, calendar_uid, local_date: str, *, business: bool, name: str | None = None) -> None:
     day = dt.date.fromisoformat(local_date)
     connection.execute(
-        _tables(connection)[REVISION.DATE_TABLE].insert(),
+        _table(connection, REVISION.DATE_TABLE).insert(),
         {
             "uid": _uid(connection),
             "calendar_uid": calendar_uid,
@@ -72,7 +72,7 @@ def _date(connection, calendar_uid, local_date: str, *, business: bool, name: st
 
 def _session(connection, calendar_uid, local_date: str, opens: str, closes: str, label="regular") -> None:
     connection.execute(
-        _tables(connection)[REVISION.SESSION_TABLE].insert(),
+        _table(connection, REVISION.SESSION_TABLE).insert(),
         {
             "uid": _uid(connection),
             "calendar_uid": calendar_uid,
@@ -108,7 +108,7 @@ def _seed_nyse_week(connection, calendar_uid) -> None:
 
 
 def _rows(connection, table: str, calendar_uid=None) -> list[dict]:
-    reflected = _tables(connection)[table]
+    reflected = _table(connection, table)
     statement = sa.select(reflected)
     if calendar_uid is not None:
         statement = statement.where(reflected.c.calendar_uid == calendar_uid)
@@ -307,7 +307,7 @@ def test_0027_leaves_a_calendar_without_rows_and_drops_calendar_events(
         config = _config(connection)
         calendar_uid = _calendar(connection, "HEADER_ONLY")
         connection.execute(
-            _tables(connection)[REVISION.EVENT_TABLE].insert(),
+            _table(connection, REVISION.EVENT_TABLE).insert(),
             {
                 "uid": _uid(connection),
                 "calendar_uid": calendar_uid,

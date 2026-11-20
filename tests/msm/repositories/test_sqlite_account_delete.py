@@ -289,15 +289,6 @@ def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(sqlite_mar
     assert _count(engine, "provider_ns__ordersts__copy") == 1
 
 
-def test_keys_from_tables_outside_the_identity_do_not_stop_the_delete(sqlite_markets) -> None:
-    engine = sqlite_markets.engine
-    account = _account(engine)
-    _history(sqlite_markets, account)
-    _create_provider_tables(engine)
-
-    assert delete_account(sqlite_markets.context, uid=account) is not None
-
-
 # Bulk ------------------------------------------------------------------------------------
 
 

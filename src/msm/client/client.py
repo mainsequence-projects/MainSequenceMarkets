@@ -23,8 +23,12 @@ from msm.api.accounts import (
     VirtualFundAllocationPolicyDescription,
     VirtualFundAllocationPolicySummary,
 )
-from msm.api.http import ResourceCollection
-from msm.api.portfolios import Portfolio
+from msm.api.http import (
+    BulkActionExecutionRequest,
+    BulkActionExplicitSelection,
+    ResourceCollection,
+)
+from msm.api.portfolios import Portfolio, PortfolioBulkDeleteResponse, PortfolioDeleteResponse
 from msm.api.remote import MarketsApiError, raise_for_error
 from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoint
 
@@ -423,6 +427,40 @@ class MarketsClient:
 
         payload = self.request("POST", f"{API_PREFIX}/portfolio/{portfolio_uid}/reinstate/")
         return Portfolio.model_validate(payload)
+
+    def delete_portfolio(self, portfolio_uid: Any) -> PortfolioDeleteResponse:
+        """Delete a portfolio with its rows in its seven datasets (``deletePortfolio``, ADR 0049).
+
+        One transaction. Raises ``LookupError`` when the portfolio does not exist and
+        ``MarketsConflictError`` when account history or another application's table
+        references it; nothing is deleted then. ``Portfolio.delete`` is refused.
+        """
+
+        payload = self.request("DELETE", f"{API_PREFIX}/portfolio/{portfolio_uid}/")
+        return PortfolioDeleteResponse.model_validate(payload)
+
+    def bulk_delete_portfolios(self, portfolio_uids: Sequence[Any]) -> PortfolioBulkDeleteResponse:
+        """Delete portfolios with their rows in their seven datasets (``bulkDeletePortfolios``).
+
+        The route checks the whole selection first and raises ``MarketsConflictError``
+        naming each portfolio that is missing or referenced; nothing is deleted then.
+        Each portfolio is then deleted in its own transaction. If one fails, the others
+        stay deleted and ``MarketsConflictError`` names each failure.
+        """
+
+        selection = BulkActionExecutionRequest(
+            selection=BulkActionExplicitSelection(
+                mode="explicit",
+                uids=[str(uid) for uid in portfolio_uids],
+            ),
+            options={},
+        )
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/portfolio/bulk-delete/",
+            json=selection.model_dump(mode="json"),
+        )
+        return PortfolioBulkDeleteResponse.model_validate(payload)
 
     def _send(self, method: str, url: str, *, json: Any, params: Any, force: bool) -> Any:
         headers = dict(self._headers(force))

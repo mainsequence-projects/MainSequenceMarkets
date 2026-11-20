@@ -147,11 +147,19 @@ def describe_row_operations() -> list[RowResourceDescription]:
         403: {"description": "The operation refused the acting identity (`PermissionError`)."},
         404: {"description": "Unknown resource or operation, or the row was not found."},
         409: {"description": "The operation conflicted with existing rows."},
+        500: {
+            "description": (
+                "MetaTables rejected a statement this deployment compiled as invalid "
+                "(`InvalidStatementError`): a fault of the Markets API, which a retry does "
+                "not fix; `detail` carries MetaTables' reason."
+            )
+        },
         501: {"description": "The operation is not offered remotely."},
         502: {
             "description": (
                 "An API this deployment calls, normally MetaTables, refused the call "
-                "(`UpstreamApiError`); `detail` carries its reason."
+                "(`UpstreamApiError`), for example for permissions, a missing table or a "
+                "conflict; `detail` carries its reason."
             )
         },
         503: {

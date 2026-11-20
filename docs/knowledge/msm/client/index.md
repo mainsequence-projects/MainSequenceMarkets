@@ -77,8 +77,9 @@ its preflight checks, and exists only for `asset`, `asset-category`,
 nothing: an account's history goes only with the account, through
 `Account.delete` (ADR 0049, ADR 0050). `Portfolio` raises it under both
 backends as well: a portfolio is deleted with its seven datasets only through
-`DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`
-(ADR 0049). Composites that implement `delete`
+`DELETE /api/v1/portfolio/{uid}/` and `POST /api/v1/portfolio/bulk-delete/`,
+which `delete_portfolio` and `bulk_delete_portfolios` call (ADR 0049,
+[Portfolio Deletion](#portfolio-deletion)). Composites that implement `delete`
 themselves, such as `Curve` and the pricing market-data bindings, delete
 remotely as they do under the runtime backend. `CalendarSessionRule` and
 `CalendarException` are among them: deleting a `user` exception is how a
@@ -103,6 +104,7 @@ asset pricing details).
 | 404 | `LookupError`; gets return `None` as under the runtime backend |
 | 409 | `MarketsConflictError` (`ValueError`) |
 | 501 | `MarketsOperationUnsupported` (`NotImplementedError`) |
+| 500 with `error_type` `InvalidStatementError` | `MarketsInvalidStatementError` (`MarketsApiError`) |
 | 502, 503 with `error_type` `UpstreamApiError` | `MarketsUpstreamError` (`MarketsApiError`) |
 | any other status | `MarketsApiError` (`RuntimeError`) |
 
@@ -118,6 +120,13 @@ reason that API gave, for example
 will be refused again. It is `503`, and `retryable` is `True`, when the upstream
 API failed or could not be reached. A `502` or `503` without that `error_type`
 comes from a proxy in front of the Markets API and raises plain `MarketsApiError`.
+
+`MarketsInvalidStatementError` means MetaTables rejected a statement the Markets
+API compiled as invalid, for example a database error running it. The fault is the
+Markets API's, not the arguments' or MetaTables': the same call fails the same way
+again, so `retryable` is `False` and `status_code` is `500`. Its message names the
+fault and carries MetaTables' reason. It is not a `MarketsUpstreamError`; a `500`
+without its `error_type` raises plain `MarketsApiError`.
 
 ## Set-Based Operations
 
@@ -312,6 +321,29 @@ client.reinstate_portfolio(portfolio_uid)
 of the accounts whose current target names the portfolio. `retire_portfolio`
 returns the `Portfolio` with `retired_at` and raises `MarketsConflictError`
 while that list is not empty; `reinstate_portfolio` clears it.
+
+## Portfolio Deletion
+
+A portfolio that nothing references is deleted with its rows in its seven
+datasets ([Delete Portfolio](../../../fast_api/v1/portfolio.md#delete-portfolio)):
+
+```python
+deleted = client.delete_portfolio(portfolio_uid)
+deleted.deleted_rows  # rows removed per dataset
+client.bulk_delete_portfolios([first_uid, second_uid])
+```
+
+`delete_portfolio` deletes in one transaction and returns a
+`PortfolioDeleteResponse`. It raises `LookupError`
+for a missing portfolio, and `MarketsConflictError`, deleting nothing, while
+account history or another application's table references it. A portfolio that
+accounts referenced is retired instead.
+
+`bulk_delete_portfolios` checks the whole selection first and raises
+`MarketsConflictError`, deleting nothing, naming each portfolio that is missing
+or referenced. It then deletes each portfolio in its own transaction and returns
+a `PortfolioBulkDeleteResponse`. If one fails then, the others stay deleted and
+`MarketsConflictError` names each failure.
 
 ## Provider Time Series
 

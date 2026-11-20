@@ -1,5 +1,8 @@
 """A refused or failed MetaTables call answers with its reason, not a bare 500 (MainSequenceMarkets#84).
 
+A statement MetaTables rejects as invalid is the Markets API's own fault and answers
+``500`` (MainSequenceMarkets#87); any other refusal answers ``502``.
+
 The SDK errors are built the way the MetaTables client builds them: from an HTTP
 response, by ``mainsequence.client.exceptions.raise_for_response``, with the request
 payload attached.
@@ -11,13 +14,18 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from mainsequence.client.exceptions import TransportError
 from metatables import MetaTableTransactionGuardError
 from metatables.endpoint import ApiResolutionError
 
 from apps.v1.main import app
-from apps.v1.upstream_errors import MAX_REASON_CHARACTERS
+from apps.v1.upstream_errors import (
+    INVALID_STATEMENT_CODES,
+    MAX_REASON_CHARACTERS,
+    install_upstream_error_handlers,
+)
 from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
 
 ROWS_ROUTE = "/api/v1/rows/asset/upsert_many/"
@@ -31,6 +39,68 @@ def client(monkeypatch) -> TestClient:
         lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
     )
     return TestClient(app)
+
+
+@pytest.fixture
+def handler_client() -> TestClient:
+    """An application with only the upstream error handlers, raising what a test gives it."""
+
+    handled = FastAPI()
+    install_upstream_error_handlers(handled)
+
+    @handled.post("/raise/")
+    def _raise(request: Request) -> None:
+        raise request.app.state.error
+
+    return TestClient(handled)
+
+
+def _status_for(handler_client: TestClient, error: Exception) -> int:
+    handler_client.app.state.error = error
+    return handler_client.post("/raise/").status_code
+
+
+@pytest.mark.parametrize("code", sorted(INVALID_STATEMENT_CODES))
+@pytest.mark.parametrize("upstream_status", [400, 422])
+def test_every_invalid_statement_code_answers_500(handler_client, code, upstream_status) -> None:
+    error = sdk_error(upstream_status, {"detail": {"code": code, "detail": "rejected"}})
+
+    assert _status_for(handler_client, error) == 500
+
+
+def test_a_code_metatables_sends_as_the_whole_detail_is_read(handler_client) -> None:
+    # check_wire_contract answers HTTPException(422, exc.code).
+    error = sdk_error(422, {"detail": "compiled_sql_dialect_mismatch"})
+
+    assert _status_for(handler_client, error) == 500
+
+
+@pytest.mark.parametrize(
+    ("upstream_status", "body"),
+    [
+        # Permissions.
+        (400, {"detail": {"code": "sql_scope_denied", "detail": "sql_scope_denied"}}),
+        (400, {"detail": {"code": "relation_read_denied", "detail": "relation_read_denied"}}),
+        (403, {"detail": "Caller assertion is not accepted locally."}),
+        # A missing table.
+        (404, {"detail": "MetaTable not found."}),
+        # Conflicts.
+        (409, {"detail": {"code": "compiled_sql_guard_failed", "detail": "Statement 0 missed."}}),
+        (409, {"detail": "MetaTable is reserved."}),
+        # A request MetaTables' schema refuses.
+        (422, {"detail": [{"loc": ["body", "statement", "sql"], "msg": "too long"}]}),
+    ],
+)
+def test_other_refusals_answer_502(handler_client, upstream_status, body) -> None:
+    assert _status_for(handler_client, sdk_error(upstream_status, body)) == 502
+
+
+@pytest.mark.parametrize("upstream_status", [500, 503, 429])
+def test_an_invalid_statement_code_on_a_failure_answers_503(handler_client, upstream_status):
+    body = {"detail": {"code": "compiled_sql_database_error", "detail": "x"}}
+    error = sdk_error(upstream_status, body)
+
+    assert _status_for(handler_client, error) == 503
 
 
 def _fail_bulk_upsert(monkeypatch, error: Exception) -> None:
@@ -59,7 +129,9 @@ def test_a_refused_statement_answers_502_with_the_reason(client, monkeypatch) ->
     assert "secret_value" not in response.text
 
 
-def test_a_database_error_answers_502_with_its_code_and_statement(client, monkeypatch) -> None:
+def test_an_invalid_statement_answers_500_as_markets_own_error(client, monkeypatch) -> None:
+    """A statement the database rejects fails the same way on every retry (#87)."""
+
     _fail_bulk_upsert(
         monkeypatch,
         sdk_error(
@@ -67,7 +139,7 @@ def test_a_database_error_answers_502_with_its_code_and_statement(client, monkey
             {
                 "detail": {
                     "code": "compiled_sql_database_error",
-                    "detail": 'duplicate key value violates unique constraint "uq_asset"',
+                    "detail": 'syntax error at or near "WHERE"',
                     "statement_index": 2,
                     "label": None,
                 }
@@ -77,12 +149,35 @@ def test_a_database_error_answers_502_with_its_code_and_statement(client, monkey
 
     response = client.post(ROWS_ROUTE, json=ROWS_BODY)
 
-    assert response.status_code == 502
-    assert response.json()["detail"] == (
-        "The upstream API answered 400: compiled_sql_database_error: "
-        'duplicate key value violates unique constraint "uq_asset" (statement 2)'
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": (
+            "The Markets API sent a statement the upstream API rejects as invalid. "
+            "This is a fault of the Markets API; a retry fails the same way. "
+            "The upstream API answered 400: compiled_sql_database_error: "
+            'syntax error at or near "WHERE" (statement 2)'
+        ),
+        "error_type": "InvalidStatementError",
+        "upstream_status": 400,
+    }
+    assert "Retry-After" not in response.headers
+    assert "INSERT" not in response.text
+
+
+def test_a_refusal_of_the_caller_answers_502(client, monkeypatch) -> None:
+    _fail_bulk_upsert(
+        monkeypatch,
+        sdk_error(400, {"detail": {"code": "sql_scope_denied", "detail": "sql_scope_denied"}}),
     )
-    assert response.json()["upstream_status"] == 400
+
+    response = client.post(ROWS_ROUTE, json=ROWS_BODY)
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "The upstream API answered 400: sql_scope_denied: sql_scope_denied",
+        "error_type": "UpstreamApiError",
+        "upstream_status": 400,
+    }
 
 
 def test_an_unhandled_guard_refusal_answers_502(client, monkeypatch) -> None:
@@ -176,7 +271,8 @@ def test_credentials_in_a_url_and_long_reasons_do_not_reach_the_caller(client, m
 
     assert "hunter2" not in detail and "markets:" not in detail
     assert "postgresql://***@db.internal:5432/markets" in detail
-    assert len(detail) < MAX_REASON_CHARACTERS + 100
+    # The reason is cut; what the answer says around it is not.
+    assert len(detail) < MAX_REASON_CHARACTERS + 200
 
 
 def test_an_answer_that_is_not_json_is_reported_by_its_text(client, monkeypatch) -> None:

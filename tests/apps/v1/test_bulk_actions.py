@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
-from apps.v1.services import asset_categories, portfolio_groups, portfolios
+from apps.v1.services import asset_categories, portfolio_groups
 from msm.api.http import TableImpact
 from msm.services.table_impact import DeleteRowsImpact
 
@@ -291,57 +291,6 @@ def test_portfolio_group_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         "blockers": [],
         "warnings": [],
         "impact": None,
-    }
-
-
-def test_portfolio_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
-    portfolio_uid = str(uuid.uuid4())
-    blocker = (
-        "1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
-    )
-    monkeypatch.setattr(
-        portfolios,
-        "_get_delete_runtime",
-        lambda: SimpleNamespace(context=object()),
-    )
-    monkeypatch.setattr(
-        portfolios,
-        "_preflight_bulk_delete_portfolio_records",
-        lambda context, uids: {
-            "allowed": False,
-            "detail": "The portfolio selection cannot be deleted as submitted.",
-            "matched_count": 1,
-            "blockers": [f"Portfolio 'example-sleeve': {blocker}"],
-            "warnings": [],
-            "impact": None,
-            "portfolios": [
-                {
-                    "uid": uids[0],
-                    "unique_identifier": "example-sleeve",
-                    "row_counts": {"weights": 2, "values": 2},
-                    "blockers": [blocker],
-                }
-            ],
-        },
-    )
-
-    result = portfolios.preflight_bulk_delete_portfolios(uids=[portfolio_uid])
-
-    assert result.model_dump() == {
-        "allowed": False,
-        "detail": "The portfolio selection cannot be deleted as submitted.",
-        "matched_count": 1,
-        "blockers": [f"Portfolio 'example-sleeve': {blocker}"],
-        "warnings": [],
-        "impact": None,
-        "portfolios": [
-            {
-                "uid": portfolio_uid,
-                "unique_identifier": "example-sleeve",
-                "row_counts": {"weights": 2, "values": 2},
-                "blockers": [blocker],
-            }
-        ],
     }
 
 

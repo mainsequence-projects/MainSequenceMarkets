@@ -219,8 +219,12 @@ def test_a_blank_identifier_is_refused() -> None:
 # The delete ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("key", list(DATASETS))
-def test_the_portfolio_is_deleted_with_its_rows_in_each_dataset(markets, key: str) -> None:
+def test_a_portfolio_with_rows_in_one_dataset_is_deleted_with_them(markets) -> None:
+    # Each dataset alone: `test_all_seven_datasets_go_in_one_transaction_with_the_portfolio`
+    # deletes rows from all seven, `test_the_preflight_counts_match_what_the_delete_removes`
+    # counts them, and `test_bulk_delete_deletes_each_portfolio_and_reports_the_rest` keeps
+    # another portfolio's rows in each.
+    key = "values"
     engine = markets.engine
     portfolio, identifier = _portfolio_with(engine, key)
     _dataset_row(engine, key, identifier, when=WHEN + dt.timedelta(days=1))
