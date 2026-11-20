@@ -82,8 +82,32 @@ other places to look.
 For example:
 
 ```bash
-uv run --frozen --all-extras pytest -q tests/msm_pricing
+uv run --frozen --all-extras pytest -q -n 4 tests/msm_pricing
 ```
+
+## Parallel runs
+
+Tests run in parallel with pytest-xdist. CI runs the suite with `-n auto --dist worksteal`:
+one worker per CPU, and a worker that runs out of tests takes queued ones from a worker
+held up by a long test. Locally, pass `-n 4` to a scoped run of more than a few files. A
+single file or test runs faster without `-n`, which costs each worker its own start.
+
+Each worker is a separate process, so every test must pass in any order and on any
+worker:
+
+- Write files only under `tmp_path` or `tmp_path_factory`; each worker has its own base
+  directory. The session-scoped `sqlite_revisions` files are migrated once per worker.
+- Change the environment, module attributes and `sys.modules` only through `monkeypatch`,
+  so they are put back after the test.
+- A module that reads the environment when imported is imported at collection, not first
+  inside a test that changes that environment. A test that imports
+  `msm_migrations` lives in `tests/msm_migrations`, whose modules import it at collection:
+  first imported under another namespace, its migration provider would move every later
+  database of that worker into that namespace.
+- The PostgreSQL fixtures use a database per worker: `<database>_gw0`, `<database>_gw1`,
+  ..., created next to the one their URL variable names
+  (`tests/support/postgresql_databases.py`). The PostgreSQL user needs `CREATEDB`, which
+  the throwaway container's `postgres` user has.
 
 PostgreSQL-gated tests run only when the change touches PostgreSQL SQL, a migration, or
 their fixtures. Run them against one throwaway TimescaleDB container with an empty

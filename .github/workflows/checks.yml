@@ -31,7 +31,9 @@ jobs:
           uv run --frozen --all-extras ruff check --no-fix .
           uv run --frozen --all-extras mkdocs build --strict
       - name: Run the test suite
-        run: uv run --frozen --all-extras pytest -q
+        # One pytest-xdist worker per CPU; worksteal moves queued tests off a worker held up
+        # by a long one. Each worker migrates its own SQLite templates (docs/testing.md).
+        run: uv run --frozen --all-extras pytest -q -n auto --dist worksteal
       - name: Build and verify distributions
         run: |
           uv run --frozen --all-extras python -m build

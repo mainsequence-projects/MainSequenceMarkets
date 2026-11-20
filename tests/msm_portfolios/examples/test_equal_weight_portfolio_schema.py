@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import importlib
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -143,27 +141,6 @@ def test_dynamic_migration_metadata_contains_only_configured_table(monkeypatch) 
     metadata = metadata_for_models([storage])
 
     assert list(metadata.tables) == [storage.__table__.name]
-
-
-def test_dynamic_migration_provider_imports_with_source_env(monkeypatch) -> None:
-    env = config.dynamic_provider_env(
-        source_time_index_meta_table_uid="source-storage-uid",
-        source_cadence="1d",
-    )
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-
-    module_name = "examples.msm_portfolios.portfolio_equal_weights_dynamic_migration"
-    sys.modules.pop(module_name, None)
-    module = importlib.import_module(module_name)
-
-    assert module.DYNAMIC_INTERPOLATED_PRICES_STORAGE.__table__.name == (
-        config.configured_equal_weight_interpolated_prices_storage(
-            source_time_index_meta_table_uid="source-storage-uid",
-            source_cadence="1d",
-        ).__table__.name
-    )
-    assert module.migration.metatable_models == [module.DYNAMIC_INTERPOLATED_PRICES_STORAGE]
 
 
 def test_dynamic_revision_message_uses_configured_table_suffix() -> None:
