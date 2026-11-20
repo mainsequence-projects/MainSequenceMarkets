@@ -37,14 +37,14 @@ from msm_portfolios.time_index.portfolios.rebalance import (
     PortfolioRebalanceStateStorage,
 )
 from msm_portfolios.rebalance_strategy import ImmediateSignal
-from tests.identity.test_pinned_identities import _bound
-from tests.msm.repositories.test_sqlite_snapshot_writes import (
+from tests.support.pinned_identities import _bound
+from tests.support.rebalance import PublishedTable
+from tests.support.sqlite_markets import (
     _asset,
     _insert,
     _rows,
     make_sqlite_markets,
 )
-from tests.msm_portfolios.time_index.test_next_observed_price import PublishedTable
 
 UTC = dt.UTC
 T0 = dt.datetime(2026, 3, 2, 21, 0, tzinfo=UTC)
@@ -54,8 +54,8 @@ BRANCH = "b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d"
 
 
 @pytest.fixture(params=["runtime", "remote"])
-def markets(request, tmp_path, monkeypatch):
-    markets = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(request, tmp_path, monkeypatch, sqlite_revisions):
+    markets = make_sqlite_markets(tmp_path, monkeypatch, template=sqlite_revisions.file("head"))
     for asset in ("AAA", "BBB", "USD"):
         _asset(markets.engine, asset)
     markets.calendar = _insert(markets.engine, "ms_markets__calendar", unique_identifier="XNYS")
@@ -305,7 +305,9 @@ def test_portfolio_preflight_reports_why_a_portfolio_cannot_run(markets) -> None
 # Private rows --------------------------------------------------------------------------------
 
 
-def test_delete_private_series_clears_the_producers_rows_in_key_order(tmp_path, monkeypatch):
+def test_delete_private_series_clears_the_producers_rows_in_key_order(
+    tmp_path, monkeypatch, sqlite_revisions
+):
     from msm_portfolios.time_index.contract_instances import (
         configured_portfolio_calendar_events_storage,
         configured_portfolio_rebalance_state_storage,
@@ -322,7 +324,9 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(tmp_path, 
         rebalance.__table__.create(engine)
         events.__table__.create(engine)
 
-    markets = make_sqlite_markets(tmp_path, monkeypatch, prepare=prepare)
+    markets = make_sqlite_markets(
+        tmp_path, monkeypatch, template=sqlite_revisions.file("head"), prepare=prepare
+    )
     _asset(markets.engine, "AAA")
     calendar = _insert(markets.engine, "ms_markets__calendar", unique_identifier="XNYS")
     for identifier in ("kept", "deleted"):

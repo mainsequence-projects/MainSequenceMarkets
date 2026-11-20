@@ -7,8 +7,8 @@ import importlib
 import sqlalchemy as sa
 from alembic import command
 
-from tests.msm.maintenance.test_legacy_schema_migration import _config
-from tests.msm.repositories.test_sqlite_snapshot_writes import _insert
+from tests.support.migrations import _config
+from tests.support.sqlite_markets import _insert
 
 REVISION = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0032_registry_row_managers"
@@ -20,12 +20,12 @@ def _rows(connection, table: str) -> list[dict]:
     return [dict(row) for row in connection.execute(sa.select(reflected)).mappings()]
 
 
-def test_0032_adds_a_null_manager_to_existing_rows_and_downgrades_cleanly(tmp_path) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'managers.sqlite'}")
+def test_0032_adds_a_null_manager_to_existing_rows_and_downgrades_cleanly(
+    tmp_path, sqlite_revisions
+) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "managers.sqlite", "0031")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0031")
-        connection.commit()
         calendar = _insert(engine, "ms_markets__calendar")
         _insert(engine, "ms_markets__signalmetadata", signal_uid="signal")
         _insert(

@@ -245,7 +245,7 @@ def test_delete_portfolio_signal_weights_returns_deleted_count(monkeypatch) -> N
 
 
 # The signal delete (weights and metadata in one transaction) runs end to end on SQLite in
-# tests/msm_portfolios/test_recipes.py (end_signal).
+# tests/apps/client/test_recipes.py (end_signal).
 
 
 def test_public_delete_signal_weights_uses_signal_uid(monkeypatch) -> None:

@@ -12,7 +12,8 @@ The packages depend on each other in one direction (ADR 0019):
   compatibility alias that re-exports the `msm_migrations` provider.
 - `msm_portfolios` and `msm_pricing` import `msm`, and not each other.
 - `msm_migrations` imports all three: its registry collects every package's models.
-- `msm_cli` imports `msm`.
+- `msm_cli` imports `msm`, and `msm_portfolios` for `msm series publish` and
+  `msm registry assign-manager` (ADR 0060).
 - `apps` imports `msm`, `msm_portfolios` and `msm_pricing`.
 
 Each test directory may import only what its package depends on:
@@ -23,7 +24,7 @@ Each test directory may import only what its package depends on:
 | `tests/msm_portfolios` | portfolio construction and accounting | `msm`, `msm_portfolios` |
 | `tests/msm_pricing` | pricing | `msm`, `msm_pricing` |
 | `tests/msm_migrations` | the migrations and the provider's models | `msm`, `msm_portfolios`, `msm_pricing`, `msm_migrations` |
-| `tests/msm_cli` | the `msm` command | `msm`, `msm_cli` |
+| `tests/msm_cli` | the `msm` command | `msm`, `msm_portfolios`, `msm_cli` |
 | `tests/apps` | the FastAPI application and the client against it | `msm`, `msm_portfolios`, `msm_pricing`, `apps` |
 | `tests/identity` | identities and renames across packages (ADR 0047, 0048) | every package but `apps` |
 | `tests/packaging` | the distribution and the repository layout | anything |
@@ -56,7 +57,7 @@ other places to look.
 | You changed | Run |
 |---|---|
 | `src/msm_pricing` | `tests/msm_pricing`, and the files in `tests/apps`, `tests/msm_migrations` and `tests/identity` that import the changed module |
-| `src/msm_portfolios` | `tests/msm_portfolios`, and the files in `tests/apps`, `tests/msm_migrations` and `tests/identity` that import the changed module |
+| `src/msm_portfolios` | `tests/msm_portfolios`, and the files in `tests/apps`, `tests/msm_migrations`, `tests/msm_cli` and `tests/identity` that import the changed module |
 | `src/msm` | the files in `tests/msm` for the changed area, and every other test file that imports the changed module |
 | `src/msm_migrations` | `tests/msm_migrations`, and the database tests of the tables the revision changes |
 | `src/msm_cli` | `tests/msm_cli` (`tests/identity/test_rename_preflight.py` for the rename preflight) |

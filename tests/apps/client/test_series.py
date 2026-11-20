@@ -24,7 +24,7 @@ from msm_portfolios.api import (
     SeriesRows,
     SignalWeightsSeries,
 )
-from tests.msm.repositories.test_sqlite_snapshot_writes import (
+from tests.support.sqlite_markets import (
     _asset,
     _insert,
     _rows,
@@ -42,8 +42,8 @@ OTHER_BRANCH = "c8b2d3e4-f5a6-4b7c-9d8e-0f1a2b3c4d5e"
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    markets = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(tmp_path, monkeypatch, sqlite_revisions):
+    markets = make_sqlite_markets(tmp_path, monkeypatch, template=sqlite_revisions.file("head"))
     for asset in ("AAA", "BBB", "CCC"):
         _asset(markets.engine, asset)
     monkeypatch.setattr(

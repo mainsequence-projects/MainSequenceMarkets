@@ -16,14 +16,14 @@ import pytest
 from msm_portfolios.api import SignalWeightsSeries
 from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
 from msm_portfolios.time_index import SIGNAL_UID, SignalWeights
-from tests.msm.repositories.test_sqlite_snapshot_writes import _asset, make_sqlite_markets
+from tests.support.sqlite_markets import _asset, make_sqlite_markets
 
 UTC = dt.UTC
 
 
 @pytest.fixture
-def markets(tmp_path, monkeypatch):
-    markets = make_sqlite_markets(tmp_path, monkeypatch)
+def markets(tmp_path, monkeypatch, sqlite_revisions):
+    markets = make_sqlite_markets(tmp_path, monkeypatch, template=sqlite_revisions.file("head"))
     for asset in ("AAA", "BBB", "CCC"):
         _asset(markets.engine, asset)
     monkeypatch.setattr(

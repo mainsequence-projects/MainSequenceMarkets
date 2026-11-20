@@ -7,8 +7,8 @@ import importlib
 import sqlalchemy as sa
 from alembic import command
 
-from tests.msm.maintenance.test_legacy_schema_migration import _config
-from tests.msm.repositories.test_sqlite_snapshot_writes import _insert
+from tests.support.migrations import _config
+from tests.support.sqlite_markets import _insert
 
 REVISION = importlib.import_module(
     "msm_migrations.versions.mainsequence_markets.0033_drop_portfolio_dataset_catalog"
@@ -21,13 +21,11 @@ def _rows(connection, table: str) -> list[dict]:
 
 
 def test_0033_drops_the_catalog_and_the_signal_table_uid_and_keeps_every_other_row(
-    tmp_path,
+    tmp_path, sqlite_revisions
 ) -> None:
-    engine = sa.create_engine(f"sqlite:///{tmp_path / 'catalog.sqlite'}")
+    engine = sqlite_revisions.engine(tmp_path / "catalog.sqlite", "0032")
     with engine.connect() as connection:
         config = _config(connection)
-        command.upgrade(config, "0032")
-        connection.commit()
         calendar = _insert(engine, "ms_markets__calendar")
         _insert(engine, "ms_markets__signalmetadata", signal_uid="signal", meta_table_uid="table")
         portfolio = _insert(
