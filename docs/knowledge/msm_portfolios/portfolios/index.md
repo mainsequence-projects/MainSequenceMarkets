@@ -117,7 +117,7 @@ Portfolios answer these questions:
   contract: the unique time-leading one, and a second one that leads with the
   series, `(signal_uid, time_index)` or `(portfolio_identifier, time_index)`.
   The provider's own migration creates them; the portfolio contracts other than
-  the weights have had theirs since 4.1.0 (issue 96).
+  the weights have had theirs since 4.1.1 (issue 96).
 - `msm_portfolios.services.portfolio_datasets`: the Markets catalog of which
   instance holds each portfolio's datasets, with register, reconcile and list
   services.

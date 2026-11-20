@@ -7,6 +7,160 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Requires MetaTables 0.1.71 or later.** `mainsequence-metatable>=0.1.71,<0.2` (was
+  `>=0.1.66`), for two of its fixes:
+  - **0.1.69 rebuilds a table's update statistics after a compiled-SQL write.** The
+    portfolio and account deletes are statement lists of plain deletes. MetaTables rebuilds
+    the stored update statistics of each time-index table such a write changes, so a
+    portfolio, or an account's orders, trades and order events, written again under a
+    deleted one's identifier do not resume from its last time index
+    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
+  - **0.1.71 binds SQLite statements by position.** SQLite numbers each named parameter by
+    searching the names before it, so preparing a statement took time quadratic in its
+    values. On SQLite, `bulk_upsert_model` sends 7,000 `Asset` rows in two batches, and
+    the first batch's statements bind up to 26,212 values. Its three-statement transaction
+    needed 15.6 s of CPU and ran past MetaTables' 15 s deadline; with 0.1.71 it takes
+    0.08 s ([issue 97](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/97),
+    [MetaTables#121](https://github.com/mainsequence-projects/MetaTables/issues/121)).
+
+  The lock and `requirements.txt`, which hosted images install, select 0.1.71; no other
+  locked package changes.
+- **The six other portfolio datasets have an index that leads with the portfolio**
+  (Alembic revision 0031). `PortfoliosStorage`, `PortfolioRebalanceStateStorage`,
+  `PortfolioAnalyticsStorage`, `PortfolioEventLedgerStorage`, `PortfolioStateStorage` and
+  `PortfolioCashFlowsStorage` gain `(portfolio_identifier, time_index)`, the index revision
+  0026 gave `PortfolioWeightsStorage`
+  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+  Counting, reading and deleting one portfolio's rows reads that portfolio's rows instead
+  of the whole table, and so does the `RESTRICT` check when a portfolio row is deleted.
+  Apply the migration. On an ordinary table it builds the index in the upgrade's
+  transaction, during which writes to the table wait (2 to 3 s for tables of 6.3 million
+  rows). On a TimescaleDB DataSource, where these tables are hypertables, it builds each
+  index one chunk per transaction (`timescaledb.transaction_per_chunk`), outside the
+  upgrade's transaction, so it holds a few locks at a time whatever the number of chunks:
+  on 8,030 chunks across the six tables, at PostgreSQL's default
+  `max_locks_per_transaction = 64`, it took 32 s and held at most 22 locks, where one
+  transaction ran out of shared memory. An upgrade stopped part way can be run again: it
+  finishes or rebuilds what it left. Dropping a hypertable's index, which the downgrade and
+  the upgrade after an interrupted build do, takes about two locks per chunk of that table
+  in one transaction, because TimescaleDB 2.22 opens every chunk to drop it (4,010 locks
+  for 2,005 chunks). Instances built with `configured_portfolios_storage`,
+  `configured_portfolio_rebalance_state_storage` and
+  `configured_portfolio_event_ledger_storage` declare the same index; **a provider adds it
+  to its existing instances in a revision of its own**.
+
+### Removed
+
+- **Breaking: `Portfolio.delete`.** It raises `MarketsOperationUnsupported` under both
+  backends and deletes nothing, and `POST /api/v1/rows/portfolio/delete/` answers `501`
+  with the same text. Through `msm.client` it ran the portfolio routes' delete; under the
+  runtime backend it deleted only the portfolio row, none of its seven datasets, and the
+  first `RESTRICT` key from any of them refused it. Core `msm` cannot run the full delete,
+  which lives in `msm_portfolios`
+  ([ADR 0019](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0019-msm-portfolios-package-boundary/)).
+  Delete a portfolio through `DELETE /api/v1/portfolio/{uid}/` or
+  `POST /api/v1/portfolio/bulk-delete/`
+  ([ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
+- **`msm.services.delete_portfolio`, `msm.repositories.delete_portfolio` and
+  `msm.repositories.build_delete_portfolio_operation`**, unused one-row portfolio deletes.
+
+### Fixed
+
+- **Breaking: a portfolio is deleted with all its datasets in one transaction, or not at
+  all.** `DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and the
+  remote `POST /api/v1/rows/portfolio/delete/` deleted the portfolio's weights and values
+  with two `delete_after_date` requests and then the portfolio row. A `RESTRICT` key from
+  its rebalance state, analytics, event ledger, state or cash flows, or from another
+  application's instance, then refused the row with a `409` that the preflight had not
+  predicted, and the portfolio survived without its weights and values
+  ([issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)). The
+  delete now removes the portfolio's rows in all seven datasets and then the row as one
+  MetaTables statement list, in one transaction; the last statement is guarded, so a
+  portfolio that vanished in between answers `404` and one renamed in between `409`.
+  The counting read and the transaction run with MetaTables' longest deadline, 60 s,
+  instead of its 15 s default: deleting a portfolio with ten years of daily weights on
+  500 assets took 12 to 19 s on PostgreSQL 16 on a busy workstation.
+  - Before anything is sent, it is refused while virtual funds or account target rows
+    name the portfolio (ADR 0049), or while a table of another application whose
+    `RESTRICT` key references the portfolio holds rows of it or cannot be checked. Those
+    tables come from MetaTables' delete impact and from the catalog's instances; each gets
+    one read-only count. Markets never deletes their rows: they used to stay in place,
+    listed in `retained_datasets`, and now refuse the delete, as for curves (issue 59).
+  - The `409` names the table and key that refused, or carries the database's message,
+    which on PostgreSQL names the constraint.
+  - `POST /api/v1/portfolio/bulk-delete/preflight/` runs the same checks, with one read
+    for the whole selection, and returns `portfolios`: each portfolio's `row_counts` per
+    dataset and its `blockers`.
+  - Responses: `deleted_rows`, the rows per dataset, replaces `deleted_weights_count`,
+    `deleted_values_count` and `retained_datasets`, and the response names the deleted
+    portfolio's `uid` and `unique_identifier`. The bulk delete returns `deleted`, one entry
+    per portfolio, and `failed[].detail` instead of `failed[].reason`, as the account bulk
+    delete does. Each portfolio is deleted in its own transaction.
+  - The Markets API binds the five other dataset tables at startup.
+- **Breaking: an account delete sends MetaTables one read and one transaction, and can
+  delete the account's portfolios with it.** Deleting an account through the Markets API
+  took minutes: each step was its own MetaTables request, about 2 s per statement and
+  about 14 s for each delete impact, and the delete read the account, counted its rows
+  and asked for the impact
+  ([issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91),
+  [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)).
+  - One read answers whether the account exists, its rows per table and the rows of
+    other accounts that block it; one transaction deletes it. The delete no longer asks
+    MetaTables for its impact: only `POST /api/v1/account/bulk-delete/preflight/` does,
+    and `POST /api/v1/account/bulk-delete/` asks at most once, in its preflight. The
+    read and the transaction run with MetaTables' longest deadline, 60 s.
+  - `delete_portfolios`, off by default, as a query parameter of
+    `DELETE /api/v1/account/{uid}/` and as an option of the account bulk-delete action,
+    which its discovery now advertises: the same transaction also deletes, with all
+    their data, the portfolios that the account's virtual funds or target rows name and
+    nothing else uses. A portfolio stays when another account's virtual fund or target
+    rows name it, or when its catalog places its values or weights in another
+    application's table. When another application's table holds a portfolio's rows
+    under a `RESTRICT` key, the transaction deletes nothing and a second one deletes the
+    account alone. The response lists `deleted_portfolios`, with their `deleted_rows`
+    per dataset, and `kept_portfolios`, with the `reason`; the preflight lists
+    `accounts[].portfolios` and `accounts[].kept_portfolios`, and a warning for each.
+  - In Python, `msm_portfolios.services.delete_account_with_portfolios`,
+    `bulk_delete_accounts_with_portfolios` and their preflights
+    (`preflight_account_delete_with_portfolios`,
+    `preflight_bulk_delete_accounts_with_portfolios`) do the same with a runtime's
+    context; `Account.delete` and `Account.bulk_delete` delete the account alone. The
+    portfolio package owns this delete: core `msm` does not import it (ADR 0019), so it
+    composes the account read and statements `msm.repositories.account_deletion`
+    exposes with its own.
+  - Breaking: the responses of `DELETE /api/v1/account/{uid}/` and
+    `POST /api/v1/account/bulk-delete/`, and of `Account.delete` and
+    `Account.bulk_delete`, no longer carry `other_namespace_cascades`; the preflight
+    still reports it with `other_namespace_restricts`. A `409` carries the database's
+    message without the list of tables from the impact.
+  - Breaking for library code: `msm.repositories.account_deletion.read_account_delete`
+    and `build_read_account_delete_operation` replace `count_account_delete_rows` and
+    `build_count_account_delete_rows_operation`.
+  - `msm.services.table_impact.delete_rows_impact` reuses MetaTables' answer for the same
+    table for five minutes (`IMPACT_CACHE_SECONDS`), for every bulk-delete preflight;
+    `clear_delete_rows_impact_cache` forgets it.
+  - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
+    accepts the options an action declares, and `bulk_action_option_values` reads them;
+    an undeclared option or a value of the wrong type answers `400`.
+- **A portfolio delete's counting read no longer reads whole tables, and the bulk delete
+  counts its selection once.** The read counted each dataset with a subquery per selected
+  portfolio, and six of the seven dataset tables had no index that leads with
+  `portfolio_identifier`, so each count read its table in full, once per portfolio; the
+  account delete's read with `delete_portfolios` did the same, and
+  `POST /api/v1/portfolio/bulk-delete/` ran the read twice
+  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
+  - Revision 0031 gives those six tables the index (see Changed), so each count reads only
+    its portfolio's rows. For five portfolios of 2,520 days on 500 assets the read took
+    0.43 s instead of 1.51 s, and for a portfolio with 0.4 % of the rows 9 ms instead of
+    0.27 s (PostgreSQL 17, pages in memory; ADR 0049's issue 96 note has the rest).
+  - `POST /api/v1/portfolio/bulk-delete/` counts its selection once: it deletes by its
+    preflight's plan (`msm_portfolios.services.plan_portfolio_deletes`, which returns a
+    `PortfolioDeletePlan`, and `bulk_delete_portfolio_records(..., plan=...)`). A
+    portfolio referenced after that read is still refused by its guarded statement or by
+    a `RESTRICT` key.
+
 ## [4.1.0] - 2026-11-19
 
 ### Changed
@@ -143,47 +297,6 @@ and this project follows versioned releases.
   `None` as `NULL`. The account-group, asset, portfolio-metadata, signal-metadata and
   rebalance-strategy-metadata helpers leave a field passed as `None` unchanged; a call that
   leaves every field unchanged raises `ValueError`.
-- **Requires MetaTables 0.1.71 or later.** `mainsequence-metatable>=0.1.71,<0.2` (was
-  `>=0.1.66`), for two of its fixes:
-  - **0.1.69 rebuilds a table's update statistics after a compiled-SQL write.** The
-    portfolio and account deletes are statement lists of plain deletes. MetaTables rebuilds
-    the stored update statistics of each time-index table such a write changes, so a
-    portfolio, or an account's orders, trades and order events, written again under a
-    deleted one's identifier do not resume from its last time index
-    ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117)).
-  - **0.1.71 binds SQLite statements by position.** SQLite numbers each named parameter by
-    searching the names before it, so preparing a statement took time quadratic in its
-    values. On SQLite, `bulk_upsert_model` sends 7,000 `Asset` rows in two batches, and
-    the first batch's statements bind up to 26,212 values. Its three-statement transaction
-    needed 15.6 s of CPU and ran past MetaTables' 15 s deadline; with 0.1.71 it takes
-    0.08 s ([issue 97](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/97),
-    [MetaTables#121](https://github.com/mainsequence-projects/MetaTables/issues/121)).
-
-  The lock and `requirements.txt`, which hosted images install, select 0.1.71; no other
-  locked package changes.
-- **The six other portfolio datasets have an index that leads with the portfolio**
-  (Alembic revision 0031). `PortfoliosStorage`, `PortfolioRebalanceStateStorage`,
-  `PortfolioAnalyticsStorage`, `PortfolioEventLedgerStorage`, `PortfolioStateStorage` and
-  `PortfolioCashFlowsStorage` gain `(portfolio_identifier, time_index)`, the index revision
-  0026 gave `PortfolioWeightsStorage`
-  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
-  Counting, reading and deleting one portfolio's rows reads that portfolio's rows instead
-  of the whole table, and so does the `RESTRICT` check when a portfolio row is deleted.
-  Apply the migration. On an ordinary table it builds the index in the upgrade's
-  transaction, during which writes to the table wait (2 to 3 s for tables of 6.3 million
-  rows). On a TimescaleDB DataSource, where these tables are hypertables, it builds each
-  index one chunk per transaction (`timescaledb.transaction_per_chunk`), outside the
-  upgrade's transaction, so it holds a few locks at a time whatever the number of chunks:
-  on 8,030 chunks across the six tables, at PostgreSQL's default
-  `max_locks_per_transaction = 64`, it took 32 s and held at most 22 locks, where one
-  transaction ran out of shared memory. An upgrade stopped part way can be run again: it
-  finishes or rebuilds what it left. Dropping a hypertable's index, which the downgrade and
-  the upgrade after an interrupted build do, takes about two locks per chunk of that table
-  in one transaction, because TimescaleDB 2.22 opens every chunk to drop it (4,010 locks
-  for 2,005 chunks). Instances built with `configured_portfolios_storage`,
-  `configured_portfolio_rebalance_state_storage` and
-  `configured_portfolio_event_ledger_storage` declare the same index; **a provider adds it
-  to its existing instances in a revision of its own**.
 
 ### Added
 
@@ -205,113 +318,9 @@ and this project follows versioned releases.
   `RebalanceStrategyBase.simulate_accounting_event` (replaced by
   `simulate_recorded_fills`), `RebalanceStrategyBase.target_selection_mode`, and
   `AccountingRebalanceEvent`.
-- **Breaking: `Portfolio.delete`.** It raises `MarketsOperationUnsupported` under both
-  backends and deletes nothing, and `POST /api/v1/rows/portfolio/delete/` answers `501`
-  with the same text. Through `msm.client` it ran the portfolio routes' delete; under the
-  runtime backend it deleted only the portfolio row, none of its seven datasets, and the
-  first `RESTRICT` key from any of them refused it. Core `msm` cannot run the full delete,
-  which lives in `msm_portfolios`
-  ([ADR 0019](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0019-msm-portfolios-package-boundary/)).
-  Delete a portfolio through `DELETE /api/v1/portfolio/{uid}/` or
-  `POST /api/v1/portfolio/bulk-delete/`
-  ([ADR 0049](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0049-portfolio-lifecycle-and-account-history/)).
-- **`msm.services.delete_portfolio`, `msm.repositories.delete_portfolio` and
-  `msm.repositories.build_delete_portfolio_operation`**, unused one-row portfolio deletes.
 
 ### Fixed
 
-- **Breaking: a portfolio is deleted with all its datasets in one transaction, or not at
-  all.** `DELETE /api/v1/portfolio/{uid}/`, `POST /api/v1/portfolio/bulk-delete/` and the
-  remote `POST /api/v1/rows/portfolio/delete/` deleted the portfolio's weights and values
-  with two `delete_after_date` requests and then the portfolio row. A `RESTRICT` key from
-  its rebalance state, analytics, event ledger, state or cash flows, or from another
-  application's instance, then refused the row with a `409` that the preflight had not
-  predicted, and the portfolio survived without its weights and values
-  ([issue 93](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/93)). The
-  delete now removes the portfolio's rows in all seven datasets and then the row as one
-  MetaTables statement list, in one transaction; the last statement is guarded, so a
-  portfolio that vanished in between answers `404` and one renamed in between `409`.
-  The counting read and the transaction run with MetaTables' longest deadline, 60 s,
-  instead of its 15 s default: deleting a portfolio with ten years of daily weights on
-  500 assets took 12 to 19 s on PostgreSQL 16 on a busy workstation.
-  - Before anything is sent, it is refused while virtual funds or account target rows
-    name the portfolio (ADR 0049), or while a table of another application whose
-    `RESTRICT` key references the portfolio holds rows of it or cannot be checked. Those
-    tables come from MetaTables' delete impact and from the catalog's instances; each gets
-    one read-only count. Markets never deletes their rows: they used to stay in place,
-    listed in `retained_datasets`, and now refuse the delete, as for curves (issue 59).
-  - The `409` names the table and key that refused, or carries the database's message,
-    which on PostgreSQL names the constraint.
-  - `POST /api/v1/portfolio/bulk-delete/preflight/` runs the same checks, with one read
-    for the whole selection, and returns `portfolios`: each portfolio's `row_counts` per
-    dataset and its `blockers`.
-  - Responses: `deleted_rows`, the rows per dataset, replaces `deleted_weights_count`,
-    `deleted_values_count` and `retained_datasets`, and the response names the deleted
-    portfolio's `uid` and `unique_identifier`. The bulk delete returns `deleted`, one entry
-    per portfolio, and `failed[].detail` instead of `failed[].reason`, as the account bulk
-    delete does. Each portfolio is deleted in its own transaction.
-  - The Markets API binds the five other dataset tables at startup.
-- **Breaking: an account delete sends MetaTables one read and one transaction, and can
-  delete the account's portfolios with it.** Deleting an account through the Markets API
-  took minutes: each step was its own MetaTables request, about 2 s per statement and
-  about 14 s for each delete impact, and the delete read the account, counted its rows
-  and asked for the impact
-  ([issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91),
-  [ADR 0050](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0050-account-deletion/)).
-  - One read answers whether the account exists, its rows per table and the rows of
-    other accounts that block it; one transaction deletes it. The delete no longer asks
-    MetaTables for its impact: only `POST /api/v1/account/bulk-delete/preflight/` does,
-    and `POST /api/v1/account/bulk-delete/` asks at most once, in its preflight. The
-    read and the transaction run with MetaTables' longest deadline, 60 s.
-  - `delete_portfolios`, off by default, as a query parameter of
-    `DELETE /api/v1/account/{uid}/` and as an option of the account bulk-delete action,
-    which its discovery now advertises: the same transaction also deletes, with all
-    their data, the portfolios that the account's virtual funds or target rows name and
-    nothing else uses. A portfolio stays when another account's virtual fund or target
-    rows name it, or when its catalog places its values or weights in another
-    application's table. When another application's table holds a portfolio's rows
-    under a `RESTRICT` key, the transaction deletes nothing and a second one deletes the
-    account alone. The response lists `deleted_portfolios`, with their `deleted_rows`
-    per dataset, and `kept_portfolios`, with the `reason`; the preflight lists
-    `accounts[].portfolios` and `accounts[].kept_portfolios`, and a warning for each.
-  - In Python, `msm_portfolios.services.delete_account_with_portfolios`,
-    `bulk_delete_accounts_with_portfolios` and their preflights
-    (`preflight_account_delete_with_portfolios`,
-    `preflight_bulk_delete_accounts_with_portfolios`) do the same with a runtime's
-    context; `Account.delete` and `Account.bulk_delete` delete the account alone. The
-    portfolio package owns this delete: core `msm` does not import it (ADR 0019), so it
-    composes the account read and statements `msm.repositories.account_deletion`
-    exposes with its own.
-  - Breaking: the responses of `DELETE /api/v1/account/{uid}/` and
-    `POST /api/v1/account/bulk-delete/`, and of `Account.delete` and
-    `Account.bulk_delete`, no longer carry `other_namespace_cascades`; the preflight
-    still reports it with `other_namespace_restricts`. A `409` carries the database's
-    message without the list of tables from the impact.
-  - Breaking for library code: `msm.repositories.account_deletion.read_account_delete`
-    and `build_read_account_delete_operation` replace `count_account_delete_rows` and
-    `build_count_account_delete_rows_operation`.
-  - `msm.services.table_impact.delete_rows_impact` reuses MetaTables' answer for the same
-    table for five minutes (`IMPACT_CACHE_SECONDS`), for every bulk-delete preflight;
-    `clear_delete_rows_impact_cache` forgets it.
-  - `msm.api.http.build_bulk_delete_action` takes `options`, `explicit_uuid_selection`
-    accepts the options an action declares, and `bulk_action_option_values` reads them;
-    an undeclared option or a value of the wrong type answers `400`.
-- **A portfolio delete's counting read no longer reads whole tables, and the bulk delete
-  counts its selection once.** The read counted each dataset with a subquery per selected
-  portfolio, and six of the seven dataset tables had no index that leads with
-  `portfolio_identifier`, so each count read its table in full, once per portfolio; the
-  account delete's read with `delete_portfolios` did the same, and
-  `POST /api/v1/portfolio/bulk-delete/` ran the read twice
-  ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96)).
-  - Revision 0031 gives those six tables the index (see Changed), so each count reads only
-    its portfolio's rows. For five portfolios of 2,520 days on 500 assets the read took
-    0.43 s instead of 1.51 s, and for a portfolio with 0.4 % of the rows 9 ms instead of
-    0.27 s (PostgreSQL 17, pages in memory; ADR 0049's issue 96 note has the rest).
-  - `POST /api/v1/portfolio/bulk-delete/` counts its selection once: it deletes by its
-    preflight's plan (`msm_portfolios.services.plan_portfolio_deletes`, which returns a
-    `PortfolioDeletePlan`, and `bulk_delete_portfolio_records(..., plan=...)`). A
-    portfolio referenced after that read is still refused by its guarded statement or by
-    a `RESTRICT` key.
 - **`portfolio-datasets/unregister_signal` answered `502` for every bound signal.**
   `update_model` dropped each `None` it was given, so clearing
   `SignalMetadata.meta_table_uid` compiled to `UPDATE … SET WHERE …`, which PostgreSQL

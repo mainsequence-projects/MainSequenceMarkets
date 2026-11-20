@@ -292,7 +292,7 @@ ADR 0029's 3.5.0 amendment). Decision 4's rule for virtual funds is now checked
 only in `apply_account_virtual_fund_allocation_plan`; the 3.2.0 note's check "in
 the Markets API route" went with the route.
 
-### 2026-11-19: 4.1.0, issue 93
+### 2026-11-19: 4.1.1, issue 93
 
 The delete routes removed the weights and values with two
 `TimeIndexMetaTable.delete_after_date` calls, each its own MetaTables request,
@@ -347,11 +347,11 @@ and the portfolio survived without its weights and values
   and 20.8 and 23.1 seconds for all five. Its count subqueries are correlated:
   PostgreSQL runs them once per portfolio, and only the weights table has an
   index that leads with `portfolio_identifier`, so the read scans each of the six
-  other dataset tables once per portfolio. The 4.1.0, issue 96 note gives those six
+  other dataset tables once per portfolio. The 4.1.1, issue 96 note gives those six
   tables an index that leads with `portfolio_identifier`, so each count reads only
   its portfolio's rows.
 
-### 2026-11-19: 4.1.0, issue 96
+### 2026-11-19: 4.1.1, issue 96
 
 The read that counts a portfolio delete's rows counts each dataset with a subquery
 on the portfolio row, which PostgreSQL runs once per selected portfolio. Six of the
@@ -439,7 +439,7 @@ rows each. Medians of six runs for the reads, of two for the big deletes and six
 the small one. Before is `development` without the indexes; the reads' SQL is the
 same before and after.
 
-| Operation | Before | 4.1.0 |
+| Operation | Before | 4.1.1 |
 | --- | ---: | ---: |
 | Portfolio delete read, one portfolio | 0.47 s | 0.10 s |
 | Portfolio delete read, five portfolios | 1.51 s | 0.43 s |
@@ -455,7 +455,7 @@ five big deletes remove about 2.6 million rows each, which takes the same time
 either way (20.6 and 21.4 s before, 15.8 and 28.0 s after). The bulk delete runs
 the read once instead of twice.
 
-### 2026-11-19: 4.1.0, `Portfolio.delete` is refused
+### 2026-11-19: 4.1.1, `Portfolio.delete` is refused
 
 After issue 93 the same call still did two different things. Through
 `msm.client`, the row router ran the routes' service, so `Portfolio.delete`

@@ -318,7 +318,7 @@ the two registry deletes behave differently with no ms-markets rule behind it.
   `registry_write("account", "bulk_delete")`. The HTTP routes use
   `registry_write("account", "delete")` and `("account", "bulk-delete")`.
 
-### 2026-11-19: 4.1.0, issue 91
+### 2026-11-19: 4.1.1, issue 91
 
 Deleting an account through the Markets API took minutes: each step was its own
 MetaTables request, about 2 s per statement and about 14 s per delete impact.
@@ -337,7 +337,7 @@ the bulk delete asked for it in its preflight and again to delete
   weights instances, and its rows in each dataset. Each of those counts reads only
   its portfolio's rows, through the index revision `0031` gives the datasets
   ([issue 96](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/96),
-  ADR 0049's 4.1.0, issue 96 note).
+  ADR 0049's 4.1.1, issue 96 note).
 - **One transaction.** The list is the 14 statements of the 3.3.0 note, then,
   with portfolios to delete, one `DELETE` per dataset for all of them and the
   portfolio `DELETE`: at most 22 of the 32 statements MetaTables allows. Each

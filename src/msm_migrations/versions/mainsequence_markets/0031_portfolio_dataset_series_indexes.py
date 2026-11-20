@@ -27,7 +27,7 @@ time, then the invalid index, and builds again. The downgrade drops a hypertable
 indexes one at a time too. Dropping the hypertable's own index is still one transaction:
 TimescaleDB 2.22 opens every chunk of the table and its indexes to drop it, about two
 locks per chunk, so the chunk indexes go first and that drop only reads the chunks. ADR
-0049's 4.1.0, issue 96 note has the measurements.
+0049's 4.1.1, issue 96 note has the measurements.
 """
 
 from contextlib import contextmanager
