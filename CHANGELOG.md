@@ -17,6 +17,17 @@ and this project follows versioned releases.
   both raise `MarketsConflictError` when a reference refuses the delete, and
   `bulk_delete_portfolios` also when a selected portfolio is missing.
 
+### Changed
+
+- **`import msm` loads only the package's constants and version** (157 modules instead
+  of 1,531). `msm.start_engine` is imported on first use, and with it MetaTables,
+  SQLAlchemy, pandas and the Main Sequence SDK; `msm.start_engine(...)` and
+  `from msm import start_engine` work as before. The SDK now sets up its logging when
+  `start_engine` or a Markets model is first imported, not at `import msm`.
+- The test suite checks each behaviour once (see the testing page): duplicated
+  PostgreSQL, SQLite and app tests are removed, the calendar re-sync Job tests check the
+  Job's wiring, and only `tests/apps` loads the SDK's server modules (#99).
+
 ### Fixed
 
 - **A statement MetaTables rejects as invalid answers `500`, not `502`**

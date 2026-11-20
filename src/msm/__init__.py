@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from msm.bootstrap import start_engine
+from typing import TYPE_CHECKING, Any
+
 from msm.distribution import package_version
 from msm.constants import (
     ASSET_TYPE_BOND,
@@ -29,7 +30,20 @@ from msm.constants import (
     INDEX_TYPE_INTEREST_RATE_DEFINITION,
 )
 
+if TYPE_CHECKING:
+    from msm.bootstrap import start_engine
+
 __version__ = package_version()
+
+
+def __getattr__(name: str) -> Any:
+    # `start_engine` loads MetaTables, SQLAlchemy and the SDK; importing `msm`
+    # or one of its light modules (constants, settings) does not.
+    if name == "start_engine":
+        from msm.bootstrap import start_engine
+
+        return start_engine
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

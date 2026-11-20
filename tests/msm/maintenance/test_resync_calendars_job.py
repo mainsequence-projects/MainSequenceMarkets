@@ -14,7 +14,7 @@ import sqlalchemy as sa
 import yaml
 
 import metatables.endpoint
-from msm.api.calendars import Calendar, CalendarException
+from msm.api.calendars import Calendar
 from msm.services.calendars import (
     CalendarSyncResult,
     describe_calendar_sync,
@@ -36,9 +36,8 @@ def markets(sqlite_markets, monkeypatch):
     return sqlite_markets
 
 
-@pytest.fixture
-def job(markets, monkeypatch):
-    """The Job's ``main`` on the SQLite runtime, with the API discovery scope observed."""
+def _load_job(monkeypatch, context) -> SimpleNamespace:
+    """The Job's ``main`` on ``context``, with the API discovery scope observed."""
 
     state = {"scopes": [], "models": None}
 
@@ -54,14 +53,72 @@ def job(markets, monkeypatch):
 
     def start_engine(*, namespace=None, models=None):
         state["models"] = models
-        return SimpleNamespace(context=markets.context)
+        return SimpleNamespace(context=context)
 
     monkeypatch.setattr(metatables.endpoint, "api_endpoint_scope", scope)
     monkeypatch.setattr("msm.start_engine", start_engine)
     spec = importlib.util.spec_from_file_location("resync_calendars_job", JOB_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return SimpleNamespace(main=module.main, state=state, markets=markets)
+    return SimpleNamespace(main=module.main, state=state)
+
+
+@pytest.fixture
+def job(markets, monkeypatch):
+    """The Job's ``main`` on the SQLite runtime."""
+
+    loaded = _load_job(monkeypatch, markets.context)
+    return SimpleNamespace(main=loaded.main, state=loaded.state, markets=markets)
+
+
+@pytest.fixture
+def wired_job(monkeypatch):
+    """The Job's ``main`` with the re-sync service replaced: what it passes and prints.
+
+    What the service writes is checked on SQLite in
+    ``tests/msm/services/calendars/test_sync.py``.
+    """
+
+    context = object()
+    calls: list[dict] = []
+
+    def resync_adapter_calendars(passed_context, **kwargs):
+        assert passed_context is context
+        calls.append(kwargs)
+        return [
+            CalendarSyncResult(
+                calendar={
+                    "uid": "uid",
+                    "unique_identifier": kwargs["unique_identifiers"][0],
+                    "source": "pandas_market_calendars",
+                    "source_identifier": "NYSE",
+                    "valid_from": dt.date(2020, 1, 1),
+                    "valid_to": dt.date(2200, 12, 31),
+                },
+                created=False,
+                dry_run=kwargs["dry_run"],
+                changed=True,
+                source_version="5.5.0",
+                previous_source_version="5.5.0",
+                previous_valid_from=dt.date(2020, 1, 1),
+                previous_valid_to=dt.date(2200, 12, 31),
+                exceptions_added=[
+                    {
+                        "local_date": dt.date(2025, 1, 9),
+                        "session_label": "",
+                        "exception_type": "CLOSED",
+                        "closes_at_local": None,
+                        "name": None,
+                    }
+                ],
+            )
+        ]
+
+    monkeypatch.setattr(
+        "msm.services.calendars.resync_adapter_calendars", resync_adapter_calendars
+    )
+    loaded = _load_job(monkeypatch, context)
+    return SimpleNamespace(main=loaded.main, state=loaded.state, calls=calls)
 
 
 def _rows(markets, table: str) -> list[dict]:
@@ -86,61 +143,33 @@ def _create(markets, source_identifier: str, unique_identifier: str, **values) -
     return str(result.calendar["uid"])
 
 
-def _forget(markets, calendar_uid: str, local_date: str) -> None:
-    """Remove a library closure, as if the library that wrote the calendar did not know it."""
-
-    with markets.engine.begin() as connection:
-        connection.execute(
-            sa.text(
-                "DELETE FROM ms_markets__calendarexception "
-                "WHERE calendar_uid = :uid AND local_date = :day"
-            ),
-            {"uid": calendar_uid.replace("-", ""), "day": local_date},
-        )
-
-
-def test_the_job_writes_what_the_library_knows_now_and_keeps_user_rows(job, capsys) -> None:
-    calendar_uid = _create(job.markets, "NYSE", "CustomNYSE", valid_from="2020-01-01")
-    _forget(job.markets, calendar_uid, "2025-01-09")
-    CalendarException.create(
-        calendar_uid=calendar_uid, local_date="2024-12-31", exception_type="CLOSED"
-    )
-    assert Calendar.is_business_day(calendar_uid, dt.date(2025, 1, 9))
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        assert job.main(["CustomNYSE", "--valid-from", "2020-01-01"]) == 0
+def test_the_job_writes_the_named_calendars_and_prints_what_changed(wired_job, capsys) -> None:
+    assert wired_job.main(["CustomNYSE", "--valid-from", "2020-01-01"]) == 0
 
     output = capsys.readouterr().out
     assert "Calendar re-sync (writing)" in output
     assert "CustomNYSE (pandas_market_calendars NYSE): written" in output
     assert "exceptions added: 1" in output
     assert "+ 2025-01-09 CLOSED" in output
-    assert "exceptions removed: 0" in output
-    assert not Calendar.is_business_day(calendar_uid, dt.date(2025, 1, 9))
-    assert not Calendar.is_business_day(calendar_uid, dt.date(2024, 12, 31))
-    assert [row["source"] for row in _rows(job.markets, "ms_markets__calendarexception") if str(row["local_date"]) == "2024-12-31"] == ["user"]
-    assert job.state == {
+    assert wired_job.calls == [
+        {"unique_identifiers": ["CustomNYSE"], "valid_from": "2020-01-01", "dry_run": False}
+    ]
+    assert wired_job.state == {
         "scopes": [300],
         "models": ["Calendar", "CalendarSessionRule", "CalendarException"],
     }
 
 
-def test_a_dry_run_prints_the_same_report_and_writes_nothing(job, capsys) -> None:
-    calendar_uid = _create(job.markets, "NYSE", "NYSE", valid_from="2020-01-01")
-    _forget(job.markets, calendar_uid, "2025-01-09")
-    before = _writes(job.markets)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        assert job.main(["--dry-run", "--valid-from", "2020-01-01", "NYSE"]) == 0
+def test_a_dry_run_prints_the_same_report_and_writes_nothing(wired_job, capsys) -> None:
+    assert wired_job.main(["--dry-run", "--valid-from", "2020-01-01", "NYSE"]) == 0
 
     output = capsys.readouterr().out
     assert "Calendar re-sync (dry run, nothing is written)" in output
     assert "NYSE (pandas_market_calendars NYSE): would be written" in output
     assert "+ 2025-01-09 CLOSED" in output
-    assert _writes(job.markets) == before
-    assert Calendar.is_business_day(calendar_uid, dt.date(2025, 1, 9))
+    assert wired_job.calls == [
+        {"unique_identifiers": ["NYSE"], "valid_from": "2020-01-01", "dry_run": True}
+    ]
 
 
 def test_without_names_the_job_takes_every_adapter_calendar_and_no_other(job, capsys) -> None:

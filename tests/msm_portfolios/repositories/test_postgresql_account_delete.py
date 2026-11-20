@@ -18,11 +18,10 @@ import sqlalchemy as sa
 
 from msm.models import AccountTable
 from msm.repositories.accounts import replace_account_target_positions_snapshot
-from msm.services import AccountDeleteConflictError, delete_account
+from msm.services import delete_account
 from msm.services.accounts import deletion
 from msm_portfolios.repositories import account_portfolio_deletion as portfolio_repository
 from msm_portfolios.services import delete_account_with_portfolios
-from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.support.postgresql_portfolios import (
     _count,
@@ -146,65 +145,6 @@ def test_a_restrict_key_of_another_application_keeps_the_portfolio_and_names_it(
     assert PROVIDER_CONSTRAINT in kept["reason"]
     assert deleted["deleted_portfolios"] == []
     assert _accounts(engine) == 0
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-
-
-def test_the_accounts_guard_in_the_middle_of_the_list_stops_everything(markets, monkeypatch) -> None:
-    engine, context, operations = markets
-    portfolio, identifier = _portfolio(engine)
-    _datasets(engine, identifier)
-    account = _account(engine, context, portfolio)
-    read = portfolio_repository.read_account_with_portfolios
-
-    def read_then_rename(context, **kwargs):
-        result = read(context, **kwargs)
-        with engine.begin() as connection:
-            connection.execute(
-                sa.text("UPDATE ms_markets__account SET unique_identifier = 'renamed' WHERE uid = :uid"),
-                {"uid": account},
-            )
-        return result
-
-    monkeypatch.setattr(portfolio_repository, "read_account_with_portfolios", read_then_rename)
-    operations.clear()
-
-    with pytest.raises(AccountDeleteConflictError, match="changed while it was being deleted"):
-        delete_account_with_portfolios(context, uid=account)
-
-    # The read, the refused transaction, and the read that tells a rename from a delete.
-    assert operations == ["read", "transaction", "read"]
-    assert _accounts(engine) == 1
-    assert _count(engine, "SELECT count(*) FROM ms_markets__virtualfund") == 1
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-
-
-def test_a_portfolio_referenced_in_between_stops_its_guard_and_the_account_goes_alone(
-    markets, monkeypatch
-) -> None:
-    engine, context, operations = markets
-    portfolio, identifier = _portfolio(engine)
-    _datasets(engine, identifier)
-    account = _account(engine, context, portfolio)
-    other = _insert(engine, "ms_markets__account", is_paper=True, account_is_active=True)
-    read = portfolio_repository.read_account_with_portfolios
-
-    def read_then_reference(context, **kwargs):
-        result = read(context, **kwargs)
-        _insert(engine, "ms_markets__virtualfund", account_uid=other["uid"], target_portfolio_uid=portfolio)
-        return result
-
-    monkeypatch.setattr(portfolio_repository, "read_account_with_portfolios", read_then_reference)
-    operations.clear()
-
-    deleted = delete_account_with_portfolios(context, uid=account)
-
-    assert operations == ["read", "transaction", "transaction"]
-    assert deleted["kept_portfolios"] == [
-        {"uid": str(portfolio), "unique_identifier": identifier, "reason": PORTFOLIO_CHANGED_REASON}
-    ]
-    assert _accounts(engine) == 1  # the other account
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
 

@@ -392,7 +392,7 @@ def test_a_library_calendar_with_no_holidays_has_no_last_date(markets) -> None:
     assert rows(markets, "ms_markets__calendarexception") == []
 
 
-def test_writing_a_calendar_again_keeps_or_extends_its_start(markets) -> None:
+def test_writing_a_calendar_again_keeps_or_extends_its_start() -> None:
     """A calendar that starts after 1990-01-01, as a migrated one does, is taken back to it."""
 
     from msm.services.calendars.sync import _first_date

@@ -39,7 +39,6 @@ from tests.support.account_delete import (
     _impact_unavailable,
     _order,
     _portfolio_identifier,
-    _progress,
     _provider_statements,
     account_markets,
 )
@@ -99,19 +98,6 @@ def test_the_portfolios_follow_the_account_in_the_same_list() -> None:
 # The delete ------------------------------------------------------------------------------
 
 
-def test_one_delete_sends_one_read_and_one_transaction(sqlite_markets) -> None:
-    engine = sqlite_markets.engine
-    account = _account(engine)
-    portfolio, _identifier_ = _portfolio_with_data(engine)
-    _history(sqlite_markets, account, portfolio)
-    sqlite_markets.requests.clear()
-
-    deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
-
-    assert sqlite_markets.requests == ["read", f"transaction:{WITH_PORTFOLIOS}"]
-    assert [item["uid"] for item in deleted["deleted_portfolios"]] == [str(portfolio)]
-
-
 def test_a_missing_account_deletes_nothing(sqlite_markets) -> None:
     missing = uuid.uuid4()
 
@@ -147,28 +133,6 @@ def test_a_portfolio_only_the_account_used_goes_with_all_its_data(sqlite_markets
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
     assert sqlite_markets.requests == ["read", "read", f"transaction:{WITH_PORTFOLIOS}"]
-
-
-def test_the_deleted_portfolio_leaves_the_stored_statistics(sqlite_markets) -> None:
-    """MetaTables rebuilds the statistics of each dataset table the statement list
-    changes (MetaTables#117), so a portfolio re-created under the deleted one's
-    identifier starts from scratch."""
-
-    engine = sqlite_markets.engine
-    account = _account(engine)
-    portfolio, identifier = _portfolio_with_data(engine)
-    _other, other_identifier = _portfolio_with_data(engine)
-    _history(sqlite_markets, account, portfolio)
-    sqlite_markets.keep_statistics(*(table.model for table in PORTFOLIO_DATASET_TABLES))
-    for table in PORTFOLIO_DATASET_TABLES:
-        assert {identifier, other_identifier} <= set(_progress(sqlite_markets, table.model))
-
-    deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
-
-    assert [item["uid"] for item in deleted["deleted_portfolios"]] == [str(portfolio)]
-    for table in PORTFOLIO_DATASET_TABLES:
-        progress = _progress(sqlite_markets, table.model)
-        assert identifier not in progress and other_identifier in progress
 
 
 def test_a_portfolio_only_named_by_the_accounts_targets_goes_too(sqlite_markets) -> None:

@@ -8,7 +8,6 @@ its row guards (see ``test_postgresql_account_registration``).
 
 from __future__ import annotations
 
-import uuid
 
 import pytest
 
@@ -24,7 +23,6 @@ from tests.support.postgresql_portfolios import (
     _exists,
     _insert,
     _portfolio,
-    _rows_in,
     dataset_reads,
     explain,
     series_indexes,
@@ -93,51 +91,6 @@ def test_a_restrict_key_of_another_application_refuses_everything_and_is_named(m
     assert operations == ["read", "transaction", "read"]
     assert _exists(engine, portfolio)
     assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-
-
-def test_account_history_written_in_between_stops_the_guard(markets, monkeypatch) -> None:
-    engine, context, _operations = markets
-    portfolio, identifier = _portfolio(engine)
-    _datasets(engine, identifier)
-    count = repository.count_portfolio_delete_rows
-    calls: list[object] = []
-
-    def counted(context, *, uids):
-        result = count(context, uids=uids)
-        if not calls:
-            account = _insert(engine, "ms_markets__account", is_paper=True, account_is_active=True)
-            _insert(engine, "ms_markets__virtualfund", account_uid=account["uid"], target_portfolio_uid=portfolio)
-        calls.append(uids)
-        return result
-
-    monkeypatch.setattr(repository, "count_portfolio_delete_rows", counted)
-
-    with pytest.raises(PortfolioDeleteConflictError, match=r"VirtualFundTable\.target_portfolio_uid"):
-        delete_portfolio_record(context, uid=portfolio)
-
-    assert _exists(engine, portfolio)
-    assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
-
-
-def test_one_read_counts_several_portfolios_in_each_dataset(markets) -> None:
-    engine, context, operations = markets
-    first, first_identifier = _portfolio(engine)
-    _rows_in(engine, first_identifier, weights=2, rebalance_state=1)
-    second, second_identifier = _portfolio(engine)
-    _rows_in(engine, second_identifier, values=3, state=1, cash_flows=2)
-    empty, _empty_identifier = _portfolio(engine)
-    _other, other_identifier = _portfolio(engine)
-    _datasets(engine, other_identifier)  # Not selected: none of its rows is counted.
-    operations.clear()
-
-    counted = repository.count_portfolio_delete_rows(context, uids=[first, second, empty, uuid.uuid4()])
-
-    assert operations == ["read"]
-    assert {uid: {key: row[key] for key in DATASETS} for uid, row in counted.items()} == {
-        str(first): {key: {"weights": 2, "rebalance_state": 1}.get(key, 0) for key in DATASETS},
-        str(second): {key: {"values": 3, "state": 1, "cash_flows": 2}.get(key, 0) for key in DATASETS},
-        str(empty): {key: 0 for key in DATASETS},
-    }
 
 
 def test_each_count_reads_the_portfolios_rows_through_the_series_index(markets) -> None:
