@@ -23,7 +23,7 @@ from msm.repositories.crud import (
     build_bulk_upsert_model_operation,
     bulk_upsert_model,
 )
-from tests.support.sqlite_markets import _count, _refuse_identical_rewrites
+from tests.support.sqlite_markets import _count, _refuse_identical_rewrites, serve_row_operations
 
 KEY = ("unique_identifier",)
 STATUSES = ("inserted", "updated", "unchanged")
@@ -330,14 +330,10 @@ def test_a_failure_keeps_the_batches_before_it_and_a_repeat_finishes(
 
 
 def test_the_row_api_upserts_a_list_longer_than_one_statement(sqlite_markets, monkeypatch) -> None:
-    from types import SimpleNamespace
 
     from msm.api.assets import Asset
 
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
-    )
+    serve_row_operations(monkeypatch, sqlite_markets)
     monkeypatch.setattr(crud, "MAX_STATEMENT_PARAMETERS", 2000)
     values = _assets(1500)
 

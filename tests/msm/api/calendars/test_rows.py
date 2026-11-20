@@ -23,6 +23,7 @@ from msm.api.calendars import (
 from msm.api.remote import remote_operations
 from msm.models import CalendarExceptionTable, CalendarSessionRuleTable, CalendarTable
 from msm.services.calendars import CalendarSyncResult
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_calendar_upsert_normalizes_type_and_validates_horizon() -> None:
@@ -183,7 +184,7 @@ def test_create_from_pandas_calendar_takes_the_library_name_and_the_stored_name(
             source_version="5.4.0",
         )
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.services.calendars.sync_pandas_market_calendar", fake_sync)
 
     calendar = Calendar.create_from_pandas_calendar("NYSE", "CustomNYSE")

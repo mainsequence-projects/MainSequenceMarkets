@@ -7,6 +7,19 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every test that stands in for `msm.bootstrap.resolve_runtime` resolves the models it
+  receives** with `resolve_markets_meta_table_models`, as the real runtime does, through
+  `tests/support/markets_runtime.serve_runtime`. Before, most stand-ins ignored their
+  models, so a row class whose tables the runtime cannot resolve passed every test and
+  failed in a deployed API, as the series did in 4.2.0
+  ([#103](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/103)).
+  `tests/identity/test_runtime_tables_resolve.py` resolves the `__required_tables__` of
+  every row class in `msm`, `msm_portfolios` and `msm_pricing`, and every
+  `resolve_runtime(models=...)` in their source that writes its models out, whether a
+  test reaches it or not.
+
 ## [4.2.2] - 2026-11-20
 
 ### Changed

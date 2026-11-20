@@ -32,6 +32,7 @@ from msm.repositories.accounts import (
     replace_account_target_positions_snapshot,
 )
 from msm.repositories.base import MarketsRepositoryContext
+from tests.support.markets_runtime import serve_runtime
 
 WHEN = dt.datetime(2026, 11, 10, 15, 30, tzinfo=dt.UTC)
 
@@ -182,13 +183,7 @@ def serve_row_operations(monkeypatch, markets) -> None:
     table it cannot find fails here as it fails in a deployed API (#103).
     """
 
-    from msm.models.registration import resolve_markets_meta_table_models
-
-    def resolve_runtime(*, models, **_kwargs):
-        resolve_markets_meta_table_models(models)
-        return SimpleNamespace(context=markets.context)
-
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", resolve_runtime)
+    serve_runtime(monkeypatch, lambda **_kwargs: SimpleNamespace(context=markets.context))
 
 
 def _refuse_identical_rewrites(engine) -> None:

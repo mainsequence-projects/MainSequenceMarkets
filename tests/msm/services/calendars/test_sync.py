@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime as dt
 import warnings
-from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -21,16 +20,14 @@ from msm.services.calendars import (
     read_calendar_session_records,
     sync_pandas_market_calendar,
 )
+from tests.support.sqlite_markets import serve_row_operations
 
 UTC = dt.UTC
 
 
 @pytest.fixture
 def markets(sqlite_markets, monkeypatch):
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
-    )
+    serve_row_operations(monkeypatch, sqlite_markets)
     return sqlite_markets
 
 

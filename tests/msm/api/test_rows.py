@@ -53,6 +53,7 @@ from msm.models import (
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
+from tests.support.markets_runtime import serve_runtime
 
 
 @pytest.mark.parametrize(
@@ -253,8 +254,8 @@ def test_portfolio_refuses_delete_on_the_runtime_backend(monkeypatch) -> None:
     """Only the Markets API's portfolio routes delete a portfolio, with its datasets."""
 
     deleted = []
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
+    serve_runtime(
+        monkeypatch,
         lambda **_kwargs: pytest.fail("Portfolio.delete must refuse before resolving a runtime."),
     )
     monkeypatch.setattr(
@@ -278,9 +279,7 @@ def test_other_rows_still_delete_on_the_runtime_backend(monkeypatch) -> None:
     group_uid = uuid.uuid4()
     context = object()
     calls = []
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime", lambda **_kwargs: SimpleNamespace(context=context)
-    )
+    serve_runtime(monkeypatch, lambda **_kwargs: SimpleNamespace(context=context))
     monkeypatch.setattr(
         "msm.repositories.crud.delete_model",
         lambda active_context, *, model, uid: calls.append((active_context, model, uid))

@@ -8,7 +8,6 @@ MetaTables' own server code for the local runtime (`make_sqlite_markets`). The r
 from __future__ import annotations
 
 import datetime as dt
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -16,7 +15,7 @@ import pytest
 from msm_portfolios.api import SignalWeightsSeries
 from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
 from msm_portfolios.time_index import SIGNAL_UID, SignalWeights
-from tests.support.sqlite_markets import _asset, make_sqlite_markets
+from tests.support.sqlite_markets import _asset, make_sqlite_markets, serve_row_operations
 
 UTC = dt.UTC
 
@@ -26,10 +25,7 @@ def markets(tmp_path, monkeypatch, sqlite_revisions):
     markets = make_sqlite_markets(tmp_path, monkeypatch, template=sqlite_revisions.file("head"))
     for asset in ("AAA", "BBB", "CCC"):
         _asset(markets.engine, asset)
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **_kwargs: SimpleNamespace(context=markets.context),
-    )
+    serve_row_operations(monkeypatch, markets)
     return markets
 
 

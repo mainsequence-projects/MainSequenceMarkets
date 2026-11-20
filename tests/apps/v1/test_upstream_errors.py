@@ -27,6 +27,7 @@ from apps.v1.upstream_errors import (
     install_upstream_error_handlers,
 )
 from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
+from tests.support.markets_runtime import serve_runtime
 
 ROWS_ROUTE = "/api/v1/rows/asset/upsert_many/"
 ROWS_BODY = {"arguments": {"payloads": [{"unique_identifier": "A", "asset_type": "equity"}]}}
@@ -34,9 +35,8 @@ ROWS_BODY = {"arguments": {"payloads": [{"unique_identifier": "A", "asset_type":
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
     return TestClient(app)
 

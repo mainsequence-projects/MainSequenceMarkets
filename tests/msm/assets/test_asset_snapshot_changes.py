@@ -8,13 +8,12 @@ compared with the snapshot in effect at its own ``time_index``.
 from __future__ import annotations
 
 import datetime as dt
-from types import SimpleNamespace
 
 import pytest
 
 from msm.time_index.assets import snapshots as snapshot_module
 from msm.time_index.assets.snapshots import changed_asset_snapshots
-from tests.support.sqlite_markets import _asset, _insert
+from tests.support.sqlite_markets import _asset, _insert, serve_row_operations
 
 T1 = dt.datetime(2026, 11, 1, tzinfo=dt.UTC)
 T2 = dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
@@ -149,9 +148,7 @@ def test_publish_writes_only_changed_rows_and_counts_the_rest(markets, monkeypat
         def run(self):
             return False, None
 
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime", lambda **kwargs: SimpleNamespace(context=markets.context)
-    )
+    serve_row_operations(monkeypatch, markets)
     monkeypatch.setattr("msm.time_index.assets.AssetSnapshot", RecordingUpdater)
 
     unchanged = AssetSnapshots.publish([_row(T2, name="Acme"), _row(T2, name="Acme")])

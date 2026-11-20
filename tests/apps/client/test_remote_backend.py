@@ -27,6 +27,7 @@ from msm.api.remote import (
     use_runtime_backend,
 )
 from msm.client import MarketsClient, tabular_frame_to_pandas
+from tests.support.markets_runtime import serve_runtime
 
 
 @pytest.fixture
@@ -34,9 +35,8 @@ def remote(monkeypatch):
     """Use the remote backend against an in-process Markets API; record runtime calls."""
 
     calls: list[tuple[str, dict[str, Any]]] = []
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
     client = MarketsClient("http://testserver", session=TestClient(app))
     use_remote_backend(client.backend)

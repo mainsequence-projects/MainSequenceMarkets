@@ -10,7 +10,6 @@ was not rewritten.
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -23,7 +22,12 @@ from msm.models import (
 )
 from msm.repositories import crud
 from msm.repositories.crud import UPSERT_STATUS_COLUMN, bulk_upsert_model, upsert_model
-from tests.support.sqlite_markets import _count, _insert, _refuse_identical_rewrites
+from tests.support.sqlite_markets import (
+    _count,
+    _insert,
+    _refuse_identical_rewrites,
+    serve_row_operations,
+)
 
 
 @pytest.fixture
@@ -169,10 +173,7 @@ def test_a_row_of_keys_only_is_never_rewritten(sqlite_markets) -> None:
 def test_the_row_api_returns_an_unchanged_row(sqlite_markets, monkeypatch) -> None:
     from msm.api.assets import Asset, CurrencySpot
 
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
-    )
+    serve_row_operations(monkeypatch, sqlite_markets)
     usd = Asset.upsert(unique_identifier="USD", asset_type="currency")
     eur = Asset.upsert(unique_identifier="EUR", asset_type="currency")
     pair = {"unique_identifier": "EURUSD", "base_currency_uid": eur.uid, "quote_currency_uid": usd.uid}

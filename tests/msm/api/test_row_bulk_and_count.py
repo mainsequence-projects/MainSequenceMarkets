@@ -11,13 +11,13 @@ import pytest
 
 from msm.api.accounts import AccountHoldingsSet
 from msm.api.assets import Asset, AssetType
+from tests.support.markets_runtime import serve_runtime
 
 
 @pytest.fixture
 def runtime(monkeypatch):
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
 
 

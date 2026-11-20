@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from msm.api.issuers import Issuer, IssuerUpsert
 from msm.models import IssuerTable
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_issuer_api_declares_table_contract() -> None:
@@ -28,7 +29,7 @@ def test_issuer_upsert_uses_active_runtime(monkeypatch) -> None:
         calls.append((active_context, model, values, conflict_columns))
         return {"row": {"uid": str(issuer_uid), **values}}
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     issuer = Issuer.upsert(
