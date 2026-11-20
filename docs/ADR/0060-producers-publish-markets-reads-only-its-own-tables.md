@@ -3,8 +3,9 @@
 ## Status
 
 Accepted (2026-11-19). The owner decided the rule (decision 1), that each published row is
-stored once, in Markets' tables (decision 2), and that ms-markets ships the primitives and
-recipes a producer needs (decisions 3, 5 and 6). The names and signatures below are proposed
+stored once, in Markets' tables (decision 2), that ms-markets ships the primitives and
+recipes a producer needs (decisions 3, 5 and 6), and that a skill teaches producers the
+pattern (decision 10). The names and signatures below are proposed
 and are settled at implementation. Nothing in this ADR is implemented.
 
 - It supersedes decision 5 of
@@ -234,11 +235,37 @@ Nothing here runs by itself. A person runs each step when they choose:
 - The producer drops its instance tables in a later revision of its own, after the publish
   is verified.
 
-### 10. The rule is documented and tested
+### 10. A skill teaches producers the pattern (owner)
 
-- `docs/concepts.md` states decision 1 as a rule of the library, and the ms-markets skills
-  under `.agents/skills/ms_markets/` teach publish and recipes instead of instances and
-  grants.
+ms-markets ships a skill, `.agents/skills/ms_markets/platform/producer_boundary/SKILL.md`
+(proposed path), in the wheel with the others. An agent or a person building an application
+on ms-markets reads it before they design how the application meets Markets. It holds:
+
+- the rule of decision 1 and the two ways data crosses, with the test "would Markets need to
+  read my table for this to work?" If yes, the design is wrong;
+- how to choose, per dataset: publish it (a series ms-markets defines for a registry row, read
+  the same way across producers) or keep it private;
+- what a producer supplies and what it reuses: the recipes of decision 6, one worked example
+  from weights to a published portfolio, and where its own rules go (before the recipe);
+- how to build private state tables with the factories of decision 7, their foreign keys, and
+  the delete order;
+- what a producer never does: grant Markets a role on its tables, register a table with
+  Markets, send Markets a table uid, keep a namespace for Markets to read, or keep a copy of a
+  published series;
+- a template for the producer's own boundary ADR, so each application records the same
+  things: what it does today, which series it publishes, which tables stay private, where each
+  of its reads comes from afterwards, its delete order, the business rules that do not change,
+  and its rollout in each Environment;
+- a checklist to verify the result: no grant to Markets exists, no table uid leaves the
+  application, and a new Environment needs no person's step for Markets.
+
+The skill names no application. The existing skills that describe instances and grants
+(`portfolios/portfolio_workflow`, `platform/metatable_migrations`,
+`accounts/account_workflow`) are corrected with it.
+
+### 11. The rule is documented and tested
+
+- `docs/concepts.md` states decision 1 as a rule of the library.
 - The pages that describe the catalog are rewritten with the implementation:
   `docs/knowledge/msm_portfolios/portfolios/index.md`, `docs/knowledge/msm/client/index.md`,
   `docs/fast_api/v1/portfolio.md`, `portfolio_signal_metadata.md`, `accounts.md`,
