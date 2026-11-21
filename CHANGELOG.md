@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [4.2.3] - 2026-11-21
+
 ### Changed
 
 - **Every test that stands in for `msm.bootstrap.resolve_runtime` resolves the models it
@@ -19,6 +21,14 @@ and this project follows versioned releases.
   every row class in `msm`, `msm_portfolios` and `msm_pricing`, and every
   `resolve_runtime(models=...)` in their source that writes its models out, whether a
   test reaches it or not.
+
+### Fixed
+
+- **The calendar-link tests no longer fail after the remote-backend bulk test on the same
+  worker** ([#105](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/105)).
+  `test_bulk_count_and_ordering_run_remotely` replaced `msm.repositories.crud.search_model`
+  for the whole test, and `msm.services.asset_calendars`, first imported during it, kept
+  the stub for the rest of the process. Each stub now covers only the call that reads it.
 
 ## [4.2.2] - 2026-11-20
 
