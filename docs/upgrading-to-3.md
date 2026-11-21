@@ -20,23 +20,19 @@ what changes for a project that depends on ms-markets and the order to change it
 | `data_node=` on virtual-fund allocation | `updater=` |
 
 Storage classes, physical table names and MetaTable identifiers do not change.
-Through 3.x every pre-3.0 name still works: old import paths re-export the same
-objects, old class and field names resolve, and HTTP responses repeat each field
-under its old name. Each use raises a `DeprecationWarning`. ms-markets 4.0
-removes the old names.
+From 3.0.0 until 5.0.0 every pre-3.0 name still worked with a `DeprecationWarning`:
+old import paths re-exported the same objects, old class and field names
+resolved, and HTTP responses repeated each field under its old name. ms-markets
+5.0.0 removes them ([#107](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/107)),
+so an old name now fails like any unknown name: an old import raises
+`ModuleNotFoundError` or `ImportError`, a payload or request with an old field
+is rejected, and a response no longer carries it.
 
 ## Find What To Change
 
-Run the scan from the project root. It exits 1 while pre-3.0 names remain, so it
-can gate a CI job:
-
-```bash
-msm rename-preflight scan src tests
-```
-
-Fix every `silent default` finding first. Code such as
-`getattr(binding, "data_node_uid", "")` keeps working through 3.x, but under
-4.0 it returns the default without an error.
+Search the project, its tests and its documentation for every name in the left
+column before moving to 5.0. Look closely at `getattr(obj, "<old name>", default)`:
+it raises nothing, it returns the default.
 
 ## Identities
 
@@ -48,36 +44,20 @@ configuration class keep their hash, unless that configuration nests an
 ms-markets updater or uses an ms-markets configuration class directly.
 
 `signal_uid`, portfolio configuration hashes and rebalance strategy revisions do
-not change. To see which of your producers rotate, and the pre-3.0 hash that
-names each old record, pass a callable that builds them:
+not change: `msm.identity` maps the moved class paths back to their pre-3.0
+paths before ms-markets hashes, and that mapping stays after 5.0.
 
-```bash
-msm rename-preflight rotation my_project.pipelines:updaters
-```
+## UID Columns
 
-## Release Order
+3.0.0 added a column named after the identity it holds next to each pre-3.0
+`*_data_node_uid` column (revision `0022`). Every release from 3.0.0 until 5.0.0
+wrote both columns and read the pre-3.0 one. The steps that were planned for
+3.x, 4.0.0 and 4.1.0 never shipped.
 
-The UID columns move in four steps, because each needs every Environment to
-have upgraded first:
-
-1. **3.0.0** adds the new columns (revision `0022`), writes both names and reads
-   the pre-3.0 columns. Upgrade every project that writes accounts, portfolios
-   or pricing bindings.
-2. **A later 3.x release** copies late 2.x writes and reads the new columns
-   (revision `0024`). Release it only when no 2.x writer remains in any
-   Environment. 3.1.0 and 3.2.0 do not include this step; 3.2.0's revision
-   `0023` adds `Portfolio.retired_at` (ADR 0049).
-3. **4.0.0** removes the pre-3.0 names and stops writing the pre-3.0 columns
-   (revision `0025`). Release it only when no project older than the read
-   switch reads these tables, and after the scan is clean everywhere.
-4. **4.1.0** drops the pre-3.0 columns (revision `0026`). Release it only when
-   no project older than 4.0 uses these tables, because every 3.x release
-   still selects and writes them.
-
-In each Environment, a project can run a release only after the ms-markets
-deployment's `migrate-markets` Job has applied that release's revision there:
-3.0 selects the columns that `0022` adds, and 4.0 inserts pricing bindings
-without the `data_node_uid` value that `0025` makes optional.
-
-To check what the stored account UIDs hold, run
-`msm rename-preflight account-uids` with the Markets runtime attached.
+5.0.0's revision `0035` copies each pre-3.0 column into its successor, makes
+`storage_table_uid` NOT NULL on pricing market-data bindings and drops the
+pre-3.0 columns. Once the ms-markets deployment's `migrate-markets` Job has
+applied it in an Environment, a project on a release before 5.0.0 fails there
+on the account, account holdings set, portfolio and pricing market-data binding
+tables, and a project on 5.0 works. Upgrade every project that uses these
+tables to 5.0 at the same time.

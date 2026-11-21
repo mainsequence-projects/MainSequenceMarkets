@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -386,13 +385,10 @@ CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
 
 
 def _import_markets_modules() -> None:
-    with warnings.catch_warnings():
-        # The pre-3.0 import paths are deprecated aliases (ADR 0048).
-        warnings.simplefilter("ignore", DeprecationWarning)
-        for package_name in MARKETS_PACKAGES:
-            package = importlib.import_module(package_name)
-            for module in pkgutil.walk_packages(package.__path__, prefix=f"{package_name}."):
-                importlib.import_module(module.name)
+    for package_name in MARKETS_PACKAGES:
+        package = importlib.import_module(package_name)
+        for module in pkgutil.walk_packages(package.__path__, prefix=f"{package_name}."):
+            importlib.import_module(module.name)
 
 
 def _defined_subclass_paths(base: type) -> set[str]:

@@ -67,7 +67,6 @@ def _result(**written):
                 "account_is_active": False,
                 "account_group_uid": None,
                 "holdings_storage_table_uid": None,
-                "holdings_data_node_uid": None,
                 "metadata_json": None,
             },
             "asset_uids": {"venue::AAPL": ASSET_UID},

@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Breaking release 5.0.0. It finishes
+[ADR 0048](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0048-time-index-vocabulary-rename/):
+the pre-3.0 names that 4.0.0 was to remove, and the pre-3.0 UID columns, are gone
+([#107](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/107)). Read
+"Upgrading" at the end of this entry.
+
 ### Changed
 
 - **Fewer MetaTables round trips behind an account's target and holdings**
@@ -59,6 +65,37 @@ and this project follows versioned releases.
   `build_delete_account_with_portfolios_operation`, take `row_counts`, the counts
   `read_account_delete` answers.
 
+### Removed
+
+- **The pre-3.0 import paths and class names (ADR 0048).** `msm.data_nodes`,
+  `msm_portfolios.data_nodes`, `msm_pricing.data_nodes` and
+  `msm_portfolios.contrib.prices.data_nodes`, with every submodule, are gone, and so are
+  the `*DataNode`, `*DataNodeConfiguration`, `TargetPositionsDataNodeConfiguration`,
+  `DiscountCurvesNode` and `FixingRatesNode` names, also from `msm_portfolios`. Import from
+  `msm.time_index`, `msm_portfolios.time_index`, `msm_pricing.time_index` and
+  `msm_portfolios.contrib.prices.updaters`. `msm._deprecated_imports` is gone.
+  `msm.identity` stays, so signal, portfolio and strategy identities do not change.
+- **The pre-3.0 UID field names.** Rows no longer carry `holdings_data_node_uid`,
+  `source_data_node_uid`, `portfolio_weights_data_node_uid`,
+  `signal_weights_data_node_uid`, `portfolio_data_node_uid` or `data_node_uid`, and no HTTP
+  response repeats a field under one of them. Payloads, HTTP requests and row writes refuse
+  them like any unknown field, and the account and portfolio repository builders no
+  longer take them as keyword arguments.
+- `PricingMarketDataConfiguration.data_node_uids` and `direct_data_node_uid_for`,
+  `PricingMarketDataSetBinding.resolve_data_node_uid`, the `data_node=` argument of
+  `VirtualFund.allocate_from_account_holdings_set` and
+  `msm.settings.markets_data_node_identifier`. Use `storage_table_uids`,
+  `direct_storage_table_uid_for`, `resolve_storage_table_uid`, `updater=` and
+  `markets_identifier`.
+- **The pre-3.0 UID columns.** Alembic revision 0035 copies each `*_data_node_uid` column
+  into the column that replaced it in 3.0.0, makes `storage_table_uid` NOT NULL on
+  pricing market-data bindings and drops the six pre-3.0 columns and the `data_node_uid`
+  index. Every release since 3.0.0 wrote both columns and read the pre-3.0 one; ms-markets
+  now maps only the current one, and `msm.repositories.crud.mirror_renamed_columns`,
+  `renamed_column_value`, `renamed_keyword`, `READ_PRE_3_0_COLUMNS` and each model's
+  `__renamed_columns__` are gone.
+- `msm rename-preflight` and `msm_cli.rename_preflight`, the 3.0 upgrade scanner.
+
 ### Fixed
 
 - **The target read and holdings by fund answer the latest snapshot of a long history.**
@@ -68,6 +105,18 @@ and this project follows versioned releases.
 - **A target position carries its portfolio's reference whatever the number of
   portfolios.** The reference came from the first 500 portfolios read; a position naming
   another had no `portfolio` and answered its uid as `unique_identifier`.
+
+### Upgrading
+
+- **Move every project that uses accounts, account holdings sets, portfolios or pricing
+  market-data bindings to 5.0.0 together with the Markets deployment.** Once its
+  `migrate-markets` Job has applied revision 0035 in an Environment, a project on an older
+  release fails there on those tables: every release before 5.0.0 reads and writes the
+  dropped columns.
+- **Replace every pre-3.0 name first.** An old import now raises `ModuleNotFoundError` or
+  `ImportError`, and an old field is refused. [Upgrading To 3.0](https://mainsequence-projects.github.io/MainSequenceMarkets/upgrading-to-3/)
+  lists each name and its replacement. `getattr(obj, "<old name>", default)` raises
+  nothing: it returns the default.
 
 ## [4.2.3] - 2026-11-21
 

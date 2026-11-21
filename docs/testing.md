@@ -72,7 +72,7 @@ other places to look.
 | `src/msm_portfolios` | `tests/msm_portfolios`, and the files in `tests/apps`, `tests/msm_migrations` and `tests/identity` that import the changed module |
 | `src/msm` | the files in `tests/msm` for the changed area, and every other test file that imports the changed module |
 | `src/msm_migrations` | `tests/msm_migrations`, and the database tests of the tables the revision changes |
-| `src/msm_cli` | `tests/msm_cli` (`tests/identity/test_rename_preflight.py` for the rename preflight) |
+| `src/msm_cli` | `tests/msm_cli` |
 | `apps` | the files in `tests/apps` for the changed routers and services |
 | `jobs`, `examples` | the tests that load or import the changed file (`git grep -l <name> tests`) |
 | `tests/support`, `tests/conftest.py` | the tests that use the changed helper or fixture |

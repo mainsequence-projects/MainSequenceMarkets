@@ -5,12 +5,6 @@ account target-position assignment. Target-allocation candidate searches resolve
 valid asset and portfolio targets, and holdings read endpoints support both
 direct account snapshots and virtual-fund-grouped views.
 
-!!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries `holdings_storage_table_uid` or `source_storage_table_uid` also
-    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
-
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
   - returns `command-center.resource_collection@v1`

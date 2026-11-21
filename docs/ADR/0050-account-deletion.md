@@ -396,7 +396,7 @@ the bulk delete asked for it in its preflight and again to delete
   its orders, trades and events again, and a portfolio re-created under a deleted
   one's identifier start from scratch.
 
-### 2026-11-21: 4.2.4, indexes and skipped tables
+### 2026-11-21: 5.0.0, indexes and skipped tables
 
 The 4.1.1 delete was one read and one transaction, but its time still grew with every
 account's history. Measured on PostgreSQL with 10 accounts of 1,000 holdings sets and
@@ -409,7 +409,7 @@ column, which is reading the whole index, and the order events filter read every
 account's orders.
 
 - **Indexes.** Alembic revision `0034` adds a non-unique index for each such key and
-  lookup (the 4.2.4 CHANGELOG lists them). The delete then takes 0.11 s on the same
+  lookup (the 5.0.0 CHANGELOG lists them). The delete then takes 0.11 s on the same
   rows. A PostgreSQL test checks that every key into the deleted tables leads an index
   and that the read and each statement reach the six history tables by index condition.
 - **Measured.** `tests/msm/repositories/test_postgresql_account_delete_volume.py` deletes

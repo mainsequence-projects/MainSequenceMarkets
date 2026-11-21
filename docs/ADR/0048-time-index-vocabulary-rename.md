@@ -2,13 +2,13 @@
 
 ## Status
 
-Accepted. Ships in four releases: 3.0.0 renames the code and adds the new UID
-columns, a later 3.x release reads the new columns, 4.0.0 removes the old names
-and stops writing the old columns, and 4.1.0 drops them. 3.1.0 shipped without
-the read switch, and [ADR 0049](0049-portfolio-lifecycle-and-account-history.md)
-took revision `0023`, so the remaining steps are revisions `0024` to `0026`. Amends
+Accepted, and complete in 5.0.0. The decision below spreads the change over four
+releases: 3.0.0 renames the code and adds the new UID columns, a later 3.x release
+reads the new columns, 4.0.0 removes the old names and stops writing the old
+columns, and 4.1.0 drops them. Only 3.0.0 shipped as planned. 5.0.0 removes the old
+names and drops the old columns in one step; see Implementation Notes. Amends
 [ADR 0043](0043-sdk-9-metatables-client-hard-cut.md) with one exception: a
-deprecation window for the renamed import paths and fields.
+deprecation window for the renamed import paths and fields, which 5.0.0 closes.
 
 ## Context
 
@@ -116,3 +116,30 @@ Names and module paths are part of persisted identities:
 - The read switch, 4.0.0 and 4.1.0 depend on the versions running in every Environment,
   not on the code alone.
 - `msm.identity` stays after 4.0.0.
+
+## Implementation Notes
+
+### 2026-11-21: 5.0.0
+
+3.0.0 shipped decisions 1 to 4, revision `0022` and the guards. Nothing after it
+shipped as planned. 3.1.0 went out without the read switch, revisions `0023` to
+`0034` hold other changes, and 4.0.0 changed calendars
+([ADR 0055](0055-calendars-as-rules-and-exceptions.md),
+[ADR 0056](0056-asset-trading-calendar-link.md)) without removing the old names.
+Nothing recorded a deferral. From 3.0.0 until 5.0.0, every release kept the
+aliases, wrote both columns and read the old ones
+([#107](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/107)).
+
+5.0.0 does the rest in one step:
+
+- It removes the alias packages and modules, the old class names, every deprecated
+  row field, property, keyword argument and helper, and the old names in HTTP
+  requests and responses. An old name is refused like any other unknown name.
+- Revision `0035` copies each old column into its successor, because every release
+  read the old one. It makes `storage_table_uid` NOT NULL on pricing market-data
+  bindings and drops the six old columns and the `data_node_uid` index. Once it
+  runs, a process on a release before 5.0.0 fails on the account, account
+  holdings set, portfolio and pricing market-data binding tables.
+- `msm rename-preflight` is removed along with the names it looked for.
+- `msm.identity` and `tests/identity/test_pinned_identities.py` stay, as decision 3
+  says.

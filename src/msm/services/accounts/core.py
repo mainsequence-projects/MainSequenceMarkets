@@ -14,7 +14,6 @@ from msm.api.base import operation_result_rows
 from msm.models import AccountTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
-from msm.repositories.crud import renamed_column_value
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
 from msm.repositories.account_snapshot_reads import (
@@ -174,8 +173,6 @@ def get_account_frontend_detail_summary(
         "summary_warning": None,
         "extensions": {
             "holdings_storage_table_uid": holdings_storage_table_uid,
-            # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
-            "holdings_data_node_uid": holdings_storage_table_uid,
             "metadata_json": _mapping_or_none(account_row.get("metadata_json")),
         },
     }
@@ -388,14 +385,12 @@ def _build_account_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "is_paper": bool(row.get("is_paper", False)),
         "account_is_active": bool(row.get("account_is_active", False)),
         "holdings_storage_table_uid": _holdings_storage_table_uid(row),
-        # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
-        "holdings_data_node_uid": _holdings_storage_table_uid(row),
         "metadata_json": _mapping_or_none(row.get("metadata_json")),
     }
 
 
 def _holdings_storage_table_uid(row: Mapping[str, Any]) -> str | None:
-    return _string_or_none(renamed_column_value(AccountTable, row, "holdings_storage_table_uid"))
+    return _string_or_none(row.get("holdings_storage_table_uid"))
 
 
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:

@@ -3,19 +3,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from threading import RLock
-from typing import Any, ClassVar, TypeAlias
+from typing import Any, TypeAlias
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from msm.api.base import PayloadWithRenamedFields
 from msm_pricing.settings import PRICING_MARKET_DATA_SET_DEFAULT
 
 
-class PricingMarketDataConfiguration(PayloadWithRenamedFields):
+class PricingMarketDataConfiguration(BaseModel):
     """Runtime default market-data set and direct storage UID overrides."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    __renamed_fields__: ClassVar[dict[str, str]] = {"storage_table_uids": "data_node_uids"}
 
     market_data_set: str | uuid.UUID = Field(
         default=PRICING_MARKET_DATA_SET_DEFAULT,
@@ -61,28 +59,6 @@ class PricingMarketDataConfiguration(PayloadWithRenamedFields):
         """Return a directly configured storage table UID for one concept."""
 
         return self.storage_table_uids.get(concept_key)
-
-    @property
-    def data_node_uids(self) -> dict[str, uuid.UUID]:
-        """Deprecated pre-3.0 name of ``storage_table_uids``; removed in ms-markets 4.0."""
-
-        from msm._deprecated_imports import warn_renamed
-
-        warn_renamed(
-            f"{type(self).__name__}.data_node_uids", f"{type(self).__name__}.storage_table_uids"
-        )
-        return self.storage_table_uids
-
-    def direct_data_node_uid_for(self, concept_key: str) -> uuid.UUID | None:
-        """Deprecated pre-3.0 name of :meth:`direct_storage_table_uid_for`; removed in 4.0."""
-
-        from msm._deprecated_imports import warn_renamed
-
-        warn_renamed(
-            f"{type(self).__name__}.direct_data_node_uid_for",
-            f"{type(self).__name__}.direct_storage_table_uid_for",
-        )
-        return self.direct_storage_table_uid_for(concept_key)
 
 
 PricingMarketDataConfigurationInput: TypeAlias = PricingMarketDataConfiguration | Mapping[str, Any]
