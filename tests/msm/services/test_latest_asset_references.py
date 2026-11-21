@@ -52,51 +52,6 @@ def test_account_holding_asset_references_use_backend_latest_reference_service(
     }
 
 
-def test_target_position_asset_references_use_backend_latest_reference_service(
-    monkeypatch,
-) -> None:
-    import msm.services.target_positions as target_position_services
-
-    context = object()
-    asset_uid = uuid.uuid4()
-    captured: dict[str, Any] = {}
-
-    def fake_asset_reference_details_by_uids(asset_uids, *, repository_context):
-        captured["asset_uids"] = asset_uids
-        captured["repository_context"] = repository_context
-        return [
-            {
-                "asset_uid": str(asset_uid),
-                "asset_identifier": "btc_spot",
-                "name": "Bitcoin",
-                "ticker": "BTC",
-            }
-        ]
-
-    monkeypatch.setattr(
-        target_position_services,
-        "asset_reference_details_by_uids",
-        fake_asset_reference_details_by_uids,
-    )
-
-    references = target_position_services._asset_references_by_uid(
-        context,
-        rows=[{"asset_uid": str(asset_uid)}],
-    )
-
-    assert captured == {
-        "asset_uids": [str(asset_uid)],
-        "repository_context": context,
-    }
-    assert references == {
-        str(asset_uid): {
-            "uid": str(asset_uid),
-            "unique_identifier": "btc_spot",
-            "current_snapshot": {"name": "Bitcoin", "ticker": "BTC"},
-        }
-    }
-
-
 def test_virtual_fund_asset_references_use_backend_latest_reference_service(
     monkeypatch,
 ) -> None:

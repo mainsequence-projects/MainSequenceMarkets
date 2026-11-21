@@ -17,6 +17,12 @@ from msm.repositories.base import compile_markets_statement, execute_markets_ope
 from msm.repositories.crud import renamed_column_value
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
+from msm.repositories.account_snapshot_reads import (
+    ASSET_REFERENCE,
+    HOLDING,
+    prefixed_columns,
+    read_account_holdings_snapshot,
+)
 
 DEFAULT_ACCOUNT_PAGE_SIZE = 25
 DEFAULT_ACCOUNT_SCAN_FLOOR = 100
@@ -184,30 +190,48 @@ def get_account_holdings_snapshot_response(
     include_asset_detail: bool = True,
     holdings_date: dt.datetime | str | None = None,
 ) -> dict[str, Any] | None:
-    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
-    if account_row is None:
+    """One holdings snapshot of an account; ``None`` when the account does not exist.
+
+    One read: the account with its holdings at ``holdings_date``, else at its latest
+    (or, with ``order="asc"``, earliest) holdings time, and with
+    ``include_asset_detail`` each holding's asset and latest snapshot.
+    """
+
+    normalized_order = str(order).lower()
+    if normalized_order not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'.")
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+
+    rows = operation_result_rows(
+        read_account_holdings_snapshot(
+            context,
+            account_uid=account_uid,
+            order=normalized_order,
+            holdings_date=_datetime_or_none(holdings_date),
+            include_asset_detail=include_asset_detail,
+            limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
+        )
+    )
+    if not rows:
         return None
 
-    resolved_account_uid = str(account_row["uid"])
-    target_time = _datetime_or_none(holdings_date)
-    rows = _search_account_holdings_rows(
-        context,
-        account_uid=resolved_account_uid,
-        limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
-        descending=str(order).lower() != "asc",
-        holdings_dates=None if target_time is None else [target_time],
-    )
-    snapshot_rows = _select_account_holdings_snapshot_rows(
-        rows,
-        holdings_date=holdings_date,
-        order=order,
-        limit=limit,
-    )
+    resolved_account_uid = str(rows[0]["account_uid"])
+    snapshot_rows = [
+        prefixed_columns(row, HOLDING) for row in rows if row.get(f"{HOLDING}time_index")
+    ]
     if not snapshot_rows:
         return _empty_account_holdings_snapshot(account_uid=resolved_account_uid)
 
     asset_references = (
-        _asset_snapshot_references_by_unique_identifier(context, rows=snapshot_rows)
+        _asset_snapshot_references(
+            {
+                str(row["asset_identifier"])
+                for row in snapshot_rows
+                if row.get("asset_identifier") not in (None, "")
+            },
+            details_by_identifier=_asset_details_by_identifier(rows),
+        )
         if include_asset_detail
         else {}
     )
@@ -217,6 +241,23 @@ def get_account_holdings_snapshot_response(
         asset_references=asset_references,
         include_asset_detail=include_asset_detail,
     )
+
+
+def _asset_details_by_identifier(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The asset details a read joined to its holdings, by asset identifier."""
+
+    details: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        detail = prefixed_columns(row, ASSET_REFERENCE)
+        if detail.get("identifier") in (None, ""):
+            continue
+        details[str(detail["identifier"])] = {
+            "asset_uid": detail.get("uid"),
+            "asset_identifier": detail["identifier"],
+            "name": detail.get("name"),
+            "ticker": detail.get("ticker"),
+        }
+    return details
 
 
 def add_account_holdings_snapshot_response(
@@ -680,39 +721,6 @@ def _account_holdings_frame_operation_rows(frame: Any) -> list[dict[str, Any]]:
             }
         )
     return rows
-
-
-def _select_account_holdings_snapshot_rows(
-    rows: Sequence[Mapping[str, Any]],
-    *,
-    holdings_date: dt.datetime | str | None,
-    order: str,
-    limit: int,
-) -> list[dict[str, Any]]:
-    normalized_order = order.lower()
-    if normalized_order not in {"asc", "desc"}:
-        raise ValueError("order must be 'asc' or 'desc'.")
-    if limit < 1:
-        raise ValueError("limit must be greater than or equal to 1.")
-
-    rows_with_time = [
-        (dict(row), row_time)
-        for row in rows
-        if (row_time := _datetime_or_none(row.get("time_index"))) is not None
-    ]
-    if not rows_with_time:
-        return []
-
-    target_time = _datetime_or_none(holdings_date)
-    if target_time is not None:
-        return [row for row, row_time in rows_with_time if row_time == target_time]
-
-    snapshot_times = sorted(
-        {row_time for _, row_time in rows_with_time},
-        reverse=normalized_order == "desc",
-    )
-    selected_time = snapshot_times[0]
-    return [row for row, row_time in rows_with_time if row_time == selected_time]
 
 
 def _build_account_holdings_snapshot(

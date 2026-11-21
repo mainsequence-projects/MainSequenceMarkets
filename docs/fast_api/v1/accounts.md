@@ -178,6 +178,9 @@ direct account snapshots and virtual-fund-grouped views.
 - `GET /api/v1/account/{account_uid}/holdings/`
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
+  - costs one MetaTables operation: the account, its holdings at the selected
+    time and, with `include_asset_detail`, each asset's latest snapshot, in one
+    select
   - returns one holdings snapshot backed by `AccountHoldingsStorage`
   - each holding exposes the storage `asset_identifier`, positive `quantity`,
     `direction` (`1` long, `-1` short), and computed `signed_quantity`
@@ -189,6 +192,8 @@ direct account snapshots and virtual-fund-grouped views.
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
   - selects one `AccountHoldingsSetTable` source snapshot for the account
+  - costs two MetaTables operations: the account with that holdings set and
+    its rows; then the account's virtual funds with what each holds from it
   - groups persisted `VirtualFundHoldingsStorage` allocation rows by
     `VirtualFundTable.uid` where each `VirtualFundHoldingsSetTable` references
     the selected source account holdings set
@@ -296,6 +301,10 @@ direct account snapshots and virtual-fund-grouped views.
   - writes one account target-position snapshot and returns the same
     `AccountTargetPositionsSnapshotResponse` contract as the target-positions
     read endpoint
+  - costs three MetaTables operations whatever the number of positions: read
+    the account with its stored target allocation, write, and read the
+    snapshot back as the target-positions read answers it; a cleared target is
+    answered from the write
   - request body contains only `target_positions_date`, `overwrite`, and
     `positions`; account and target-allocation parent identity are derived from
     the account uid in the path
@@ -334,6 +343,9 @@ direct account snapshots and virtual-fund-grouped views.
     `target_positions_date`
   - resolves active account target allocations, selects one `PositionSetTable`
     snapshot, and returns its `TargetPositionsStorage` exposure rows
+  - costs one MetaTables operation: the account, the selected snapshot, its
+    rows, their portfolios and, with `include_asset_detail`, their assets'
+    latest snapshots, in one select
   - each position carries `target_type`, `target_uid`, and exactly one concrete
     target reference: `asset_uid` or `portfolio_uid`
   - returns 200 with an empty `positions` list when the account exists but no

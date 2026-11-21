@@ -55,8 +55,14 @@ def test_add_target_positions_still_requires_the_positions_field() -> None:
 def _patch_account(monkeypatch, services, account_uid: str) -> None:
     monkeypatch.setattr(
         services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": account_uid, "account_name": "Some account"}},
+        "read_account_with_stored_target_allocation",
+        lambda context, account_uid: {
+            "row": {
+                "uid": account_uid,
+                "account_name": "Some account",
+                "stored_target_allocation_uid": None,
+            }
+        },
     )
 
 

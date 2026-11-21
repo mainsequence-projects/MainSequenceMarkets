@@ -1,7 +1,7 @@
 """A hook replaced on ``msm.services.accounts`` must not stay on its ``core`` module.
 
-Tests replace account hooks on the package; its snapshot entry points hand them to
-``core`` for the call. Each ``monkeypatch.context()`` below stands in for one test:
+Tests replace account hooks on the package; its holdings write hands them to ``core``
+for the call. Each ``monkeypatch.context()`` below stands in for one test:
 leaving it undoes the patches, as the end of a test does.
 """
 
@@ -42,17 +42,12 @@ def test_patched_account_lookups_do_not_outlive_their_test(monkeypatch) -> None:
             "get_account_by_uid",
             lambda context, uid: {"row": {"uid": account_uid}},
         )
-        test.setattr(account_services, "_search_account_holdings_rows", lambda context, **_: [])
         test.setattr(
             account_services,
             "_asset_reference_details_by_identifier",
             lambda context, identifiers: {},
         )
 
-        snapshot = account_services.get_account_holdings_snapshot_response(
-            object(),
-            account_uid=account_uid,
-        )
         with pytest.raises(ValueError, match="'unknown-asset' was not found"):
             account_services.add_account_holdings_snapshot_response(
                 object(),
@@ -61,9 +56,8 @@ def test_patched_account_lookups_do_not_outlive_their_test(monkeypatch) -> None:
                 positions=[{"asset_identifier": "unknown-asset", "quantity": "1"}],
             )
 
-    # The fakes reached core during the calls...
-    assert snapshot == {"holdings_set_uid": None, "holdings_date": None, "holdings": []}
-    # ...and core holds its own functions again, after a return and after a raise.
+    # The fakes reached core during the call, and core holds its own functions again
+    # after the raise (the next test checks a return).
     assert _core_hooks() == core_hooks
 
 

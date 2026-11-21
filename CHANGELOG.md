@@ -7,6 +7,35 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Fewer MetaTables round trips behind an account's target and holdings**
+  ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)). Each
+  MetaTables request is a round trip, so these requests now join in one select what
+  they read one table at a time. Their answers are unchanged.
+  - `GET /api/v1/account/{account_uid}/target-positions/`: one request, was five (six
+    when the target names assets): the account, its snapshot, the snapshot's rows and
+    their portfolios and assets.
+  - `POST /api/v1/account/{account_uid}/add-target-positions/`: three, was eight (nine
+    when the target names assets): the account with its stored target allocation, the
+    write, and the snapshot read back in one select.
+  - `GET /api/v1/account/{account_uid}/holdings/`: one, was three.
+  - `GET /api/v1/account/{account_uid}/holdings/by-fund/`: two, was seven: the account
+    with its holdings set and that set's rows, then its virtual funds with what each
+    holds from the set.
+
+  The selects are in `msm.repositories.account_snapshot_reads`.
+
+### Fixed
+
+- **The target read and holdings by fund answer the latest snapshot of a long history.**
+  Both picked the latest from the first 500 rows of an unordered read, so an account with
+  more than 500 target snapshots, or more than 500 holdings sets (one per sync), could be
+  answered an older one. The select now chooses it.
+- **A target position carries its portfolio's reference whatever the number of
+  portfolios.** The reference came from the first 500 portfolios read; a position naming
+  another had no `portfolio` and answered its uid as `unique_identifier`.
+
 ## [4.2.3] - 2026-11-21
 
 ### Changed

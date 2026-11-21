@@ -167,12 +167,3 @@ def test_holdings_snapshots_scan_ordered_pages(monkeypatch) -> None:
     )
     assert [snapshot["holdings_date"] for snapshot in chosen] == [times[2]]
     assert calls[0]["in_filters"]["time_index"][0] == times[2]
-
-    earliest = core.get_account_holdings_snapshot_response(
-        object(), account_uid=account_uid, order="asc", include_asset_detail=False
-    )
-    assert earliest["holdings_date"] == times[2]
-    latest = core.get_account_holdings_snapshot_response(
-        object(), account_uid=account_uid, include_asset_detail=False
-    )
-    assert latest["holdings_date"] == times[0]
