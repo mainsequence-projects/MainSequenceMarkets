@@ -45,6 +45,10 @@ class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     __table_args__ = (
         CheckConstraint("direction IN (1, -1)", name="ck_account_holdings_direction"),
+        # The unique index leads with time_index; these serve one account's or one
+        # holdings set's rows, and the foreign keys that reference both (revision 0034).
+        Index(None, "account_uid", "time_index"),
+        Index(None, "holdings_set_uid"),
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [

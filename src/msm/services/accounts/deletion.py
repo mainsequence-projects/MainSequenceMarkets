@@ -175,6 +175,7 @@ def run_account_delete(
                 context,
                 uid=plan["uid"],
                 unique_identifier=plan["unique_identifier"],
+                row_counts=plan["row_counts"],
             ),
             context=context,
             refused_by=(ACCOUNT_DELETE_GUARD,),

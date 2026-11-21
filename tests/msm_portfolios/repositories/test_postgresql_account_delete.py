@@ -17,12 +17,19 @@ import pytest
 import sqlalchemy as sa
 
 from msm.models import AccountTable
+from msm.repositories.account_deletion import (
+    ACCOUNT_DELETE_TABLES,
+    account_delete_read_statement,
+    account_delete_statements,
+)
 from msm.repositories.accounts import replace_account_target_positions_snapshot
+from msm.repositories.base import compile_markets_statement
 from msm.services import delete_account
 from msm.services.accounts import deletion
 from msm_portfolios.repositories import account_portfolio_deletion as portfolio_repository
 from msm_portfolios.services import delete_account_with_portfolios
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
+from tests.support.account_delete import EVERY_TABLE_COUNTS
 from tests.support.postgresql_portfolios import (
     _count,
     _dataset_rows,
@@ -41,6 +48,24 @@ DATASETS = {table.key: table.table_name for table in PORTFOLIO_DATASET_TABLES}
 PROVIDER_TABLE = "provider_ns__portfolioeventledgerts__copy"
 PROVIDER_CONSTRAINT = "fk_provider_ns_portfolioeventledgerts_copy_portfolio"
 ACCOUNT_STATEMENTS = 14
+HISTORY_TABLES = {
+    "ms_markets__accountholdingsts",
+    "ms_markets__accountallocationlinests",
+    "ms_markets__virtualfundholdingsts",
+    "ms_markets__ordersts",
+    "ms_markets__tradests",
+    "ms_markets__ordereventsts",
+}
+FOREIGN_KEY_INDEXES = """
+SELECT con.conrelid::regclass::text AS child, att.attname AS fk_column,
+       EXISTS (
+         SELECT 1 FROM pg_index AS i
+         WHERE i.indrelid = con.conrelid AND i.indkey[0] = con.conkey[1]
+       ) AS indexed
+FROM pg_constraint AS con
+JOIN pg_attribute AS att ON att.attrelid = con.conrelid AND att.attnum = con.conkey[1]
+WHERE con.contype = 'f' AND con.confrelid::regclass::text = ANY(:tables)
+"""
 PORTFOLIO_STATEMENTS = len(DATASETS) + 1
 
 
@@ -216,3 +241,60 @@ def test_the_read_counts_each_portfolio_through_the_series_index(markets) -> Non
     }
     # Each dataset count reads the portfolio's rows through the series index (issue 96).
     assert dataset_reads(plan) == series_indexes()
+
+
+def _history_scans(plan: list) -> list[tuple[str, str, bool]]:
+    """Each plan node that reads an account history table: its table, its kind, and
+    whether an index condition bounds it (a seek, not a read of the whole index)."""
+
+    scans: list[tuple[str, str, bool]] = []
+
+    def visit(node: dict) -> None:
+        relation = node.get("Relation Name")
+        if relation in HISTORY_TABLES and node["Node Type"] != "ModifyTable":
+            seeks = "Index Cond" in node or any(
+                "Index Cond" in child
+                for child in node.get("Plans", ())
+                if child.get("Node Type") == "Bitmap Index Scan"
+            )
+            scans.append((relation, node["Node Type"], seeks))
+        for child in node.get("Plans", ()):
+            visit(child)
+
+    visit(plan[0]["Plan"])
+    return scans
+
+
+def test_every_key_into_the_deleted_tables_leads_an_index(markets) -> None:
+    # PostgreSQL checks a key by reading the referencing table once per deleted row:
+    # without an index that leads with the key's column, that is the whole table.
+    engine, _context, _operations = markets
+    tables = [table.table_name for table in ACCOUNT_DELETE_TABLES]
+    with engine.connect() as connection:
+        keys = connection.execute(sa.text(FOREIGN_KEY_INDEXES), {"tables": tables}).all()
+
+    assert keys
+    assert [f"{child}.{column}" for child, column, indexed in keys if not indexed] == []
+
+
+def test_the_delete_seeks_each_history_table_through_an_index(markets) -> None:
+    engine, context, _operations = markets
+    account = uuid.uuid4()
+    operations = [
+        compile_markets_statement(
+            account_delete_read_statement(account), context=context, operation="select"
+        ),
+        *(
+            compile_markets_statement(
+                getattr(item, "statement", item), context=context, operation="delete"
+            )
+            for item in account_delete_statements(
+                uid=account, unique_identifier="account-1", row_counts=EVERY_TABLE_COUNTS
+            )
+        ),
+    ]
+
+    scans = [scan for operation in operations for scan in _history_scans(explain(engine, operation))]
+
+    assert {table for table, _kind, _seeks in scans} == HISTORY_TABLES
+    assert [scan for scan in scans if not scan[2]] == []

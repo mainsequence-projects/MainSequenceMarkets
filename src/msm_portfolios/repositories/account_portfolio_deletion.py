@@ -15,7 +15,7 @@ portfolios' own statements:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy import delete, func, select, union
@@ -91,12 +91,19 @@ def account_with_portfolios_delete_statements(
     *,
     uid: uuid.UUID | str,
     unique_identifier: str,
+    row_counts: Mapping[str, int],
     portfolio_uids: Sequence[uuid.UUID | str],
 ) -> list[GuardedStatement | Any]:
-    """Core's account statements, then the portfolios': one transaction, at most 22."""
+    """Core's account statements, then the portfolios': one transaction, at most 22.
+
+    ``row_counts`` are the account read's counts; core leaves out the tables it found
+    empty.
+    """
 
     return [
-        *account_delete_statements(uid=uid, unique_identifier=unique_identifier),
+        *account_delete_statements(
+            uid=uid, unique_identifier=unique_identifier, row_counts=row_counts
+        ),
         *account_portfolio_delete_statements(portfolio_uids),
     ]
 
@@ -106,6 +113,7 @@ def build_delete_account_with_portfolios_operation(
     *,
     uid: uuid.UUID | str,
     unique_identifier: str,
+    row_counts: Mapping[str, int],
     portfolio_uids: Sequence[uuid.UUID | str],
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
@@ -116,6 +124,7 @@ def build_delete_account_with_portfolios_operation(
         account_with_portfolios_delete_statements(
             uid=uid,
             unique_identifier=unique_identifier,
+            row_counts=row_counts,
             portfolio_uids=portfolio_uids,
         ),
         context=with_max_rows(with_delete_deadline(context), max(len(portfolio_uids), 1)),

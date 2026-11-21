@@ -35,6 +35,7 @@ from msm.services import (
 from msm.services.accounts import deletion
 from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 from tests.support.account_delete import (
+    EVERY_TABLE_COUNTS,
     MARKETS_TABLES,
     _account_rows,
     _create_provider_tables,
@@ -52,6 +53,7 @@ from tests.support.sqlite_markets import (
     _account,
     _count,
     _rows,
+    _write_holdings,
 )
 
 ACCOUNT_TABLE_UID = "5a5a5a5a-0000-4000-8000-000000000005"
@@ -67,7 +69,9 @@ def sqlite_markets(sqlite_markets, monkeypatch):
 
 
 def test_every_statement_targets_a_markets_table() -> None:
-    statements = account_delete_statements(uid=uuid.uuid4(), unique_identifier="account-1")
+    statements = account_delete_statements(
+        uid=uuid.uuid4(), unique_identifier="account-1", row_counts=EVERY_TABLE_COUNTS
+    )
 
     assert len(statements) == len(ACCOUNT_DELETE_TABLES)
     for item in statements:
@@ -80,9 +84,41 @@ def test_every_statement_targets_a_markets_table() -> None:
     assert statements[-1].label == "account" and statements[-1].expect_rows == 1
 
 
+def test_a_table_the_read_found_empty_gets_no_statement() -> None:
+    counts = {**dict.fromkeys(EVERY_TABLE_COUNTS, 0), "holdings": 2, "holdings_sets": 1}
+
+    statements = account_delete_statements(
+        uid=uuid.uuid4(), unique_identifier="account-1", row_counts=counts
+    )
+
+    assert [getattr(item, "statement", item).table.name for item in statements] == [
+        "ms_markets__accountholdingsts",
+        "ms_markets__accountholdingsset",
+        "ms_markets__account",
+    ]
+
+
+def test_order_events_keep_their_statement_while_the_account_has_orders() -> None:
+    # Order events have no foreign key: an event written after the read is deleted only
+    # by the statement.
+    counts = {**dict.fromkeys(EVERY_TABLE_COUNTS, 0), "orders": 1}
+
+    statements = account_delete_statements(
+        uid=uuid.uuid4(), unique_identifier="account-1", row_counts=counts
+    )
+
+    assert [getattr(item, "statement", item).table.name for item in statements] == [
+        "ms_markets__ordereventsts",
+        "ms_markets__ordersts",
+        "ms_markets__account",
+    ]
+
+
 def test_a_blank_identifier_is_refused() -> None:
     with pytest.raises(ValueError, match="unique_identifier"):
-        account_delete_statements(uid=uuid.uuid4(), unique_identifier=" ")
+        account_delete_statements(
+            uid=uuid.uuid4(), unique_identifier=" ", row_counts=EVERY_TABLE_COUNTS
+        )
 
 
 # The delete ------------------------------------------------------------------------------
@@ -157,6 +193,44 @@ def test_one_delete_sends_one_read_and_one_transaction(sqlite_markets) -> None:
     delete_account(sqlite_markets.context, uid=account)
 
     assert sqlite_markets.requests == ["read", f"transaction:{len(ACCOUNT_DELETE_TABLES)}"]
+
+
+def test_an_account_with_holdings_only_sends_three_statements(sqlite_markets) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
+    sqlite_markets.requests.clear()
+
+    deleted = delete_account(sqlite_markets.context, uid=account)
+
+    assert sqlite_markets.requests == ["read", "transaction:3"]
+    assert {key: count for key, count in deleted["deleted_rows"].items() if count} == {
+        "holdings": 1,
+        "holdings_sets": 1,
+    }
+    assert _count(engine, "ms_markets__account") == 0
+    assert _count(engine, "ms_markets__accountholdingsts") == 0
+
+
+def test_holdings_written_after_the_read_refuse_the_delete(sqlite_markets, monkeypatch) -> None:
+    # The read found no holdings, so the transaction has no holdings statement; the
+    # holdings key refuses the account's delete and the transaction deletes nothing.
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    read = deletion.account_deletion_repository.read_account_delete
+
+    def read_then_sync(context, **kwargs):
+        result = read(context, **kwargs)
+        _write_holdings(sqlite_markets, account, [{"asset_identifier": "AAA", "quantity": 1.0}])
+        return result
+
+    monkeypatch.setattr(deletion.account_deletion_repository, "read_account_delete", read_then_sync)
+
+    with pytest.raises(AccountDeleteConflictError, match="nothing was deleted"):
+        delete_account(sqlite_markets.context, uid=account)
+
+    assert _count(engine, "ms_markets__account") == 1
+    assert _count(engine, "ms_markets__accountholdingsts") == 1
 
 
 def test_an_account_changed_in_between_deletes_nothing(sqlite_markets, monkeypatch) -> None:

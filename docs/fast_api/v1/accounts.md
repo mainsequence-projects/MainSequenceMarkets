@@ -122,6 +122,11 @@ direct account snapshots and virtual-fund-grouped views.
     and `kept_portfolios` (each with its `reason`)
   - one delete sends MetaTables one read and one transaction, and asks for no
     impact; both run with MetaTables' longest deadline, 60 seconds
+  - the transaction has a statement only for the tables the read found rows in
+    (order events whenever the account has orders); a row written there after the
+    read is deleted by its `CASCADE` key or refuses the delete through its
+    `RESTRICT` key. Every key and per-account lookup reads through an index
+    (revision `0034`)
   - `404` when the uid is unknown; `409` when a key refuses the account's
     delete, including orders of other accounts that name its order managers or
     virtual funds of other accounts allocated from its holdings sets; nothing is

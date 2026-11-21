@@ -112,3 +112,11 @@ worker:
 PostgreSQL-gated tests run only when the change touches PostgreSQL SQL, a migration, or
 their fixtures. Run them against one throwaway TimescaleDB container with an empty
 `markets_*` database per URL variable they read, and remove the container afterwards.
+
+`tests/msm/repositories/test_postgresql_account_delete_volume.py` measures one account
+delete with months of history in the tables (10 accounts of 1,000 holdings sets, their
+allocations, targets, orders, trades and events). It prints the time of the read, of each
+statement, of the transaction and of MetaTables' statistics rebuild of each table the
+transaction locked, and fails when the read and the transaction take 10 s or more. Run it
+with `-s` after changing the account delete, its keys or its indexes; seeding takes a
+minute or two.

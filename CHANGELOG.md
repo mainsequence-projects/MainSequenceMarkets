@@ -25,6 +25,39 @@ and this project follows versioned releases.
     holds from the set.
 
   The selects are in `msm.repositories.account_snapshot_reads`.
+- **An account delete no longer reads whole tables.** Its foreign keys and its
+  per-account lookups had no index to use, so the time grew with every account's
+  history. `tests/msm/repositories/test_postgresql_account_delete_volume.py` deletes one
+  of 10 accounts that each hold 1,000 holdings sets of 20 positions, their allocations,
+  100 target snapshots and 1,000 orders with their trades and events. On PostgreSQL its
+  transaction took 54.6 s, 53.2 s of it checking keys once per deleted holdings set, and
+  the caller waited 56.8 s, near MetaTables' 60 s deadline. It now takes 0.9 to 1.6 s,
+  and the caller waits about 3 to 5 s, most of it MetaTables rebuilding the statistics of
+  the seven time-index tables the transaction changed:
+  - **Alembic revision 0034** adds 13 non-unique indexes: holdings by
+    `(account_uid, time_index)` and `holdings_set_uid`; allocation lines by
+    `(account_uid, time_index)`, `holdings_set_uid` and `virtual_fund_uid`;
+    virtual-fund holdings by `(virtual_fund_uid, source_account_holdings_set_uid)`,
+    `source_account_holdings_set_uid` and `virtual_fund_holdings_set_uid`; orders by
+    `(account_identifier, order_time)`, `order_manager_identifier` and
+    `order_identifier`; trades by `(account_identifier, trade_time)`; order events by
+    `(order_identifier, event_time)`. On a TimescaleDB hypertable each is built chunk by
+    chunk, as revision 0031 builds its own.
+  - **The transaction has a statement only for the tables the read found rows in**
+    (order events whenever the account has orders), so an account with holdings alone
+    sends 3 statements instead of 14 and locks 2 time-index tables instead of 7:
+    MetaTables rebuilds the statistics of each time-index table a write locks.
+    Rows written after the read are still caught by their foreign keys: a `CASCADE`
+    key deletes them, a `RESTRICT` key refuses the delete and nothing is deleted.
+  - Events of an order identifier another account also uses are found with
+    `NOT EXISTS` through the order identifier index, not by reading every other
+    account's orders.
+- **Breaking:** `msm.repositories.account_deletion.account_delete_statements`,
+  `build_delete_account_operation` and `delete_account` (also exported from
+  `msm.repositories`), and `msm_portfolios.repositories.account_portfolio_deletion`'s
+  `account_with_portfolios_delete_statements` and
+  `build_delete_account_with_portfolios_operation`, take `row_counts`, the counts
+  `read_account_delete` answers.
 
 ### Fixed
 
