@@ -27,6 +27,7 @@ from msm.api.remote import (
     use_runtime_backend,
 )
 from msm.client import MarketsClient, tabular_frame_to_pandas
+from tests.support.markets_runtime import serve_runtime
 
 
 @pytest.fixture
@@ -34,9 +35,8 @@ def remote(monkeypatch):
     """Use the remote backend against an in-process Markets API; record runtime calls."""
 
     calls: list[tuple[str, dict[str, Any]]] = []
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
     client = MarketsClient("http://testserver", session=TestClient(app))
     use_remote_backend(client.backend)
@@ -534,24 +534,30 @@ def test_bulk_count_and_ordering_run_remotely(monkeypatch, remote) -> None:
 
     account_uid = uuid.uuid4()
     seen: dict[str, Any] = {}
-    monkeypatch.setattr(
-        "msm.repositories.crud.bulk_upsert_model",
-        lambda context, *, model, values, conflict_columns: {
-            "rows": [{"uid": str(uuid.uuid4()), **value} for value in values]
-        },
-    )
-    monkeypatch.setattr(
-        "msm.repositories.crud.count_model",
-        lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 3}]},
-    )
-    monkeypatch.setattr(
-        "msm.repositories.crud.search_model",
-        lambda context, **kwargs: seen.setdefault("search", kwargs) and {"rows": []},
-    )
 
-    rows = Asset.upsert_many([{"unique_identifier": "A", "asset_type": "Equity"}])
-    total = AccountHoldingsSet.count(account_uid=str(account_uid))
-    AccountHoldingsSet.filter(account_uid=str(account_uid), order_by="-time_index", offset=5)
+    # Each stub is in place only for the call that reads it. A module first imported
+    # while a stub is in place, and that imports the function by name, would keep the
+    # stub for the rest of the process (#105).
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "msm.repositories.crud.bulk_upsert_model",
+            lambda context, *, model, values, conflict_columns: {
+                "rows": [{"uid": str(uuid.uuid4()), **value} for value in values]
+            },
+        )
+        rows = Asset.upsert_many([{"unique_identifier": "A", "asset_type": "Equity"}])
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "msm.repositories.crud.count_model",
+            lambda context, **kwargs: seen.setdefault("count", kwargs) and {"rows": [{"count": 3}]},
+        )
+        total = AccountHoldingsSet.count(account_uid=str(account_uid))
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "msm.repositories.crud.search_model",
+            lambda context, **kwargs: seen.setdefault("search", kwargs) and {"rows": []},
+        )
+        AccountHoldingsSet.filter(account_uid=str(account_uid), order_by="-time_index", offset=5)
 
     assert [row.asset_type for row in rows] == ["equity"]
     assert total == 3

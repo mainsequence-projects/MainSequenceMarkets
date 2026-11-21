@@ -22,6 +22,7 @@ from msm.models import (
     IndexTable,
     IndexTypeTable,
 )
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_future_api_declares_required_table_contract() -> None:
@@ -113,7 +114,7 @@ def test_future_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {**values}}
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.api.derivatives.upsert_model", fake_upsert_model)
 
     future = Future.upsert(

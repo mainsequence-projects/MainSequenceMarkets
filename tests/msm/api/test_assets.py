@@ -24,6 +24,7 @@ from msm.models import (
     CurrencySpotAssetDetailsTable,
     OpenFigiAssetDetailsTable,
 )
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_asset_api_declares_table_contract() -> None:
@@ -116,7 +117,7 @@ def test_asset_type_upsert_uses_active_runtime(monkeypatch) -> None:
             }
         }
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     asset_type = AssetType.upsert(AssetTypeUpsert(asset_type="crypto", display_name="Crypto"))
@@ -160,7 +161,7 @@ def test_asset_type_upsert_normalizes_keyword_payload(monkeypatch) -> None:
             }
         }
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     asset_type = AssetType.upsert(asset_type="Asset Future", display_name="Asset Future")
@@ -221,7 +222,7 @@ def test_asset_upsert_uses_active_runtime(monkeypatch) -> None:
             }
         }
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
 
     asset = Asset.upsert(AssetUpsert(unique_identifier="BTC", asset_type="crypto"))
@@ -291,7 +292,7 @@ def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {**values}}
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.api.assets.upsert_model", fake_upsert_model)
 
     currency_spot = CurrencySpot.upsert(
@@ -361,7 +362,7 @@ def test_asset_operation_requires_initialized_runtime(monkeypatch) -> None:
             "Run msm.start_engine(models=[...]) during application initialization."
         )
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
 
     with pytest.raises(RuntimeError, match="initialized markets runtime"):
         Asset.filter(asset_type="crypto")
@@ -390,7 +391,7 @@ def test_asset_get_many_by_unique_identifier_uses_single_in_lookup(monkeypatch) 
             ]
         }
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.search_model", fake_search_model)
 
     assets = Asset.get_many_by_unique_identifier(["BTC", "ETH", "BTC", " "])
@@ -414,7 +415,7 @@ def test_asset_get_many_by_unique_identifier_empty_input_skips_runtime(monkeypat
     def fail_resolve_runtime(**_kwargs):
         raise AssertionError("empty lookup should not resolve runtime")
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fail_resolve_runtime)
+    serve_runtime(monkeypatch, fail_resolve_runtime)
 
     assert Asset.get_many_by_unique_identifier([]) == {}
 

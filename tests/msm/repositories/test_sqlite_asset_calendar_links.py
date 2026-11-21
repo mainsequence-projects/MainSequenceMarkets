@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -28,15 +27,12 @@ from msm.repositories.asset_calendars import (
 from msm.services import register_account
 from msm.services.calendars import CalendarInUseConflictError, delete_calendar_record
 from tests.support.account_registration import _record_operations, _request
-from tests.support.sqlite_markets import _rows
+from tests.support.sqlite_markets import _rows, serve_row_operations
 
 
 @pytest.fixture
 def markets(sqlite_markets, monkeypatch):
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=sqlite_markets.context),
-    )
+    serve_row_operations(monkeypatch, sqlite_markets)
     AssetType.upsert(asset_type="equity", display_name="Equity")
     sqlite_markets.nyse = Calendar.create(
         unique_identifier="NYSE", display_name="NYSE", calendar_type="TRADING"

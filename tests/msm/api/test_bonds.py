@@ -13,6 +13,7 @@ from msm.api.assets import (
     BondUpsert,
 )
 from msm.models import AssetTable, AssetTypeTable, BondAssetDetailsTable, IssuerTable
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_bond_api_declares_required_table_contract() -> None:
@@ -84,7 +85,7 @@ def test_bond_upsert_owns_multitable_workflow(monkeypatch) -> None:
             return {"row": {**values}}
         raise AssertionError(model)
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.api.assets.get_model_by_uid", fake_get_model_by_uid)
     monkeypatch.setattr("msm.api.assets.upsert_model", fake_upsert_model)
 
@@ -160,7 +161,7 @@ def test_bond_upsert_rejects_missing_references(monkeypatch) -> None:
     def fake_get_model_by_uid(_active_context, *, model, uid):
         return {"rows": []}
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.api.assets.get_model_by_uid", fake_get_model_by_uid)
 
     with pytest.raises(LookupError, match="issuer_uid"):

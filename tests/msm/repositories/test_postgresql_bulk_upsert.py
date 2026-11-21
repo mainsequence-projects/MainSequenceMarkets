@@ -25,6 +25,7 @@ from msm.repositories.crud import (
     UPSERT_STATUS_COLUMN,
     bulk_upsert_model,
 )
+from tests.support.markets_runtime import serve_runtime
 
 KEY = ("unique_identifier",)
 
@@ -40,10 +41,7 @@ def markets(postgresql_markets, monkeypatch):
         return run(operation, timeout=timeout)
 
     monkeypatch.setattr(MetaTable, "execute_operation", execute_operation)
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=context),
-    )
+    serve_runtime(monkeypatch, lambda **_kwargs: SimpleNamespace(context=context))
     return SimpleNamespace(engine=engine, context=context, statements=statements)
 
 

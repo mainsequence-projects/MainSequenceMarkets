@@ -20,6 +20,7 @@ from msm.services.calendars import (
     CalendarRangeError,
     sync_pandas_market_calendar,
 )
+from tests.support.markets_runtime import serve_runtime
 
 UTC = dt.UTC
 
@@ -27,10 +28,7 @@ UTC = dt.UTC
 @pytest.fixture
 def markets(postgresql_markets, monkeypatch):
     engine, context, operations = postgresql_markets
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=context),
-    )
+    serve_runtime(monkeypatch, lambda **_kwargs: SimpleNamespace(context=context))
     return SimpleNamespace(engine=engine, context=context, operations=operations)
 
 

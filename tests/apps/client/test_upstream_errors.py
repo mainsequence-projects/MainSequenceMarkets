@@ -22,15 +22,15 @@ from msm.api.remote import (
 )
 from msm.client import MarketsClient
 from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
+from tests.support.markets_runtime import serve_runtime
 
 ROWS = [{"unique_identifier": "A", "asset_type": "equity"}]
 
 
 @pytest.fixture
 def remote(monkeypatch):
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
     client = MarketsClient("http://testserver", session=TestClient(app))
     use_remote_backend(client.backend)

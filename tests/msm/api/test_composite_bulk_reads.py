@@ -14,13 +14,13 @@ from msm.api import assets as assets_api
 from msm.api import derivatives as derivatives_api
 from msm.api.assets import CurrencySpot
 from msm.api.derivatives import Future
+from tests.support.markets_runtime import serve_runtime
 
 
 @pytest.fixture
 def runtime(monkeypatch):
-    monkeypatch.setattr(
-        "msm.bootstrap.resolve_runtime",
-        lambda **kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None)),
+    serve_runtime(
+        monkeypatch, lambda **_kwargs: SimpleNamespace(context=SimpleNamespace(timeout=None))
     )
 
 

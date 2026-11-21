@@ -22,6 +22,7 @@ from msm.models import (
     IndexTable,
     IndexTypeTable,
 )
+from tests.support.markets_runtime import serve_runtime
 
 
 def test_index_api_declares_table_contract() -> None:
@@ -109,7 +110,7 @@ def test_index_upsert_uses_active_runtime(monkeypatch) -> None:
             }
         }
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", fake_resolve_runtime)
+    serve_runtime(monkeypatch, fake_resolve_runtime)
     monkeypatch.setattr("msm.repositories.crud.upsert_model", fake_upsert_model)
     monkeypatch.setattr(
         Index,
@@ -158,7 +159,7 @@ def test_index_filter_by_uids_uses_single_in_filter(monkeypatch) -> None:
     runtime = SimpleNamespace(context=context)
     calls = []
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", lambda **_kwargs: runtime)
+    serve_runtime(monkeypatch, lambda **_kwargs: runtime)
 
     def fake_search_model(active_context, *, model, in_filters, limit):
         calls.append((active_context, model, in_filters, limit))
@@ -204,7 +205,7 @@ def test_index_delete_uses_standard_row_api(monkeypatch) -> None:
     runtime = SimpleNamespace(context=context)
     calls = []
 
-    monkeypatch.setattr("msm.bootstrap.resolve_runtime", lambda **_kwargs: runtime)
+    serve_runtime(monkeypatch, lambda **_kwargs: runtime)
 
     def fake_delete_model(active_context, *, model, uid):
         calls.append((active_context, model, uid))
