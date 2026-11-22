@@ -525,6 +525,40 @@ def written_fills(frame: pd.DataFrame) -> set[tuple[pd.Timestamp, str]]:
     return {(utc(row["time_index"]), row[ASSET_IDENTIFIER]) for row in traded.to_dict("records")}
 
 
+def test_a_new_portfolio_in_a_shared_table_starts_at_its_own_first_rebalance() -> None:
+    """A producer keeps one rebalance-state table for all its portfolios (#118).
+
+    The second portfolio's first run must not start after the first portfolio's latest
+    row: it has none of its own, so it starts at its first signal.
+    """
+
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([("2026-11-18T21:30:00Z", {"AAPL": 0.6, "ILLQ": 0.3})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build(
+        "prices",
+        pd.concat(
+            [AAPL_MINUTES, bars_at("ILLQ", ["2026-11-18T20:00Z", "2026-11-19T14:45Z"], price=20.0)]
+        ),
+        index=["time_index", ASSET_IDENTIFIER],
+    )
+    strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        first = runner.run("2026-11-19T14:50:00Z")
+        runner.node._portfolio_identifier = "second"
+        second = runner.run("2026-11-19T14:50:00Z")
+
+    expected = {(utc("2026-11-19T14:31Z"), "AAPL"), (utc("2026-11-19T14:45Z"), "ILLQ")}
+    assert written_fills(first) == expected
+    assert written_fills(second) == expected
+    assert set(second.index.get_level_values("portfolio_identifier")) == {"second"}
+
+
 def test_incremental_runs_wait_for_the_next_price_and_fill_assets_across_runs() -> None:
     signals = PublishedTable.build(
         "signals",

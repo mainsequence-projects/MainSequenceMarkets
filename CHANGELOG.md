@@ -9,6 +9,14 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- **A new portfolio in a shared rebalance-state table starts at its own first rebalance**
+  ([#118](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/118)).
+  A producer keeps one rebalance-state table for all its portfolios. A portfolio with no
+  row yet took the table's latest time as its own and started after it: it wrote
+  nothing, or a history cut to after another portfolio's last rebalance, and reported no
+  error. It now reads only its own progress, and with none starts at `OFFSET_START`.
+  `PortfolioAnalytics` had the same fallback and now reads its portfolio's and
+  analysis's progress.
 - **A read that cannot answer every row reaches an API caller typed**
   ([#115](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/115)).
   `IncompleteReadError` answered a bare `500` with a plain-text body. It now answers

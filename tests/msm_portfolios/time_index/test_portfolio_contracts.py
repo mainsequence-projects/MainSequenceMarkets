@@ -556,6 +556,35 @@ def test_rebalance_and_projection_progress_resolve_nested_asset_state(monkeypatc
     assert bounds_calls == ["portfolio"]
 
 
+def test_rebalance_and_analytics_progress_is_their_portfolios_own(monkeypatch) -> None:
+    """In a shared table, the table's latest time belongs to another portfolio (#118)."""
+
+    theirs = pd.Timestamp("2026-02-01T00:00:00Z")
+    mine = pd.Timestamp("2026-01-01T02:00:00Z")
+    statistics = SimpleNamespace(
+        index_progress={"other": {"intent": {"btc": theirs}, "returns": theirs}},
+        max_time_index_value=theirs,
+    )
+    rebalance = object.__new__(PortfolioRebalance)
+    rebalance._resolve_portfolio_identifier = lambda: "portfolio"
+    rebalance.update_statistics = statistics
+    analytics = object.__new__(PortfolioAnalytics)
+    analytics.portfolio_identifier = "portfolio"
+    monkeypatch.setattr(PortfolioAnalytics, "analysis_identifier", property(lambda self: "returns"))
+    analytics.update_statistics = statistics
+
+    assert rebalance._latest_transition_time_index_value() is None
+    assert rebalance._execution_window(None)[0] == PortfolioRebalance.OFFSET_START
+    assert analytics._latest_analytics_time_index() is None
+
+    statistics.index_progress["portfolio"] = {"intent": {"btc": mine}, "returns": mine}
+    assert rebalance._latest_transition_time_index_value() == mine
+    assert analytics._latest_analytics_time_index() == mine
+    rebalance.update_statistics = analytics.update_statistics = None
+    assert rebalance._latest_transition_time_index_value() is None
+    assert analytics._latest_analytics_time_index() is None
+
+
 def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
     observations = pd.DataFrame(
         [("2026-01-01T00:00:00Z", "btc", 100.0)],

@@ -229,18 +229,18 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         return start, end
 
     def _latest_transition_time_index_value(self) -> Any | None:
-        statistics = getattr(self, "update_statistics", None)
-        if statistics is None:
+        """This portfolio's latest rebalance-state time; ``None`` before its first row.
+
+        A producer keeps one rebalance-state table for all its portfolios, so the
+        table's latest time is another portfolio's progress, never this one's start
+        (#118). With no row of its own, the run starts at ``OFFSET_START``.
+        """
+
+        progress = getattr(getattr(self, "update_statistics", None), "index_progress", None)
+        if not isinstance(progress, dict):
             return None
-        progress = statistics.index_progress
-        portfolio_identifier = self._resolve_portfolio_identifier()
-        if isinstance(progress, dict):
-            value = progress.get(portfolio_identifier)
-            if isinstance(value, dict):
-                return self._max_in_nested_values(value)
-            if value is not None:
-                return value
-        return statistics.max_time_index_value
+        value = progress.get(self._resolve_portfolio_identifier())
+        return self._max_in_nested_values(value) if isinstance(value, dict) else value
 
     def _required_asset_identifiers(self) -> list[str]:
         assets = self.signal_weights.get_asset_list() or []
