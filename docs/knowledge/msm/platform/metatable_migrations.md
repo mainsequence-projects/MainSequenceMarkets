@@ -97,7 +97,8 @@ run `metatables --local migrations upgrade`.
    `markets_sqlalchemy_models()`, `portfolio_sqlalchemy_models()`, or
    `pricing_sqlalchemy_models()`.
 3. Confirm `metatable_provider_models()` contains the expected model exactly once.
-4. Generate an Alembic revision with the `metatables migrations revision` CLI.
+4. Generate an Alembic revision with the `metatables migrations revision` CLI,
+   on a runtime where the provider's earlier revisions are applied.
    It never writes a table's drop (MetaTables 0.1.73): when a model is removed,
    write the drop by hand in a revision created with `--no-autogenerate`.
 5. Review the generated revision. Reject revisions that only drop and recreate
@@ -116,7 +117,7 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.73,<0.2` with
+The implementation requires `mainsequence-metatable>=0.1.74,<0.2` with
 `mainsequence>=9.0.31,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where

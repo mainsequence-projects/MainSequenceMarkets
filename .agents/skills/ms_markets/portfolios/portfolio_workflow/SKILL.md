@@ -253,15 +253,13 @@ ProjectInterpolatedPrices = configured_time_index_instance(
   creates the table in every Environment. Never generate a revision per Environment.
 - `InterpolatedPrices` computes the same key when it runs and refuses a class of
   another contract, key or cadence. Never invent a key or give the table another name.
-- A changed configuration is a new table and a new committed revision. For a provider
-  that already has a revision, autogenerate it with `--sqlalchemy-url` against an
-  authoring database at that provider's head. Without that option MetaTables 0.1.71 and
-  0.1.73 refuse to add a table (MetaTables#127), and "upgrade head", which the error
-  advises, does not help. Never use another provider's history instead.
+- A changed configuration is a new table and a new committed revision of the same
+  provider. Apply that provider's earlier revisions, then autogenerate with
+  `metatables migrations revision`. Never use another provider's history instead.
 - A first run fills the table from `offset_start` (2017-07-20 by default), as far as the
   source still holds bars. Set an earlier one before that run when older bars matter.
-- A table registered with the wrong cadence is refused, and correcting its class does
-  not change what is registered.
+- A table registered with the wrong cadence is refused. Correct its class and run its
+  provider's `metatables migrations upgrade`, which registers the class's cadence.
 - `namespace`, `storage_app` and `base` have no default. A producer never passes
   Markets' own, and never applies or extends Markets' migrations for this table.
 - This is the price source's schema, not portfolio core registration, and it does

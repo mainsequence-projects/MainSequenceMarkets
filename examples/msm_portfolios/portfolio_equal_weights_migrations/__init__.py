@@ -6,9 +6,8 @@ Apply the committed revision after Markets' own migrations, in each database:
         --provider examples.msm_portfolios.portfolio_equal_weights_migrations:migration head
 
 Another interpolation configuration is another table, with another committed revision of
-this provider. Autogenerate that one with `metatables --local migrations revision` and
-`--sqlalchemy-url`, against an authoring database at this provider's head: without that
-option MetaTables 0.1.73 refuses to add a table to a provider that already has a revision.
+this provider. Apply the committed ones first, then autogenerate that one with
+`metatables --local migrations revision` and the same `--provider`.
 """
 
 from __future__ import annotations

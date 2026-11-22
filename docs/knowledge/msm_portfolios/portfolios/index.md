@@ -1054,9 +1054,9 @@ revision creates it in every Environment.
 
 `InterpolatedPrices(..., output_table=MyInterpolatedPrices)` writes there. It computes
 the key from its own configuration and the registered source, and refuses a class of
-another contract, key or cadence, and a table registered with another cadence:
-correcting a class after its migration does not change what was registered. Its update
-identity does not include the table.
+another contract, key or cadence, and a table registered with another cadence. After
+correcting a class, run its provider's `metatables migrations upgrade`, which registers
+the class's cadence. Its update identity does not include the table.
 
 A change of any of the four values needs a new table: declare it, commit its revision,
 and run interpolation to fill it. A first run starts at the updater's `offset_start`,

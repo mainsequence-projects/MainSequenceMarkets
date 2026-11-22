@@ -234,6 +234,11 @@ metadata holds the project's tables and no Markets table:
   drops by hand, in a revision created with `--no-autogenerate`. Set no
   `include_name_hook` to get them generated: it replaces both protections, so a
   hook that admits another owner's table gets that table dropped.
+- Upgrade to the provider's head before authoring its next revision: autogenerate
+  compares with what is applied, and an added table needs nothing else.
+- A time-index table's cadence follows its model (MetaTables 0.1.74, client and API):
+  each upgrade stores `__cadence__`, with no revision, and clears the stored one when
+  the model declares none.
 - A table that `msm.start_engine` attaches carries a Markets mixin with the
   project's own namespace and storage app, as above. It refuses a table built only
   on `PlatformManagedMetaTable`.

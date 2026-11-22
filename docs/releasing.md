@@ -164,7 +164,7 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.73).
+requirement; the Markets migration client requirement is separate (currently 0.1.74).
 
 FastAPI startup also uses `api_endpoint_scope(discovery_timeout=300)` for its
 canonical and pricing runtime attachments. Discovery during shared-API wake or
@@ -180,8 +180,8 @@ persistent temporary failures also stop startup. Normal requests do not use this
 ### Upgrading the migration client
 
 The project requires `mainsequence>=9.0.31,<10` and
-`mainsequence-metatable>=0.1.73,<0.2`; `uv.lock` and `requirements.txt` select
-`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.73. Move the SDK and the
+`mainsequence-metatable>=0.1.74,<0.2`; `uv.lock` and `requirements.txt` select
+`mainsequence` 9.0.40 and `mainsequence-metatable` 0.1.74. Move the SDK and the
 client together: MetaTables clients before 0.1.51 fail on SDK 9.0.30, and 0.1.60
 and later require SDK 9.0.31 or later. The SDK floor also excludes 9.0.25 and 9.0.26,
 which raise on the request identity's Teams. After changing the dependency, run
@@ -197,9 +197,13 @@ deployment is ready before restarting a workflow that failed during discovery.
 The updated runner also sends changed, non-empty authored table and column
 metadata during finalization, even without a new Alembic revision. That payload
 requires the matching MetaTables API; the updated API also fixes SQLite
-multi-batch downgrade finalization. The Job enables INFO phase timings and must run even when Alembic is
-already at head: catalog reconciliation is not optional. The workflow remains
-image → migration Job → API deployment, all from the same candidate image.
+multi-batch downgrade finalization. From client 0.1.74 it also sends a time-index
+table's cadence when the model's differs from the catalog's, and an API before 0.1.74
+refuses that with `422` after the revisions were applied: check the Environment's API
+version first when a release changes a `__cadence__`. The Job enables INFO phase
+timings and must run even when Alembic is already at head: catalog reconciliation is
+not optional. The workflow remains image → migration Job → API deployment, all from the
+same candidate image.
 
 Deploy the shared MetaTables API as well to receive its server-side inspection,
 unchanged-contract, and startup improvements. A client-only upgrade cannot

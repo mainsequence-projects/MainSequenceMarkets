@@ -97,6 +97,22 @@ drop in a revision created with `--no-autogenerate`. A provider that sets
 `include_name_hook` declares its own scope instead and gets neither protection, so
 that hook must admit only the application's tables.
 
+Once the provider has a revision, autogenerate through the environment connection
+needs the applied baseline: the provider's version table at the script heads, and its
+active tables visible on that connection. Tables that the new revision adds are not
+part of that baseline. A refused baseline reserves no table; run
+`metatables migrations upgrade` and author again. When the models are already ahead of
+the history, that upgrade applies the existing revisions and then reports
+`physical_table_missing` for the tables still to author; the next `revision` creates
+them.
+
+Leave the transaction to Alembic inside a revision. On every engine, what a revision
+commits itself stays committed if the run later fails; on success the work and version
+rows after that commit are committed too. A revision that rolls back the transaction,
+with `op.get_bind().rollback()` or a session's `rollback()`, fails and is not recorded.
+To recover from an error inside a revision, use a savepoint from
+`op.get_bind().begin_nested()`.
+
 For local work, initialize the runtime explicitly and select its API connection:
 
 ```bash
@@ -145,6 +161,10 @@ Runtime connection credentials are private and must not be logged or persisted.
 The client reserves bindings, executes Alembic, closes its database connection,
 and finalizes physical contracts through the API. Finalization refreshes catalog
 metadata and governed-SQL permissions, including cleanup of dropped provider tables.
+A time-index table's cadence follows its model: `upgrade head` stores a changed
+`__cadence__` and clears one the model no longer declares, with no revision. An empty
+description, by contrast, keeps the stored one. Refreshing the cadence needs an API
+of 0.1.74 or later; an earlier one refuses the finalization with 422.
 
 ## Put tables in namespaces
 
@@ -268,6 +288,42 @@ envelope like anyone else. Reading a value needs both the table grant and
 - Rotate with `metatables encryption rotate LEDGER_DATA_KEY`, store the printed
   keyring as the Secret's new value, run `metatables encryption re-encrypt --table
   <uid>` for each table, then drop the old key from the ring.
+
+## Retire a table
+
+A plain `delete()` of an Alembic-managed table answers 409. Retire it in one of two
+ways. Both delete the table's rows.
+
+**Through its provider**, the normal way, which every Environment replays:
+
+1. Remove the model from the registry and the target metadata.
+2. Create a revision with `--no-autogenerate`. Write `op.drop_table(...)` in
+   `upgrade()` and the table's creation in `downgrade()`. Drop or alter the tables
+   that reference it first.
+3. Run `metatables migrations upgrade`. Finalization removes the catalog row.
+
+```bash
+metatables migrations revision --provider ledger.migrations:migration --message "retire posting" --no-autogenerate
+metatables migrations upgrade --provider ledger.migrations:migration
+```
+
+**By a confirmed override**, for a teardown outside the provider's history, such as a
+provider whose code is gone:
+
+```python
+def tear_down(table):
+    impact = table.get_impact(action="drop_table", override_schema_management_protection=True)
+    if impact.allowed:  # review impact.nodes before confirming
+        table.delete_with_cascade(
+            confirm_cascade_delete=True, override_schema_management_protection=True
+        )
+```
+
+The override also deletes every table that references this one; on a provider's
+Alembic version table, it deletes all of that provider's tables. It changes only the
+runtime it runs on and writes no revision. If the provider still declares the model,
+its next upgrade fails with `physical_table_missing` until the model is removed, and
+its revisions create the table again on a new database.
 
 ## Evolve and recover
 

@@ -391,7 +391,7 @@ the bulk delete asked for it in its preflight and again to delete
   commits, MetaTables rebuilds the stored statistics of each time-index table the
   list changed
   ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
-  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.73). So an
+  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.74). So an
   account re-created under the same `unique_identifier`, whose connector publishes
   its orders, trades and events again, and a portfolio re-created under a deleted
   one's identifier start from scratch.

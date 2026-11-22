@@ -1,14 +1,15 @@
 """Drop the pre-3.0 UID columns (ADR 0048, issue 107).
 
 Revision ``0022`` gave each pre-3.0 ``*_data_node_uid`` column a successor named after
-the identity it holds, and every release from 3.0.0 until 5.0.0 wrote both columns and
-read the pre-3.0 one. This revision copies each pre-3.0 column into its successor, so
-every row keeps the value those releases read, makes ``storage_table_uid`` NOT NULL on
-pricing market-data bindings, as ``data_node_uid`` was, and drops the six pre-3.0
-columns and the ``data_node_uid`` index. Those releases map the dropped columns, so they
-fail on the account, account holdings set, portfolio and pricing market-data binding
-tables once this revision runs. The downgrade adds the pre-3.0 columns back, copied
-from their successors.
+the identity it holds. From 3.0.0 until 5.0.0 the releases' rows and API read the pre-3.0
+column, and their writes filled both, except ``update_portfolio``, which wrote only the
+column it was given. This revision copies each pre-3.0 column into its successor, so
+every row keeps the value that was read, also where the successor differed. It makes
+``storage_table_uid`` NOT NULL on pricing market-data bindings, as ``data_node_uid``
+was, and drops the six pre-3.0 columns and the ``data_node_uid`` index. Those releases
+map the dropped columns, so they fail on the account, account holdings set, portfolio
+and pricing market-data binding tables once this revision runs. The downgrade adds the
+pre-3.0 columns back, copied from their successors.
 
 SQLite drops the columns in place (``recreate="never"``) instead of rebuilding the
 tables. A rebuilt table is created last, and SQLite runs the actions of the keys into

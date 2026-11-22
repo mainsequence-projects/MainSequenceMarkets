@@ -223,10 +223,10 @@ def test_interpolated_prices_refuses_a_table_its_configuration_does_not_produce(
 
 @pytest.mark.parametrize("registered", [None, "5m"])
 def test_interpolated_prices_refuses_a_table_registered_with_another_cadence(registered) -> None:
-    # A class corrected after its migration leaves the registered cadence as it was.
+    # The catalog follows a corrected class when its provider's upgrade runs (MetaTables#131).
     table = _table()
     with _registered(table, cadence=registered):
-        with pytest.raises(ValueError, match="registered"):
+        with pytest.raises(ValueError, match="metatables migrations upgrade"):
             InterpolatedPrices(_configuration(), output_table=table)
 
 

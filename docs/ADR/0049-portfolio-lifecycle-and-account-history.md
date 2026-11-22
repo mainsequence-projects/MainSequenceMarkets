@@ -333,7 +333,7 @@ and the portfolio survived without its weights and values
   resume from a portfolio's entry there. After a statement list commits,
   MetaTables rebuilds the statistics of each time-index table the list changed
   ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
-  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.73), so a
+  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.74), so a
   portfolio re-created under the same identifier starts from scratch.
 - **Deadline.** MetaTables runs a compiled read, and a statement list as a whole
   (MetaTables ADR 0026), under a deadline of 15 seconds by default. The read that

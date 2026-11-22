@@ -246,6 +246,18 @@ table in it; a table's role for a caller is the strongest across its namespaces.
    hook replaces that protection, and one that admits another owner's table lets a
    revision delete it.
 
+   After the first revision, upgrade to the script heads before authoring the next:
+   autogenerate refuses a baseline that is not applied or whose active tables the
+   connection cannot see, and reserves no table. Adding tables is not a reason for
+   that refusal. If models are already ahead of the history, the upgrade applies the
+   existing revisions and reports `physical_table_missing` for the tables still to
+   author; run `revision` again to create them.
+
+Do not call `commit()` or `rollback()` on the connection inside a revision. Its own
+commit cannot be undone when the run later fails, and its own rollback fails the
+migration without recording the revision. Use `op.get_bind().begin_nested()` to
+recover from an error.
+
 Use `--source-root` and `--code-repository-root` when the application does not
 use the default `src/` layout. Keep applied revisions immutable; add a new
 revision for every later schema change.
@@ -256,6 +268,17 @@ migration never needs the Secret. Changing a column between `String` and
 `EncryptedString` needs no DDL: the next upgrade's finalization updates the
 catalog's mark, and the application re-encrypts or decrypts existing rows itself.
 See the [contracts skill](../metatables-meta-tables/SKILL.md#secrets-in-columns-application-encrypted-columns).
+
+## Retire a table
+
+A plain `delete()` of an Alembic-managed table answers 409. Retire it through its
+provider: remove the model from the registry and the metadata, write the
+`op.drop_table` in a `--no-autogenerate` revision, and upgrade. Use
+`delete_with_cascade(confirm_cascade_delete=True, override_schema_management_protection=True)`
+only for a teardown the user confirmed, after
+`get_impact(action="drop_table", override_schema_management_protection=True)`: it
+also deletes the referencing tables, changes one runtime only and writes no revision.
+See "Retire a table" in `docs/client/define-and-migrate-tables.md`.
 
 ## Provider placement
 

@@ -53,7 +53,9 @@ from msm_portfolios.rebalance_strategy import (
 
 PINNED_PRE_RENAME_UPDATE_HASHES = {
     "asset_snapshot": "assetsnapshot_4d4316ca465e3c695835bc75d3af6f26",
-    "interpolated_prices": "interpolatedprices_c4d16a20ee4ebf061f3581472e2e5f80",
+    # Rotated in 5.0.0: MetaTables 0.1.74 hashes a positional configuration as a keyword
+    # one (MetaTables#130), so this is also the keyword-constructed updater's hash.
+    "interpolated_prices": "interpolatedprices_753f5a4be740e1ee13dc2fe8c39602d8",
 }
 
 SOURCE_TABLE_UID = "0f2d6c1e-7a3b-4c5d-9e8f-1a2b3c4d5e6f"

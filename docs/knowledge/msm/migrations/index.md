@@ -89,7 +89,7 @@ previous release keeps serving.
 
 ### Migration diagnostics and repeated runs
 
-ms-markets requires MetaTables 0.1.73 or later. Since 0.1.64 it waits out a MetaTables API
+ms-markets requires MetaTables 0.1.74 or later. Since 0.1.64 it waits out a MetaTables API
 rollout during discovery instead of failing (MetaTables#108). `upgrade_application()` automatically
 uses fresh table inventories and batched physical inspections; PostgreSQL
 reflection is batched by schema. Finalization requests remain bounded to ten
@@ -126,12 +126,15 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.73).
+requirement; the Markets migration client requirement is separate (currently 0.1.74).
 
 The runner carries changed, non-empty authored table descriptions, labels, and
 column descriptions, labels, and logical names in each finalization batch. An
 unchanged revision can therefore refresh catalog metadata without new DDL.
-Empty or absent metadata preserves existing values; fresh physical inspection
+Empty or absent metadata preserves existing values, except a time-index table's cadence:
+since MetaTables 0.1.74 each upgrade stores the model's `__cadence__`, and clears the stored
+one when the model declares none. The shared API must be 0.1.74 or later for such a change;
+an earlier one refuses that finalization with `422`. Fresh physical inspection
 still owns types, keys, indexes, and nullability. Equal-valued reruns avoid
 catalog writes. This payload requires the matching MetaTables API update, which
 also corrects SQLite schema reflection for multi-batch downgrades.

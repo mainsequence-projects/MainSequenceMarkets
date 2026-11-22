@@ -278,7 +278,8 @@ PINNED_UPDATE_HASHES = {
     # Rotated in 3.0.0 when the classes moved to msm.time_index and
     # msm_portfolios.contrib.prices.updaters (ADR 0048).
     "asset_snapshot": "assetsnapshot_6eb60d0a440e8ab0b9794f1f5d3e42eb",
-    "interpolated_prices": "interpolatedprices_946a6bc2b70ac3aa0e4a71cd0a1f1e32",
+    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130).
+    "interpolated_prices": "interpolatedprices_c2d1d020889b41e2644db7b8dae0ef0c",
 }
 
 
@@ -297,18 +298,19 @@ PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
 
 PINNED_STRATEGY_REVISIONS = {
     # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
+    # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
         "f63423115cd1fc4f0df7f36912273b38255d22401f4cbe7871f1c0450a330bc4"
     ),
     "time_weighted_on_interpolated_prices": (
-        "1ff25f595962174dcfc44c89d84a63cb2a43f91950ec8b75997a0b811e78ad90"
+        "117747a0d0ba54996865125f475bd3305ef0b103d0cf6e4b6e8910793a119123"
     ),
     "volume_participation_on_interpolated_prices": (
-        "a088881916ba836cba16cfd74db5521e4d124a0ca00551b537883ec70c03c857"
+        "4e5ab6fe53eae5548b8e7b41050cef90d1bd37cdbc24fcb4a2d15f06b21bc7d5"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "7430287870933446263c449078dec322922ca5ef611f9bc4e7f933d0c648a08f"
+        "83b68dff11c34f209be83eb0bbed66663c574f4f74685b22f9a3aabd8ec7b0ed"
     ),
 }
 

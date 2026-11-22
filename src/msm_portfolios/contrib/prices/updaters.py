@@ -843,15 +843,15 @@ class InterpolatedPrices(AssetIndexedUpdater):
             *args,
             **kwargs,
         )
-        # Correcting a class after its migration leaves the registered cadence as it was, and
-        # whatever reads this table as a source takes its cadence from the catalog.
+        # Whatever reads this table as a source takes its cadence from the catalog, which
+        # follows a corrected class only when its provider's next upgrade runs.
         registered_cadence = _registered_cadence(self.output_metadata)
         if str(registered_cadence or "").strip().lower() != upsample_frequency_id:
             raise ValueError(
                 f"InterpolatedPrices output_table {output_table.__table__.name} is registered "
                 f"with cadence {registered_cadence!r}, and its configuration needs "
-                f"{upsample_frequency_id!r}. Declaring the class again does not change what "
-                "its migration registered."
+                f"{upsample_frequency_id!r}. Run its provider's `metatables migrations "
+                "upgrade`, which registers the cadence the class declares."
             )
 
     def dependencies(self):

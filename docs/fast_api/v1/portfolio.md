@@ -523,7 +523,7 @@ The statements are plain deletes. After the statement list commits, MetaTables
 rebuilds the update statistics it stores for each time-index table the list
 changed, so the deleted portfolio's progress goes with its rows
 ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
-`mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.73). The account
+`mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.74). The account
 delete relies on the same.
 
 ## Delete Portfolio Weights

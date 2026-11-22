@@ -168,6 +168,12 @@ missing `declared` memberships and removes the `declared` ones no longer listed.
 does so only when the request names the table's migration provider; otherwise that
 table fails with `provider_required`.
 
+`authored_metadata[uid].cadence` is the cadence a time-index model declares: an
+interval token such as `1d`, or null when it declares none, which clears the stored
+one. The client sends the field only when it differs from the catalog; without it,
+finalization keeps the stored cadence. An API before 0.1.74 refuses the field with
+422, so deploy the API before applications upgrade with a 0.1.74 client.
+
 ## SQL execution
 
 `POST /meta-tables/execute-operation/` accepts `compiled-sql.v1`, a

@@ -144,8 +144,14 @@ Application revisions written for PostgreSQL run unchanged. SQLite cannot alter
 columns or constraints in place, so the migration environment runs `alter_column`,
 `add_column`, `drop_column` and constraint operations through Alembic batch mode,
 which copies the table and swaps it in. Foreign keys are not enforced while the
-revisions run; `PRAGMA foreign_key_check` runs before commit and rolls back every
-revision if a key dangles. A `postgresql_where` predicate also becomes the SQLite
+revisions run. All revisions of one upgrade or downgrade share a transaction:
+`PRAGMA foreign_key_check` runs before commit, and a dangling key or failed statement
+rolls back every revision of that run with its version row. What a revision commits
+itself, with `autocommit_block` or `commit()`, stays committed. A revision that calls
+`rollback()` fails and is not recorded; use `op.get_bind().begin_nested()` to recover
+from an error inside a revision. A connection the
+application passes to Alembic itself keeps Alembic's commit per revision, as pysqlite
+cannot roll back its DDL. A `postgresql_where` predicate also becomes the SQLite
 partial-index predicate. Generated revisions use batch blocks, which PostgreSQL
 applies as plain `ALTER` statements. Raw PostgreSQL SQL, such as `ctid`, `::` casts
 or `jsonb_*` functions, must branch on `op.get_bind().dialect.name`.

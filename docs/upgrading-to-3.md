@@ -24,9 +24,10 @@ From 3.0.0 until 5.0.0 every pre-3.0 name still worked with a `DeprecationWarnin
 old import paths re-exported the same objects, old class and field names
 resolved, and HTTP responses repeated each field under its old name. ms-markets
 5.0.0 removes them ([#107](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/107)),
-so an old name now fails like any unknown name: an old import raises
-`ModuleNotFoundError` or `ImportError`, a payload or request with an old field
-is rejected, and a response no longer carries it.
+so an old name is now an unknown name: an old import raises
+`ModuleNotFoundError` or `ImportError`, a payload, request or write with an old
+field is rejected, a row constructor such as `Account(...)` ignores it, and a
+response no longer carries it.
 
 ## Find What To Change
 
@@ -50,13 +51,15 @@ paths before ms-markets hashes, and that mapping stays after 5.0.
 ## UID Columns
 
 3.0.0 added a column named after the identity it holds next to each pre-3.0
-`*_data_node_uid` column (revision `0022`). Every release from 3.0.0 until 5.0.0
-wrote both columns and read the pre-3.0 one. The steps that were planned for
-3.x, 4.0.0 and 4.1.0 never shipped.
+`*_data_node_uid` column (revision `0022`). From 3.0.0 until 5.0.0 each release's
+rows and API read the pre-3.0 column, and its writes filled both, except
+`update_portfolio`, which wrote only the column it was given. The steps that were
+planned for 3.x, 4.0.0 and 4.1.0 never shipped.
 
-5.0.0's revision `0035` copies each pre-3.0 column into its successor, makes
-`storage_table_uid` NOT NULL on pricing market-data bindings and drops the
-pre-3.0 columns. Once the ms-markets deployment's `migrate-markets` Job has
+5.0.0's revision `0035` copies each pre-3.0 column into its successor, so the
+pre-3.0 value stays where the two differ. It also makes `storage_table_uid`
+NOT NULL on pricing market-data bindings and drops the pre-3.0 columns. Once the
+ms-markets deployment's `migrate-markets` Job has
 applied it in an Environment, a project on a release before 5.0.0 fails there
 on the account, account holdings set, portfolio and pricing market-data binding
 tables, and a project on 5.0 works. Upgrade every project that uses these

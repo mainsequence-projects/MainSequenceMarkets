@@ -77,6 +77,13 @@ upstream authoring class hashes by its bound table UID and must already be bound
 `output_table` is a constructor contract, not an ordinary config field. Removed
 configuration forms and `test_node` are unsupported; use explicit namespaces.
 
+Positional and keyword construction give the same `update_hash` since client 0.1.74.
+When upgrading past it, a positionally constructed producer can start a new update
+record, once, if an intermediate updater class (even one without its own `__init__`)
+names or orders the parameters differently, or if a constructor passes `*args`
+through. Compare that producer's hash before and after upgrading; do not add a
+compatibility hash.
+
 Declare a deterministic `dependencies()` mapping. Executable dependencies are
 other updater instances; read-only dependencies are `TimeIndexTableRef` objects.
 References contribute lineage and reads without executing a producer. Do not
