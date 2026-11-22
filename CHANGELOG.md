@@ -126,7 +126,8 @@ Read "Upgrading" at the end of this entry.
   went to Markets' own tables, a migration run with it moved those tables to the other
   namespace in the catalog, and Markets row calls stopped reaching a selected Markets API.
   The `namespace=` of the storage factories and `hash_namespace`, with its `namespace=`
-  alias on updaters, are unchanged.
+  alias on updaters, are unchanged. The owner decided this on 2026-11-22; it settles what
+  the issue lists as its open decision.
 - **Breaking:** `msm.storage_instances.markets_reference_table`, which put a Markets table
   into a producer's metadata as a key-only stand-in
   ([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)). A key
