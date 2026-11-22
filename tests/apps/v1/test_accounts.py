@@ -25,7 +25,6 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
                     "account_is_active": True,
                     "account_group_uid": None,
                     "holdings_storage_table_uid": None,
-                    "holdings_data_node_uid": None,
                     "metadata_json": None,
                 }
             ],
@@ -46,7 +45,6 @@ def test_get_accounts_returns_count_and_results(monkeypatch) -> None:
                 "account_is_active": True,
                 "account_group_uid": None,
                 "holdings_storage_table_uid": None,
-                "holdings_data_node_uid": None,
                 "metadata_json": None,
             }
         ],
@@ -107,7 +105,6 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
                     "account_is_active": True,
                     "account_group_uid": None,
                     "holdings_storage_table_uid": None,
-                    "holdings_data_node_uid": None,
                     "metadata_json": {"source": "test"},
                 }
             ],
@@ -132,7 +129,6 @@ def test_account_service_maps_account_rows(monkeypatch) -> None:
                 "account_is_active": True,
                 "account_group_uid": None,
                 "holdings_storage_table_uid": None,
-                "holdings_data_node_uid": None,
                 "metadata_json": {"source": "test"},
             }
         ],
@@ -187,7 +183,6 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
             "summary_warning": None,
             "extensions": {
                 "holdings_storage_table_uid": None,
-                "holdings_data_node_uid": None,
                 "metadata_json": None,
             },
         },
@@ -246,7 +241,6 @@ def test_get_account_summary_returns_frontend_detail_summary(monkeypatch) -> Non
         "summary_warning": None,
         "extensions": {
             "holdings_storage_table_uid": None,
-            "holdings_data_node_uid": None,
             "metadata_json": None,
         },
     }
@@ -1424,362 +1418,6 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
     assert response.model_dump(mode="json")["position_set_uid"] == "position-set-uid"
 
 
-def test_core_account_holdings_snapshot_selects_latest(monkeypatch) -> None:
-    account_uid = uuid.uuid4()
-    asset_uid = uuid.uuid4()
-    older_time = dt.datetime(2026, 5, 31, 10, 30, tzinfo=dt.UTC)
-    latest_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
-
-    from msm.services import accounts as account_services
-
-    monkeypatch.setattr(
-        account_services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": str(account_uid)}},
-    )
-    monkeypatch.setattr(
-        account_services,
-        "_search_account_holdings_rows",
-        lambda context, account_uid, limit, **_kwargs: [
-            {
-                "time_index": older_time,
-                "account_uid": str(account_uid),
-                "asset_identifier": "eth_spot",
-                "holdings_set_uid": "older-set",
-                "is_trade_snapshot": False,
-                "quantity": 2.0,
-                "direction": 1,
-                "target_trade_time": None,
-                "extra_details": {},
-            },
-            {
-                "time_index": latest_time,
-                "account_uid": str(account_uid),
-                "asset_identifier": "btc_spot",
-                "holdings_set_uid": "latest-set",
-                "is_trade_snapshot": False,
-                "quantity": 12.0,
-                "direction": -1,
-                "target_trade_time": None,
-                "extra_details": {"source": "test"},
-            },
-        ],
-    )
-    monkeypatch.setattr(
-        account_services,
-        "_asset_snapshot_references_by_unique_identifier",
-        lambda context, rows: {
-            "btc_spot": {
-                "uid": str(asset_uid),
-                "asset_identifier": "btc_spot",
-                "current_snapshot": {
-                    "name": "Bitcoin spot",
-                    "ticker": "BTC",
-                },
-            }
-        },
-    )
-
-    snapshot = account_services.get_account_holdings_snapshot_response(
-        object(),
-        account_uid=str(account_uid),
-    )
-
-    assert snapshot == {
-        "holdings_set_uid": "latest-set",
-        "holdings_date": latest_time,
-        "holdings": [
-            {
-                "time_index": latest_time,
-                "asset_identifier": "btc_spot",
-                "asset": {
-                    "uid": str(asset_uid),
-                    "asset_identifier": "btc_spot",
-                    "current_snapshot": {
-                        "name": "Bitcoin spot",
-                        "ticker": "BTC",
-                    },
-                },
-                "position_type": "units",
-                "price": None,
-                "quantity": "12.0",
-                "direction": -1,
-                "signed_quantity": "-12.0",
-                "missing_price": True,
-                "target_trade_time": None,
-                "extra_details": {"source": "test"},
-            }
-        ],
-    }
-
-
-def test_core_account_holdings_by_fund_groups_allocations_and_residuals(
-    monkeypatch,
-) -> None:
-    account_uid = uuid.uuid4()
-    source_holdings_set_uid = uuid.uuid4()
-    virtual_fund_uid = uuid.uuid4()
-    portfolio_uid = uuid.uuid4()
-    btc_uid = uuid.uuid4()
-    eth_uid = uuid.uuid4()
-    holdings_date = dt.datetime(2026, 6, 8, 10, 30, tzinfo=dt.UTC)
-    context = object()
-
-    from msm.services.accounts import virtual_funds_public_api as virtual_fund_services
-
-    def fake_get_model_by_uid(context, model, uid):
-        assert model.__name__ == "AccountTable"
-        assert uid == str(account_uid)
-        return {"row": {"uid": str(account_uid)}}
-
-    def fake_search_model(context, model, filters=None, in_filters=None, limit=None):
-        model_name = model.__name__
-        if model_name == "AccountHoldingsSetTable":
-            assert filters == {"account_uid": str(account_uid)}
-            return {
-                "rows": [
-                    {
-                        "uid": str(source_holdings_set_uid),
-                        "account_uid": str(account_uid),
-                        "time_index": holdings_date,
-                    }
-                ]
-            }
-        if model_name == "AccountHoldingsStorage":
-            assert filters == {
-                "account_uid": str(account_uid),
-                "holdings_set_uid": str(source_holdings_set_uid),
-            }
-            return {
-                "rows": [
-                    {
-                        "time_index": holdings_date,
-                        "account_uid": str(account_uid),
-                        "asset_identifier": "example-asset-btc",
-                        "holdings_set_uid": str(source_holdings_set_uid),
-                        "quantity": 10.0,
-                        "direction": 1,
-                        "target_trade_time": None,
-                        "extra_details": {},
-                    },
-                    {
-                        "time_index": holdings_date,
-                        "account_uid": str(account_uid),
-                        "asset_identifier": "example-asset-eth",
-                        "holdings_set_uid": str(source_holdings_set_uid),
-                        "quantity": 25.0,
-                        "direction": 1,
-                        "target_trade_time": None,
-                        "extra_details": {},
-                    },
-                ]
-            }
-        if model_name == "VirtualFundTable":
-            assert filters == {"account_uid": str(account_uid)}
-            return {
-                "rows": [
-                    {
-                        "uid": str(virtual_fund_uid),
-                        "unique_identifier": "fund-key",
-                        "account_uid": str(account_uid),
-                        "target_portfolio_uid": str(portfolio_uid),
-                    }
-                ]
-            }
-        if model_name == "VirtualFundHoldingsSetTable":
-            assert filters == {"source_account_holdings_set_uid": str(source_holdings_set_uid)}
-            assert in_filters == {"virtual_fund_uid": [str(virtual_fund_uid)]}
-            return {
-                "rows": [
-                    {
-                        "uid": "virtual-fund-holdings-set-uid",
-                        "virtual_fund_uid": str(virtual_fund_uid),
-                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
-                        "time_index": holdings_date,
-                    }
-                ]
-            }
-        if model_name == "VirtualFundHoldingsStorage":
-            assert filters == {"source_account_holdings_set_uid": str(source_holdings_set_uid)}
-            assert in_filters == {"virtual_fund_uid": [str(virtual_fund_uid)]}
-            return {
-                "rows": [
-                    {
-                        "time_index": holdings_date,
-                        "virtual_fund_uid": str(virtual_fund_uid),
-                        "asset_identifier": "example-asset-btc",
-                        "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
-                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
-                        "allocated_quantity": 6.0,
-                        "allocation_strategy": "proportional_attribution",
-                        "direction": 1,
-                        "target_trade_time": None,
-                        "extra_details": {
-                            "position_set_uid": "position-set-uid",
-                            "target_row_key": "btc-row",
-                            "target_gap_signed_quantity": "0.0",
-                            "scale": "1.0",
-                        },
-                    },
-                    {
-                        "time_index": holdings_date,
-                        "virtual_fund_uid": str(virtual_fund_uid),
-                        "asset_identifier": "example-asset-eth",
-                        "virtual_fund_holdings_set_uid": "virtual-fund-holdings-set-uid",
-                        "source_account_holdings_set_uid": str(source_holdings_set_uid),
-                        "allocated_quantity": 20.0,
-                        "allocation_strategy": "proportional_attribution",
-                        "direction": 1,
-                        "target_trade_time": None,
-                        "extra_details": {
-                            "position_set_uid": "position-set-uid",
-                            "target_row_key": "eth-row",
-                            "target_gap_signed_quantity": "5.0",
-                            "scale": "0.8",
-                        },
-                    },
-                ]
-            }
-        raise AssertionError(f"Unexpected model {model_name}")
-
-    monkeypatch.setattr(virtual_fund_services, "get_model_by_uid", fake_get_model_by_uid)
-    monkeypatch.setattr(virtual_fund_services, "search_model", fake_search_model)
-    monkeypatch.setattr(
-        virtual_fund_services,
-        "_asset_references_by_unique_identifier",
-        lambda context, rows: {
-            "example-asset-btc": {
-                "uid": str(btc_uid),
-                "asset_identifier": "example-asset-btc",
-                "current_snapshot": {
-                    "name": "Bitcoin",
-                    "ticker": "BTC",
-                },
-            },
-            "example-asset-eth": {
-                "uid": str(eth_uid),
-                "asset_identifier": "example-asset-eth",
-                "current_snapshot": {
-                    "name": "Ethereum",
-                    "ticker": "ETH",
-                },
-            },
-        },
-    )
-
-    response = virtual_fund_services.get_account_holdings_by_fund_response(
-        context,
-        account_uid=str(account_uid),
-        order="desc",
-        limit=1,
-        include_asset_detail=True,
-    )
-
-    assert response is not None
-    assert response["account_uid"] == str(account_uid)
-    assert response["source_account_holdings_set_uid"] == str(source_holdings_set_uid)
-    assert response["holdings_date"] == holdings_date
-    assert response["allocation_warnings"] == []
-    assert response["funds"] == [
-        {
-            "virtual_fund_uid": str(virtual_fund_uid),
-            "virtual_fund_unique_identifier": "fund-key",
-            "target_portfolio_uid": str(portfolio_uid),
-            "holdings_set_uid": "virtual-fund-holdings-set-uid",
-            "holdings": [
-                {
-                    "time_index": holdings_date,
-                    "asset_identifier": "example-asset-btc",
-                    "asset": {
-                        "uid": str(btc_uid),
-                        "asset_identifier": "example-asset-btc",
-                        "current_snapshot": {
-                            "name": "Bitcoin",
-                            "ticker": "BTC",
-                        },
-                    },
-                    "quantity": "6.0",
-                    "allocation_strategy": "proportional_attribution",
-                    "direction": 1,
-                    "signed_quantity": "6.0",
-                    "target_trade_time": None,
-                    "extra_details": {
-                        "position_set_uid": "position-set-uid",
-                        "target_row_key": "btc-row",
-                        "target_gap_signed_quantity": "0.0",
-                        "scale": "1.0",
-                    },
-                    "allocation": {
-                        "target_gap_signed_quantity": "0.0",
-                        "scale": "1.0",
-                        "target_row_key": "btc-row",
-                        "position_set_uid": "position-set-uid",
-                    },
-                },
-                {
-                    "time_index": holdings_date,
-                    "asset_identifier": "example-asset-eth",
-                    "asset": {
-                        "uid": str(eth_uid),
-                        "asset_identifier": "example-asset-eth",
-                        "current_snapshot": {
-                            "name": "Ethereum",
-                            "ticker": "ETH",
-                        },
-                    },
-                    "quantity": "20.0",
-                    "allocation_strategy": "proportional_attribution",
-                    "direction": 1,
-                    "signed_quantity": "20.0",
-                    "target_trade_time": None,
-                    "extra_details": {
-                        "position_set_uid": "position-set-uid",
-                        "target_row_key": "eth-row",
-                        "target_gap_signed_quantity": "5.0",
-                        "scale": "0.8",
-                    },
-                    "allocation": {
-                        "target_gap_signed_quantity": "5.0",
-                        "scale": "0.8",
-                        "target_row_key": "eth-row",
-                        "position_set_uid": "position-set-uid",
-                    },
-                },
-            ],
-        }
-    ]
-    assert response["residuals"] == [
-        {
-            "asset_identifier": "example-asset-btc",
-            "source_signed_quantity": "10.0",
-            "allocated_signed_quantity": "6.0",
-            "residual_signed_quantity": "4.0",
-            "asset": {
-                "uid": str(btc_uid),
-                "asset_identifier": "example-asset-btc",
-                "current_snapshot": {
-                    "name": "Bitcoin",
-                    "ticker": "BTC",
-                },
-            },
-        },
-        {
-            "asset_identifier": "example-asset-eth",
-            "source_signed_quantity": "25.0",
-            "allocated_signed_quantity": "20.0",
-            "residual_signed_quantity": "5.0",
-            "asset": {
-                "uid": str(eth_uid),
-                "asset_identifier": "example-asset-eth",
-                "current_snapshot": {
-                    "name": "Ethereum",
-                    "ticker": "ETH",
-                },
-            },
-        },
-    ]
-
-
 def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
     monkeypatch,
 ) -> None:
@@ -1859,7 +1497,7 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
         "replace_account_holdings_snapshot",
         fake_replace_account_holdings_snapshot,
     )
-    monkeypatch.setattr(account_services, "_search_account_holdings_rows", no_read_back)
+    monkeypatch.setattr(account_services, "read_account_holdings_snapshots", no_read_back)
 
     snapshot = account_services.add_account_holdings_snapshot_response(
         context,
@@ -2229,206 +1867,6 @@ def test_account_repository_builds_single_target_candidate_search_operation(
     assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
 
 
-def test_account_target_positions_snapshot_selects_latest(monkeypatch) -> None:
-    account_uid = uuid.uuid4()
-    target_allocation_uid = uuid.uuid4()
-    older_position_set_uid = uuid.uuid4()
-    latest_position_set_uid = uuid.uuid4()
-    asset_uid = uuid.uuid4()
-    portfolio_uid = uuid.uuid4()
-    older_time = dt.datetime(2026, 6, 1, 10, 30, tzinfo=dt.UTC)
-    latest_time = dt.datetime(2026, 6, 2, 10, 30, tzinfo=dt.UTC)
-
-    from msm.services import target_positions as target_position_services
-
-    monkeypatch.setattr(
-        target_position_services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": str(account_uid)}},
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_search_active_account_target_allocation_rows",
-        lambda context, account_uid: [{"uid": str(target_allocation_uid)}],
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_search_position_set_rows_for_target_allocations",
-        lambda context, target_allocation_uids, position_set_time: [
-            {
-                "uid": str(older_position_set_uid),
-                "account_target_allocation_uid": str(target_allocation_uid),
-                "position_set_time": older_time,
-            },
-            {
-                "uid": str(latest_position_set_uid),
-                "account_target_allocation_uid": str(target_allocation_uid),
-                "position_set_time": latest_time,
-            },
-        ],
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_search_target_position_rows",
-        lambda context, position_set_uid, target_positions_date, limit: [
-            {
-                "time_index": latest_time,
-                "position_set_uid": position_set_uid,
-                "target_type": "asset",
-                "target_uid": str(asset_uid),
-                "asset_uid": str(asset_uid),
-                "portfolio_uid": None,
-                "weight_notional_exposure": 0.55,
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
-                "metadata_json": {},
-            },
-            {
-                "time_index": latest_time,
-                "position_set_uid": position_set_uid,
-                "target_type": "portfolio",
-                "target_uid": str(portfolio_uid),
-                "asset_uid": None,
-                "portfolio_uid": str(portfolio_uid),
-                "weight_notional_exposure": 0.45,
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
-                "metadata_json": {},
-            },
-        ],
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_asset_references_by_uid",
-        lambda context, rows: {
-            str(asset_uid): {
-                "uid": str(asset_uid),
-                "unique_identifier": "btc_spot",
-                "current_snapshot": {
-                    "name": "Bitcoin spot",
-                    "ticker": "BTC",
-                },
-            }
-        },
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_portfolio_references_by_uid",
-        lambda context, rows: {
-            str(portfolio_uid): {
-                "uid": str(portfolio_uid),
-                "unique_identifier": "example-sleeve",
-                "published_index_uid": None,
-            }
-        },
-    )
-
-    snapshot = target_position_services.get_account_target_positions_snapshot_response(
-        object(),
-        account_uid=str(account_uid),
-    )
-
-    assert snapshot == {
-        "related_account_uid": str(account_uid),
-        "target_positions_date": latest_time,
-        "position_set_uid": str(latest_position_set_uid),
-        "positions": [
-            {
-                "target_type": "asset",
-                "target_uid": str(asset_uid),
-                "asset_uid": str(asset_uid),
-                "portfolio_uid": None,
-                "unique_identifier": "btc_spot",
-                "weight_notional_exposure": "0.55",
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
-                "asset": {
-                    "uid": str(asset_uid),
-                    "unique_identifier": "btc_spot",
-                    "current_snapshot": {
-                        "name": "Bitcoin spot",
-                        "ticker": "BTC",
-                    },
-                },
-                "portfolio": None,
-            },
-            {
-                "target_type": "portfolio",
-                "target_uid": str(portfolio_uid),
-                "asset_uid": None,
-                "portfolio_uid": str(portfolio_uid),
-                "unique_identifier": "example-sleeve",
-                "weight_notional_exposure": "0.45",
-                "constant_notional_exposure": None,
-                "single_asset_quantity": None,
-                "asset": None,
-                "portfolio": {
-                    "uid": str(portfolio_uid),
-                    "unique_identifier": "example-sleeve",
-                    "published_index_uid": None,
-                },
-            },
-        ],
-    }
-
-
-def test_core_account_holdings_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
-    account_uid = uuid.uuid4()
-
-    from msm.services import accounts as account_services
-
-    monkeypatch.setattr(
-        account_services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": str(account_uid)}},
-    )
-    monkeypatch.setattr(
-        account_services,
-        "_search_account_holdings_rows",
-        lambda context, account_uid, limit, **_kwargs: [],
-    )
-
-    snapshot = account_services.get_account_holdings_snapshot_response(
-        object(),
-        account_uid=str(account_uid),
-    )
-
-    assert snapshot == {
-        "holdings_set_uid": None,
-        "holdings_date": None,
-        "holdings": [],
-    }
-
-
-def test_account_target_positions_snapshot_returns_empty_for_no_data(monkeypatch) -> None:
-    account_uid = uuid.uuid4()
-
-    from msm.services import target_positions as target_position_services
-
-    monkeypatch.setattr(
-        target_position_services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": str(account_uid)}},
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "_search_active_account_target_allocation_rows",
-        lambda context, account_uid: [],
-    )
-
-    snapshot = target_position_services.get_account_target_positions_snapshot_response(
-        object(),
-        account_uid=str(account_uid),
-    )
-
-    assert snapshot == {
-        "related_account_uid": str(account_uid),
-        "target_positions_date": None,
-        "position_set_uid": None,
-        "positions": [],
-    }
-
-
 def test_core_add_account_target_positions_snapshot_derives_parent_rows(
     monkeypatch,
 ) -> None:
@@ -2441,11 +1879,12 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
 
     monkeypatch.setattr(
         target_position_services,
-        "get_account_by_uid",
-        lambda context, uid: {
+        "read_account_with_stored_target_allocation",
+        lambda context, account_uid: {
             "row": {
-                "uid": str(account_uid),
+                "uid": account_uid,
                 "account_name": "Some account",
+                "stored_target_allocation_uid": None,
             }
         },
     )
@@ -2515,8 +1954,8 @@ def test_core_add_account_target_positions_returns_none_for_missing_account(
 
     monkeypatch.setattr(
         target_position_services,
-        "get_account_by_uid",
-        lambda context, uid: {"rows": []},
+        "read_account_with_stored_target_allocation",
+        lambda context, account_uid: {"rows": []},
     )
 
     snapshot = target_position_services.add_account_target_positions_snapshot_response(
@@ -2539,11 +1978,12 @@ def test_core_add_account_target_positions_raises_conflict_when_snapshot_exists(
 
     monkeypatch.setattr(
         target_position_services,
-        "get_account_by_uid",
-        lambda context, uid: {
+        "read_account_with_stored_target_allocation",
+        lambda context, account_uid: {
             "row": {
-                "uid": str(account_uid),
+                "uid": account_uid,
                 "account_name": "Some account",
+                "stored_target_allocation_uid": None,
             }
         },
     )
@@ -2651,7 +2091,6 @@ def _account_payload(account_uid: uuid.UUID) -> dict[str, object]:
         "account_is_active": False,
         "account_group_uid": None,
         "holdings_storage_table_uid": None,
-        "holdings_data_node_uid": None,
         "metadata_json": {"provider": "broker"},
     }
 

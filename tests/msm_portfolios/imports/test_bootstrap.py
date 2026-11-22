@@ -18,7 +18,7 @@ def test_portfolio_bootstrap_defaults_to_portfolio_model_graph(monkeypatch) -> N
 
     monkeypatch.setattr(bootstrap, "_start_engine", fake_start_engine)
 
-    assert bootstrap.start_engine(namespace="mainsequence.examples") is runtime
+    assert bootstrap.start_engine() is runtime
     assert calls[0]["models"] == list(portfolio_sqlalchemy_models())
 
 

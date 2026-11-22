@@ -11,7 +11,8 @@ Python HTTP representation is `TimeIndexMetaTable`; the authoring base is
 ## Coordinates, cadence, and layout
 
 The time column leads `index_names`. Cadence describes an expected interval such
-as `1m`, `1h`, or `1d`; it does not schedule execution. Storage layout describes
+as `1m`, `1h`, or `1d`; it does not schedule execution. Each migration upgrade sets
+it to what the model declares, including none. Storage layout describes
 coordinate uniqueness, indexing, and tail-deletion scope. Statistics describe
 observed progress globally and by coordinate. These are separate concerns.
 
@@ -37,6 +38,14 @@ non-configuration constants. A field excluded with
 `json_schema_extra={"hash_excluded": True}` must not affect output values or
 source/dependency selection. An explicit hash namespace isolates an experiment's
 producer identity, but does not isolate the physical output table or its rows.
+
+Constructor arguments give the same hash by position and by keyword. Before 0.1.74
+they could differ when a class stood between `TimeIndexTableUpdater` and the producer,
+with or without its own `__init__`, and named or ordered its parameters differently,
+or when a constructor passed `*args` through. A producer of that shape that is
+constructed with positional arguments gets its keyword hash from 0.1.74, so its next
+run starts a new update record, once, and so does each producer whose hash includes
+it as a dependency. The old records stay. Other producers keep their hashes.
 
 ## Dependencies and execution state
 

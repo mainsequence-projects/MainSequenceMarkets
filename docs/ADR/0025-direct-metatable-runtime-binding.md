@@ -13,6 +13,12 @@ replacement for pricing market-data bindings. That proposal is not implemented;
 the current implementation still stores attached storage identifiers in
 `PricingMarketDataBindingTable`.
 
+Amended 2026-11-22
+([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)):
+Markets' table names take no namespace suffix and its identifiers no namespace prefix, so
+the `mainsequence.examples` names below are historical. Attachment still resolves by
+SQLAlchemy table name.
+
 ## Context
 
 `ms-markets` previously started runtime by reading an internal markets registry

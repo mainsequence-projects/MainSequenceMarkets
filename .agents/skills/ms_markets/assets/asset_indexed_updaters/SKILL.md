@@ -143,8 +143,14 @@ sets the project's default `__metatable_namespace__` and, when needed,
 `__markets_base_identifier__` as the bare storage concept. This is useful for
 extension storage such as provider bars or account facts. ms-markets combines
 the namespace and base identifier into the globally unique logical runtime
-identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
-isolated tests and examples.
+identity. The declared namespace is final. Isolated tests and examples use a
+separate database, such as MetaTables' local SQLite runtime, with the same names.
+
+Project-local storage classes are declared on the project's own declarative base,
+never on `MarketsBase`, which is for built-in ms-markets models. The project's
+migration provider targets that base's metadata
+(`platform/metatable_migrations`), and the foreign key passes Markets' column
+object, `AssetTable.__table__.c.unique_identifier`.
 
 Changing the namespace or storage app after migration finalization is a logical
 or physical table-name rotation and must go through the normal MetaTables migration and
@@ -156,15 +162,20 @@ Minimal storage-first pattern:
 import datetime
 
 import pandas as pd
-from sqlalchemy import DateTime, Float, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import DateTime, Float, ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsTimeIndexMetaTableMixin
 from msm.time_index.assets import (
     AssetUpdaterConfiguration,
     AssetTimestampedUpdater,
 )
 from msm.models.assets.core import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
@@ -173,7 +184,7 @@ class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, Base):
     __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
@@ -189,7 +200,7 @@ class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(f"{AssetTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
+        ForeignKey(AssetTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
         nullable=False,
         info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )
@@ -273,16 +284,16 @@ canonical source-table foreign key target.
 
 Use one rule for markets MetaTables and markets TimeIndexTableUpdaters:
 
-- default namespace: keep bare identifiers such as `Asset` and
+- Markets' namespace: keep bare identifiers such as `Asset` and
   `asset_snapshots`
-- when `MSM_AUTO_REGISTER_NAMESPACE` is set to a non-default namespace, prefix
-  logical identifiers with that namespace
+- a project's own namespace: prefix the logical identifiers of its tables with
+  that namespace
 - use `markets_identifier(...)` for TimeIndexTableUpdater identifiers
 - let `AssetIndexedUpdater` apply the default markets `hash_namespace`
 - pass explicit `hash_namespace` only for tests, isolated experiments, or
   parallel runs that must not collide
 
-Do not hardcode `mainsequence.markets.*` or `mainsequence.examples.*` in a new
+Do not hardcode `mainsequence.markets.*` or another namespace's prefix in a new
 TimeIndexTableUpdater class.
 
 Do not add a class-owned `__data_node_identifier__`; default identifiers derive
@@ -431,6 +442,8 @@ Before marking work complete:
   `ASSET_IDENTIFIER_DIMENSION`.
 - The storage table declares the canonical `asset_identifier ->
   AssetTable.unique_identifier` SQLAlchemy `ForeignKey`.
+- A project's storage table is on the project's own declarative base, and that key
+  passes Markets' column object.
 - The storage table is migrated and registered by the MetaTables migration
   provider before writes.
 - `asset_list` is updater scope, not part of table meaning.

@@ -4,6 +4,12 @@
 
 Completed
 
+Amended 2026-11-22
+([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)): the
+package namespace suffix is removed from Markets' table, version-table and migration
+names. A sandbox is a separate database with the same names. The
+`mainsequence_examples` names below are historical; the naming rules otherwise stand.
+
 ## Context
 
 ADR 0022 moved `ms-markets` to the SDK-managed Alembic migration workflow. The

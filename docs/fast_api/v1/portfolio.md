@@ -10,12 +10,6 @@ portfolio's weights and values through the series row operations
 ([Row Operations](rows.md#published-series)). ADR 0047 adds the
 multi-portfolio frames and the batch lookup described below.
 
-!!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries a `*_table_update_uid` portfolio pointer also
-    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
-
 ## Runtime Sources
 
 - Portfolio identity uses `msm.api.portfolios.Portfolio`.
@@ -529,7 +523,7 @@ The statements are plain deletes. After the statement list commits, MetaTables
 rebuilds the update statistics it stores for each time-index table the list
 changed, so the deleted portfolio's progress goes with its rows
 ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
-`mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.71). The account
+`mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.74). The account
 delete relies on the same.
 
 ## Delete Portfolio Weights

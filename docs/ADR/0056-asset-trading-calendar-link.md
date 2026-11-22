@@ -66,7 +66,7 @@ updater in this repository:
 | `docs/knowledge/msm_portfolios/portfolios/index.md` | Strings | `24/7`, by default |
 | `tests/identity/test_pinned_identities.py`, `tests/msm_portfolios/time_index/test_engine_instance_tables.py` | Strings | `24/7`, by default. Neither runs an update |
 | `tests/msm_portfolios/time_index/test_storage_first_surface.py` | A mapping with `"calendar": "NYSE"` | `NYSE`. It tests the map only |
-| `get_interpolated_prices_timeseries` | `AssetsConfiguration.asset_list`, passed through | Whatever the items carry. No caller in `src` |
+| `get_interpolated_prices_timeseries` (removed later by #95) | `AssetsConfiguration.asset_list`, passed through | Whatever the items carry. No caller in `src` |
 | `InterpolatedPrices` with no `asset_list` | `bars_ts.get_asset_list()` of the source | Whatever the source's items carry |
 
 `InterpolatedPrices.update` builds one `asset_calendar_map` from the scope and passes each

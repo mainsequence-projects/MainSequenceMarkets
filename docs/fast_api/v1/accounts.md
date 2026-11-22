@@ -5,12 +5,6 @@ account target-position assignment. Target-allocation candidate searches resolve
 valid asset and portfolio targets, and holdings read endpoints support both
 direct account snapshots and virtual-fund-grouped views.
 
-!!! note "Pre-3.0 field names"
-    Through ms-markets 3.x every response that carries `holdings_storage_table_uid` or `source_storage_table_uid` also
-    repeats it under its pre-3.0 `*_data_node_uid` name, which OpenAPI marks
-    deprecated, and requests accept either name. ms-markets 4.0 removes the
-    pre-3.0 names ([ADR 0048](../../ADR/0048-time-index-vocabulary-rename.md)).
-
 - `GET /api/v1/account/`
   - supports `search`, `limit`, and `offset`
   - returns `command-center.resource_collection@v1`
@@ -122,6 +116,11 @@ direct account snapshots and virtual-fund-grouped views.
     and `kept_portfolios` (each with its `reason`)
   - one delete sends MetaTables one read and one transaction, and asks for no
     impact; both run with MetaTables' longest deadline, 60 seconds
+  - the transaction has a statement only for the tables the read found rows in
+    (order events whenever the account has orders); a row written there after the
+    read is deleted by its `CASCADE` key or refuses the delete through its
+    `RESTRICT` key. Every key and per-account lookup reads through an index
+    (revision `0034`)
   - `404` when the uid is unknown; `409` when a key refuses the account's
     delete, including orders of other accounts that name its order managers or
     virtual funds of other accounts allocated from its holdings sets; nothing is
@@ -176,8 +175,15 @@ direct account snapshots and virtual-fund-grouped views.
     `portfolio_uid`, so the selected row can be written directly into a target
     position payload
 - `GET /api/v1/account/{account_uid}/holdings/`
+  - returns every row of the snapshot, as the target, by-fund and allocation
+    reads do. The operation counts given for these routes hold up to 10,000
+    rows and 8 MiB an operation; a larger answer is read in pages, again until
+    two reads agree, and fails rather than answer a part
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
+  - costs one MetaTables operation: the account, its holdings at the selected
+    time and, with `include_asset_detail`, each asset's latest snapshot, in one
+    select
   - returns one holdings snapshot backed by `AccountHoldingsStorage`
   - each holding exposes the storage `asset_identifier`, positive `quantity`,
     `direction` (`1` long, `-1` short), and computed `signed_quantity`
@@ -189,6 +195,11 @@ direct account snapshots and virtual-fund-grouped views.
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
   - selects one `AccountHoldingsSetTable` source snapshot for the account
+  - costs two MetaTables operations: the account with that holdings set and
+    its rows; then the account's virtual funds with what each holds from it
+  - answers every holding and allocation row of that set, and every fund that
+    has a set or rows from it; funds with nothing from the selected set are
+    not read
   - groups persisted `VirtualFundHoldingsStorage` allocation rows by
     `VirtualFundTable.uid` where each `VirtualFundHoldingsSetTable` references
     the selected source account holdings set
@@ -279,9 +290,10 @@ direct account snapshots and virtual-fund-grouped views.
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
-  - costs three MetaTables operations whatever the number of positions: read
-    the account, read every position's asset in one select, and write; the
-    response is built from the rows the write returns, not read back
+  - costs three MetaTables operations up to 1,000 positions: read the account,
+    read every position's asset in one select, and write; the response is
+    built from the rows the write returns, not read back. Past 1,000 the
+    assets are read 1,000 at a time and the whole snapshot is read back
   - request body contains `holdings_date`, `overwrite`, and `positions`
   - each position uses the storage field name `asset_identifier`; one `400`
     names every unknown `asset_identifier`
@@ -296,6 +308,10 @@ direct account snapshots and virtual-fund-grouped views.
   - writes one account target-position snapshot and returns the same
     `AccountTargetPositionsSnapshotResponse` contract as the target-positions
     read endpoint
+  - costs three MetaTables operations whatever the number of positions: read
+    the account with its stored target allocation, write, and read the
+    snapshot back as the target-positions read answers it; a cleared target is
+    answered from the write
   - request body contains only `target_positions_date`, `overwrite`, and
     `positions`; account and target-allocation parent identity are derived from
     the account uid in the path
@@ -334,6 +350,9 @@ direct account snapshots and virtual-fund-grouped views.
     `target_positions_date`
   - resolves active account target allocations, selects one `PositionSetTable`
     snapshot, and returns its `TargetPositionsStorage` exposure rows
+  - costs one MetaTables operation: the account, the selected snapshot, its
+    rows, their portfolios and, with `include_asset_detail`, their assets'
+    latest snapshots, in one select
   - each position carries `target_type`, `target_uid`, and exactly one concrete
     target reference: `asset_uid` or `portfolio_uid`
   - returns 200 with an empty `positions` list when the account exists but no

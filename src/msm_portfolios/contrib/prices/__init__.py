@@ -1,5 +1,1 @@
-from .updaters import (
-    get_interpolated_prices_timeseries as get_interpolated_prices_timeseries,
-)
-
-__all__ = ["get_interpolated_prices_timeseries"]
+"""Contributed price sources. Import the updaters from ``msm_portfolios.contrib.prices.updaters``."""

@@ -16,7 +16,10 @@ import uuid
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 
+from metatables import sqlalchemy_naming_convention
 from msm.api.remote import use_remote_backend, use_runtime_backend
 from msm_portfolios import recipes
 from msm_portfolios.api import (
@@ -310,11 +313,14 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
         configured_portfolio_rebalance_state_storage,
     )
 
+    class ProducerBase(DeclarativeBase):
+        metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
     rebalance = configured_portfolio_rebalance_state_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app"
+        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
     )
     events = configured_portfolio_calendar_events_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app"
+        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
     )
 
     def prepare(engine):

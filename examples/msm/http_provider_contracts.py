@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+import sys
+from pathlib import Path
 
-from msm.api.http import (
+if __package__ in {None, ""}:
+    _DIRECTORY = Path(__file__).resolve().parent
+    # Run by path, this directory is on sys.path, and its platform/ hides the standard module.
+    sys.path[:] = [entry for entry in sys.path if Path(entry).resolve() != _DIRECTORY]
+    sys.path.insert(0, str(_DIRECTORY.parents[1] / "src"))
+
+from pydantic import BaseModel  # noqa: E402
+
+from msm.api.http import (  # noqa: E402
     InMemoryOperationStore,
     build_resource_discovery_spec,
     resource_column,

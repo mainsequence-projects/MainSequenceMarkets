@@ -22,9 +22,6 @@ def _portfolio_row(uid: uuid.UUID | None = None) -> dict[str, object]:
         "portfolio_table_update_uid": None,
         "backtest_table_price_column_name": "close",
         "retired_at": None,
-        "portfolio_weights_data_node_uid": None,
-        "signal_weights_data_node_uid": None,
-        "portfolio_data_node_uid": None,
         "managed_by": None,
     }
 
@@ -232,11 +229,10 @@ def test_get_portfolio_summary_returns_standard_summary(monkeypatch) -> None:
 def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     portfolio = _portfolio_row()
     portfolio["calendar_uid"] = str(uuid.uuid4())
-    # A 2.x writer updates only the pre-3.0 columns, which 3.0 reads (ADR 0048).
-    portfolio["portfolio_weights_data_node_uid"] = str(uuid.uuid4())
-    portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
+    portfolio["portfolio_weights_table_update_uid"] = str(uuid.uuid4())
+    portfolio["signal_weights_table_update_uid"] = str(uuid.uuid4())
     portfolio["signal_uid"] = "example-signal"
-    portfolio["portfolio_data_node_uid"] = str(uuid.uuid4())
+    portfolio["portfolio_table_update_uid"] = str(uuid.uuid4())
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",
         lambda context, uid: portfolio,
@@ -272,13 +268,10 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
         "portfolio_table_update_uid",
     } <= summary_keys
     assert summary["extensions"]["pointers"] == {
-        "portfolio_weights_table_update_uid": portfolio["portfolio_weights_data_node_uid"],
-        "signal_weights_table_update_uid": portfolio["signal_weights_data_node_uid"],
+        "portfolio_weights_table_update_uid": portfolio["portfolio_weights_table_update_uid"],
+        "signal_weights_table_update_uid": portfolio["signal_weights_table_update_uid"],
         "signal_uid": portfolio["signal_uid"],
-        "portfolio_table_update_uid": portfolio["portfolio_data_node_uid"],
-        "portfolio_weights_data_node_uid": portfolio["portfolio_weights_data_node_uid"],
-        "signal_weights_data_node_uid": portfolio["signal_weights_data_node_uid"],
-        "portfolio_data_node_uid": portfolio["portfolio_data_node_uid"],
+        "portfolio_table_update_uid": portfolio["portfolio_table_update_uid"],
     }
     assert summary["highlight_fields"][0] == {
         "key": "calendar",
@@ -326,7 +319,7 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
     }
     assert summary["extensions"]["nodes"] == {
         "portfolio_weights": {
-            "uid": portfolio["portfolio_weights_data_node_uid"],
+            "uid": portfolio["portfolio_weights_table_update_uid"],
             "label": "Portfolio weights",
             "url": (
                 f"/api/v1/portfolio/{portfolio['uid']}/weights/"
@@ -334,13 +327,13 @@ def test_portfolio_summary_omits_backtest_price_column(monkeypatch) -> None:
             ),
         },
         "signal_weights": {
-            "uid": portfolio["signal_weights_data_node_uid"],
+            "uid": portfolio["signal_weights_table_update_uid"],
             "signal_uid": "example-signal",
             "label": "Signal weights",
             "url": f"/api/v1/portfolio/{portfolio['uid']}/signals_weights/?order=desc&limit=100",
         },
         "portfolio_values": {
-            "uid": portfolio["portfolio_data_node_uid"],
+            "uid": portfolio["portfolio_table_update_uid"],
             "label": "Portfolio values",
             "url": f"/api/v1/portfolio/{portfolio['uid']}/portfolio_values/?order=desc&limit=100",
         },
@@ -1210,7 +1203,7 @@ def test_public_portfolio_values_frame_queries_storage_by_portfolio_identifier(m
 
 def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> None:
     portfolio = _portfolio_row()
-    portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
+    portfolio["signal_weights_table_update_uid"] = str(uuid.uuid4())
     portfolio["signal_uid"] = "portfolio-signal"
     captured: dict[str, object] = {}
 
@@ -1268,7 +1261,7 @@ def test_public_signal_weights_frame_uses_portfolio_signal_uid(monkeypatch) -> N
 
 def test_public_signal_weights_frame_requires_portfolio_signal_uid(monkeypatch) -> None:
     portfolio = _portfolio_row()
-    portfolio["signal_weights_data_node_uid"] = str(uuid.uuid4())
+    portfolio["signal_weights_table_update_uid"] = str(uuid.uuid4())
 
     monkeypatch.setattr(
         "msm_portfolios.services.public_api._get_portfolio_row",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -8,12 +7,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+from examples.msm.platform.bootstrap import use_local_runtime
 
 import msm
 
@@ -21,8 +15,15 @@ import msm
 def main() -> None:
     """Register separate index convention and curve identity rows for pricing."""
 
+    use_local_runtime()
     msm.start_engine(
-        models=["IndexType", "Index"],
+        models=[
+            "IndexType",
+            "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
+        ],
     )
 
     from msm.api.indices import Index, IndexType
@@ -47,6 +48,8 @@ def main() -> None:
         unique_identifier="USD-SOFR",
         index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR",
+        calculation_method="custom",
+        value_format="percent",
     )
 
     IndexConventionDetails.upsert(

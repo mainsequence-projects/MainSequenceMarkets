@@ -391,7 +391,46 @@ the bulk delete asked for it in its preflight and again to delete
   commits, MetaTables rebuilds the stored statistics of each time-index table the
   list changed
   ([MetaTables#117](https://github.com/mainsequence-projects/MetaTables/issues/117),
-  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.71). So an
+  `mainsequence-metatable` 0.1.69 and later; ms-markets requires 0.1.74). So an
   account re-created under the same `unique_identifier`, whose connector publishes
   its orders, trades and events again, and a portfolio re-created under a deleted
   one's identifier start from scratch.
+
+### 2026-11-21: 5.0.0, indexes and skipped tables
+
+The 4.1.1 delete was one read and one transaction, but its time still grew with every
+account's history. Measured on PostgreSQL with 10 accounts of 1,000 holdings sets and
+200,000 holdings rows, deleting one account took 6.1 s, 6.0 s of it in one foreign key:
+eleven keys into the deleted tables had no index that leads with their column, so the
+database read the whole referencing table once per deleted row, here every holdings row
+once per holdings set. One account's rows in holdings, allocation lines, virtual-fund
+holdings, orders and trades were also read through indexes that lead with the time
+column, which is reading the whole index, and the order events filter read every other
+account's orders.
+
+- **Indexes.** Alembic revision `0034` adds a non-unique index for each such key and
+  lookup (the 5.0.0 CHANGELOG lists them). The delete then takes 0.11 s on the same
+  rows. A PostgreSQL test checks that every key into the deleted tables leads an index
+  and that the read and each statement reach the six history tables by index condition.
+- **Measured.** `tests/msm/repositories/test_postgresql_account_delete_volume.py` deletes
+  one of 10 accounts with a history in every table (1,000 holdings sets of 20 positions,
+  allocations, targets, 1,000 orders with trades and events) and runs MetaTables'
+  statistics rebuild after the transaction. Before revision `0034` the transaction took
+  54.6 s, 53.2 s of it in the holdings-set statement; after, 0.9 to 1.6 s, and the
+  rebuilds of the seven time-index tables 1.2 to 2.3 s on one workstation.
+- **Skipped tables.** `account_delete_statements` takes the read's counts and leaves out
+  the tables the read found empty; the account's guarded statement always runs. A row
+  written after the read is still handled by its key: a `CASCADE` key deletes it with its
+  parent, and a `RESTRICT` key refuses the transaction, which deletes nothing. Order
+  events have no key, so their statement runs whenever the account has orders. An account
+  with holdings alone sends 3 statements instead of 14. The refusal of the 4.1.1 note
+  sends the account's statements alone, as counted.
+- **Order events.** An event stays when another account's order uses its identifier,
+  found with `NOT EXISTS` through the order identifier index instead of `NOT IN` over
+  every other account's orders.
+- **Update statistics.** MetaTables takes the time-index tables a transaction locked for
+  writing as the tables it changed, and rebuilds each one's statistics by reading the whole
+  table. A `DELETE` locks its table even when it deletes nothing, and so does a key's
+  `CASCADE`. Skipping empty tables brings an account with holdings alone from 7 such
+  tables to 2: holdings, and allocation lines through the account's `CASCADE`. Rebuilding
+  only what a write changed is MetaTables' to do.

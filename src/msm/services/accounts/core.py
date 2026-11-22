@@ -14,15 +14,19 @@ from msm.api.base import operation_result_rows
 from msm.models import AccountTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
-from msm.repositories.crud import renamed_column_value
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
+from msm.repositories.account_snapshot_reads import (
+    ASSET_REFERENCE,
+    HOLDING,
+    prefixed_columns,
+    read_account_holdings_snapshot,
+    read_account_holdings_snapshots,
+)
 
 DEFAULT_ACCOUNT_PAGE_SIZE = 25
 DEFAULT_ACCOUNT_SCAN_FLOOR = 100
 MAX_ACCOUNT_SCAN_LIMIT = 500
-MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT = 500
-MAX_ACCOUNT_TARGET_POSITIONS_SCAN_LIMIT = 500
 
 
 class AccountHoldingsSnapshotExistsError(ValueError):
@@ -168,8 +172,6 @@ def get_account_frontend_detail_summary(
         "summary_warning": None,
         "extensions": {
             "holdings_storage_table_uid": holdings_storage_table_uid,
-            # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
-            "holdings_data_node_uid": holdings_storage_table_uid,
             "metadata_json": _mapping_or_none(account_row.get("metadata_json")),
         },
     }
@@ -184,30 +186,47 @@ def get_account_holdings_snapshot_response(
     include_asset_detail: bool = True,
     holdings_date: dt.datetime | str | None = None,
 ) -> dict[str, Any] | None:
-    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
-    if account_row is None:
+    """One holdings snapshot of an account; ``None`` when the account does not exist.
+
+    One read: the account with its holdings at ``holdings_date``, else at its latest
+    (or, with ``order="asc"``, earliest) holdings time, and with
+    ``include_asset_detail`` each holding's asset and latest snapshot.
+    """
+
+    normalized_order = str(order).lower()
+    if normalized_order not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'.")
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+
+    rows = operation_result_rows(
+        read_account_holdings_snapshot(
+            context,
+            account_uid=account_uid,
+            order=normalized_order,
+            holdings_date=_datetime_or_none(holdings_date),
+            include_asset_detail=include_asset_detail,
+        )
+    )
+    if not rows:
         return None
 
-    resolved_account_uid = str(account_row["uid"])
-    target_time = _datetime_or_none(holdings_date)
-    rows = _search_account_holdings_rows(
-        context,
-        account_uid=resolved_account_uid,
-        limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
-        descending=str(order).lower() != "asc",
-        holdings_dates=None if target_time is None else [target_time],
-    )
-    snapshot_rows = _select_account_holdings_snapshot_rows(
-        rows,
-        holdings_date=holdings_date,
-        order=order,
-        limit=limit,
-    )
+    resolved_account_uid = str(rows[0]["account_uid"])
+    snapshot_rows = [
+        prefixed_columns(row, HOLDING) for row in rows if row.get(f"{HOLDING}time_index")
+    ]
     if not snapshot_rows:
         return _empty_account_holdings_snapshot(account_uid=resolved_account_uid)
 
     asset_references = (
-        _asset_snapshot_references_by_unique_identifier(context, rows=snapshot_rows)
+        _asset_snapshot_references(
+            {
+                str(row["asset_identifier"])
+                for row in snapshot_rows
+                if row.get("asset_identifier") not in (None, "")
+            },
+            details_by_identifier=_asset_details_by_identifier(rows),
+        )
         if include_asset_detail
         else {}
     )
@@ -217,6 +236,23 @@ def get_account_holdings_snapshot_response(
         asset_references=asset_references,
         include_asset_detail=include_asset_detail,
     )
+
+
+def _asset_details_by_identifier(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The asset details a read joined to its holdings, by asset identifier."""
+
+    details: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        detail = prefixed_columns(row, ASSET_REFERENCE)
+        if detail.get("identifier") in (None, ""):
+            continue
+        details[str(detail["identifier"])] = {
+            "asset_uid": detail.get("uid"),
+            "asset_identifier": detail["identifier"],
+            "name": detail.get("name"),
+            "ticker": detail.get("ticker"),
+        }
+    return details
 
 
 def add_account_holdings_snapshot_response(
@@ -275,10 +311,12 @@ def add_account_holdings_snapshot_response(
         raise RuntimeError("Account holdings replacement did not insert any rows.")
     if len(written_rows) < len(write_positions):
         # A write returns at most an operation's row cap of the rows it inserted.
-        written_rows = _account_holdings_snapshot_rows(
-            context,
-            account_uid=resolved_account_uid,
-            holdings_date=normalized_holdings_date,
+        written_rows = operation_result_rows(
+            read_account_holdings_snapshots(
+                context,
+                account_uid=resolved_account_uid,
+                holdings_dates=[normalized_holdings_date],
+            )
         )
 
     return _build_account_holdings_snapshot(
@@ -347,14 +385,12 @@ def _build_account_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "is_paper": bool(row.get("is_paper", False)),
         "account_is_active": bool(row.get("account_is_active", False)),
         "holdings_storage_table_uid": _holdings_storage_table_uid(row),
-        # Pre-3.0 name, removed in ms-markets 4.0 (ADR 0048).
-        "holdings_data_node_uid": _holdings_storage_table_uid(row),
         "metadata_json": _mapping_or_none(row.get("metadata_json")),
     }
 
 
 def _holdings_storage_table_uid(row: Mapping[str, Any]) -> str | None:
-    return _string_or_none(renamed_column_value(AccountTable, row, "holdings_storage_table_uid"))
+    return _string_or_none(row.get("holdings_storage_table_uid"))
 
 
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:
@@ -426,27 +462,20 @@ def get_account_holdings_snapshots_response(
     if holdings_dates is not None:
         wanted = [value for value in (_datetime_or_none(item) for item in holdings_dates) if value]
     rows_by_time: dict[dt.datetime, list[dict[str, Any]]] = {}
-    offset = 0
-    while True:
-        page = _search_account_holdings_rows(
-            context,
-            account_uid=resolved_account_uid,
-            limit=MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT,
-            descending=str(order).lower() == "desc",
-            holdings_dates=wanted,
-            offset=offset,
-        )
-        for row in page:
+    # An empty list of dates selects no snapshot, and needs no read.
+    if wanted is None or wanted:
+        for row in operation_result_rows(
+            read_account_holdings_snapshots(
+                context,
+                account_uid=resolved_account_uid,
+                order=str(order).lower(),
+                holdings_dates=wanted,
+                snapshots=limit,
+            )
+        ):
             row_time = _datetime_or_none(row.get("time_index"))
             if row_time is not None:
                 rows_by_time.setdefault(row_time, []).append(dict(row))
-        # Rows arrive ordered by time, so a page that reaches a later snapshot
-        # than the last one wanted means every wanted snapshot is complete.
-        if len(page) < MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT or (
-            wanted is None and len(rows_by_time) > limit
-        ):
-            break
-        offset += MAX_ACCOUNT_HOLDINGS_SCAN_LIMIT
 
     if wanted is not None:
         times = [value for value in dict.fromkeys(wanted) if value in rows_by_time]
@@ -467,67 +496,6 @@ def get_account_holdings_snapshots_response(
         )
         for value in times
     ]
-
-
-def _search_account_holdings_rows(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    limit: int,
-    descending: bool = True,
-    holdings_dates: Sequence[dt.datetime] | None = None,
-    offset: int = 0,
-    order_by: Sequence[str] | None = None,
-) -> list[dict[str, Any]]:
-    """Holdings rows of one account ordered by time, newest first unless ``descending`` is
-    false, or by ``order_by`` columns."""
-
-    from msm.time_index.accounts.storage import AccountHoldingsStorage
-    from msm.repositories.crud import search_model
-
-    return [
-        row
-        for row in operation_result_rows(
-            search_model(
-                context,
-                model=AccountHoldingsStorage,
-                filters={"account_uid": account_uid},
-                in_filters={"time_index": list(holdings_dates)} if holdings_dates else None,
-                limit=limit,
-                offset=offset,
-                order_by=list(order_by or ["-time_index" if descending else "time_index"]),
-            )
-        )
-        if isinstance(row, Mapping)
-    ]
-
-
-def _account_holdings_snapshot_rows(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    holdings_date: dt.datetime,
-) -> list[dict[str, Any]]:
-    """Every row of one holdings snapshot, one page per operation row cap.
-
-    Rows of one snapshot share their time, so they page by asset identifier, the
-    rest of their key, which keeps the pages stable.
-    """
-
-    page_size = _operation_row_cap(context)
-    rows: list[dict[str, Any]] = []
-    while True:
-        page = _search_account_holdings_rows(
-            context,
-            account_uid=account_uid,
-            limit=page_size,
-            holdings_dates=[holdings_date],
-            offset=len(rows),
-            order_by=["asset_identifier"],
-        )
-        rows.extend(page)
-        if len(page) < page_size:
-            return rows
 
 
 def _operation_row_cap(context: MarketsRepositoryContext) -> int:
@@ -680,39 +648,6 @@ def _account_holdings_frame_operation_rows(frame: Any) -> list[dict[str, Any]]:
             }
         )
     return rows
-
-
-def _select_account_holdings_snapshot_rows(
-    rows: Sequence[Mapping[str, Any]],
-    *,
-    holdings_date: dt.datetime | str | None,
-    order: str,
-    limit: int,
-) -> list[dict[str, Any]]:
-    normalized_order = order.lower()
-    if normalized_order not in {"asc", "desc"}:
-        raise ValueError("order must be 'asc' or 'desc'.")
-    if limit < 1:
-        raise ValueError("limit must be greater than or equal to 1.")
-
-    rows_with_time = [
-        (dict(row), row_time)
-        for row in rows
-        if (row_time := _datetime_or_none(row.get("time_index"))) is not None
-    ]
-    if not rows_with_time:
-        return []
-
-    target_time = _datetime_or_none(holdings_date)
-    if target_time is not None:
-        return [row for row, row_time in rows_with_time if row_time == target_time]
-
-    snapshot_times = sorted(
-        {row_time for _, row_time in rows_with_time},
-        reverse=normalized_order == "desc",
-    )
-    selected_time = snapshot_times[0]
-    return [row for row, row_time in rows_with_time if row_time == selected_time]
 
 
 def _build_account_holdings_snapshot(

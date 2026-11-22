@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -37,6 +36,7 @@ from msm.time_index.assets import AssetSnapshot
 from msm.time_index.indices import configured_index_values_storage
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
+from msm.settings import DEFAULT_MARKETS_NAMESPACE
 from msm_migrations.registry import metatable_provider_models
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
@@ -57,11 +57,11 @@ from tests.support.pinned_identities import (
     NESTED_PORTFOLIOS,
     PINNED_PRE_RENAME_UPDATE_HASHES,
     STRATEGIES,
+    PinnedBase,
     _built_updaters,
     _interpolated_prices_storage,
     _portfolio_configuration,
     _signal,
-    namespace_is_default,
 )
 
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
@@ -278,7 +278,8 @@ PINNED_UPDATE_HASHES = {
     # Rotated in 3.0.0 when the classes moved to msm.time_index and
     # msm_portfolios.contrib.prices.updaters (ADR 0048).
     "asset_snapshot": "assetsnapshot_6eb60d0a440e8ab0b9794f1f5d3e42eb",
-    "interpolated_prices": "interpolatedprices_946a6bc2b70ac3aa0e4a71cd0a1f1e32",
+    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130).
+    "interpolated_prices": "interpolatedprices_c2d1d020889b41e2644db7b8dae0ef0c",
 }
 
 
@@ -297,26 +298,28 @@ PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
 
 PINNED_STRATEGY_REVISIONS = {
     # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
+    # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
         "f63423115cd1fc4f0df7f36912273b38255d22401f4cbe7871f1c0450a330bc4"
     ),
     "time_weighted_on_interpolated_prices": (
-        "1ff25f595962174dcfc44c89d84a63cb2a43f91950ec8b75997a0b811e78ad90"
+        "117747a0d0ba54996865125f475bd3305ef0b103d0cf6e4b6e8910793a119123"
     ),
     "volume_participation_on_interpolated_prices": (
-        "a088881916ba836cba16cfd74db5521e4d124a0ca00551b537883ec70c03c857"
+        "4e5ab6fe53eae5548b8e7b41050cef90d1bd37cdbc24fcb4a2d15f06b21bc7d5"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "7430287870933446263c449078dec322922ca5ef611f9bc4e7f933d0c648a08f"
+        "83b68dff11c34f209be83eb0bbed66663c574f4f74685b22f9a3aabd8ec7b0ed"
     ),
 }
 
 PINNED_CONFIGURED_STORAGE = {
     "index_values_1d": ("ms_markets__index_values__t_1d", "IndexValuesTS.1d"),
     "interpolated_prices_1d_ffill": (
-        "ms_markets__interpolated_prices__eeb2539c105f51d0",
-        "InterpolatedPricesTS.eeb2539c105f51d0",
+        # Renamed by #95: the source's table name keys it, in its producer's namespace.
+        "pinned_app__interpolatedpricests__t_0597b45ae2d0ae00",
+        "pinned-app.InterpolatedPricesTS.0597b45ae2d0ae00",
     ),
     "rebalance_state_contract_instance": (
         "pinned_app__portfoliorebalancestatets__pinned_identity",
@@ -380,19 +383,18 @@ CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
     "interpolated_prices_1d_ffill": _interpolated_prices_storage,
     "rebalance_state_contract_instance": lambda: configured_portfolio_rebalance_state_storage(
         instance_key="pinned_identity",
+        namespace=DEFAULT_MARKETS_NAMESPACE,
         storage_app="pinned_app",
+        base=PinnedBase,
     ),
 }
 
 
 def _import_markets_modules() -> None:
-    with warnings.catch_warnings():
-        # The pre-3.0 import paths are deprecated aliases (ADR 0048).
-        warnings.simplefilter("ignore", DeprecationWarning)
-        for package_name in MARKETS_PACKAGES:
-            package = importlib.import_module(package_name)
-            for module in pkgutil.walk_packages(package.__path__, prefix=f"{package_name}."):
-                importlib.import_module(module.name)
+    for package_name in MARKETS_PACKAGES:
+        package = importlib.import_module(package_name)
+        for module in pkgutil.walk_packages(package.__path__, prefix=f"{package_name}."):
+            importlib.import_module(module.name)
 
 
 def _defined_subclass_paths(base: type) -> set[str]:
@@ -433,14 +435,12 @@ def _assert_paths_pinned(found: set[str], pinned: tuple[str, ...], kind: str) ->
     )
 
 
-@namespace_is_default
 def test_metatable_models_keep_their_physical_table_names() -> None:
     models = metatable_provider_models()
 
     assert {model.__name__: model.__table__.name for model in models} == PINNED_TABLE_NAMES
 
 
-@namespace_is_default
 def test_metatable_models_keep_their_metatable_identifiers() -> None:
     models = metatable_provider_models()
 
@@ -490,25 +490,21 @@ def test_portfolio_configuration_hash_is_pinned(signal_name: str) -> None:
     )
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_UPDATE_HASHES))
 def test_metatables_update_hash_is_pinned(updaters, name: str) -> None:
     assert updaters[name].update_hash == PINNED_UPDATE_HASHES[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_PRE_RENAME_UPDATE_HASHES))
 def test_pre_rename_update_hash_is_pinned(updaters, name: str) -> None:
     assert pre_rename_update_hash(updaters[name]) == PINNED_PRE_RENAME_UPDATE_HASHES[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_NESTED_SIGNAL_UIDS))
 def test_signal_uid_with_nested_updaters_is_pinned(updaters, name: str) -> None:
     assert compute_signal_uid(NESTED_SIGNALS[name](updaters)) == PINNED_NESTED_SIGNAL_UIDS[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES))
 def test_portfolio_configuration_hash_with_nested_updaters_is_pinned(updaters, name: str) -> None:
     configuration = NESTED_PORTFOLIOS[name](updaters)
@@ -519,13 +515,11 @@ def test_portfolio_configuration_hash_with_nested_updaters_is_pinned(updaters, n
     )
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_STRATEGY_REVISIONS))
 def test_rebalance_strategy_revision_is_pinned(updaters, name: str) -> None:
     assert compute_strategy_revision(STRATEGIES[name](updaters)) == PINNED_STRATEGY_REVISIONS[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_CONFIGURED_STORAGE))
 def test_configured_storage_keeps_its_table_name_and_identifier(name: str) -> None:
     storage = CONFIGURED_STORAGE[name]()
@@ -536,7 +530,6 @@ def test_configured_storage_keeps_its_table_name_and_identifier(name: str) -> No
     ) == PINNED_CONFIGURED_STORAGE[name]
 
 
-@namespace_is_default
 def test_simulated_class_moves_keep_ms_markets_identities(monkeypatch) -> None:
     """Move and rename pinned classes, as a package rename would, and re-derive every identity."""
 

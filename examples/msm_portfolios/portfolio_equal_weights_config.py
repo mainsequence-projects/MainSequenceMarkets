@@ -1,26 +1,31 @@
+"""The equal-weight example's configuration, and the one table it owns.
+
+The example is a producer: it declares its interpolated-price table on its own base, in its
+own namespace, and migrates it with its own provider (`portfolio_equal_weights_migrations`).
+The table's key comes from the configuration alone, so the committed revision creates it in
+every Environment.
+"""
+
 from __future__ import annotations
 
-import os
 import sys
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 
 if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (  # noqa: E402
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
+from metatables import sqlalchemy_naming_convention  # noqa: E402
+from msm.storage_instances import configured_time_index_instance  # noqa: E402
 from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
-    configured_interpolated_prices_storage,
+    InterpolatedPricesStorage,
+    interpolated_prices_instance_key,
 )
 
 NAMESPACE = "mainsequence.examples.portfolios"
@@ -32,14 +37,31 @@ SOURCE_PRICE_CADENCE = ExternalPricesStorage.__cadence__
 PRICE_UPSAMPLE_FREQUENCY_ID = "1d"
 PRICE_INTERPOLATION_RULE = "ffill"
 
-DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV = (
-    "MSM_EXAMPLE_PORTFOLIO_SOURCE_TIME_INDEX_META_TABLE_UID"
-)
-DYNAMIC_SOURCE_CADENCE_ENV = "MSM_EXAMPLE_PORTFOLIO_SOURCE_CADENCE"
-DYNAMIC_UPSAMPLE_FREQUENCY_ENV = "MSM_EXAMPLE_PORTFOLIO_UPSAMPLE_FREQUENCY"
-DYNAMIC_INTERPOLATION_RULE_ENV = "MSM_EXAMPLE_PORTFOLIO_INTERPOLATION_RULE"
-DYNAMIC_MIGRATION_PROVIDER = (
-    "examples.msm_portfolios.portfolio_equal_weights_dynamic_migration:migration"
+PROVIDER_NAMESPACE = "equal-weight-example"
+PROVIDER_STORAGE_APP = "equal_weight_example"
+MIGRATION_PROVIDER = "examples.msm_portfolios.portfolio_equal_weights_migrations:migration"
+MIGRATION_COMMAND = f"metatables --local migrations upgrade --provider {MIGRATION_PROVIDER} head"
+
+
+class ProviderBase(DeclarativeBase):
+    """The example's own base: its migration provider targets this metadata."""
+
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+# Another source, cadence, upsample frequency or rule is another table, and another revision.
+INTERPOLATED_PRICES_STORAGE = configured_time_index_instance(
+    InterpolatedPricesStorage,
+    instance_key=interpolated_prices_instance_key(
+        source_table_name=ExternalPricesStorage.__table__.name,
+        source_cadence=SOURCE_PRICE_CADENCE,
+        upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
+        intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
+    ),
+    cadence=PRICE_UPSAMPLE_FREQUENCY_ID,
+    namespace=PROVIDER_NAMESPACE,
+    storage_app=PROVIDER_STORAGE_APP,
+    base=ProviderBase,
 )
 
 PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
@@ -49,6 +71,7 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "CalendarSessionRule",
     "CalendarException",
     "AssetCalendar",
+    "IndexType",
     "Portfolio",
     "SignalMetadata",
     "RebalanceStrategyMetadata",
@@ -61,151 +84,20 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
 ]
 
 
-def configured_equal_weight_interpolated_prices_storage(
-    *,
-    source_time_index_meta_table_uid: str,
-    source_cadence: str,
-) -> type[Any]:
-    """Return the configured interpolation storage class for this example policy."""
-
-    return configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid=source_time_index_meta_table_uid,
-        source_cadence=source_cadence,
-        upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
-        intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
-    )
-
-
-def source_time_index_meta_table_uid(source_meta_table: Any) -> str:
-    """Return the registered source TimeIndexMetaTable UID."""
-
-    return str(source_meta_table.uid)
-
-
-def source_cadence_from_meta_table(
-    source_meta_table: Any,
-) -> str:
-    """Return declared cadence from registered source output metadata."""
-
-    profile = getattr(source_meta_table, "time_indexed_profile", None)
-    cadence: Any = None
-    if isinstance(profile, Mapping):
-        cadence = profile.get("cadence")
-    elif profile is not None:
-        cadence = getattr(profile, "cadence", None)
-
-    if cadence not in (None, ""):
-        return str(cadence).strip().lower()
-
-    cadence = getattr(source_meta_table, "cadence", None)
-    if cadence not in (None, ""):
-        return str(cadence).strip().lower()
-
-    contract = getattr(source_meta_table, "table_contract", None)
-    if isinstance(contract, Mapping):
-        authoring = contract.get("authoring")
-        if isinstance(authoring, Mapping):
-            time_indexed = authoring.get("time_indexed")
-            if isinstance(time_indexed, Mapping):
-                cadence = time_indexed.get("cadence")
-                if cadence not in (None, ""):
-                    return str(cadence).strip().lower()
-
-    raise RuntimeError(
-        "Registered source price storage is missing backend cadence metadata; "
-        "cannot derive the configured interpolated price storage table. "
-        f"meta_table_uid={getattr(source_meta_table, 'uid', None)}, "
-        f"physical_table_name={getattr(source_meta_table, 'physical_table_name', None)}."
-    )
-
-
-def repair_source_cadence_metadata(
-    source_meta_table: Any,
-    *,
-    expected_cadence: str,
-) -> tuple[Any, str, bool]:
-    """Ensure the registered source TimeIndexMetaTable declares cadence metadata."""
-
-    try:
-        return source_meta_table, source_cadence_from_meta_table(source_meta_table), False
-    except RuntimeError as missing_error:
-        patch = getattr(source_meta_table, "patch", None)
-        if not callable(patch):
-            raise missing_error
-
-    patched = patch(cadence=expected_cadence)
-    try:
-        return patched, source_cadence_from_meta_table(patched), True
-    except RuntimeError as patched_error:
-        raise RuntimeError(
-            "Registered source price storage cadence repair was attempted, but "
-            "the backend response still does not expose cadence metadata."
-        ) from patched_error
-
-
-def dynamic_provider_env(
-    *,
-    source_time_index_meta_table_uid: str,
-    source_cadence: str,
-) -> dict[str, str]:
-    """Return the environment needed by the dynamic migration provider."""
-
-    return {
-        EXAMPLE_NAMESPACE_ENV: EXAMPLE_METATABLE_NAMESPACE,
-        DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV: source_time_index_meta_table_uid,
-        DYNAMIC_SOURCE_CADENCE_ENV: source_cadence,
-        DYNAMIC_UPSAMPLE_FREQUENCY_ENV: PRICE_UPSAMPLE_FREQUENCY_ID,
-        DYNAMIC_INTERPOLATION_RULE_ENV: PRICE_INTERPOLATION_RULE,
-    }
-
-
-def dynamic_storage_from_env() -> type[Any]:
-    """Build the configured interpolation storage class for the migration provider."""
-
-    source_time_index_meta_table_uid = os.environ.get(DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV)
-    source_cadence = os.environ.get(DYNAMIC_SOURCE_CADENCE_ENV)
-    if source_time_index_meta_table_uid in (None, "") or source_cadence in (None, ""):
-        raise RuntimeError(
-            "Dynamic portfolio migration provider requires "
-            f"{DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV} and "
-            f"{DYNAMIC_SOURCE_CADENCE_ENV}. "
-            "Run examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py "
-            "instead of invoking the provider directly."
-        )
-
-    return configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid=str(source_time_index_meta_table_uid),
-        source_cadence=str(source_cadence),
-        upsample_frequency_id=os.environ.get(
-            DYNAMIC_UPSAMPLE_FREQUENCY_ENV,
-            PRICE_UPSAMPLE_FREQUENCY_ID,
-        ),
-        intraday_bar_interpolation_rule=os.environ.get(
-            DYNAMIC_INTERPOLATION_RULE_ENV,
-            PRICE_INTERPOLATION_RULE,
-        ),
-    )
-
-
 __all__ = [
     "ASSET_UNIQUE_IDENTIFIERS",
     "CRYPTO_CALENDAR_UNIQUE_IDENTIFIER",
-    "DYNAMIC_INTERPOLATION_RULE_ENV",
-    "DYNAMIC_MIGRATION_PROVIDER",
-    "DYNAMIC_SOURCE_CADENCE_ENV",
-    "DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV",
-    "DYNAMIC_UPSAMPLE_FREQUENCY_ENV",
+    "INTERPOLATED_PRICES_STORAGE",
+    "MIGRATION_COMMAND",
+    "MIGRATION_PROVIDER",
     "NAMESPACE",
     "PORTFOLIO_EXAMPLE_RUNTIME_MODELS",
     "PORTFOLIO_UNIQUE_IDENTIFIER",
     "PRICE_INTERPOLATION_RULE",
     "PRICE_UPSAMPLE_FREQUENCY_ID",
+    "PROVIDER_NAMESPACE",
+    "PROVIDER_STORAGE_APP",
+    "ProviderBase",
     "SOURCE_PRICE_CADENCE",
     "TIME_INDEX",
-    "configured_equal_weight_interpolated_prices_storage",
-    "dynamic_provider_env",
-    "dynamic_storage_from_env",
-    "repair_source_cadence_metadata",
-    "source_cadence_from_meta_table",
-    "source_time_index_meta_table_uid",
 ]

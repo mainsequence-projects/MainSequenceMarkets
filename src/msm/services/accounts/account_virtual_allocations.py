@@ -32,7 +32,6 @@ TARGET_TYPE_ASSET = "asset"
 TARGET_TYPE_PORTFOLIO = "portfolio"
 OWNER_FUND = "fund"
 OWNER_DIRECT = "direct"
-DEFAULT_ALLOCATION_SCAN_LIMIT = 5_000
 APPLY_BLOCKER_PORTFOLIO_RETIRED = "portfolio_retired"
 
 
@@ -776,6 +775,7 @@ def resolve_account_virtual_fund_allocation_inputs(
         PositionSetTable,
     )
     from msm.models.assets import AssetTable
+    from msm.repositories.complete_reads import read_every_model_row
     from msm.repositories.crud import search_model
     from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositionsStorage
 
@@ -840,19 +840,17 @@ def resolve_account_virtual_fund_allocation_inputs(
     )
     holdings_set_uid = _required_string(holdings_set_row.get("uid"), "AccountHoldingsSetTable.uid")
     account_holding_rows = operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=AccountHoldingsStorage,
             filters={"holdings_set_uid": holdings_set_uid},
-            limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
         )
     )
     target_position_rows = operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=TargetPositionsStorage,
             filters={"position_set_uid": str(position_set_uid)},
-            limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
         )
     )
 
@@ -871,22 +869,20 @@ def resolve_account_virtual_fund_allocation_inputs(
     if asset_identifiers:
         asset_rows.extend(
             operation_result_rows(
-                search_model(
+                read_every_model_row(
                     context,
                     model=AssetTable,
                     in_filters={"unique_identifier": sorted(asset_identifiers)},
-                    limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
                 )
             )
         )
     if asset_uids:
         asset_rows.extend(
             operation_result_rows(
-                search_model(
+                read_every_model_row(
                     context,
                     model=AssetTable,
                     in_filters={"uid": sorted(asset_uids)},
-                    limit=DEFAULT_ALLOCATION_SCAN_LIMIT,
                 )
             )
         )

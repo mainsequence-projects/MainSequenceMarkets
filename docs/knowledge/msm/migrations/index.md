@@ -41,9 +41,10 @@ The bridge is forward-only. See
 Release 3.0.0 adds revision `0022`. Each pre-3.0 `*_data_node_uid` column gets
 a successor named after the identity it holds, `*_table_update_uid` or
 `*storage_table_uid`, and the existing values are copied. ms-markets 3.x writes
-both columns and reads the pre-3.0 ones, because 2.x writers update only those.
-A later release switches reads once every writer runs 3.x, 4.0 stops writing the
-pre-3.0 columns, and 4.1 drops them; each step needs its own release. See
+both columns and reads the pre-3.0 ones, because 2.x writers update only those;
+every release before 5.0.0 does the same. Release 5.0.0 adds revision `0035`,
+which copies each pre-3.0 column into its successor, makes `storage_table_uid`
+NOT NULL on pricing market-data bindings and drops the pre-3.0 columns. See
 [ADR 0048](../../../ADR/0048-time-index-vocabulary-rename.md).
 
 Revision `0019_ledger_hypertable_uniqueness` removes the event ledger's extra
@@ -88,8 +89,8 @@ previous release keeps serving.
 
 ### Migration diagnostics and repeated runs
 
-ms-markets requires MetaTables 0.1.64 or later, which waits out a MetaTables API rollout during
-discovery instead of failing (MetaTables#108). `upgrade_application()` automatically
+ms-markets requires MetaTables 0.1.74 or later. Since 0.1.64 it waits out a MetaTables API
+rollout during discovery instead of failing (MetaTables#108). `upgrade_application()` automatically
 uses fresh table inventories and batched physical inspections; PostgreSQL
 reflection is batched by schema. Finalization requests remain bounded to ten
 tables each, with the version table first. No batching option or project-specific
@@ -125,12 +126,15 @@ requires no new grant or application revision. If `0020` committed but
 finalization failed, deploy the repaired shared API and rerun the hosted Job at
 head; keep all existing application data and applied revisions. An already
 current development hypertable keeps its owner and rows. This is a server
-requirement; the Markets migration client requirement is separate (currently 0.1.64).
+requirement; the Markets migration client requirement is separate (currently 0.1.74).
 
 The runner carries changed, non-empty authored table descriptions, labels, and
 column descriptions, labels, and logical names in each finalization batch. An
 unchanged revision can therefore refresh catalog metadata without new DDL.
-Empty or absent metadata preserves existing values; fresh physical inspection
+Empty or absent metadata preserves existing values, except a time-index table's cadence:
+since MetaTables 0.1.74 each upgrade stores the model's `__cadence__`, and clears the stored
+one when the model declares none. The shared API must be 0.1.74 or later for such a change;
+an earlier one refuses that finalization with `422`. Fresh physical inspection
 still owns types, keys, indexes, and nullability. Equal-valued reruns avoid
 catalog writes. This payload requires the matching MetaTables API update, which
 also corrects SQLite schema reflection for multi-batch downgrades.

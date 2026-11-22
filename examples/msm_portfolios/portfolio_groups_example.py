@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -9,16 +8,9 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (  # noqa: E402
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
 
 import msm  # noqa: E402
-from msm.api.calendars import Calendar, CalendarType  # noqa: E402
-from msm.api.portfolios import Portfolio, PortfolioGroup  # noqa: E402
 
 EXAMPLE_PORTFOLIO_UNIQUE_IDENTIFIER = "example-grouped-portfolio"
 EXAMPLE_PORTFOLIO_GROUPS = [
@@ -38,6 +30,7 @@ EXAMPLE_PORTFOLIO_GROUPS = [
 def run_portfolio_group_workflow() -> dict[str, Any]:
     """Create one portfolio and assign it to multiple portfolio groups."""
 
+    use_local_runtime()
     msm.start_engine(
         models=[
             "Calendar",
@@ -49,6 +42,9 @@ def run_portfolio_group_workflow() -> dict[str, Any]:
             "PortfolioGroupMembership",
         ],
     )
+
+    from msm.api.calendars import Calendar, CalendarType
+    from msm.api.portfolios import Portfolio, PortfolioGroup
 
     calendar = Calendar.upsert(
         unique_identifier="EXAMPLE_GROUP_PORTFOLIO_CALENDAR",

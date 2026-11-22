@@ -72,7 +72,7 @@ other places to look.
 | `src/msm_portfolios` | `tests/msm_portfolios`, and the files in `tests/apps`, `tests/msm_migrations` and `tests/identity` that import the changed module |
 | `src/msm` | the files in `tests/msm` for the changed area, and every other test file that imports the changed module |
 | `src/msm_migrations` | `tests/msm_migrations`, and the database tests of the tables the revision changes |
-| `src/msm_cli` | `tests/msm_cli` (`tests/identity/test_rename_preflight.py` for the rename preflight) |
+| `src/msm_cli` | `tests/msm_cli` |
 | `apps` | the files in `tests/apps` for the changed routers and services |
 | `jobs`, `examples` | the tests that load or import the changed file (`git grep -l <name> tests`) |
 | `tests/support`, `tests/conftest.py` | the tests that use the changed helper or fixture |
@@ -101,9 +101,7 @@ worker:
   so they are put back after the test.
 - A module that reads the environment when imported is imported at collection, not first
   inside a test that changes that environment. A test that imports
-  `msm_migrations` lives in `tests/msm_migrations`, whose modules import it at collection:
-  first imported under another namespace, its migration provider would move every later
-  database of that worker into that namespace.
+  `msm_migrations` lives in `tests/msm_migrations`.
 - The PostgreSQL fixtures use a database per worker: `<database>_gw0`, `<database>_gw1`,
   ..., created next to the one their URL variable names
   (`tests/support/postgresql_databases.py`). The PostgreSQL user needs `CREATEDB`, which
@@ -112,3 +110,11 @@ worker:
 PostgreSQL-gated tests run only when the change touches PostgreSQL SQL, a migration, or
 their fixtures. Run them against one throwaway TimescaleDB container with an empty
 `markets_*` database per URL variable they read, and remove the container afterwards.
+
+`tests/msm/repositories/test_postgresql_account_delete_volume.py` measures one account
+delete with months of history in the tables (10 accounts of 1,000 holdings sets, their
+allocations, targets, orders, trades and events). It prints the time of the read, of each
+statement, of the transaction and of MetaTables' statistics rebuild of each table the
+transaction locked, and fails when the read and the transaction take 10 s or more. Run it
+with `-s` after changing the account delete, its keys or its indexes; seeding takes a
+minute or two.

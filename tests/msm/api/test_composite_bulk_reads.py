@@ -132,7 +132,7 @@ def test_future_upsert_many_and_filter(monkeypatch, runtime) -> None:
     assert Future.filter(underlying_index_uids=[uuid.uuid4()]) == []
 
 
-def test_holdings_snapshots_scan_ordered_pages(monkeypatch) -> None:
+def test_holdings_snapshots_are_one_complete_read(monkeypatch) -> None:
     from msm.services.accounts import core
 
     account_uid = str(uuid.uuid4())
@@ -141,38 +141,35 @@ def test_holdings_snapshots_scan_ordered_pages(monkeypatch) -> None:
         {"time_index": time, "account_uid": account_uid, "asset_identifier": f"A{index}",
          "holdings_set_uid": f"set-{time.day}", "quantity": 1, "direction": 1}
         for time in times
-        for index in range(300)
+        for index in range(600)
     ]
     calls: list[dict[str, Any]] = []
 
-    def search_model(context, *, model, filters, in_filters=None, limit, offset=0, order_by=None):
-        calls.append({"in_filters": in_filters, "offset": offset, "order_by": order_by})
-        selected = rows if not in_filters else [r for r in rows if r["time_index"] in in_filters["time_index"]]
-        selected = sorted(selected, key=lambda r: r["time_index"], reverse=order_by == ["-time_index"])
-        return {"rows": selected[offset : offset + limit]}
+    def read_snapshots(context, *, account_uid, order, holdings_dates, snapshots):
+        calls.append({"order": order, "holdings_dates": holdings_dates, "snapshots": snapshots})
+        selected = holdings_dates if holdings_dates is not None else times[:snapshots]
+        return {"rows": [row for row in rows if row["time_index"] in selected]}
 
-    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+    monkeypatch.setattr(core, "read_account_holdings_snapshots", read_snapshots)
     monkeypatch.setattr(core, "get_account_by_uid", lambda context, uid: {"row": {"uid": account_uid}})
 
     latest_two = core.get_account_holdings_snapshots_response(object(), account_uid=account_uid, limit=2)
 
     assert [snapshot["holdings_date"] for snapshot in latest_two] == times[:2]
-    assert [len(snapshot["holdings"]) for snapshot in latest_two] == [300, 300]
-    assert [call["offset"] for call in calls] == [0, 500]
-    assert calls[0]["order_by"] == ["-time_index"]
+    assert [len(snapshot["holdings"]) for snapshot in latest_two] == [600, 600]
+    assert calls == [{"order": "desc", "holdings_dates": None, "snapshots": 2}]
 
     calls.clear()
     chosen = core.get_account_holdings_snapshots_response(
         object(), account_uid=account_uid, holdings_dates=[times[2], dt.datetime(2020, 1, 1, tzinfo=dt.UTC)]
     )
     assert [snapshot["holdings_date"] for snapshot in chosen] == [times[2]]
-    assert calls[0]["in_filters"]["time_index"][0] == times[2]
+    assert calls[0]["holdings_dates"][0] == times[2]
 
-    earliest = core.get_account_holdings_snapshot_response(
-        object(), account_uid=account_uid, order="asc", include_asset_detail=False
+    calls.clear()
+    # An empty list of dates selects nothing; it does not fall back to the latest.
+    assert (
+        core.get_account_holdings_snapshots_response(object(), account_uid=account_uid, holdings_dates=[])
+        == []
     )
-    assert earliest["holdings_date"] == times[2]
-    latest = core.get_account_holdings_snapshot_response(
-        object(), account_uid=account_uid, include_asset_detail=False
-    )
-    assert latest["holdings_date"] == times[0]
+    assert calls == []

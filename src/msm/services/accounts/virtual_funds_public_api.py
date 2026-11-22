@@ -8,20 +8,27 @@ from typing import Any, Literal
 
 from sqlalchemy import String, cast, func, or_, select
 
-from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
-    AccountHoldingsSetTable,
-    AccountTable,
     VirtualFundHoldingsSetTable,
     VirtualFundTable,
 )
 from msm.repositories import MarketsRepositoryContext
+from msm.repositories.account_snapshot_reads import (
+    ALLOCATION,
+    ASSET_REFERENCE,
+    FUND,
+    FUND_SET,
+    HOLDING,
+    prefixed_columns,
+    read_account_fund_holdings,
+    read_account_holdings_set,
+)
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from msm.repositories.complete_reads import read_every_model_row
 from msm.repositories.crud import get_model_by_uid, search_model
 
 DEFAULT_VIRTUAL_FUND_PAGE_SIZE = 25
-MAX_VIRTUAL_FUND_SCAN_LIMIT = 500
 
 
 def list_virtual_fund_rows_response(
@@ -240,57 +247,56 @@ def get_account_holdings_by_fund_response(
     include_asset_detail: bool = True,
     holdings_date: dt.datetime | None = None,
 ) -> dict[str, Any] | None:
+    """An account's holdings set split by virtual fund; ``None`` when the account does not exist.
+
+    Two reads: the account with its holdings set at ``holdings_date`` (else its latest,
+    or earliest with ``order="asc"``) and that set's rows; then the account's virtual
+    funds with what each holds from that set. ``include_asset_detail`` adds each row's
+    asset and latest snapshot to both.
+    """
+
     if limit != 1:
         raise ValueError("Account holdings by fund endpoint currently supports limit=1.")
     if order not in {"asc", "desc"}:
         raise ValueError("order must be 'asc' or 'desc'.")
 
-    account_row = _get_account_row(context, uid=account_uid)
-    if account_row is None:
+    rows = _operation_result_rows(
+        read_account_holdings_set(
+            context,
+            account_uid=account_uid,
+            order=order,
+            holdings_date=_datetime_or_none(holdings_date),
+            include_asset_detail=include_asset_detail,
+        )
+    )
+    if not rows:
         return None
 
-    resolved_account_uid = str(account_row["uid"])
-    holdings_set_row = _account_holdings_set_row(
-        context,
-        account_uid=resolved_account_uid,
-        order=order,
-        holdings_date=holdings_date,
-    )
-    if holdings_set_row is None:
-        return _empty_account_holdings_by_fund(account_uid=resolved_account_uid)
-
-    source_account_holdings_set_uid = _string_or_none(holdings_set_row.get("uid"))
+    resolved_account_uid = str(rows[0]["account_uid"])
+    source_account_holdings_set_uid = _string_or_none(rows[0].get("holdings_set_uid"))
     if source_account_holdings_set_uid is None:
         return _empty_account_holdings_by_fund(account_uid=resolved_account_uid)
 
-    source_rows = _account_holdings_rows_for_set(
-        context,
-        account_uid=resolved_account_uid,
-        holdings_set_uid=source_account_holdings_set_uid,
-    )
-    virtual_fund_rows = _virtual_fund_rows_for_account(
-        context,
-        account_uid=resolved_account_uid,
-    )
-    virtual_fund_uids = [
-        str(row["uid"])
-        for row in virtual_fund_rows
-        if isinstance(row, Mapping) and row.get("uid") not in (None, "")
+    source_rows = [
+        prefixed_columns(row, HOLDING) for row in rows if row.get(f"{HOLDING}time_index")
     ]
-    holdings_set_rows = _virtual_fund_holdings_set_rows_for_source(
-        context,
-        source_account_holdings_set_uid=source_account_holdings_set_uid,
-        virtual_fund_uids=virtual_fund_uids,
-    )
-    allocation_rows = _virtual_fund_holdings_rows_for_source(
-        context,
-        source_account_holdings_set_uid=source_account_holdings_set_uid,
-        virtual_fund_uids=virtual_fund_uids,
-    )
-    asset_references = (
-        _asset_references_by_unique_identifier(
+    fund_rows = _operation_result_rows(
+        read_account_fund_holdings(
             context,
-            rows=[*source_rows, *allocation_rows],
+            account_uid=resolved_account_uid,
+            source_account_holdings_set_uid=source_account_holdings_set_uid,
+            include_asset_detail=include_asset_detail,
+        )
+    )
+    virtual_fund_rows = _distinct_rows(fund_rows, FUND)
+    holdings_set_rows = _distinct_rows(fund_rows, FUND_SET)
+    allocation_rows = [
+        prefixed_columns(row, ALLOCATION) for row in fund_rows if row.get(f"{ALLOCATION}time_index")
+    ]
+    asset_references = (
+        _asset_references(
+            [*source_rows, *allocation_rows],
+            details_by_identifier=_asset_details_by_identifier([*rows, *fund_rows]),
         )
         if include_asset_detail
         else {}
@@ -299,7 +305,7 @@ def get_account_holdings_by_fund_response(
     return {
         "account_uid": resolved_account_uid,
         "source_account_holdings_set_uid": source_account_holdings_set_uid,
-        "holdings_date": _datetime_or_none(holdings_set_row.get("time_index")),
+        "holdings_date": _datetime_or_none(rows[0].get("holdings_set_time")),
         "funds": _build_account_holdings_by_fund_groups(
             virtual_fund_rows=virtual_fund_rows,
             holdings_set_rows=holdings_set_rows,
@@ -378,127 +384,20 @@ def _get_virtual_fund_row(
     return _first_operation_row(get_model_by_uid(context, model=VirtualFundTable, uid=uid))
 
 
-def _get_account_row(
-    context: MarketsRepositoryContext,
-    *,
-    uid: str,
-) -> dict[str, Any] | None:
-    return _first_operation_row(get_model_by_uid(context, model=AccountTable, uid=uid))
-
-
-def _account_holdings_set_row(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    order: Literal["asc", "desc"],
-    holdings_date: dt.datetime | None,
-) -> dict[str, Any] | None:
-    rows = _operation_result_rows(
-        search_model(
-            context,
-            model=AccountHoldingsSetTable,
-            filters={"account_uid": account_uid},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-    if holdings_date is not None:
-        normalized_date = _datetime_or_none(holdings_date)
-        rows = [row for row in rows if _datetime_or_none(row.get("time_index")) == normalized_date]
-    rows = sorted(
-        rows,
-        key=lambda row: (
-            _datetime_or_none(row.get("time_index")) or dt.datetime.min.replace(tzinfo=dt.UTC)
-        ),
-        reverse=order == "desc",
-    )
-    return rows[0] if rows else None
-
-
-def _account_holdings_rows_for_set(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-    holdings_set_uid: str,
-) -> list[dict[str, Any]]:
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=AccountHoldingsStorage,
-            filters={
-                "account_uid": account_uid,
-                "holdings_set_uid": holdings_set_uid,
-            },
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-
-
-def _virtual_fund_rows_for_account(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-) -> list[dict[str, Any]]:
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=VirtualFundTable,
-            filters={"account_uid": account_uid},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-
-
-def _virtual_fund_holdings_set_rows_for_source(
-    context: MarketsRepositoryContext,
-    *,
-    source_account_holdings_set_uid: str,
-    virtual_fund_uids: Sequence[str],
-) -> list[dict[str, Any]]:
-    if not virtual_fund_uids:
-        return []
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=VirtualFundHoldingsSetTable,
-            filters={"source_account_holdings_set_uid": source_account_holdings_set_uid},
-            in_filters={"virtual_fund_uid": sorted(virtual_fund_uids)},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-
-
-def _virtual_fund_holdings_rows_for_source(
-    context: MarketsRepositoryContext,
-    *,
-    source_account_holdings_set_uid: str,
-    virtual_fund_uids: Sequence[str],
-) -> list[dict[str, Any]]:
-    if not virtual_fund_uids:
-        return []
-    return _operation_result_rows(
-        search_model(
-            context,
-            model=VirtualFundHoldingsStorage,
-            filters={"source_account_holdings_set_uid": source_account_holdings_set_uid},
-            in_filters={"virtual_fund_uid": sorted(virtual_fund_uids)},
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
-        )
-    )
-
-
 def _virtual_fund_holdings_snapshot_time(
     context: MarketsRepositoryContext,
     *,
     virtual_fund_uid: str,
     order: Literal["asc", "desc"],
 ) -> dt.datetime | None:
-    aggregate = (
-        func.min(VirtualFundHoldingsSetTable.time_index)
-        if order == "asc"
-        else func.max(VirtualFundHoldingsSetTable.time_index)
-    )
-    statement = select(aggregate.label("time_index")).where(
-        VirtualFundHoldingsSetTable.virtual_fund_uid == virtual_fund_uid
+    time_index = VirtualFundHoldingsSetTable.time_index
+    # The column itself, not its min or max: SQLite returns an aggregate without its
+    # column's type, so without its UTC offset.
+    statement = (
+        select(time_index.label("time_index"))
+        .where(VirtualFundHoldingsSetTable.virtual_fund_uid == virtual_fund_uid)
+        .order_by(time_index.asc() if order == "asc" else time_index.desc())
+        .limit(1)
     )
     result = execute_markets_operation(
         compile_markets_statement(
@@ -541,16 +440,37 @@ def _virtual_fund_holdings_rows(
     holdings_date: dt.datetime,
 ) -> list[dict[str, Any]]:
     return _operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=VirtualFundHoldingsStorage,
             filters={
                 "virtual_fund_uid": virtual_fund_uid,
                 "time_index": holdings_date,
             },
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
         )
     )
+
+
+def _distinct_rows(rows: Sequence[Mapping[str, Any]], prefix: str) -> list[dict[str, Any]]:
+    """The distinct rows of one joined table, by uid, in the order the read returned them."""
+
+    distinct: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        columns = prefixed_columns(row, prefix)
+        if columns.get("uid") not in (None, ""):
+            distinct.setdefault(str(columns["uid"]), columns)
+    return list(distinct.values())
+
+
+def _asset_details_by_identifier(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The asset details the reads joined to their rows, by asset identifier."""
+
+    details: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        detail = prefixed_columns(row, ASSET_REFERENCE)
+        if detail.get("uid") is not None and detail.get("identifier") not in (None, ""):
+            details[str(detail["identifier"])] = detail
+    return details
 
 
 def _asset_references_by_unique_identifier(
@@ -558,30 +478,46 @@ def _asset_references_by_unique_identifier(
     *,
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    unique_identifiers = {
-        str(row["asset_identifier"])
-        for row in rows
-        if row.get("asset_identifier") not in (None, "")
-    }
-    if not unique_identifiers:
+    """Each row's asset reference, from one read of the rows' assets per row cap of them."""
+
+    identifiers = sorted(
+        {
+            str(row["asset_identifier"])
+            for row in rows
+            if row.get("asset_identifier") not in (None, "")
+        }
+    )
+    if not identifiers:
         return {}
 
-    from msm.services.assets import asset_reference_details
+    from msm.services.accounts.core import _asset_reference_details_by_identifier
 
     details_by_identifier = {
-        str(row["asset_identifier"]): row
-        for row in asset_reference_details(
-            sorted(unique_identifiers),
-            repository_context=context,
-        )
-        if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, "")
+        identifier: {
+            "uid": detail.get("asset_uid"),
+            "name": detail.get("name"),
+            "ticker": detail.get("ticker"),
+        }
+        for identifier, detail in _asset_reference_details_by_identifier(
+            context, identifiers=identifiers
+        ).items()
     }
+    return _asset_references(rows, details_by_identifier=details_by_identifier)
 
+
+def _asset_references(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    details_by_identifier: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
     references: dict[str, dict[str, Any]] = {}
-    for unique_identifier in unique_identifiers:
+    for row in rows:
+        if row.get("asset_identifier") in (None, ""):
+            continue
+        unique_identifier = str(row["asset_identifier"])
         detail_row = details_by_identifier.get(unique_identifier)
         references[unique_identifier] = {
-            "uid": _string_or_none(detail_row.get("asset_uid")) if detail_row else None,
+            "uid": _string_or_none(detail_row.get("uid")) if detail_row else None,
             "asset_identifier": unique_identifier,
             "current_snapshot": {
                 "name": _string_or_none(detail_row.get("name")) if detail_row else None,

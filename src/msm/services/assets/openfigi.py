@@ -227,6 +227,7 @@ def register_index_from_figi(
     figi_code: str,
     *,
     index_type: str,
+    value_format: str,
     api_key: str | None = None,
     api_url: str | None = None,
 ):
@@ -237,11 +238,25 @@ def register_index_from_figi(
         api_key=api_key,
         api_url=api_url,
     )
-    return upsert_index_from_openfigi_result(normalized, index_type=index_type)
+    return upsert_index_from_openfigi_result(
+        normalized,
+        index_type=index_type,
+        value_format=value_format,
+    )
 
 
-def upsert_index_from_openfigi_result(item: Mapping[str, Any], *, index_type: str):
-    """Upsert an index row from a normalized or raw OpenFIGI result."""
+def upsert_index_from_openfigi_result(
+    item: Mapping[str, Any],
+    *,
+    index_type: str,
+    value_format: str,
+):
+    """Upsert an index row from a normalized or raw OpenFIGI result.
+
+    OpenFIGI does not say how an Index's values are displayed, so `value_format` is
+    the caller's. A new Index is `custom`, since it has no formula (ADR 0037); an
+    existing one keeps its `calculation_method`.
+    """
 
     from msm.api.indices import Index
 
@@ -254,6 +269,7 @@ def upsert_index_from_openfigi_result(item: Mapping[str, Any], *, index_type: st
     if not unique_identifier:
         raise ValueError("OpenFIGI index result does not include `figi`.")
 
+    stored = Index.get_by_unique_identifier(str(unique_identifier))
     return Index.upsert(
         unique_identifier=str(unique_identifier),
         index_type=index_type,
@@ -262,6 +278,8 @@ def upsert_index_from_openfigi_result(item: Mapping[str, Any], *, index_type: st
             or normalized.get("security_description")
             or str(unique_identifier)
         ),
+        calculation_method="custom" if stored is None else stored.calculation_method,
+        value_format=value_format,
         description=normalized.get("security_description"),
         metadata_json=_openfigi_reference_metadata(normalized),
     )
@@ -272,6 +290,7 @@ def register_index_future_from_figis(
     *,
     underlying_index_figi: str,
     underlying_index_type: str,
+    underlying_index_value_format: str,
     settlement_asset_uid: UUID | str,
     margin_asset_uid: UUID | str,
     kind: str,
@@ -289,9 +308,9 @@ def register_index_future_from_figis(
     """Resolve an index FIGI and a future FIGI, then upsert the Future row.
 
     FIGI supplies canonical identifiers and provider metadata. Index
-    classification and contract terms remain explicit inputs because OpenFIGI
-    does not provide a stable enough schema for this library to infer index
-    type, settlement, margin, size, or expiration rules.
+    classification, value format and contract terms remain explicit inputs
+    because OpenFIGI does not provide a stable enough schema for this library to
+    infer index type, value format, settlement, margin, size, or expiration rules.
     """
 
     from msm.api.derivatives import Future
@@ -299,6 +318,7 @@ def register_index_future_from_figis(
     underlying_index = register_index_from_figi(
         underlying_index_figi,
         index_type=underlying_index_type,
+        value_format=underlying_index_value_format,
         api_key=api_key,
         api_url=api_url,
     )

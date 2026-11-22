@@ -1,42 +1,20 @@
 from __future__ import annotations
 
-import os
-
 DEFAULT_MARKETS_NAMESPACE = "mainsequence.markets"
-MSM_AUTO_REGISTER_NAMESPACE_ENV = "MSM_AUTO_REGISTER_NAMESPACE"
 ASSET_IDENTIFIER_DIMENSION = "asset_identifier"
 INDEX_IDENTIFIER_DIMENSION = "index_identifier"
 
 
 def markets_namespace(namespace: str | None = None) -> str:
-    """Return the active markets namespace for MetaTables and updaters."""
+    """Return ``namespace``, or Markets' own namespace when none is given."""
 
     if namespace not in (None, ""):
         return str(namespace)
-    return os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV) or DEFAULT_MARKETS_NAMESPACE
-
-
-def markets_configured_namespace(default_namespace: str | None = None) -> str:
-    """Return the env-overridable namespace for declarative model defaults."""
-
-    env_namespace = os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV)
-    if env_namespace not in (None, ""):
-        return str(env_namespace)
-    if default_namespace not in (None, ""):
-        return str(default_namespace)
     return DEFAULT_MARKETS_NAMESPACE
 
 
-def markets_auto_register_namespace() -> str | None:
-    """Return the environment-provided startup namespace when configured."""
-
-    if os.getenv(MSM_AUTO_REGISTER_NAMESPACE_ENV):
-        return markets_namespace()
-    return None
-
-
 def markets_identifier(identifier: str, namespace: str | None = None) -> str:
-    """Return the active logical identifier for markets resources."""
+    """Return the logical identifier of a resource in ``namespace``, Markets' own by default."""
 
     resolved_identifier = str(identifier).strip(".")
     resolved_namespace = markets_namespace(namespace)
@@ -49,23 +27,10 @@ def markets_identifier(identifier: str, namespace: str | None = None) -> str:
     return f"{namespace_prefix}{resolved_identifier}"
 
 
-def markets_data_node_identifier(identifier: str, namespace: str | None = None) -> str:
-    """Deprecated alias of :func:`markets_identifier`; removed in ms-markets 4.0 (ADR 0048)."""
-
-    from msm._deprecated_imports import warn_renamed
-
-    warn_renamed("msm.settings.markets_data_node_identifier", "msm.settings.markets_identifier")
-    return markets_identifier(identifier, namespace=namespace)
-
-
 __all__ = [
     "ASSET_IDENTIFIER_DIMENSION",
     "DEFAULT_MARKETS_NAMESPACE",
     "INDEX_IDENTIFIER_DIMENSION",
-    "MSM_AUTO_REGISTER_NAMESPACE_ENV",
-    "markets_auto_register_namespace",
-    "markets_configured_namespace",
-    "markets_data_node_identifier",
     "markets_identifier",
     "markets_namespace",
 ]

@@ -10,13 +10,6 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (  # noqa: E402
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
-
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
@@ -61,6 +54,7 @@ def build_fixed_weights_signal() -> FixedWeights:
 def build_fair_value_portfolio_configuration(
     *,
     valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    calendar_events: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> PortfolioConfiguration:
     signal_weights = build_fixed_weights_signal()
     return PortfolioConfiguration(
@@ -72,6 +66,7 @@ def build_fair_value_portfolio_configuration(
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
+                    calendar_events_instance=calendar_events,
                     calendar_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
                     session_label="regular",
                     rebalance_event="market_close",
@@ -93,10 +88,12 @@ def valuation_source_from_uid(source_time_index_meta_table_uid: str) -> TimeInde
 def run_configuration_example(
     *,
     source_time_index_meta_table_uid: str,
+    calendar_events_time_index_meta_table_uid: str,
 ) -> dict[str, Any]:
     valuation_source = valuation_source_from_uid(source_time_index_meta_table_uid)
     portfolio_configuration = build_fair_value_portfolio_configuration(
         valuation_source=valuation_source,
+        calendar_events=TimeIndexTableRef.from_uid(calendar_events_time_index_meta_table_uid),
     )
     return {
         "portfolio_unique_identifier": PORTFOLIO_UNIQUE_IDENTIFIER,
@@ -118,6 +115,14 @@ def main() -> None:
             "time_index, asset_identifier, and fair_value columns."
         ),
     )
+    parser.add_argument(
+        "--calendar-events-time-index-meta-table-uid",
+        required=True,
+        help=(
+            "UID of the registered TimeIndexMetaTable that PortfolioCalendarEvents publishes "
+            f"{CRYPTO_CALENDAR_UNIQUE_IDENTIFIER}'s market opens and closes to."
+        ),
+    )
     args = parser.parse_args()
     if args.source_time_index_meta_table_uid in (None, ""):
         raise RuntimeError(
@@ -128,6 +133,7 @@ def main() -> None:
 
     result = run_configuration_example(
         source_time_index_meta_table_uid=str(args.source_time_index_meta_table_uid),
+        calendar_events_time_index_meta_table_uid=args.calendar_events_time_index_meta_table_uid,
     )
     for key, value in result.items():
         print(f"{key}: {value}")

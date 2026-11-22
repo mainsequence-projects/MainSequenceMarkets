@@ -4,8 +4,8 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
@@ -128,7 +128,10 @@ def test_extension_provider_rejects_column_name_without_foreign_key() -> None:
 
 
 def test_extension_provider_requires_no_core_updater_inheritance() -> None:
-    class ExtensionOwnedIndexStorage(MarketsMetaTableMixin, MarketsBase):
+    class ExtensionBase(DeclarativeBase):
+        metadata = MetaData()
+
+    class ExtensionOwnedIndexStorage(MarketsMetaTableMixin, ExtensionBase):
         __metatable_identifier__ = "TestExtensionOwnedIndexStorage"
         __metatable_description__ = "Extension-owned Index observations for registry testing."
         __table_args__ = markets_table_args(__metatable_identifier__)
@@ -138,7 +141,7 @@ def test_extension_provider_requires_no_core_updater_inheritance() -> None:
         )
         extension_index_key: Mapped[str] = mapped_column(
             String(255),
-            ForeignKey(f"{IndexTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
+            ForeignKey(IndexTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
             nullable=False,
         )
 

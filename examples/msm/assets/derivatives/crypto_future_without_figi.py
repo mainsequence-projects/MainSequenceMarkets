@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -10,10 +9,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[4]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
+from examples.msm.platform.bootstrap import use_local_runtime
 from msm.constants import (
     ASSET_TYPE_CRYPTO,
     ASSET_TYPE_CRYPTO_DEFINITION,
@@ -22,8 +18,6 @@ from msm.constants import (
     INDEX_TYPE_CRYPTO,
     INDEX_TYPE_CRYPTO_DEFINITION,
 )
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm
 
@@ -43,8 +37,18 @@ EXAMPLE_FUTURE_IDENTIFIER = "example-crypto-btcusdt-perpetual"
 def create_crypto_future_without_figi() -> dict[str, Any]:
     """Create a crypto perpetual future using local identifiers only."""
 
+    use_local_runtime()
     msm.start_engine(
-        models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"],
+        models=[
+            "AssetType",
+            "Asset",
+            "IndexType",
+            "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
+            "FutureAssetDetails",
+        ],
     )
 
     from msm.api.assets import Asset, AssetType
@@ -66,6 +70,8 @@ def create_crypto_future_without_figi() -> dict[str, Any]:
         unique_identifier=EXAMPLE_UNDERLYING_INDEX_IDENTIFIER,
         index_type=INDEX_TYPE_CRYPTO,
         display_name="BTC/USDT Perpetual Reference Index",
+        calculation_method="custom",
+        value_format="decimal",
         description=(
             "Local crypto venue reference index used as the underlying for a "
             "BTC/USDT perpetual future."

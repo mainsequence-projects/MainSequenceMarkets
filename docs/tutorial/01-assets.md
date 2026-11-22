@@ -65,24 +65,9 @@ migration flow and use the explicit startup/bootstrap path with
 `management_mode="external_registered"`. Do not call model `.register()`
 methods or local registration helpers from application code.
 
-Examples that use the platform namespace `mainsequence.examples` set
-`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
-`msm.start_engine(...)` before row operations:
-
-```python
-import os
-
-from examples.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
-
-import msm
-
-msm.start_engine(models=["Asset"])
-```
+To follow the tutorial on a sandbox, select and check the local runtime before importing
+client models, as [Namespaces and sandboxes](../concepts.md#namespaces-and-sandboxes)
+shows. The examples this chapter names do that themselves.
 
 The returned runtime from explicit preflight still exposes table handles and
 context for lower-level repository/service internals, but examples should not
@@ -181,11 +166,9 @@ now also exposes the simple index registry routes:
 - `GET /api/v1/index/{uid}/`
 - `DELETE /api/v1/index/{uid}/`
 
-When `MSM_AUTO_REGISTER_NAMESPACE` is set for this local API, startup now
-pre-registers the full `apps/v1` table set against the runtime DataSource of
-the MetaTables API that the caller's Organization Environment selects. If that
-runtime has no usable DataSource, startup should fail and that
-platform/data-source issue should be fixed directly.
+At startup this API attaches the full `apps/v1` table set from the runtime DataSource of
+the MetaTables API that the process selects. If that runtime has no usable DataSource,
+startup should fail and that platform/data-source issue should be fixed directly.
 
 See [FastAPI v1](../fast_api/v1/index.md) for the current route inventory and
 contract notes.
@@ -323,19 +306,18 @@ snapshot_node = AssetSnapshot().set_snapshots(
 snapshot_frame = snapshot_node.run()
 ```
 
-Markets updaters use the same identifier rule as MetaTables. With the default
-markets namespace, logical identifiers stay bare, such as `Asset` and
-`AssetSnapshotsTS`. With `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`,
-the published identifiers become `mainsequence.examples.Asset` and
-`mainsequence.examples.AssetSnapshotsTS`; the default TimeIndexTableUpdater `hash_namespace`
-is also `mainsequence.examples`. Pass explicit `identifier` or `hash_namespace`
-only when a test or experiment needs isolation.
+Markets updaters use the same identifier rule as MetaTables. In the Markets namespace,
+logical identifiers stay bare, such as `Asset` and `AssetSnapshotsTS`, and the default
+TimeIndexTableUpdater `hash_namespace` is `mainsequence.markets`. A project's own tables
+take the project's namespace as their prefix, such as `my-provider.BarsTS`. Pass an
+explicit `hash_namespace` only when a test or experiment needs separate update
+identities: it isolates no data.
 
 Asset snapshot source tables have a canonical foreign key from
 `asset_identifier` to `AssetTable.unique_identifier`, so the `Asset` MetaTable
 must exist before a snapshot TimeIndexTableUpdater initializes its source table. In examples
 that perform source-table initialization, run `msm.start_engine(models=["Asset"])`
-with the intended namespace before creating the TimeIndexTableUpdater.
+before creating the TimeIndexTableUpdater.
 
 Before the write path persists rows, `AssetSnapshot` checks the backend for the
 incoming `(time_index, asset_identifier)` tuples and fails if any tuple already

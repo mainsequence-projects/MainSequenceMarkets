@@ -28,8 +28,6 @@ from msm_portfolios.time_index.portfolios.storage import (
 from msm_portfolios.time_index.prices.storage import (
     ExternalPricesStorage,
     InterpolatedPricesStorage,
-    configured_interpolated_prices_storage,
-    interpolated_prices_output_table_name,
 )
 from msm_portfolios.time_index.signals import SignalWeights
 from msm_portfolios.time_index.signals.storage import (
@@ -228,42 +226,3 @@ def test_interpolated_prices_normalizes_time_index_output_to_ns_utc() -> None:
 
     assert str(normalized.index.get_level_values("time_index").dtype) == "datetime64[ns, UTC]"
     assert str(normalized["open_time"].dtype) == "datetime64[ns, UTC]"
-
-
-def test_interpolated_price_policy_changes_configured_output_table_name() -> None:
-    daily_storage = configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid="source-uid",
-        source_cadence="1d",
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-    )
-    minute_storage = configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid="source-uid",
-        source_cadence="5m",
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-    )
-
-    assert daily_storage.__table__.name == interpolated_prices_output_table_name(
-        source_time_index_meta_table_uid="source-uid",
-        source_cadence="1d",
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-    )
-    assert daily_storage.__table__.name != minute_storage.__table__.name
-    assert daily_storage.metatable_identifier() != minute_storage.metatable_identifier()
-    assert "InterpolatedPricesTS" in daily_storage.metatable_identifier()
-    assert "InterpolatedPricesTS" in minute_storage.metatable_identifier()
-    assert daily_storage.__metatable_extra_hash_components__["source_cadence"] == "1d"
-    assert minute_storage.__metatable_extra_hash_components__["source_cadence"] == "5m"
-    assert daily_storage.__cadence__ == "1d"
-    assert minute_storage.__cadence__ == "1d"
-    assert daily_storage.__index_names__ == ["time_index", ASSET_IDENTIFIER_DIMENSION]
-    foreign_keys = daily_storage.__table__.c.asset_identifier.foreign_keys
-    assert len(foreign_keys) == 1
-    assert next(iter(foreign_keys)).target_fullname == (
-        f"{AssetTable.__table__.fullname}.unique_identifier"
-    )
-    assert "source_cadence" not in daily_storage.__table__.c
-    assert "upsample_frequency_id" not in daily_storage.__table__.c
-    assert "intraday_bar_interpolation_rule" not in daily_storage.__table__.c

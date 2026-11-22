@@ -8,7 +8,6 @@ from typing import Any
 from . import core as _core
 
 _CORE_ADD_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = _core.add_account_holdings_snapshot_response
-_CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE = _core.get_account_holdings_snapshot_response
 
 account_repository = _core.account_repository
 uuid = _core.uuid
@@ -17,12 +16,11 @@ _asset_snapshot_references_by_unique_identifier = (
     _core._asset_snapshot_references_by_unique_identifier
 )
 _build_account_holdings_frame = _core._build_account_holdings_frame
-_search_account_holdings_rows = _core._search_account_holdings_rows
+read_account_holdings_snapshots = _core.read_account_holdings_snapshots
 
 
-def get_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
-    with _core_account_hooks():
-        return _CORE_GET_ACCOUNT_HOLDINGS_SNAPSHOT_RESPONSE(*args, **kwargs)
+# One read of its own: it uses none of the hooks below.
+get_account_holdings_snapshot_response = _core.get_account_holdings_snapshot_response
 
 
 def add_account_holdings_snapshot_response(*args: Any, **kwargs: Any) -> Any:
@@ -41,7 +39,7 @@ _UNPATCHED_CORE_ACCOUNT_HOOKS: dict[str, Any] = {
         "_asset_reference_details_by_identifier",
         "_asset_snapshot_references_by_unique_identifier",
         "_build_account_holdings_frame",
-        "_search_account_holdings_rows",
+        "read_account_holdings_snapshots",
     )
 }
 

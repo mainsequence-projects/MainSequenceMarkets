@@ -22,6 +22,7 @@ from msm.time_index.utils.storage_schema import (
     storage_time_index_name,
 )
 from msm.models import AssetTable, CalendarTable, PortfolioTable
+from msm.settings import DEFAULT_MARKETS_NAMESPACE
 from msm_portfolios.time_index.contract_instances import (
     PORTFOLIO_STORAGE_CONTRACTS,
     configured_contract_instance_storage,
@@ -37,6 +38,14 @@ from msm_portfolios.time_index.portfolios.storage import (
     PortfolioRebalanceStateStorage,
 )
 from msm_portfolios.models import portfolio_sqlalchemy_models
+
+
+class OwnerBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+OWNER_A = {"namespace": "ns-a", "storage_app": "app_a", "base": OwnerBase}
+OWNER_B = {"namespace": "ns-b", "storage_app": "app_b", "base": OwnerBase}
 
 
 @pytest.mark.parametrize(
@@ -61,7 +70,7 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 )
 def test_instances_share_the_contract_schema_under_a_provider_namespace(factory, contract, core):
     instance = factory(
-        instance_key="main", namespace="my-provider", storage_app="my_provider"
+        instance_key="main", namespace="my-provider", storage_app="my_provider", base=OwnerBase
     )
 
     assert issubclass(instance, PlatformTimeIndexMetaTable)
@@ -102,7 +111,7 @@ def test_instances_share_the_contract_schema_under_a_provider_namespace(factory,
 def test_instances_carry_the_core_storage_layout(contract) -> None:
     core = PORTFOLIO_STORAGE_CONTRACTS[contract].core_storage
     instance = configured_contract_instance_storage(
-        contract, instance_key="layout_check", namespace="ns-a", storage_app="app_a"
+        contract, instance_key="layout_check", **OWNER_A
     )
 
     core_layout = getattr(core, "__storage_layout__", None)
@@ -118,7 +127,7 @@ def test_event_ledger_instance_registers_with_the_core_secondary_index() -> None
     # The default layout would name the lookup index after the four identity
     # dimensions (70 characters), which MetaTables refuses to register.
     instance = configured_portfolio_event_ledger_storage(
-        instance_key="layout_check", namespace="ns-a", storage_app="app_a"
+        instance_key="layout_check", **OWNER_A
     )
 
     request = time_indexed_registration_request_from_sqlalchemy_model(
@@ -148,12 +157,12 @@ def test_published_series_are_not_contracts() -> None:
         "PortfolioRebalanceStateTS",
     ]
     with pytest.raises(ValueError, match="Unknown portfolio storage contract"):
-        configured_contract_instance_storage("PortfoliosTS", instance_key="x")
+        configured_contract_instance_storage("PortfoliosTS", instance_key="x", **OWNER_A)
 
 
 def test_instances_keep_the_contract_foreign_keys_to_core_registries() -> None:
-    rebalance = configured_portfolio_rebalance_state_storage(instance_key="fk_check", namespace="ns-a")
-    events = configured_portfolio_calendar_events_storage(instance_key="fk_check", namespace="ns-a")
+    rebalance = configured_portfolio_rebalance_state_storage(instance_key="fk_check", **OWNER_A)
+    events = configured_portfolio_calendar_events_storage(instance_key="fk_check", **OWNER_A)
 
     def targets(model, column):
         return sorted(fk.target_fullname for fk in model.__table__.c[column].foreign_keys)
@@ -178,7 +187,7 @@ def test_instances_keep_the_contract_foreign_keys_to_core_registries() -> None:
     ],
 )
 def test_engine_output_instances_keep_every_core_foreign_key(factory, core) -> None:
-    instance = factory(instance_key="fk_check", namespace="ns-a")
+    instance = factory(instance_key="fk_check", **OWNER_A)
 
     def foreign_keys(model):
         return sorted(
@@ -206,9 +215,14 @@ def test_every_contract_declares_the_core_table_foreign_keys() -> None:
 
 
 def test_identifier_is_stable_and_derived_from_contract_and_instance_key() -> None:
-    first = configured_portfolio_rebalance_state_storage(instance_key="Stable", namespace="ns-b")
-    second = configured_portfolio_rebalance_state_storage(instance_key="stable", namespace="ns-b")
-    markets = configured_portfolio_rebalance_state_storage(instance_key="second_engine")
+    first = configured_portfolio_rebalance_state_storage(instance_key="Stable", **OWNER_B)
+    second = configured_portfolio_rebalance_state_storage(instance_key="stable", **OWNER_B)
+    markets = configured_portfolio_rebalance_state_storage(
+        instance_key="second_engine",
+        namespace=DEFAULT_MARKETS_NAMESPACE,
+        storage_app="second_app",
+        base=OwnerBase,
+    )
 
     assert first is second
     assert (
@@ -217,15 +231,21 @@ def test_identifier_is_stable_and_derived_from_contract_and_instance_key() -> No
     )
     # The default Markets namespace keeps the bare identifier, as every Markets table does.
     assert markets.__metatable_identifier__ == "PortfolioRebalanceStateTS.second_engine"
-    assert markets.__table__.name == "ms_markets__portfoliorebalancestatets__second_engine"
+    assert markets.__table__.name == "second_app__portfoliorebalancestatets__second_engine"
     assert markets.__table__.name != PortfolioRebalanceStateStorage.__table__.name
     with pytest.raises(ValueError, match="instance_key"):
-        configured_portfolio_rebalance_state_storage(instance_key="Bad Key!")
+        configured_portfolio_rebalance_state_storage(instance_key="Bad Key!", **OWNER_A)
     with pytest.raises(ValueError, match="Unknown portfolio storage contract"):
-        configured_contract_instance_storage("BarsTS", instance_key="x")
+        configured_contract_instance_storage("BarsTS", instance_key="x", **OWNER_A)
 
 
-def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
+@pytest.mark.parametrize("empty", [None, "", "  "])
+def test_an_instance_table_name_requires_its_owners_app(empty) -> None:
+    with pytest.raises(ValueError, match="storage_app is required"):
+        contract_instance_table_name("PortfolioRebalanceStateTS", "main", storage_app=empty)
+
+
+def test_provider_base_receives_only_the_instance_keyed_to_markets_columns() -> None:
     class ProviderBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
@@ -238,18 +258,16 @@ def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
 
     assert issubclass(instance, ProviderBase)
     assert instance.__table__.metadata is ProviderBase.metadata
-    assert set(ProviderBase.metadata.tables) == {
-        "app__portfoliorebalancestatets__own_base",
-        AssetTable.__table__.name,
-        PortfolioTable.__table__.name,
-    }
+    assert set(ProviderBase.metadata.tables) == {"app__portfoliorebalancestatets__own_base"}
     assert "app__portfoliorebalancestatets__own_base" not in MarketsBase.metadata.tables
-    assert ProviderBase.metadata.tables[AssetTable.__table__.name] is not AssetTable.__table__
+    targets = {key.parent.name: key.column for key in instance.__table__.foreign_keys}
+    assert targets["asset_identifier"] is AssetTable.__table__.c.unique_identifier
+    assert targets["portfolio_identifier"] is PortfolioTable.__table__.c.unique_identifier
 
 
 def test_instances_carry_the_series_lookup_index_of_their_contract() -> None:
     rebalance = configured_portfolio_rebalance_state_storage(
-        instance_key="series_index", namespace="ns-a"
+        instance_key="series_index", **OWNER_A
     )
 
     lookup = [

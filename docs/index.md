@@ -45,7 +45,7 @@ from msm.models import AssetTable       # SQLAlchemy declaration — schema code
 ```
 
 The full runtime model — the three layers, `start_engine()` as attachment (not
-schema creation), migrations-before-runtime, and `MSM_AUTO_REGISTER_NAMESPACE` —
+schema creation), migrations-before-runtime, and namespaces and sandboxes —
 is documented once in [Core Concepts](concepts.md). Read it before the rest of
 the docs.
 

@@ -25,7 +25,7 @@ market asset.
 - asset scopes can be translated into TimeIndexTableUpdater `dimension_filters`;
 - per-asset update ranges are exposed through helpers such as
   `get_asset_dimension_range_map_great_or_equal(...)`;
-- the default `hash_namespace` follows the active markets namespace;
+- the default `hash_namespace` is `mainsequence.markets`;
 - the registered storage class declares a foreign key from `asset_identifier` to
   `AssetTable.unique_identifier`.
 
@@ -237,19 +237,29 @@ sets the project's default `__metatable_namespace__` and, when needed,
 the namespace and base identifier into the globally unique catalog/runtime
 identity. Set the mixin attributes before model import/mapping.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
-set before model import. Use that for isolated tests and examples.
+Project-local storage classes are declared on the project's own declarative
+base, never on `MarketsBase`, which is for built-in ms-markets models. The
+project's migration provider targets that base's metadata, and the foreign key
+passes Markets' column object.
+
+The project mixin namespace is final. Isolated tests and examples use a
+[separate database](../../../concepts.md#namespaces-and-sandboxes) with the same names.
 
 ```python
 import datetime
 
 import pandas as pd
-from sqlalchemy import DateTime, Float, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import DateTime, Float, ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsTimeIndexMetaTableMixin
 from msm.time_index.assets import AssetUpdaterConfiguration, AssetTimestampedUpdater
 from msm.models.assets.core import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
@@ -258,7 +268,7 @@ class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, Base):
     __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
@@ -274,10 +284,7 @@ class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(AssetTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
         nullable=False,
         info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )
@@ -373,10 +380,6 @@ import msm
 runtime = msm.start_engine(models=["Asset"])
 ```
 
-Examples that use `MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` inherit
-the same namespace for both markets MetaTables and default markets TimeIndexTableUpdater
-hash namespaces.
-
 ## Building And Running AssetSnapshot
 
 Use `AssetSnapshot.build_frame(...)` when you want local frame validation, and
@@ -450,16 +453,13 @@ model-specific packages at the `msm.time_index` root.
 ## Namespaces And Identifiers
 
 Markets updaters use the same namespace rule as markets MetaTables because
-their default identifiers derive from their storage classes. With the default
-markets namespace, logical identifiers stay bare, such as `Asset` and
-`AssetSnapshotsTS`. With
-`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples`, `Asset` resolves to
-`mainsequence.examples.Asset`, while
-`AssetSnapshot._default_identifier()` derives from
-`AssetSnapshotsStorage.metatable_identifier()` and resolves to
-`mainsequence.examples.AssetSnapshotsTS`.
+their default identifiers derive from their storage classes. In the Markets
+namespace, logical identifiers stay bare, such as `Asset` and
+`AssetSnapshotsTS`; `AssetSnapshot._default_identifier()` derives the latter from
+`AssetSnapshotsStorage.metatable_identifier()`. A storage class in a project's
+namespace carries that namespace as its prefix, such as `my-provider.BarsTS`.
 
-The default TimeIndexTableUpdater `hash_namespace` also follows the active markets namespace.
+The default TimeIndexTableUpdater `hash_namespace` is `mainsequence.markets`.
 Pass an explicit `hash_namespace` only for isolated experiments, tests, or
 parallel runs that must not collide on a shared backend.
 

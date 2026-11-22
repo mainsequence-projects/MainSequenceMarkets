@@ -49,17 +49,13 @@ def main(argv: list[str] | None = None) -> int:
         list_adapter_calendars,
         resync_adapter_calendars,
     )
-    from msm.settings import markets_auto_register_namespace
 
     mode = "dry run, nothing is written" if arguments.dry_run else "writing"
     print(f"Calendar re-sync ({mode})", flush=True)
     failures = 0
     # Pin the Environment's API for the whole run and allow its runtime to wake.
     with api_endpoint_scope(discovery_timeout=300):
-        runtime = msm.start_engine(
-            namespace=markets_auto_register_namespace(),
-            models=list(CALENDAR_MODELS),
-        )
+        runtime = msm.start_engine(models=list(CALENDAR_MODELS))
         # One calendar at a time, so a failure names its calendar and the rest still run.
         targets = arguments.calendars or [
             calendar["unique_identifier"] for calendar in list_adapter_calendars(runtime.context)

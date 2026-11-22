@@ -35,7 +35,9 @@ attribute, because the check never does it.
 ## Deletion
 
 Ordinary delete requires edit access and respects table and inbound
-reference protections. Alembic-managed tables reject ordinary deletion. External
+reference protections. Alembic-managed tables reject ordinary deletion; the 409 names
+the two ways to [retire one](../client/define-and-migrate-tables.md#retire-a-table),
+a drop revision of its provider or the cascade override below. External
 unregistration leaves the physical relation intact; owned managed storage is
 dropped restrictively before catalog removal.
 

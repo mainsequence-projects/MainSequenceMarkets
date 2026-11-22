@@ -127,9 +127,9 @@ import msm
 msm.start_engine(models=["AssetType", "Asset", "Issuer", "BondAssetDetails"])
 ```
 
-Examples and development scripts can set `MSM_AUTO_REGISTER_NAMESPACE` before
-importing the API classes when they need an example namespace, but they still
-must call `msm.start_engine(...)` during startup before row operations.
+Examples and development scripts select the
+[local runtime](../../../concepts.md#namespaces-and-sandboxes) before importing the API
+classes, then call `msm.start_engine(...)` during startup before row operations.
 
 ## Example
 

@@ -130,6 +130,7 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, template, prepare=None):
                 operation=wire.operation,
                 parameters=wire.statement.parameters,
                 parameter_types=wire.statement.parameter_types,
+                result_types=wire.statement.result_types,
                 **wire.limits.model_dump(include={"max_rows", "offset", "statement_timeout_ms"}),
             )
         )
@@ -144,7 +145,14 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, template, prepare=None):
                     operation=wire.operation,
                     statements=[
                         statement.model_dump(
-                            include={"sql", "parameters", "parameter_types", "expect_rows", "label"}
+                            include={
+                                "sql",
+                                "parameters",
+                                "parameter_types",
+                                "result_types",
+                                "expect_rows",
+                                "label",
+                            }
                         )
                         for statement in wire.statements
                     ],

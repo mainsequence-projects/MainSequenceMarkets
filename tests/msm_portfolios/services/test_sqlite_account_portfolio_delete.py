@@ -30,6 +30,7 @@ from msm_portfolios.services import (
 from msm_portfolios.services.account_portfolio_deletion import PORTFOLIO_CHANGED_REASON
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.support.account_delete import (
+    EVERY_TABLE_COUNTS,
     MARKETS_TABLES,
     _account_rows,
     _create_provider_tables,
@@ -77,7 +78,10 @@ def sqlite_markets(sqlite_markets, monkeypatch):
 def test_the_portfolios_follow_the_account_in_the_same_list() -> None:
     portfolios = [uuid.uuid4(), uuid.uuid4()]
     statements = account_with_portfolios_delete_statements(
-        uid=uuid.uuid4(), unique_identifier="account-1", portfolio_uids=portfolios
+        uid=uuid.uuid4(),
+        unique_identifier="account-1",
+        row_counts=EVERY_TABLE_COUNTS,
+        portfolio_uids=portfolios,
     )
 
     assert len(statements) == WITH_PORTFOLIOS <= 32
@@ -222,7 +226,8 @@ def test_an_account_without_portfolios_is_deleted_alone(sqlite_markets) -> None:
     deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
 
     assert deleted["deleted_portfolios"] == [] and deleted["kept_portfolios"] == []
-    assert sqlite_markets.requests == ["read", f"transaction:{ACCOUNT_STATEMENTS}"]
+    # Holdings, holdings sets and the account: the read found every other table empty.
+    assert sqlite_markets.requests == ["read", "transaction:3"]
 
 
 # Kept portfolios -------------------------------------------------------------------------

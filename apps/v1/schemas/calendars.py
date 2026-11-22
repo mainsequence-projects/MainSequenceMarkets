@@ -6,12 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
 from msm.services.calendars.computation import format_local_time, normalize_weekdays
 
 
 def _calendar_contracts():
-    prepare_apps_v1_import_namespace()
     from msm.api.calendars import (
         Calendar,
         CalendarCreate,

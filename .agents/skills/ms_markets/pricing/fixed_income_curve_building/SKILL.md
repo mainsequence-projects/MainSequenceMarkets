@@ -213,6 +213,8 @@ index = Index.upsert(
     unique_identifier="USD-SOFR-3M",
     index_type=INDEX_TYPE_INTEREST_RATE,
     display_name="USD SOFR 3M",
+    calculation_method="custom",
+    value_format="percent",
 )
 
 IndexConventionDetails.upsert(

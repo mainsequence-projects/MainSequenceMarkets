@@ -6,7 +6,7 @@ import datetime
 import uuid
 from typing import ClassVar
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, SmallInteger, String
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, SmallInteger, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -30,6 +30,11 @@ class VirtualFundHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
     __table_args__ = (
         CheckConstraint("direction IN (1, -1)", name="ck_virtual_fund_holdings_direction"),
+        # The unique index leads with time_index; these serve one fund's rows from one
+        # source holdings set, and the foreign keys that reference them (revision 0034).
+        Index(None, "virtual_fund_uid", "source_account_holdings_set_uid"),
+        Index(None, "source_account_holdings_set_uid"),
+        Index(None, "virtual_fund_holdings_set_uid"),
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [
@@ -186,6 +191,12 @@ class AccountAllocationLinesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase)
             "target_direction IN (1, -1) AND assigned_direction IN (1, -1)",
             name="ck_account_allocation_lines_directions",
         ),
+        # The unique index leads with time_index; these serve one account's lines and the
+        # foreign keys that reference the account, its holdings sets and its funds
+        # (revision 0034).
+        Index(None, "account_uid", "time_index"),
+        Index(None, "holdings_set_uid"),
+        Index(None, "virtual_fund_uid"),
     )
     __time_index_name__: ClassVar[str] = "time_index"
     __index_names__: ClassVar[list[str]] = [

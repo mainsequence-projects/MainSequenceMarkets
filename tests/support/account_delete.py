@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import sqlalchemy as sa
 
-from msm.repositories.account_deletion import ACCOUNT_DELETE_TABLES
+from msm.repositories.account_deletion import ACCOUNT_DELETE_TABLES, ACCOUNT_HISTORY_KEYS
 from msm.services.accounts import deletion
 from tests.support.sqlite_markets import (
     WHEN,
@@ -26,6 +26,8 @@ from tests.support.sqlite_markets import (
 )
 
 MARKETS_TABLES = {table.model.__table__.name for table in ACCOUNT_DELETE_TABLES}
+EVERY_TABLE_COUNTS = {key: 1 for key in ACCOUNT_HISTORY_KEYS}
+"""The delete read's counts for an account with rows in every table."""
 
 
 def account_markets(markets, monkeypatch) -> SimpleNamespace:

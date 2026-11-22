@@ -80,26 +80,34 @@ def resolve_markets_meta_table_models(
 
 
 def _normalize_markets_meta_table_model_class(model: type[Any]) -> type[MarketsBase]:
-    if issubclass(model, MarketsBase):
-        return model
-    # A provider instance built on the provider's own declarative base
-    # (msm.storage_instances, the portfolio contract factories) carries the
-    # Markets mixins and a mapped table without subclassing MarketsBase.
-    if issubclass(model, (MarketsMetaTableMixin, MarketsTimeIndexMetaTableMixin)) and isinstance(
-        getattr(model, "__table__", None), Table
-    ):
+    if _is_markets_model(model):
         return model
 
     table_model = getattr(model, "__table__", None)
-    if isinstance(table_model, type) and issubclass(table_model, MarketsBase):
+    if _is_markets_model(table_model):
         return table_model
 
     raise ValueError(
-        "Markets MetaTable model selectors must be built-in names, "
-        "MarketsBase subclasses, Markets storage instances on a provider base, or "
-        "row API classes with __table__ pointing to a MarketsBase subclass. Got "
-        f"{model.__module__}.{model.__qualname__}."
+        "Markets MetaTable model selectors must be built-in names, models mapped with the "
+        "Markets mixins on any declarative base, or row API classes with __table__ pointing "
+        f"to such a model. Got {model.__module__}.{model.__qualname__}."
     )
+
+
+def _is_markets_model(model: Any) -> bool:
+    """A built-in model, or a project's model or instance on the project's own base.
+
+    A project's table carries a Markets mixin and lives on the project's base, so that
+    its migration provider sees no Markets table.
+    """
+
+    if not isinstance(model, type):
+        return False
+    if issubclass(model, MarketsBase):
+        return True
+    return issubclass(
+        model, (MarketsMetaTableMixin, MarketsTimeIndexMetaTableMixin)
+    ) and isinstance(getattr(model, "__table__", None), Table)
 
 
 def _dependency_ordered_markets_meta_table_models(
@@ -286,6 +294,7 @@ def markets_foreign_key_target_identifiers(model: type[MarketsBase]) -> list[str
         for element in foreign_key_constraint.elements:
             target_model = _metatable_foreign_key_target_model(
                 element,
+                source=model,
                 candidate_models=candidate_models,
             )
             targets.add(markets_table_storage_name(target_model))
@@ -604,17 +613,39 @@ def _target_meta_tables_from_bound_models(
 def _metatable_foreign_key_target_model(
     element: Any,
     *,
+    source: type[MarketsBase],
     candidate_models: Sequence[type[MarketsBase]],
 ) -> type[MarketsBase]:
     target_table = element.column.table
     models_by_table = _models_by_table_fullname(candidate_models)
     target_model = models_by_table.get(str(target_table.fullname))
     if target_model is None:
+        target_model = _model_on_the_same_base(source, target_table)
+    if target_model is None:
         raise ValueError(
             "Markets MetaTable foreign key target is not in the loaded provider model graph: "
             f"{target_table.fullname!r}."
         )
     return target_model
+
+
+def _model_on_the_same_base(source: type[Any], table: Table) -> type[MarketsBase] | None:
+    """The Markets-mixin model of ``table`` on the declarative base of ``source``.
+
+    A project's tables live on the project's own base, where a key can lead from one
+    to another. Only such a target is looked up there: the base's other models do not
+    enter the resolution.
+    """
+
+    mapper = getattr(source, "__mapper__", None)
+    if mapper is None:
+        return None
+    models = [
+        other.class_
+        for other in mapper.registry.mappers
+        if other.local_table is table and _is_markets_model(other.class_)
+    ]
+    return _models_by_table_fullname(models).get(str(table.fullname))
 
 
 def _metatable_foreign_key_target_models(
@@ -628,6 +659,7 @@ def _metatable_foreign_key_target_models(
         for element in foreign_key_constraint.elements:
             target_model = _metatable_foreign_key_target_model(
                 element,
+                source=model,
                 candidate_models=candidate_models,
             )
             if target_model in seen:

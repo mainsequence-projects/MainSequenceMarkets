@@ -40,11 +40,11 @@ def test_index_convention_details_start_engine_uses_pricing_dependencies(
         fake_attach_pricing_schemas,
     )
 
-    assert IndexConventionDetails.start_engine(namespace="pricing-test") is runtime
+    assert IndexConventionDetails.start_engine(timeout=5) is runtime
     assert calls == [
         {
             "models": [IndexTypeTable, IndexTable, IndexConventionDetailsTable],
-            "namespace": "pricing-test",
+            "timeout": 5,
         }
     ]
 

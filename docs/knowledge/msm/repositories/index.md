@@ -107,6 +107,24 @@ of a statement at its 8 MiB, those rows were written, they are missing from
 `build_bulk_upsert_model_operation` builds one write for all its rows. It raises
 `ValueError` when a statement of that write is over the first two limits.
 
+### Reads That Answer Every Row
+
+A read whose answer stands for a whole (a holdings or target snapshot, an allocation,
+the inputs of a write) does not take a `limit`: a part of it looks like the whole.
+`msm.repositories.complete_reads` reads it:
+
+- `read_every_model_row(context, model=..., filters=..., in_filters=...)` for one
+  table's rows. An empty `IN` list matches no row, where `search_model` drops it.
+- `read_every_row(build_page, context=...)` for a select of its own. `build_page(offset)`
+  compiles `page_select(statement, key=..., offset=offset)` with `compile_page`. The
+  `key` must make each row unique, or the pages are not stable.
+
+A page holds 10,000 rows. An answer in one statement costs one request. One in several
+statements is read again until two reads agree, so a write between pages cannot mix two
+states, and `IncompleteReadError` is raised when none agree.
+
+`search_model` and its `limit` remain for lists a caller pages through.
+
 ## Extension Notes
 
 Add generic behavior in `crud` only when it applies across models. Add

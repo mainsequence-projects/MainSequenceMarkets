@@ -149,18 +149,37 @@ mixin namespace and base identifier into the globally unique MetaTable
 identifier. This does not affect row API selection and does not remove the need
 for MetaTables migration/provider registration before runtime startup.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
-it is set before model import. Use that for isolated tests and examples. Do not
-use environment-only namespace setup as the primary extension contract for a
-real project.
+The project mixin namespace is final, and Markets' own namespace is always
+`mainsequence.markets`: neither the environment nor a runtime argument changes
+either. A sandbox is a separate database, such as MetaTables' local SQLite
+runtime, with the same names. Select it with `metatables.configure_local_client()`
+before importing client models, and check `local_mode` and the `sqlite` dialect
+with `metatables.get_runtime_status()` before the first write.
 
 Built-in ms-markets tables and storage classes use their built-in definitions as-is.
 Downstream projects must not set or override `__markets_storage_app__` on built-in
 ms-markets models. Set it only on project-local models before migration and
 registration.
 
+Project-local extension models are declared on the project's own declarative
+base, never on `MarketsBase`, which is for built-in models. The project's
+migration provider targets that base's metadata
+(`.agents/skills/ms_markets/platform/metatable_migrations/SKILL.md`). A key to
+Markets passes the column object.
+
 ```python
-from msm.base import MarketsBase, MarketsMetaTableMixin
+import uuid
+
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import ForeignKey, MetaData, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from msm.base import MarketsMetaTableMixin
+from msm.models import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
@@ -169,16 +188,23 @@ class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
     __markets_base_identifier__ = "MyAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
+        primary_key=True,
+        info={"description": "Canonical AssetTable uid for this detail row."},
     )
 ```
 
 Already-qualified `__metatable_identifier__` values remain accepted for existing
 models. Prefer `__markets_base_identifier__` for new project-local models so the
-project namespace default and test namespace override are explicit.
+project namespace is explicit.
 
 Set `__metatable_namespace__` and `__markets_storage_app__` before SQLAlchemy
 maps the table. Changing either after migration finalization points the model at
@@ -187,7 +213,7 @@ registration path.
 
 When adding a new built-in markets MetaTable model:
 
-1. Define the SQLAlchemy model with `MarketsMetaTableMixin`.
+1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
 2. Add a meaningful `__metatable_description__`.
 3. Declare platform-managed foreign keys with normal SQLAlchemy
    `ForeignKey(f"{TargetModel.__table__.fullname}.column", ...)`.
@@ -259,12 +285,14 @@ objects may inherit directly from Pydantic `BaseModel`, but their runtime
 attachment still belongs to `msm.start_engine(models=[...])` and their table
 dependencies must be explicit.
 
-When reviewing or implementing extension support, verify the ADR 0018 target:
+When reviewing or implementing extension support, verify:
 
-- `msm.start_engine(models=[CustomTable])` accepts project-local
-  `MarketsBase` subclasses that are not in `markets_sqlalchemy_models()`.
+- `msm.start_engine(models=[CustomTable])` accepts project-local models that carry
+  a Markets mixin on the project's own declarative base and are not in
+  `markets_sqlalchemy_models()`, and row API classes over them.
 - SQLAlchemy `ForeignKey(...)` targets are expanded transitively, so a custom
-  asset detail table pulls in `AssetTable` before runtime attachment.
+  asset detail table pulls in `AssetTable` before runtime attachment, and a table
+  keyed to another table of the same project base pulls that table in.
 - Duplicate logical identifiers fail before runtime attachment.
 - Backend MetaTable resources are finalized before runtime and runtime binding
   uses the same direct lookup path used by built-ins.

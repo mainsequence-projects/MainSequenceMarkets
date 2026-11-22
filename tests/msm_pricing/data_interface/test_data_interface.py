@@ -30,9 +30,8 @@ from msm_pricing.settings import (
 
 
 @pytest.fixture(autouse=True)
-def reset_pricing_market_data(monkeypatch) -> None:
+def reset_pricing_market_data() -> None:
     reset_pricing_market_data_configuration()
-    monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
     yield
     reset_pricing_market_data_configuration()
 

@@ -22,10 +22,8 @@ or other secrets.
     "version": "4.3.14"
   },
   "runtime": {
-    "namespace": "mainsequence.examples",
-    "namespace_source": "MSM_AUTO_REGISTER_NAMESPACE",
+    "namespace": "mainsequence.markets",
     "default_namespace": "mainsequence.markets",
-    "auto_register_enabled": true,
     "management_mode": "platform_managed",
     "schema_mutation_allowed": false,
     "requires_migrations": true
@@ -39,8 +37,8 @@ or other secrets.
     {
       "key": "namespace",
       "label": "Markets namespace",
-      "value": "mainsequence.examples",
-      "source": "MSM_AUTO_REGISTER_NAMESPACE",
+      "value": "mainsequence.markets",
+      "source": "msm.settings",
       "description": "Runtime MetaTables and time-index table updaters resolve against this namespace."
     },
     {
@@ -48,7 +46,7 @@ or other secrets.
       "label": "Runtime bootstrap",
       "value": "startup_attachment",
       "source": "apps/v1 runtime bootstrap",
-      "description": "The API attaches markets and pricing runtime tables during application startup when auto-registration namespace is configured."
+      "description": "The API attaches markets and pricing runtime tables during application startup."
     },
     {
       "key": "schema_management",
@@ -61,6 +59,5 @@ or other secrets.
 }
 ```
 
-When `MSM_AUTO_REGISTER_NAMESPACE` is not set, `runtime.namespace` falls back to
-`mainsequence.markets`, `runtime.namespace_source` is `default`, and
-`runtime.auto_register_enabled` is `false`.
+`runtime.namespace` is always `mainsequence.markets`: Markets' own namespace cannot be
+overridden.

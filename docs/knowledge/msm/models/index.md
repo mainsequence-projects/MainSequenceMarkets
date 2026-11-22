@@ -85,38 +85,63 @@ Platform-managed models inherit `MarketsMetaTableMixin`, which assigns the
 physical SQLAlchemy table name through the package naming convention. Model
 classes should declare a logical identifier, `__metatable_description__`, and
 SQLAlchemy `__table_args__`, but should not hand-write `__tablename__`.
-The physical name is `ms_markets__<lowercase-concept>` and gains an
-`MSM_AUTO_REGISTER_NAMESPACE` suffix when that environment variable is set
-before model import.
+The physical name is `ms_markets__<lowercase-concept>`, in every database.
 
 Project-local extension models can keep the markets mixins while using a
 project-owned physical table-name app segment. Set `__markets_storage_app__` in
 the SQLAlchemy model class, or in an abstract project-local mixin, before the
-model is imported and mapped:
+model is imported and mapped. Declare the model on the project's own declarative
+base, never on `MarketsBase`, which is for built-in models, and pass Markets'
+column object to each key to Markets:
 
 ```python
+import uuid
+
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import ForeignKey, MetaData, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from msm.base import MarketsMetaTableMixin
+from msm.models import AccountTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __abstract__ = True
     __metatable_namespace__ = "com.my_project"
     __markets_storage_app__ = "my_project_markets"
 
 
-class ProviderAccountDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+class ProviderAccountDetailsTable(MyProjectMarketsMetaTableMixin, Base):
     __markets_base_identifier__ = "ProviderAccountDetails"
     __metatable_description__ = (
-        "Project-local provider account details keyed by AssetTable.uid."
+        "Project-local provider account details keyed by AccountTable.uid."
+    )
+
+    account_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(AccountTable.__table__.c.uid, ondelete="CASCADE"),
+        primary_key=True,
+        info={"description": "Canonical AccountTable uid for this detail row."},
     )
 ```
 
-That changes only the SQLAlchemy physical table name, for example
+The project's migration provider targets `Base.metadata`, so it migrates only
+the project's tables
+([MetaTable migrations](../platform/metatable_migrations.md)).
+
+The storage app changes only the SQLAlchemy physical table name, for example
 `my_project_markets__provideraccountdetails`. The local mixin's
 `__metatable_namespace__` combines with `__markets_base_identifier__` to produce
 the globally unique logical catalog and row runtime identity:
 `com.my_project.ProviderAccountDetails`.
 
-`MSM_AUTO_REGISTER_NAMESPACE` overrides the mixin namespace when set before
-model import. That keeps tests and examples isolated without changing the
-project-local model source. Existing models may still declare an already
+The mixin namespace is final. Tests and examples are isolated by a
+[separate database](../../../concepts.md#namespaces-and-sandboxes), without changing
+the project-local model source. Existing models may still declare an already
 qualified `__metatable_identifier__`; new extension models should prefer
 `__markets_base_identifier__` so the default namespace rule is visible.
 
@@ -129,9 +154,9 @@ pricing tables are validated so every physical column has a non-empty
 description before registration-facing tests pass.
 
 Built-in ms-markets models author `__metatable_identifier__` as the bare logical
-name, such as `Asset`. At runtime the shared markets identifier rule keeps the
-bare name for the default markets namespace and prefixes non-default test or
-example namespaces, such as `mainsequence.examples.Asset`.
+name, such as `Asset`. The shared markets identifier rule keeps the bare name in
+the Markets namespace and prefixes a project's namespace to the identifiers of
+that project's tables, such as `com.my_project.ProviderAccountDetails`.
 
 ## Extension Notes
 
@@ -150,8 +175,9 @@ Portfolio groups are an example of this split: `PortfolioGroupTable` and
 reference core `PortfolioTable`, while the user-facing helpers live in
 `msm.api.portfolios.PortfolioGroup` and the HTTP route lives under `apps/v1`.
 
-Project-local extension models do not need to modify `markets_sqlalchemy_models()`.
-Pass the SQLAlchemy model class directly to
+Project-local extension models do not need to modify `markets_sqlalchemy_models()`:
+they live on the project's own declarative base and migrate with the project's
+provider. Pass the SQLAlchemy model class directly to
 `msm.start_engine(models=[MyExtensionTable])`; bootstrap expands SQLAlchemy
 `ForeignKey(...)` dependencies and attaches the model through the shared direct
 backend lookup path.

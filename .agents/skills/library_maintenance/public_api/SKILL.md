@@ -33,13 +33,10 @@ If behavior is not purely HTTP-boundary logic, extract it into `src/`.
 
 For local `apps/v1` development:
 
-- use `MSM_AUTO_REGISTER_NAMESPACE`
-- set it before importing MetaTable-backed `msm.api` or `msm.models` modules
-- do not hardcode namespace bootstrap inside `apps/v1` route code
-
-Local launchers must not hardcode a namespace. Leave `MSM_AUTO_REGISTER_NAMESPACE` unset unless
-the caller explicitly chooses a namespace for that run. The launcher or shell owns this environment
-choice, not application code.
+- Markets' tables are always in `mainsequence.markets`; never add a way to rename or
+  move them per process
+- a sandbox is a separate database, such as MetaTables' local SQLite runtime
+- `apps/v1` code selects no database; the launcher or shell that starts the process does
 
 ## Required Structure
 

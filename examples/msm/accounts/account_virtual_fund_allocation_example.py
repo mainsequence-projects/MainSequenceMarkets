@@ -8,6 +8,11 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from examples.msm.accounts.account_portfolio_full_workflow import (  # noqa: E402
     run_account_portfolio_full_workflow,
 )
@@ -15,14 +20,12 @@ from examples.msm.accounts.account_portfolio_full_workflow import (  # noqa: E40
 
 def run_account_virtual_fund_allocation_example(
     *,
-    prepare_portfolio_schema: bool = True,
     run_portfolio_updaters: bool = True,
     apply_plan: bool = False,
 ):
     """Run the full account workflow with the virtual-fund allocation extension."""
 
     return run_account_portfolio_full_workflow(
-        prepare_portfolio_schema=prepare_portfolio_schema,
         use_portfolio_example=True,
         run_portfolio_updaters=run_portfolio_updaters,
         run_virtual_fund_allocation=True,
@@ -32,11 +35,6 @@ def run_account_virtual_fund_allocation_example(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--skip-schema-prep",
-        action="store_true",
-        help="Skip portfolio interpolation schema preparation.",
-    )
     parser.add_argument(
         "--no-run-portfolio-updaters",
         action="store_true",
@@ -49,7 +47,6 @@ def main() -> None:
     )
     args = parser.parse_args()
     run_account_virtual_fund_allocation_example(
-        prepare_portfolio_schema=not args.skip_schema_prep,
         run_portfolio_updaters=not args.no_run_portfolio_updaters,
         apply_plan=args.apply,
     )

@@ -17,7 +17,6 @@ MetaTable registration:
 - `metatables.migrations.build_alembic_version_metatable`
 - `metatables.migrations.build_metatable_migration_provider`
 - `metatables.migrations.build_metatable_model_registry`
-- `metatables.migrations.metadata_for_models`
 - `metatables.migrations.run_mainsequence_alembic_env`
 - the `metatables migrations ... --provider <package>.migrations:migration` CLI
 - the `metatables-migrations` skill that `metatables copy-metatables-skills`
@@ -153,14 +152,48 @@ ms-markets `docs/releasing.md` lists the grants for its own deployment.
 
 ## Expected Project Pattern
 
-The project migration provider owns the migrated model list:
+The project migration provider owns the migrated model list and targets the metadata
+of the project's own declarative base:
 
 ```python
+from metatables import sqlalchemy_naming_convention
 from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )
+from msm.base import MarketsMetaTableMixin
+from msm.models import IndexTable
+from msm_portfolios.time_index.contract_instances import (
+    configured_portfolio_rebalance_state_storage,
+)
+from sqlalchemy import ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __metatable_namespace__ = "my-project"
+    __markets_storage_app__ = "my_project"
+
+
+class ProjectMarketTable(ProjectMarketsMetaTableMixin, Base):
+    __markets_base_identifier__ = "MarketTable"
+    __metatable_description__ = "One row per Markets Index that the project follows."
+
+    index_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(IndexTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
+        primary_key=True,
+    )
+
+
+ProjectRebalanceState = configured_portfolio_rebalance_state_storage(
+    instance_key="main", namespace="my-project", storage_app="my_project", base=Base
+)
 
 ProjectAlembicVersion = build_alembic_version_metatable(
     class_name="ProjectAlembicVersion",
@@ -179,10 +212,50 @@ migration = build_metatable_migration_provider(
     alembic_registry=ProjectAlembicVersion,
     metatable_models=[
         ProjectMarketTable,
+        ProjectRebalanceState,
     ],
     after_register_metatables=refresh_project_market_specs,
 )
 ```
+
+Autogenerate compares every table in `target_metadata` with the database, so that
+metadata holds the project's tables and no Markets table:
+
+- `Base` is the project's own base, never `MarketsBase`, whose metadata holds every
+  Markets table: autogenerate would drop a column that a newer Markets deployment
+  added. Its `MetaData` sets no `schema`: Alembic would write that schema onto each
+  key to Markets.
+- Every model in `metatable_models` is on `Base`, hand-written or factory-built. A
+  model on another base is missing from the target, so its table is never created
+  and the upgrade fails. When the target holds no table at all, MetaTables 0.1.73
+  and later refuse to autogenerate. Earlier clients wrote a revision that drops
+  every table in the database: read any revision they generated before applying it.
+- Autogenerate never drops a table (MetaTables 0.1.73). Write the project's own
+  drops by hand, in a revision created with `--no-autogenerate`. Set no
+  `include_name_hook` to get them generated: it replaces both protections, so a
+  hook that admits another owner's table gets that table dropped.
+- Upgrade to the provider's head before authoring its next revision: autogenerate
+  compares with what is applied, and an added table needs nothing else.
+- A time-index table's cadence follows its model (MetaTables 0.1.74, client and API):
+  each upgrade stores `__cadence__`, with no revision, and clears the stored one when
+  the model declares none.
+- A table that `msm.start_engine` attaches carries a Markets mixin with the
+  project's own namespace and storage app, as above. It refuses a table built only
+  on `PlatformManagedMetaTable`.
+- A key to a Markets table passes Markets' column object, as above, or
+  `ForeignKey(AssetTable.__table__.c.uid)` for a key to `uid`. SQLAlchemy resolves a
+  key given as text only inside one `MetaData`, so
+  `ForeignKey("ms_markets__asset.uid")` on `Base` raises `NoReferencedTableError`.
+  The ms-markets instance factories key their instances by column object.
+- Never copy a Markets table into that metadata, with `to_metadata` or as a `Table`
+  of the same name. Autogenerate would compare the copy with the deployed table and
+  drop whatever the copy lacks.
+- Target `Base.metadata` itself. `metadata_for_models` copies the models' tables,
+  which turns their keys back into text that does not resolve.
+
+The revision file still holds only the physical name and key column, for example
+`["ms_markets__index.unique_identifier"]`, and needs no Markets import and no include
+hook.
 
 Always pass both `script_location` and `version_location_prefix`, pointing at
 the provider's own module the way
@@ -205,6 +278,10 @@ or mutate schema. The MetaTables provider already owns schema work.
 - Provider construction uses `metatables.migrations` helpers unless a
   documented helper gap requires a direct constructor.
 - Project tables are listed in the project provider.
+- `target_metadata` is the metadata of the project's own base and holds no Markets
+  table; keys to Markets pass column objects.
+- Every project table, hand-written or factory-built, is on that base.
+- A generated revision has operations on the project's tables only.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.
 - Generated revisions with unchanged FK drop/create churn from `None` versus

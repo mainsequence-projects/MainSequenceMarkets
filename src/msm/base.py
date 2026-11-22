@@ -13,9 +13,6 @@ from metatables import (
 
 from msm.settings import (
     DEFAULT_MARKETS_NAMESPACE,
-    MSM_AUTO_REGISTER_NAMESPACE_ENV,
-    markets_auto_register_namespace,
-    markets_configured_namespace,
     markets_identifier,
     markets_namespace,
 )
@@ -111,7 +108,7 @@ def markets_table_args(
     schema: str | None = MARKETS_SCHEMA,
     namespace: str | None = None,
 ) -> tuple[Any, ...]:
-    resolved_namespace = markets_configured_namespace(namespace)
+    resolved_namespace = markets_namespace(namespace)
     table_options: dict[str, Any] = {
         "info": {
             "namespace": resolved_namespace,
@@ -154,7 +151,6 @@ def _markets_table_name_for_model(cls: type) -> str:
     return markets_table_name(
         markets_table_storage_app(cls),
         _authored_metatable_identifier_for_model(cls),
-        suffix=markets_auto_register_namespace(),
     )
 
 
@@ -172,35 +168,10 @@ def _authored_metatable_identifier_for_model(cls: type) -> str:
 
 
 def _resolved_metatable_identifier_for_model(cls: type, authored_identifier: str) -> str:
-    declared_namespace = getattr(cls, "__metatable_namespace__", None)
-    effective_namespace = markets_configured_namespace(declared_namespace)
-    identifier = _identifier_for_effective_namespace(
-        cls=cls,
-        authored_identifier=authored_identifier,
-        declared_namespace=declared_namespace,
-        effective_namespace=effective_namespace,
+    return markets_identifier(
+        authored_identifier,
+        namespace=getattr(cls, "__metatable_namespace__", None),
     )
-    return markets_identifier(identifier, namespace=effective_namespace)
-
-
-def _identifier_for_effective_namespace(
-    *,
-    cls: type,
-    authored_identifier: str,
-    declared_namespace: str | None,
-    effective_namespace: str,
-) -> str:
-    if "__markets_base_identifier__" in cls.__dict__:
-        return authored_identifier
-
-    if declared_namespace in (None, "", effective_namespace):
-        return authored_identifier
-
-    namespace_prefix = f"{str(declared_namespace).strip('.')}."
-    if authored_identifier.startswith(namespace_prefix):
-        return authored_identifier.removeprefix(namespace_prefix)
-
-    return authored_identifier
 
 
 def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
@@ -220,9 +191,7 @@ def _build_markets_table(cls: type, *args: Any, **kwargs: Any) -> Any:
     table_info = dict(table_kwargs.get("info") or {})
     table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
     authored_identifier = _authored_metatable_identifier_for_model(cls)
-    table_info["namespace"] = markets_configured_namespace(
-        getattr(cls, "__metatable_namespace__", None)
-    )
+    table_info["namespace"] = markets_namespace(getattr(cls, "__metatable_namespace__", None))
     table_info["identifier"] = _resolved_metatable_identifier_for_model(
         cls,
         authored_identifier,
@@ -300,9 +269,7 @@ class MarketsTimeIndexMetaTableMixin(PlatformTimeIndexMetaTable):
         table_info = dict(table_kwargs.get("info") or {})
         table_info.setdefault("markets_storage_app", markets_table_storage_app(cls))
         authored_identifier = _authored_metatable_identifier_for_model(cls)
-        table_info["namespace"] = markets_configured_namespace(
-            getattr(cls, "__metatable_namespace__", None)
-        )
+        table_info["namespace"] = markets_namespace(getattr(cls, "__metatable_namespace__", None))
         table_info["identifier"] = _resolved_metatable_identifier_for_model(
             cls,
             authored_identifier,
@@ -344,11 +311,9 @@ __all__ = [
     "MARKETS_DEFAULT_SCHEMA",
     "MARKETS_SCHEMA",
     "MARKETS_TABLE_APP",
-    "MSM_AUTO_REGISTER_NAMESPACE_ENV",
     "MarketsBase",
     "MarketsMetaTableMixin",
     "MarketsTimeIndexMetaTableMixin",
-    "markets_configured_namespace",
     "markets_identifier",
     "markets_meta_table_identifier",
     "markets_table_args",

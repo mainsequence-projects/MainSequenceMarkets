@@ -80,7 +80,10 @@ For a `PlatformTimeIndexMetaTable`, declare time first in `__index_names__`, the
 full observation grain, and a timezone-aware time column. Prefer `time_index` as
 the time name for updater compatibility. The mixin automatically creates the
 unique index for the full grain; add only additional lookup indexes. Declare
-`__cadence__` when the stable observation interval is known.
+`__cadence__` when the stable observation interval is known. Changing or removing
+it needs no revision: the next `migrations upgrade` stores what the model declares,
+and removing it clears the stored cadence (client and API 0.1.74 or later; deploy
+the API first).
 
 The default storage layout names its lookup index by joining the identity
 columns (`__index_names__[1:]`) with `_`. MetaTables never shortens that name: if

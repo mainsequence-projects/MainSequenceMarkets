@@ -21,14 +21,14 @@ from msm.time_index.utils.storage_schema import (
     storage_column_nullable_map,
 )
 from msm.repositories import MarketsRepositoryContext
-from msm.repositories.crud import search_model
-from msm.services.accounts import (
-    get_account_by_uid,
-    search_account_target_allocations,
-    search_position_sets,
+from msm.repositories.account_snapshot_reads import (
+    ASSET_REFERENCE,
+    PORTFOLIO,
+    TARGET,
+    prefixed_columns,
+    read_account_target_snapshot,
+    read_account_with_stored_target_allocation,
 )
-from msm.services.assets import asset_reference_details_by_uids
-from msm.services.portfolios import search_portfolios
 
 TARGET_POSITION_EXPOSURE_FIELDS = (
     "weight_notional_exposure",
@@ -36,7 +36,6 @@ TARGET_POSITION_EXPOSURE_FIELDS = (
     "single_asset_quantity",
 )
 
-DEFAULT_TARGET_POSITION_SCAN_LIMIT = 500
 PortfolioWeightResolver = Callable[[str], Sequence[Mapping[str, Any]] | pd.DataFrame]
 
 
@@ -239,55 +238,47 @@ def get_account_target_positions_snapshot_response(
     include_asset_detail: bool = True,
     target_positions_date: dt.datetime | str | None = None,
 ) -> dict[str, Any] | None:
-    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
-    if account_row is None:
+    """One target snapshot of an account; ``None`` when the account does not exist.
+
+    One read: the account, its snapshot at ``target_positions_date`` (else the latest,
+    or the earliest with ``order="asc"``) among its active target allocations, the
+    snapshot's rows, their portfolios and, with ``include_asset_detail``, their assets.
+    """
+
+    normalized_order = str(order).lower()
+    if normalized_order not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'.")
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+
+    rows = operation_result_rows(
+        read_account_target_snapshot(
+            context,
+            account_uid=account_uid,
+            order=normalized_order,
+            target_positions_date=_datetime_or_none(target_positions_date),
+            include_asset_detail=include_asset_detail,
+        )
+    )
+    if not rows:
         return None
 
-    resolved_account_uid = str(account_row["uid"])
-    target_allocation_rows = _search_active_account_target_allocation_rows(
-        context,
-        account_uid=resolved_account_uid,
-    )
-    if not target_allocation_rows:
+    resolved_account_uid = str(rows[0]["account_uid"])
+    if _string_or_none(rows[0].get("position_set_uid")) is None:
         return _empty_account_target_positions_snapshot(account_uid=resolved_account_uid)
 
-    position_set_rows = _search_position_set_rows_for_target_allocations(
-        context,
-        target_allocation_uids=[
-            str(row["uid"]) for row in target_allocation_rows if row.get("uid") not in (None, "")
-        ],
-        position_set_time=target_positions_date,
-    )
-    position_set_row = _select_account_position_set_row(
-        position_set_rows,
-        target_positions_date=target_positions_date,
-        order=order,
-        limit=limit,
-    )
-    if position_set_row is None:
-        return _empty_account_target_positions_snapshot(account_uid=resolved_account_uid)
-
-    position_set_uid = _string_or_none(position_set_row.get("uid"))
-    if position_set_uid is None:
-        return _empty_account_target_positions_snapshot(account_uid=resolved_account_uid)
-
-    snapshot_time = _datetime_or_none(position_set_row.get("position_set_time"))
-    position_rows = _search_target_position_rows(
-        context,
-        position_set_uid=position_set_uid,
-        target_positions_date=snapshot_time,
-        limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
-    )
-    asset_references = (
-        _asset_references_by_uid(context, rows=position_rows) if include_asset_detail else {}
-    )
-    portfolio_references = _portfolio_references_by_uid(context, rows=position_rows)
+    position_rows = [
+        prefixed_columns(row, TARGET) for row in rows if row.get(f"{TARGET}position_set_uid")
+    ]
     return _build_account_target_positions_snapshot(
         account_uid=resolved_account_uid,
-        position_set_row=position_set_row,
+        position_set_row={
+            "uid": rows[0]["position_set_uid"],
+            "position_set_time": rows[0].get("position_set_time"),
+        },
         rows=position_rows,
-        asset_references=asset_references,
-        portfolio_references=portfolio_references,
+        asset_references=_asset_references_by_uid(rows) if include_asset_detail else {},
+        portfolio_references=_portfolio_references_by_uid(rows),
         include_asset_detail=include_asset_detail,
     )
 
@@ -301,7 +292,16 @@ def add_account_target_positions_snapshot_response(
     overwrite: bool = False,
     include_asset_detail: bool = True,
 ) -> dict[str, Any] | None:
-    account_row = _first_operation_row(get_account_by_uid(context, uid=account_uid))
+    """Write one target snapshot and answer with it; ``None`` when the account does not exist.
+
+    Three MetaTables operations: read the account with its stored target allocation,
+    write, and read the snapshot back as `get_account_target_positions_snapshot_response`
+    answers it. A cleared target is answered from the write.
+    """
+
+    account_row = _first_operation_row(
+        read_account_with_stored_target_allocation(context, account_uid=account_uid)
+    )
     if account_row is None:
         return None
 
@@ -329,7 +329,7 @@ def add_account_target_positions_snapshot_response(
 
     # A target that names a portfolio requests that virtual fund, so the write
     # creates it. The fund's key includes the account's target allocation, which
-    # is read first: the write keeps a stored allocation's uid.
+    # is read with the account: the write keeps a stored allocation's uid.
     portfolio_uids = sorted(
         {
             str(row["portfolio_uid"])
@@ -338,9 +338,7 @@ def add_account_target_positions_snapshot_response(
         }
     )
     account_target_allocation_uid = (
-        _account_target_allocation_uid(context, account_uid=resolved_account_uid)
-        if portfolio_uids
-        else None
+        _string_or_none(account_row.get("stored_target_allocation_uid")) if portfolio_uids else None
     ) or str(uuid4())
     write_result = replace_account_target_positions_snapshot(
         context,
@@ -400,21 +398,6 @@ def add_account_target_positions_snapshot_response(
         include_asset_detail=include_asset_detail,
         target_positions_date=normalized_target_positions_date,
     )
-
-
-def _account_target_allocation_uid(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-) -> str | None:
-    """The uid of the account's stored target allocation, or ``None`` when it has none."""
-
-    from msm.repositories.accounts import search_account_target_allocations
-
-    rows = operation_result_rows(
-        search_account_target_allocations(context, unique_identifier=account_uid, limit=1)
-    )
-    return _string_or_none(rows[0].get("uid")) if rows else None
 
 
 def _requested_virtual_funds(
@@ -599,110 +582,6 @@ def _expanded_exposure_columns(
     return exposure
 
 
-def _search_active_account_target_allocation_rows(
-    context: MarketsRepositoryContext,
-    *,
-    account_uid: str,
-) -> list[dict[str, Any]]:
-    return [
-        row
-        for row in operation_result_rows(
-            search_account_target_allocations(
-                context,
-                account_uid=account_uid,
-                is_active=True,
-                limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
-            )
-        )
-        if isinstance(row, Mapping)
-    ]
-
-
-def _search_position_set_rows_for_target_allocations(
-    context: MarketsRepositoryContext,
-    *,
-    target_allocation_uids: Sequence[str],
-    position_set_time: dt.datetime | str | None,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for target_allocation_uid in target_allocation_uids:
-        rows.extend(
-            row
-            for row in operation_result_rows(
-                search_position_sets(
-                    context,
-                    account_target_allocation_uid=target_allocation_uid,
-                    position_set_time=position_set_time,
-                    limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
-                )
-            )
-            if isinstance(row, Mapping)
-        )
-    return rows
-
-
-def _select_account_position_set_row(
-    rows: Sequence[Mapping[str, Any]],
-    *,
-    target_positions_date: dt.datetime | str | None,
-    order: str,
-    limit: int,
-) -> dict[str, Any] | None:
-    normalized_order = order.lower()
-    if normalized_order not in {"asc", "desc"}:
-        raise ValueError("order must be 'asc' or 'desc'.")
-    if limit < 1:
-        raise ValueError("limit must be greater than or equal to 1.")
-
-    rows_with_time = [
-        (dict(row), position_set_time)
-        for row in rows
-        if (position_set_time := _datetime_or_none(row.get("position_set_time"))) is not None
-    ]
-    if not rows_with_time:
-        return None
-
-    target_time = _datetime_or_none(target_positions_date)
-    if target_time is not None:
-        exact_rows = [row for row, row_time in rows_with_time if row_time == target_time]
-        if not exact_rows:
-            return None
-        return sorted(exact_rows, key=lambda row: str(row.get("uid", "")))[0]
-
-    ordered_rows = sorted(
-        rows_with_time,
-        key=lambda item: (item[1], str(item[0].get("uid", ""))),
-        reverse=normalized_order == "desc",
-    )
-    return ordered_rows[0][0]
-
-
-def _search_target_position_rows(
-    context: MarketsRepositoryContext,
-    *,
-    position_set_uid: str,
-    target_positions_date: dt.datetime | None,
-    limit: int,
-) -> list[dict[str, Any]]:
-    rows = [
-        row
-        for row in operation_result_rows(
-            search_model(
-                context,
-                model=TargetPositionsStorage,
-                filters={"position_set_uid": position_set_uid},
-                limit=limit,
-            )
-        )
-        if isinstance(row, Mapping)
-    ]
-    if target_positions_date is None:
-        return rows
-    return [
-        row for row in rows if _datetime_or_none(row.get("time_index")) == target_positions_date
-    ]
-
-
 def _build_account_target_positions_snapshot(
     *,
     account_uid: str,
@@ -784,56 +663,42 @@ def _empty_account_target_positions_snapshot(*, account_uid: str | None) -> dict
     }
 
 
-def _asset_references_by_uid(
-    context: MarketsRepositoryContext,
-    *,
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    asset_uids = {str(row["asset_uid"]) for row in rows if row.get("asset_uid") not in (None, "")}
-    if not asset_uids:
-        return {}
+def _asset_references_by_uid(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each position's asset reference, by the position's ``asset_uid``, from the read's rows."""
 
-    details_by_uid = {
-        str(row["asset_uid"]): row
-        for row in asset_reference_details_by_uids(
-            sorted(asset_uids),
-            repository_context=context,
+    references: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        asset_uid = row.get(f"{TARGET}asset_uid")
+        if asset_uid in (None, ""):
+            continue
+        detail = prefixed_columns(row, ASSET_REFERENCE)
+        found = detail.get("uid") is not None
+        references[str(asset_uid)] = _build_asset_snapshot_reference(
+            asset_row=(
+                {"uid": detail["uid"], "unique_identifier": detail.get("identifier")}
+                if found
+                else None
+            ),
+            snapshot_row=detail if found else None,
         )
-        if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-    }
-    return {
-        uid: _build_asset_snapshot_reference(
-            asset_row=_asset_row_from_reference_detail(details_by_uid.get(uid)),
-            snapshot_row=details_by_uid.get(uid),
-        )
-        for uid in sorted(asset_uids)
-    }
+    return references
 
 
 def _portfolio_references_by_uid(
-    context: MarketsRepositoryContext,
-    *,
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    portfolio_uids = {
-        str(row["portfolio_uid"]) for row in rows if row.get("portfolio_uid") not in (None, "")
-    }
-    if not portfolio_uids:
-        return {}
-    portfolio_rows = operation_result_rows(
-        search_portfolios(context, limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT)
-    )
+    """Each position's portfolio reference, by the position's ``portfolio_uid``."""
+
     references: dict[str, dict[str, Any]] = {}
-    for row in portfolio_rows:
-        if not isinstance(row, Mapping):
+    for row in rows:
+        portfolio = prefixed_columns(row, PORTFOLIO)
+        portfolio_uid = _string_or_none(portfolio.get("uid"))
+        if portfolio_uid is None:
             continue
-        portfolio_uid = _string_or_none(row.get("uid"))
-        if portfolio_uid not in portfolio_uids:
-            continue
-        references[portfolio_uid] = {
+        references[str(row[f"{TARGET}portfolio_uid"])] = {
             "uid": portfolio_uid,
-            "unique_identifier": _string_or_empty(row.get("unique_identifier")),
-            "published_index_uid": _string_or_none(row.get("published_index_uid")),
+            "unique_identifier": _string_or_empty(portfolio.get("unique_identifier")),
+            "published_index_uid": _string_or_none(portfolio.get("published_index_uid")),
         }
     return references
 
@@ -856,15 +721,6 @@ def _build_asset_snapshot_reference(
                 _string_or_none(snapshot_row.get("ticker")) if snapshot_row is not None else None
             ),
         },
-    }
-
-
-def _asset_row_from_reference_detail(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    if row is None:
-        return None
-    return {
-        "uid": row.get("asset_uid"),
-        "unique_identifier": row.get("asset_identifier"),
     }
 
 

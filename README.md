@@ -86,6 +86,8 @@ Repository areas:
 - `examples/msm_portfolios/`: portfolio construction, rebalance simulation,
   lifecycle cash-flow, multi-currency valuation, and accounting examples
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples
+  (every example that writes runs only on MetaTables' local SQLite runtime; see
+  [Namespaces and sandboxes](https://mainsequence-projects.github.io/MainSequenceMarkets/concepts/#namespaces-and-sandboxes))
 - `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests
 
@@ -110,8 +112,8 @@ Recommended entry points:
 
 ## Quick Start
 
-`ms-markets` 2.x requires Python 3.13, Main Sequence SDK `>=9.0.31,<10`, and
-the MetaTables client `mainsequence-metatable>=0.1.66,<0.2`, which is imported
+`ms-markets` 5.x requires Python 3.13, Main Sequence SDK `>=9.0.31,<10`, and
+the MetaTables client `mainsequence-metatable>=0.1.74,<0.2`, which is imported
 as `metatables`. SDK 8 and earlier are not supported; install a 1.x
 `ms-markets` release when maintaining an SDK 8 project. See
 [ADR 0043](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0043-sdk-9-metatables-client-hard-cut/)
@@ -229,7 +231,7 @@ The core stack starts with:
 
 - `mainsequence>=9.0.31,<10` for identity, login, Git source context,
   CodeRepository, jobs, and agents
-- `mainsequence-metatable>=0.1.66,<0.2` (import `metatables`) for MetaTables,
+- `mainsequence-metatable>=0.1.74,<0.2` (import `metatables`) for MetaTables,
   time-index table updaters, governed compiled SQL, and application-owned
   Alembic migrations
 - `SQLAlchemy` for market-domain ORM models

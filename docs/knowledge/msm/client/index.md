@@ -375,7 +375,7 @@ Other time series a provider produces live in its own namespace.
 Markets time-index storage (discount curves, index fixings, pricing details,
 index values, orders, trades ...) with the core storage's columns, foreign keys
 and grain index, under the provider's `namespace`, `storage_app` and Alembic
-`base`; the provider binds its updater with `output_table=`. Pricing
+`base`, all three required; the provider binds its updater with `output_table=`. Pricing
 market-data bindings carry such an instance's `storage_table_uid`, and the Index
 dataset catalog its table uid. `msm.storage_copies.copy_time_index_rows` copies
 rows between two tables with the operator's own access, writing only the rows

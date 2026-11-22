@@ -94,6 +94,19 @@
       "AuthoredTableMetadata": {
         "additionalProperties": false,
         "properties": {
+          "cadence": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "pattern": "^[1-9][0-9]*(mo|s|m|h|d|w|q|y)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence"
+          },
           "columns": {
             "items": {
               "$ref": "#/components/schemas/AuthoredColumnMetadata"

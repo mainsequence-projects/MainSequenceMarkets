@@ -12,6 +12,11 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,
     EXAMPLE_CRYPTO_ASSET_TYPE,
@@ -19,16 +24,15 @@ from examples.msm.assets.utils import (  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     ASSET_UNIQUE_IDENTIFIERS,
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
-    DYNAMIC_MIGRATION_PROVIDER,
+    INTERPOLATED_PRICES_STORAGE,
+    MIGRATION_COMMAND,
     NAMESPACE,
     PORTFOLIO_EXAMPLE_RUNTIME_MODELS,
     PORTFOLIO_UNIQUE_IDENTIFIER,
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
+    SOURCE_PRICE_CADENCE,
     TIME_INDEX,
-    configured_equal_weight_interpolated_prices_storage,
-    source_cadence_from_meta_table,
-    source_time_index_meta_table_uid,
 )
 
 import msm_portfolios  # noqa: E402
@@ -139,6 +143,7 @@ def start_portfolio_example_runtime(
 ) -> Any:
     """Attach the already-registered tables/storage used by this portfolio example."""
 
+    use_local_runtime()
     return msm_portfolios.start_engine(
         models=list(models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS),
     )
@@ -257,6 +262,7 @@ def build_interpolated_prices_node(
             source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
         ),
+        output_table=INTERPOLATED_PRICES_STORAGE,
         hash_namespace=NAMESPACE,
     )
 
@@ -281,31 +287,21 @@ def build_source_bars_node() -> ExampleDailyBars:
     )
 
 
-def resolve_source_prices_storage(runtime: Any) -> tuple[str, Any]:
-    """Return the registered source storage UID and backend metadata."""
+def resolve_source_prices_storage(runtime: Any) -> str:
+    """Return the registered source storage UID."""
 
     handle = runtime.table(ExternalPricesStorage)
     if handle.meta_table is None:
         raise RuntimeError(
             "ExternalPricesStorage is not attached to a registered TimeIndexMetaTable."
         )
-    source_storage_uid = str(handle.meta_table_uid)
-    return source_storage_uid, TimeIndexMetaTable.get(uid=source_storage_uid)
+    return str(handle.meta_table_uid)
 
 
-def build_example_interpolated_prices_storage(source_meta_table: Any) -> type[Any]:
-    """Derive this example's configured interpolation storage from source metadata."""
+def assert_interpolated_prices_storage_registered() -> Any:
+    """Fail clearly when the example's own table was not migrated first."""
 
-    return configured_equal_weight_interpolated_prices_storage(
-        source_time_index_meta_table_uid=source_time_index_meta_table_uid(source_meta_table),
-        source_cadence=source_cadence_from_meta_table(source_meta_table),
-    )
-
-
-def assert_interpolated_prices_storage_registered(output_table: type[Any]) -> Any:
-    """Fail clearly when the dynamic interpolation table was not migrated first."""
-
-    table_name = output_table.__table__.name
+    table_name = INTERPOLATED_PRICES_STORAGE.__table__.name
     matches = TimeIndexMetaTable.filter_by_body(
         physical_table_name__in=[table_name],
         limit=1,
@@ -313,17 +309,12 @@ def assert_interpolated_prices_storage_registered(output_table: type[Any]) -> An
     )
     if not matches:
         raise RuntimeError(
-            "Configured interpolated price storage is missing: "
-            f"{table_name}. Run "
-            "`python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` "
-            "before running the portfolio workflow. The dynamic migration provider is "
-            f"{DYNAMIC_MIGRATION_PROVIDER}."
+            f"The example's interpolated-price table is missing: {table_name}. "
+            f"Apply its committed revision first: {MIGRATION_COMMAND}"
         )
 
     meta_table = matches[0]
-    bind = getattr(output_table, "_bind_meta_table", None)
-    if callable(bind):
-        bind(meta_table)
+    INTERPOLATED_PRICES_STORAGE._bind_meta_table(meta_table)
     return meta_table
 
 
@@ -371,10 +362,6 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
     print_detail("portfolio_calendar_identifier", portfolio_calendar.unique_identifier)
     print_detail("portfolio_configuration_hash", result["portfolio_configuration_hash"])
     print_detail("source_prices_storage_uid", result["source_prices_storage_uid"])
-    print_detail(
-        "source_time_index_meta_table_uid",
-        result["source_time_index_meta_table_uid"],
-    )
     print_detail("source_prices_cadence", result["source_prices_cadence"])
     print_detail("interpolated_prices_storage_uid", result["interpolated_prices_storage_uid"])
     print_detail(
@@ -416,16 +403,10 @@ def build_equal_weight_portfolio(
     link_assets_to_calendar(assets, portfolio_calendar)
 
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
-    source_prices_storage_uid, source_prices_storage_meta_table = resolve_source_prices_storage(
-        runtime
-    )
-    source_prices_cadence = source_cadence_from_meta_table(source_prices_storage_meta_table)
-    interpolated_prices_storage = build_example_interpolated_prices_storage(
-        source_prices_storage_meta_table
-    )
-    interpolated_prices_meta_table = assert_interpolated_prices_storage_registered(
-        interpolated_prices_storage
-    )
+    source_prices_storage_uid = resolve_source_prices_storage(runtime)
+    source_prices_cadence = SOURCE_PRICE_CADENCE
+    interpolated_prices_storage = INTERPOLATED_PRICES_STORAGE
+    interpolated_prices_meta_table = assert_interpolated_prices_storage_registered()
     source_bars_node = build_source_bars_node()
     interpolated_prices_node = build_interpolated_prices_node(source_bars_node)
     signal_weights_node = build_signal_weights_node()
@@ -452,10 +433,6 @@ def build_equal_weight_portfolio(
     print_detail("signal_uid", signal_weights_node.signal_uid)
     print_detail("source_prices_storage_uid", source_prices_storage_uid)
     print_detail("source_prices_cadence", source_prices_cadence)
-    print_detail(
-        "source_time_index_meta_table_uid",
-        source_time_index_meta_table_uid(source_prices_storage_meta_table),
-    )
     print_detail("price_source_update_hash", interpolated_prices_node.update_hash)
     print_detail(
         "interpolated_prices_output_table",
@@ -545,9 +522,6 @@ def build_equal_weight_portfolio(
             portfolio_configuration
         ),
         "source_prices_storage_uid": source_prices_storage_uid,
-        "source_time_index_meta_table_uid": source_time_index_meta_table_uid(
-            source_prices_storage_meta_table
-        ),
         "source_prices_cadence": source_prices_cadence,
         "interpolated_prices_storage_uid": getattr(interpolated_prices_meta_table, "uid", None),
         "interpolated_prices_output_table": interpolated_prices_storage.__table__.name,

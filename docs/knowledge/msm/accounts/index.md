@@ -159,9 +159,13 @@ explicit by requiring the caller to pass the holdings frame. Do not pass the raw
 `AccountHoldings.run(...)` tuple; unpack it and pass the DataFrame.
 
 The full workflow example is
-`examples/msm/accounts/account_portfolio_full_workflow.py`. By default it first
-prepares only the contributed interpolated-price output storage needed by the
-reusable equal-weight portfolio example, then chains that portfolio workflow.
+`examples/msm/accounts/account_portfolio_full_workflow.py`. By default it chains
+the reusable equal-weight portfolio example, whose interpolated-price table the
+example's own provider migrates: apply that provider's committed revision first, as
+[Portfolios](../../../tutorial/04-portfolios.md) shows. The workflow migrates nothing.
+With the portfolio updaters on it currently stops in the rebalance, because the
+portfolio example's signal predates its bars; `--no-run-portfolio-updaters` runs to
+the end.
 The account example reuses the resulting `Portfolio` row as a target sleeve,
 assigns that sleeve to an example `PortfolioGroup`, publishes `AssetSnapshot`
 rows with canonical ticker and name metadata, creates two accounts, assigns both
@@ -174,9 +178,7 @@ holdings and pretty-prints positions for each standalone account. Pass
 `--with-virtual-fund-allocation` to extend the same workflow with a dry-run
 virtual-fund allocation plan. Pass `--apply-virtual-fund-allocation` only when
 the workflow should publish the resulting `VirtualFundHoldings` rows after
-printing the plan. Pass `--skip-schema-prep` only when that contributed
-interpolated-price output table has already been migrated. Pass
-`--standalone-target-sleeve` or call
+printing the plan. Pass `--standalone-target-sleeve` or call
 `run_account_portfolio_full_workflow(use_portfolio_example=False)` only when
 testing the account path without chaining the portfolio example.
 

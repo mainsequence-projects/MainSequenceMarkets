@@ -11,7 +11,7 @@ ships MetaTables or the `mainsequence migrations` commands.
 The provider is exported from `msm_migrations:migration` and contains:
 
 - package: `msm`;
-- migration namespace: the active markets namespace;
+- migration namespace: `mainsequence.markets`;
 - script location: `msm_migrations:`;
 - version location prefix: `msm_migrations:versions`;
 - target metadata: `MarketsBase.metadata`;
@@ -31,7 +31,11 @@ collisions in databases that host multiple independent providers. The provider
 and its revision graph belong to ms-markets alone. A downstream project that
 adds its own tables declares its own provider, module, and version table; it
 neither adds revisions to the ms-markets graph nor applies
-`msm_migrations:migration`, which only the ms-markets deployment migrates.
+`msm_migrations:migration`, which only the ms-markets deployment migrates. Its
+target metadata is that of its own declarative base and holds no Markets table:
+a key to Markets passes the column object, such as
+`ForeignKey(AssetTable.__table__.c.uid)`, so autogenerate changes the project's
+tables only.
 
 Although the physical table is in PostgreSQL `public`, the provider metadata
 authors default-schema tables as `schema=None`. `public` is the database
@@ -93,7 +97,10 @@ run `metatables --local migrations upgrade`.
    `markets_sqlalchemy_models()`, `portfolio_sqlalchemy_models()`, or
    `pricing_sqlalchemy_models()`.
 3. Confirm `metatable_provider_models()` contains the expected model exactly once.
-4. Generate an Alembic revision with the `metatables migrations revision` CLI.
+4. Generate an Alembic revision with the `metatables migrations revision` CLI,
+   on a runtime where the provider's earlier revisions are applied.
+   It never writes a table's drop (MetaTables 0.1.73): when a model is removed,
+   write the drop by hand in a revision created with `--no-autogenerate`.
 5. Review the generated revision. Reject revisions that only drop and recreate
    unchanged foreign keys because one side is `schema=None` and the other is
    `schema="public"`. Write the revision once, for PostgreSQL: on local SQLite,
@@ -110,7 +117,7 @@ history is the Alembic revision graph plus the provider's version table.
 
 ## Client Requirement
 
-The implementation requires `mainsequence-metatable>=0.1.64,<0.2` with
+The implementation requires `mainsequence-metatable>=0.1.74,<0.2` with
 `mainsequence>=9.0.31,<10`. The client exposes `AlembicMetaTableMigration`,
 `AlembicVersionMetaTable`, application-owned Alembic execution, and the command
 shape where

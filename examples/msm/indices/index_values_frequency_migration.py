@@ -1,7 +1,9 @@
-"""Migration provider for the example's 1-minute and daily Index-value tables.
+"""The provider's own migrations for its 1-minute and daily Index-value tables.
 
 Build cadence-configured models before constructing the provider. This makes
 frequency part of the MetaTable identity and the physical storage table name.
+In a project this provider is `<package>/migrations/__init__.py`, which
+`metatables migrations scaffold` creates with its `env.py` and versions folder.
 """
 
 from __future__ import annotations
@@ -10,27 +12,43 @@ import sys
 from pathlib import Path
 
 if __package__ in {None, ""}:
-    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+# MetaTables registers a provider's tables before it runs a revision, so this example
+# selects the local runtime as it loads. A project's own provider has no such line: its
+# deployment's migration Job applies it to the hosted Environment.
+use_local_runtime()
+
 from metatables.migrations import (  # noqa: E402
+    build_alembic_version_metatable,
     build_metatable_migration_provider,
-    metadata_for_models,
 )
 
 from examples.msm.indices.plain_index_values import (  # noqa: E402
     FREQUENCY_STORAGE_MODELS,
+    PROVIDER_NAMESPACE,
+    PROVIDER_STORAGE_APP,
+    ProviderBase,
 )
-from msm_migrations import MarketsAlembicVersion  # noqa: E402
-from msm.settings import markets_namespace  # noqa: E402
+
+ProviderAlembicVersion = build_alembic_version_metatable(
+    class_name="IndexValuesExampleAlembicVersion",
+    namespace=PROVIDER_NAMESPACE,
+    identifier=f"{PROVIDER_STORAGE_APP}.alembic_version",
+    schema=None,
+    table_name=f"{PROVIDER_STORAGE_APP}__alembic_version",
+)
 
 migration = build_metatable_migration_provider(
-    package="msm",
-    migration_namespace=markets_namespace(),
-    script_location="msm_migrations:",
-    version_location_prefix="msm_migrations:versions",
-    target_metadata=metadata_for_models(FREQUENCY_STORAGE_MODELS),
-    alembic_registry=MarketsAlembicVersion,
+    package=PROVIDER_STORAGE_APP,
+    migration_namespace=PROVIDER_NAMESPACE,
+    script_location=f"{PROVIDER_STORAGE_APP}.migrations:",
+    version_location_prefix=f"{PROVIDER_STORAGE_APP}.migrations:versions",
+    target_metadata=ProviderBase.metadata,
+    alembic_registry=ProviderAlembicVersion,
     metatable_models=FREQUENCY_STORAGE_MODELS,
 )
 

@@ -214,21 +214,70 @@ Example workflows should stay chainable. The reusable portfolio example exposes
 other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
-The equal-weight example uses contributed `InterpolatedPrices`, whose output
-storage is a dynamic `PlatformTimeIndexMetaTable` keyed from the source
-`TimeIndexMetaTable` UID and cadence. That schema preparation belongs to
-`msm_portfolios.contrib.prices`; it is not portfolio core registration and it
-does not mean `PortfoliosUpdater` may construct prices internally. For the
-example, prepare that interpolation storage before the normal run:
+`InterpolatedPrices` writes only the table of its configuration, which the producer
+owns. Declare it on the producer's own base, migrate it with the producer's provider,
+and pass it as `output_table=`:
+
+```python
+from metatables import sqlalchemy_naming_convention
+from msm.storage_instances import configured_time_index_instance
+from msm_portfolios.time_index.prices.storage import (
+    InterpolatedPricesStorage,
+    interpolated_prices_instance_key,
+)
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+ProjectInterpolatedPrices = configured_time_index_instance(
+    InterpolatedPricesStorage,
+    instance_key=interpolated_prices_instance_key(
+        source_table_name="my_project__bars_1d",  # ProjectBars.__table__.name
+        source_cadence="1d",
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
+    ),
+    cadence="1d",  # the upsample frequency
+    namespace="my-project",
+    storage_app="my_project",
+    base=Base,
+)
+```
+
+- The four arguments of `interpolated_prices_instance_key` are the table's whole key.
+  The source is its physical table name, never its UID, so one committed revision
+  creates the table in every Environment. Never generate a revision per Environment.
+- `InterpolatedPrices` computes the same key when it runs and refuses a class of
+  another contract, key or cadence. Never invent a key or give the table another name.
+- A changed configuration is a new table and a new committed revision of the same
+  provider. Apply that provider's earlier revisions, then autogenerate with
+  `metatables migrations revision`. Never use another provider's history instead.
+- A first run fills the table from `offset_start` (2017-07-20 by default), as far as the
+  source still holds bars. Set an earlier one before that run when older bars matter.
+- A table registered with the wrong cadence is refused. Correct its class and run its
+  provider's `metatables migrations upgrade`, which registers the class's cadence.
+- `namespace`, `storage_app` and `base` have no default. A producer never passes
+  Markets' own, and never applies or extends Markets' migrations for this table.
+- This is the price source's schema, not portfolio core registration, and it does
+  not mean `PortfoliosUpdater` may construct prices internally.
+
+The equal-weight example is such a producer, with its provider and committed revision
+in `examples/msm_portfolios/portfolio_equal_weights_migrations/`. From the repository
+root, after Markets' own migrations:
 
 ```bash
-python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+metatables --local migrations upgrade --provider examples.msm_portfolios.portfolio_equal_weights_migrations:migration head
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
-The preparation step derives only the contributed interpolation output table,
-creates/applies its dynamic Alembic revision if needed, and verifies the
-`TimeIndexMetaTable`. Normal runtime code still builds the graph explicitly as
+Both write only to MetaTables' local SQLite runtime: a sandbox is a separate database,
+never another namespace. With updaters on, the example currently stops in the rebalance
+(`FixedWeights` dates its signal 2018-01-02, the example's bars begin in May 2026);
+`--no-run-updaters` runs to the end. Normal runtime code still builds the graph explicitly as
 source price or valuation node -> interpolation when needed -> signal node -> portfolio node. If
 the backend dependency tree was created by an older graph, run the top-level
 portfolio node once with `refresh_dependency_tree=True`, or call
@@ -425,12 +474,8 @@ Contributed signal rules:
   market-data dependencies explicitly.
 - ETF replication must expose both basket and ETF price sources explicitly.
 - Intraday trend must receive its price source explicitly.
-- Contributed signals must not call `get_interpolated_prices_timeseries(...)`
-  internally.
-
-The legacy `get_interpolated_prices_timeseries(...)` helper may remain as a
-non-core transition/helper path in the contributed price package. Do not use it
-from portfolio core or contributed signals.
+- Contributed signals must not build `InterpolatedPrices` internally: they receive
+  the price source, and the producer binds its table.
 
 ## Position-Aware Accounting
 

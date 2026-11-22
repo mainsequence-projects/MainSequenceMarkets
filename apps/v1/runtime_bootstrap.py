@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from msm.settings import markets_auto_register_namespace
-
 V1_RUNTIME_MODELS = [
     "AssetType",
     "Asset",
@@ -108,16 +106,6 @@ _PORTFOLIO_BOOTSTRAP_COMPLETE = False
 _PRICING_BOOTSTRAP_COMPLETE = False
 
 
-def prepare_apps_v1_import_namespace() -> None:
-    namespace = markets_auto_register_namespace()
-    if not namespace:
-        return
-
-    from msm.bootstrap import configure_metatable_namespace
-
-    configure_metatable_namespace(namespace)
-
-
 def ensure_apps_v1_runtime() -> Any | None:
     global _BOOTSTRAP_COMPLETE
 
@@ -126,10 +114,7 @@ def ensure_apps_v1_runtime() -> Any | None:
 
     import msm_portfolios
 
-    runtime = msm_portfolios.start_engine(
-        namespace=markets_auto_register_namespace(),
-        models=V1_RUNTIME_MODELS,
-    )
+    runtime = msm_portfolios.start_engine(models=V1_RUNTIME_MODELS)
     _BOOTSTRAP_COMPLETE = True
     return runtime
 
@@ -157,7 +142,6 @@ def ensure_apps_v1_pricing_runtime() -> Any | None:
     from msm_pricing.bootstrap import attach_pricing_schemas
 
     runtime = attach_pricing_schemas(
-        namespace=markets_auto_register_namespace(),
         models=V1_PRICING_RUNTIME_MODELS,
         seed_default_market_data_bindings=False,
         replace_default_market_data_bindings=False,
@@ -204,7 +188,6 @@ __all__ = [
     "ensure_apps_v1_portfolio_runtime",
     "ensure_apps_v1_pricing_runtime",
     "ensure_apps_v1_runtime",
-    "prepare_apps_v1_import_namespace",
     "resolve_apps_v1_portfolio_runtime",
     "resolve_apps_v1_runtime",
 ]

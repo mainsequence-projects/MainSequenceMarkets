@@ -376,19 +376,17 @@ The process must initialize or attach the runtime during startup. If no runtime
 exists, or if the active runtime does not include the required asset tables,
 the row API raises with instructions to run explicit startup preflight.
 
-Example and test workflows that need isolated MetaTables can opt into
-the example namespace by setting `MSM_AUTO_REGISTER_NAMESPACE` before importing
-`msm.api` row classes, then running explicit bootstrap:
+A workflow that needs isolated tables uses a separate database: the same tables and
+namespace on MetaTables' local SQLite runtime. Select and check that runtime before
+importing client models:
 
 ```python
-import os
+from metatables import configure_local_client, get_runtime_status
 
-from examples.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+configure_local_client()
+state = get_runtime_status()
+if state.get("local_mode") is not True or state.get("dialect") != "sqlite":
+    raise RuntimeError("Expected the local SQLite runtime.")
 
 import msm
 
@@ -403,7 +401,9 @@ asset = Asset.upsert(
 )
 ```
 
-The namespace is part of runtime/table registration, not an asset payload field.
+The namespace is part of a table's registration, not an asset payload field, and a
+process cannot change it; see
+[Namespaces and sandboxes](../../../concepts.md#namespaces-and-sandboxes).
 Use `msm.start_engine(models=[...])` for controlled startup preflight with a
 selected table set.
 

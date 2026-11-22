@@ -39,9 +39,7 @@ Platform utilities answer these questions:
   lives under `msm.time_index.accounts`.
 - `cli`: explicit command-line helpers, including
   `msm copy-msm-skills` for installing packaged ms-markets agent skills into a
-  host CodeRepository, `msm rename-preflight` for moving a host project to
-  the 3.0 names ([Upgrading To 3.0](../../../upgrading-to-3.md)), and
-  `msm series publish` for publishing an application's existing signal and
+  host CodeRepository, `msm series publish` for publishing an application's existing signal and
   portfolio history to Markets (`msm_portfolios.series_history`),
   `msm registry assign-manager` for setting the manager of a portfolio or
   signal, and `msm series move|rollback` for copying a provider's

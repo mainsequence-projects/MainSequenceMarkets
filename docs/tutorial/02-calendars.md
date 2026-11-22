@@ -65,7 +65,6 @@ fails with an error instead of producing an empty portfolio no-op.
 See `examples/msm/calendars/calendar_rules_and_exceptions_workflow.py` for the
 calendar workflow: NYSE stored under a custom name, corrections made by hand, a
 `CRYPTO_24_7` calendar, and a calendar written with one session rule. See
-`examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` and
 `examples/msm_portfolios/portfolio_equal_weights_run.py` for the portfolio
 workflow using the generated crypto calendar as `Portfolio.calendar_uid`.
 Repeated portfolio runs are idempotent when upstream price coverage has not

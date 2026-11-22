@@ -397,7 +397,6 @@ core `msm`.
 
 See `examples/msm/calendars/calendar_rules_and_exceptions_workflow.py` for the
 core calendar workflow and
-`examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` plus
 `examples/msm_portfolios/portfolio_equal_weights_run.py` for a portfolio that
 creates or reuses a `CRYPTO_24_7` calendar before writing the
 `Portfolio.calendar_uid` relationship.

@@ -14,12 +14,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
-import pytest
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 
-from metatables import TimeIndexMetaTable, TimeIndexTableUpdater
+from metatables import TimeIndexMetaTable, TimeIndexTableUpdater, sqlalchemy_naming_convention
+from msm.storage_instances import configured_time_index_instance
 from msm.time_index.assets import AssetSnapshot
 from msm.time_index.assets.storage import AssetSnapshotsStorage
-from msm.settings import markets_auto_register_namespace
 from msm_portfolios.configuration import (
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
@@ -38,7 +39,10 @@ from msm_portfolios.contrib.signals.fixed_weights import (
     FixedWeightsConfig,
 )
 from msm_portfolios.time_index import SignalWeights
-from msm_portfolios.time_index.prices.storage import configured_interpolated_prices_storage
+from msm_portfolios.time_index.prices.storage import (
+    InterpolatedPricesStorage,
+    interpolated_prices_instance_key,
+)
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     LiquidityConstrained,
@@ -49,12 +53,18 @@ from msm_portfolios.rebalance_strategy import (
 
 PINNED_PRE_RENAME_UPDATE_HASHES = {
     "asset_snapshot": "assetsnapshot_4d4316ca465e3c695835bc75d3af6f26",
-    "interpolated_prices": "interpolatedprices_c4d16a20ee4ebf061f3581472e2e5f80",
+    # Rotated in 5.0.0: MetaTables 0.1.74 hashes a positional configuration as a keyword
+    # one (MetaTables#130), so this is also the keyword-constructed updater's hash.
+    "interpolated_prices": "interpolatedprices_753f5a4be740e1ee13dc2fe8c39602d8",
 }
 
 SOURCE_TABLE_UID = "0f2d6c1e-7a3b-4c5d-9e8f-1a2b3c4d5e6f"
 PRICES_TABLE_UID = "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
 DATA_SOURCE_UID = "7c8d9e0f-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+
+
+class PinnedBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class _Source(TimeIndexTableUpdater):
@@ -153,11 +163,18 @@ def _bound(storage: type, uid: str, **metadata: Any) -> Iterator[type]:
 
 
 def _interpolated_prices_storage() -> type:
-    return configured_interpolated_prices_storage(
-        source_time_index_meta_table_uid=SOURCE_TABLE_UID,
-        source_cadence="1d",
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
+    return configured_time_index_instance(
+        InterpolatedPricesStorage,
+        instance_key=interpolated_prices_instance_key(
+            source_table_name=AssetSnapshotsStorage.__table__.name,
+            source_cadence="1d",
+            upsample_frequency_id="1d",
+            intraday_bar_interpolation_rule="ffill",
+        ),
+        cadence="1d",
+        namespace="pinned-app",
+        storage_app="pinned_app",
+        base=PinnedBase,
     )
 
 
@@ -166,8 +183,13 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
     """Build real updaters through their constructors against fake bound tables."""
 
     with (
-        _bound(AssetSnapshotsStorage, SOURCE_TABLE_UID, cadence="1d"),
-        _bound(_interpolated_prices_storage(), PRICES_TABLE_UID),
+        _bound(
+            AssetSnapshotsStorage,
+            SOURCE_TABLE_UID,
+            cadence="1d",
+            physical_table_name=AssetSnapshotsStorage.__table__.name,
+        ),
+        _bound(_interpolated_prices_storage(), PRICES_TABLE_UID, cadence="1d"),
     ):
         asset_snapshot = AssetSnapshot()
         interpolated_prices = InterpolatedPrices(
@@ -176,7 +198,8 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
                 intraday_bar_interpolation_rule="ffill",
                 upsample_frequency_id="1d",
                 asset_list=["ASSET_A", "ASSET_B"],
-            )
+            ),
+            output_table=_interpolated_prices_storage(),
         )
         yield {"asset_snapshot": asset_snapshot, "interpolated_prices": interpolated_prices}
 
@@ -218,7 +241,3 @@ NESTED_PORTFOLIOS: dict[str, Callable[[dict[str, Any]], PortfolioConfiguration]]
         rebalance_strategy=STRATEGIES["trailing_average_daily_volume_on_asset_snapshot"](updaters),
     ),
 }
-namespace_is_default = pytest.mark.skipif(
-    markets_auto_register_namespace() is not None,
-    reason="Table names and identifiers are pinned for the default markets namespace.",
-)

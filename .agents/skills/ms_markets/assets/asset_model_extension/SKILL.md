@@ -73,20 +73,52 @@ For one-to-one asset properties, use `asset_uid` as both:
 
 Do not add a separate `uid` column to one-to-one detail tables.
 
-Recommended SQLAlchemy shape:
+Recommended SQLAlchemy shape for a project's detail table:
 
 ```python
-class FutureAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
-    __metatable_identifier__ = "FutureAssetDetails"
+import uuid
+
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import ForeignKey, MetaData, String, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from msm.base import MarketsMetaTableMixin
+from msm.models import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
+    __metatable_namespace__ = "com.my_project"
+    __markets_storage_app__ = "my_project_markets"
+
+
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
+    __markets_base_identifier__ = "MyAssetDetails"
+    __metatable_description__ = "Project asset details keyed one-to-one by AssetTable.uid."
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this detail row."},
     )
+    internal_asset_class: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        info={"description": "Internal asset class assigned by the project."},
+    )
 ```
+
+`Base` is the project's own declarative base, never `MarketsBase`, and the
+project's migration provider targets `Base.metadata`
+(`platform/metatable_migrations`). The key passes Markets' column object, because
+a key given as text resolves only inside one metadata. Only built-in ms-markets
+models, such as `FutureAssetDetailsTable`, are declared on `MarketsBase`.
 
 Add only fields that belong to that specific extension. Use indexed columns for
 lookup keys and JSON/text columns for provider payloads when the payload is not
@@ -99,23 +131,13 @@ the project's default `__metatable_namespace__` and, when needed,
 mixin namespace and base identifier into the globally unique MetaTable identity
 used by runtime attachment.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace when it is set
-before model import. Use that for isolated tests and examples.
+The mixin namespace is final. Isolated tests and examples use a separate database,
+such as MetaTables' local SQLite runtime, selected with
+`metatables.configure_local_client()` before client models are imported.
 
 Changing `__metatable_namespace__` or `__markets_storage_app__` after the table
 has been migrated and registered is a logical or physical table rotation and
 must go through the MetaTables migration and registration path.
-
-```python
-class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-    __abstract__ = True
-    __metatable_namespace__ = "com.my_project"
-    __markets_storage_app__ = "my_project_markets"
-
-
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __markets_base_identifier__ = "MyAssetDetails"
-```
 
 ## Public API Pattern
 
@@ -134,17 +156,19 @@ import msm
 from pydantic import AliasChoices, Field
 
 from msm.api.base import MarketsMetaTableRow
+from my_project.markets_models import MyAssetDetailsTable
 
 
-class FutureDetails(MarketsMetaTableRow):
-    __table__ = FutureAssetDetailsTable
-    __required_tables__ = [FutureAssetDetailsTable]
+class MyAssetDetails(MarketsMetaTableRow):
+    __table__ = MyAssetDetailsTable
+    __required_tables__ = [MyAssetDetailsTable]
     __upsert_keys__ = ("asset_uid",)
 
     uid: uuid.UUID = Field(validation_alias=AliasChoices("uid", "asset_uid"))
     asset_uid: uuid.UUID
+    internal_asset_class: str
 
-msm.start_engine(models=[FutureAssetDetailsTable])
+msm.start_engine(models=[MyAssetDetailsTable])
 ```
 
 `MarketsMetaTableRow` is the Pydantic row-operation wrapper. It is not
@@ -332,6 +356,8 @@ When changing asset extension code, verify:
 - one-to-one detail tables use `asset_uid` as the only primary key.
 - detail table foreign keys point to `AssetTable.uid` and use cascade delete when
   the detail row should not outlive the asset.
+- a project's detail table is on the project's own declarative base and passes
+  column objects to its keys to Markets; only built-in tables are on `MarketsBase`.
 - Pydantic row models, repository helpers, tests, docs, and examples match the
   table identity shape.
 - startup examples call `msm.start_engine(models=[DetailTable])` after MetaTables

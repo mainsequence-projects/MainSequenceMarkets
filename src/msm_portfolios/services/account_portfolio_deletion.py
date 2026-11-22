@@ -242,6 +242,7 @@ def _write(
         context,
         uid=plan["uid"],
         unique_identifier=plan["unique_identifier"],
+        row_counts=plan["row_counts"],
         portfolio_uids=[portfolio["uid"] for portfolio in portfolios],
     )
 

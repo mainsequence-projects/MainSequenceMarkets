@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 from typing import ClassVar
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,6 +35,14 @@ class OrdersStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "order_identifier, account_identifier, and "
         "asset_identifier. Used by execution updaters to persist broker or "
         "venue order state over time."
+    )
+    # The unique index leads with order_time; these serve one account's orders, one
+    # order's rows and the foreign keys that reference the account and its order
+    # managers (revision 0034).
+    __table_args__ = (
+        Index(None, "account_identifier", "order_time"),
+        Index(None, "order_manager_identifier"),
+        Index(None, "order_identifier"),
     )
     __time_index_name__: ClassVar[str] = "order_time"
     __index_names__: ClassVar[list[str]] = [
@@ -127,6 +135,9 @@ class OrderEventsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "order_identifier). Used by execution updaters to persist status "
         "transitions and event metadata for previously published orders."
     )
+    # The unique index leads with event_time; this one serves one order's events
+    # (revision 0034).
+    __table_args__ = (Index(None, "order_identifier", "event_time"),)
     __time_index_name__: ClassVar[str] = "event_time"
     __index_names__: ClassVar[list[str]] = ["event_time", "order_identifier"]
 
@@ -154,6 +165,9 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         "asset_identifier. Used by execution updaters to persist fills, "
         "prices, commissions, and settlement facts."
     )
+    # The unique index leads with trade_time; this one serves one account's trades and
+    # the foreign key that references the account (revision 0034).
+    __table_args__ = (Index(None, "account_identifier", "trade_time"),)
     __time_index_name__: ClassVar[str] = "trade_time"
     __index_names__: ClassVar[list[str]] = [
         "trade_time",

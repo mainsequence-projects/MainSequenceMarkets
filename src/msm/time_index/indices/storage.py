@@ -171,12 +171,13 @@ def configured_index_values_storage(
 
     By default this is Markets' own ``ms_markets__index_values__t_<cadence>`` in
     the Markets namespace. A provider that publishes Index values owns its table
-    (ADR 0047, decision 4): it passes its ``namespace``, its ``storage_app`` and,
-    when its own Alembic provider migrates the table, its declarative ``base``.
+    (ADR 0047, decision 4): it passes its ``namespace``, its ``storage_app`` and
+    its own declarative ``base``, whose metadata its Alembic provider targets.
     The table is then ``<storage_app>__index_values__t_<cadence>`` in that
     namespace, with the same columns, foreign keys, grain and authored identifier
-    ``IndexValuesTS.<cadence>``; the Index dataset catalog discovers it like the
-    Markets table.
+    ``IndexValuesTS.<cadence>``. Its keys point at Markets' own columns, so no
+    Markets table enters that metadata. The Index dataset catalog discovers it
+    like the Markets table.
     """
 
     components = index_values_storage_identity_components(cadence=cadence)
@@ -310,25 +311,20 @@ def _copy_index_values_table(
     if isinstance(existing, Table):
         return existing
 
-    from msm.storage_instances import markets_reference_table
-
-    index_table = markets_reference_table(IndexTable.__table__, metadata, ["unique_identifier"])
-    definition_table = markets_reference_table(
-        IndexFormulaDefinitionTable.__table__, metadata, ["uid"]
-    )
     columns = [column._copy() for column in IndexValuesStorage.__table__.columns]
     table = Table(
         table_name,
         metadata,
         *columns,
+        # Column objects, not names: a name resolves only inside the table's own MetaData.
         ForeignKeyConstraint(
             [INDEX_IDENTIFIER_DIMENSION],
-            [f"{index_table.fullname}.unique_identifier"],
+            [IndexTable.__table__.c.unique_identifier],
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
             ["definition_uid"],
-            [f"{definition_table.fullname}.uid"],
+            [IndexFormulaDefinitionTable.__table__.c.uid],
             ondelete="RESTRICT",
         ),
         schema=IndexValuesStorage.__table__.schema,

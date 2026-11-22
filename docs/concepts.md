@@ -34,9 +34,7 @@ SQLAlchemy internals. There are three distinct layers, and each has an owner:
 
     The shared producer base classes, such as `AssetIndexedUpdater` and
     `StampedUpdater`, live under `msm.time_index`, `msm_portfolios.time_index`
-    and `msm_pricing.time_index`. Through 3.x the pre-3.0 `*.data_nodes` import
-    paths and `*DataNode` names still resolve to the same objects, with a
-    `DeprecationWarning`; ms-markets 4.0 removes them
+    and `msm_pricing.time_index`
     ([ADR 0048](ADR/0048-time-index-vocabulary-rename.md)).
 
 ```python
@@ -95,24 +93,40 @@ Only after migrations are current does `start_engine(...)` resolve and bind the
 finalized backend tables. Do not call model `.register()` methods or local
 registration helpers from application code.
 
-## `MSM_AUTO_REGISTER_NAMESPACE`
+## Namespaces and sandboxes
 
-`MSM_AUTO_REGISTER_NAMESPACE` is a **namespace default for examples and local
-development only**. Set it before importing `msm.api` (or `msm.models`) when an
-example should use an example-scoped namespace, then call `start_engine(...)`
-during startup.
+Markets' own tables are in the `mainsequence.markets` namespace, under fixed physical
+names. Neither the environment nor an argument of `start_engine(...)` changes that. A
+project's own tables are in the namespace that project declares, and the factories'
+`namespace=` is final.
 
-It does two things, and nothing more:
+A sandbox is a separate database, for example MetaTables' local SQLite runtime, with the
+same table names and namespaces. A Python process uses the hosted MetaTables API of its
+Environment unless it selects a local one, so select the local runtime before importing
+client models and check it before the first write:
 
-- it namespaces example/local MetaTable identities and the physical table-name
-  suffix;
-- it becomes the default namespace for markets TimeIndexTableUpdater identifiers and
-  `hash_namespace` values created in the same process.
+```python
+from metatables import configure_local_client, get_runtime_status
 
-It does **not** make row operations register schemas, and a different namespace
-or registration configuration is rejected once the process is initialized. In
-production, leave it unset; the runtime uses the default markets namespace from
-`msm.settings.markets_namespace()`.
+configure_local_client()
+state = get_runtime_status()
+if state.get("local_mode") is not True or state.get("dialect") != "sqlite":
+    raise RuntimeError("Expected the local SQLite runtime.")
+```
+
+Every example that writes does this through
+`examples.msm.platform.bootstrap.use_local_runtime()`, which also refuses a process that
+sends Markets row operations to the Markets API (`MSM_API_BACKEND=remote`): those writes
+would not reach the local database. To run one, keep `metatables serve --local` running,
+initialize its runtime once, and apply the Markets migrations:
+
+```bash
+metatables --local runtime initialize
+metatables --local migrations upgrade --provider msm_migrations:migration head
+```
+
+An updater's `hash_namespace` isolates update identities. It names no table and isolates
+no data.
 
 ## Package boundaries
 

@@ -145,7 +145,6 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
 
     assert not versions_root.joinpath("0001_migration.py").is_file()
     assert versions_root.joinpath("mainsequence_markets").is_dir()
-    assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
 def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
@@ -166,6 +165,8 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0031_portfolio_dataset_series_indexes.py",
         "0032_registry_row_managers.py",
         "0033_drop_portfolio_dataset_catalog.py",
+        "0034_account_history_indexes.py",
+        "0035_drop_pre_3_0_uid_columns.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -249,17 +250,25 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert dropped_catalog.revision == "0033"
     assert dropped_catalog.down_revision == "0032"
+    history_indexes = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0034_account_history_indexes"
+    )
+    assert history_indexes.revision == "0034"
+    assert history_indexes.down_revision == "0033"
+    pre_3_0_columns = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0035_drop_pre_3_0_uid_columns"
+    )
+    assert pre_3_0_columns.revision == "0035"
+    assert pre_3_0_columns.down_revision == "0034"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:
     asset_table_name = AssetTable.__table__.name
 
+    # Alembic names no schema for the default one, which MetaTables pins to `public`. A table
+    # of the same name in another schema is not Markets' (MetaTables#125).
     assert migration.include_name(asset_table_name, "table", {"schema_name": None})
-    assert migration.include_name(
-        asset_table_name,
-        "table",
-        {"schema_name": MARKETS_DEFAULT_SCHEMA},
-    )
+    assert not migration.include_name(asset_table_name, "table", {"schema_name": "another_schema"})
     assert not migration.include_name("unrelated_table", "table", {"schema_name": None})
     assert migration.include_name("unrelated_index", "index", {"schema_name": None})
 

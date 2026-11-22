@@ -240,6 +240,24 @@ table in it; a table's role for a caller is the strongest across its namespaces.
      --message "create ledger"
    ```
 
+   Autogenerate compares only the target's tables, by schema and name, and never
+   proposes dropping a table. Write a table's drop by hand in a revision created with
+   `--no-autogenerate`. Do not set `include_name_hook` to get drops generated: the
+   hook replaces that protection, and one that admits another owner's table lets a
+   revision delete it.
+
+   After the first revision, upgrade to the script heads before authoring the next:
+   autogenerate refuses a baseline that is not applied or whose active tables the
+   connection cannot see, and reserves no table. Adding tables is not a reason for
+   that refusal. If models are already ahead of the history, the upgrade applies the
+   existing revisions and reports `physical_table_missing` for the tables still to
+   author; run `revision` again to create them.
+
+Do not call `commit()` or `rollback()` on the connection inside a revision. Its own
+commit cannot be undone when the run later fails, and its own rollback fails the
+migration without recording the revision. Use `op.get_bind().begin_nested()` to
+recover from an error.
+
 Use `--source-root` and `--code-repository-root` when the application does not
 use the default `src/` layout. Keep applied revisions immutable; add a new
 revision for every later schema change.
@@ -250,6 +268,17 @@ migration never needs the Secret. Changing a column between `String` and
 `EncryptedString` needs no DDL: the next upgrade's finalization updates the
 catalog's mark, and the application re-encrypts or decrypts existing rows itself.
 See the [contracts skill](../metatables-meta-tables/SKILL.md#secrets-in-columns-application-encrypted-columns).
+
+## Retire a table
+
+A plain `delete()` of an Alembic-managed table answers 409. Retire it through its
+provider: remove the model from the registry and the metadata, write the
+`op.drop_table` in a `--no-autogenerate` revision, and upgrade. Use
+`delete_with_cascade(confirm_cascade_delete=True, override_schema_management_protection=True)`
+only for a teardown the user confirmed, after
+`get_impact(action="drop_table", override_schema_management_protection=True)`: it
+also deletes the referencing tables, changes one runtime only and writes no revision.
+See "Retire a table" in `docs/client/define-and-migrate-tables.md`.
 
 ## Provider placement
 
@@ -359,6 +388,15 @@ Read `docs/operations/recovery-and-observability.md`.
 
 - If provider loading fails, verify the import path, model registry, metadata,
   version-table binding, and installed `metatables` version.
+- If `revision` refuses because `target_metadata` holds no table, the models are not
+  defined or imported yet, or they use another declarative base than the target.
+  Target their base's metadata or `metadata_for_models(models)`; listing them in the
+  registry alone does not add them. Use `--no-autogenerate` only for a revision meant
+  to be written by hand.
+- If a revision generated before client 0.1.73 holds a `drop_table`, confirm the table
+  is this provider's before applying it: those versions could generate drops of other
+  owners' tables. If it is not, remove the drop and its downgrade counterpart from a
+  revision that was never applied; if it was applied somewhere, tell the user.
 - If the provider loads another package's code or revisions, find the file that
   its module resolves to with
   `python -c "import importlib.util as u; print(u.find_spec('migrations').origin)"`,

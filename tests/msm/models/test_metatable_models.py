@@ -6,10 +6,10 @@ from typing import ClassVar
 import datetime as dt
 
 import pytest
-from metatables import TimeIndexMetaTable, PlatformManagedMetaTable
+from metatables import TimeIndexMetaTable, PlatformManagedMetaTable, sqlalchemy_naming_convention
 from pydantic import AliasChoices, Field
-from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 import msm.models.registration as meta_tables
@@ -57,10 +57,15 @@ from msm.models import (
     VirtualFundTable,
     markets_sqlalchemy_models,
 )
-from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 
 
-class ExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class ProjectBase(DeclarativeBase):
+    """A project's own base: its tables are never on MarketsBase."""
+
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+class ExtensionAssetDetailsTable(MarketsMetaTableMixin, ProjectBase):
     __metatable_identifier__ = "test.ExtensionAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed by AssetTable uid for extension "
@@ -69,11 +74,25 @@ class ExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )
     internal_asset_class: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ExtensionAssetReviewTable(MarketsMetaTableMixin, ProjectBase):
+    __metatable_identifier__ = "test.ExtensionAssetReview"
+    __metatable_description__ = (
+        "Project-local asset reviews keyed by another table of the same project "
+        "for extension dependency tests."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(ExtensionAssetDetailsTable.__table__.c.asset_uid, ondelete="CASCADE"),
+        primary_key=True,
+    )
 
 
 class ExtensionAssetDetails(MarketsMetaTableRow):
@@ -150,29 +169,12 @@ def test_markets_table_name_truncates_long_suffix_deterministically() -> None:
     assert len(table_name) <= 63
 
 
-def test_markets_mixin_applies_environment_namespace_suffix(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
-
-    class EnvironmentScopedTable(MarketsMetaTableMixin, MarketsBase):
-        __metatable_identifier__ = "EnvironmentScoped"
-        __metatable_description__ = (
-            "Environment scoped table used to verify package-owned physical table names."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert (
-        EnvironmentScopedTable.__table__.name
-        == "ms_markets__environmentscoped__mainsequence_examples"
-    )
-
-
 def test_extension_metatable_can_override_storage_app() -> None:
     class ProviderMarketsMetaTableMixin(MarketsMetaTableMixin):
         __abstract__ = True
         __markets_storage_app__ = "my_provider"
 
-    class ProviderAccountDetailsTable(ProviderMarketsMetaTableMixin, MarketsBase):
+    class ProviderAccountDetailsTable(ProviderMarketsMetaTableMixin, ProjectBase):
         __metatable_identifier__ = "test.ProviderAccountDetails"
         __metatable_description__ = (
             "Project-local provider account details keyed by AssetTable uid "
@@ -181,7 +183,7 @@ def test_extension_metatable_can_override_storage_app() -> None:
 
         asset_uid: Mapped[uuid.UUID] = mapped_column(
             Uuid(as_uuid=True),
-            ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+            ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
             primary_key=True,
             nullable=False,
         )
@@ -198,7 +200,7 @@ def test_extension_metatable_can_override_storage_app() -> None:
 
 
 def test_extension_time_index_storage_can_override_storage_app() -> None:
-    class ProviderBarsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    class ProviderBarsStorage(MarketsTimeIndexMetaTableMixin, ProjectBase):
         __markets_storage_app__ = "my_provider"
         __metatable_identifier__ = "test.ProviderBarsTS"
         __metatable_description__ = (
@@ -220,24 +222,6 @@ def test_extension_time_index_storage_can_override_storage_app() -> None:
     assert ProviderBarsStorage.__table__.name == markets_table_name(
         "my_provider",
         "test.ProviderBarsTS",
-    )
-
-
-def test_extension_storage_app_keeps_environment_namespace_suffix(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
-
-    class NamespacedProviderTable(MarketsMetaTableMixin, MarketsBase):
-        __markets_storage_app__ = "my_provider"
-        __metatable_identifier__ = "NamespacedProvider"
-        __metatable_description__ = (
-            "Environment scoped extension table used to verify custom app "
-            "physical table names with namespace suffixes."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert NamespacedProviderTable.__table__.name == (
-        "my_provider__namespacedprovider__mainsequence_examples"
     )
 
 
@@ -297,7 +281,7 @@ def test_project_mixin_namespace_applies_to_base_identifier() -> None:
         __metatable_namespace__ = "com.acme.markets"
         __markets_storage_app__ = "acme_markets"
 
-    class ProjectAssetDetailsTable(ProjectMarketsMetaTableMixin, MarketsBase):
+    class ProjectAssetDetailsTable(ProjectMarketsMetaTableMixin, ProjectBase):
         __markets_base_identifier__ = "ProjectAssetDetails"
         __metatable_description__ = (
             "Project-local asset details keyed by AssetTable uid for namespace "
@@ -322,44 +306,13 @@ def test_project_mixin_namespace_applies_to_base_identifier() -> None:
     )
 
 
-def test_environment_namespace_overrides_project_mixin_default(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
-
-    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-        __abstract__ = True
-        __metatable_namespace__ = "com.acme.markets"
-        __markets_storage_app__ = "acme_markets"
-
-    class ProjectNamespacedTestTable(ProjectMarketsMetaTableMixin, MarketsBase):
-        __markets_base_identifier__ = "ProjectNamespacedTest"
-        __metatable_description__ = (
-            "Project-local table used to verify environment namespace overrides "
-            "project mixin defaults."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert ProjectNamespacedTestTable.__metatable_identifier__ == (
-        "mainsequence.tests.ProjectNamespacedTest"
-    )
-    assert ProjectNamespacedTestTable.__table__.info["namespace"] == "mainsequence.tests"
-    assert ProjectNamespacedTestTable.__table__.info["identifier"] == (
-        "mainsequence.tests.ProjectNamespacedTest"
-    )
-    assert ProjectNamespacedTestTable.__table__.name == markets_table_name(
-        "acme_markets",
-        "ProjectNamespacedTest",
-        suffix="mainsequence.tests",
-    )
-
-
 def test_project_mixin_identifier_overrides_markets_table_args_info() -> None:
     class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
         __abstract__ = True
         __metatable_namespace__ = "com.acme.markets"
         __markets_storage_app__ = "acme_markets"
 
-    class ProjectTableArgsInfoTable(ProjectMarketsMetaTableMixin, MarketsBase):
+    class ProjectTableArgsInfoTable(ProjectMarketsMetaTableMixin, ProjectBase):
         __markets_base_identifier__ = "ProjectTableArgsInfo"
         __table_args__ = markets_table_args("StaleTableArgsInfo")
         __metatable_description__ = (
@@ -381,7 +334,7 @@ def test_final_identifier_with_project_namespace_is_not_double_prefixed() -> Non
         __metatable_namespace__ = "com.acme.markets"
         __markets_storage_app__ = "acme_markets"
 
-    class ProjectFinalIdentifierTable(ProjectMarketsMetaTableMixin, MarketsBase):
+    class ProjectFinalIdentifierTable(ProjectMarketsMetaTableMixin, ProjectBase):
         __metatable_identifier__ = "com.acme.markets.ProjectFinalIdentifier"
         __metatable_description__ = (
             "Project-local table used to verify qualified identifiers are not prefixed twice."
@@ -391,30 +344,6 @@ def test_final_identifier_with_project_namespace_is_not_double_prefixed() -> Non
 
     assert ProjectFinalIdentifierTable.__metatable_identifier__ == (
         "com.acme.markets.ProjectFinalIdentifier"
-    )
-
-
-def test_environment_namespace_replaces_project_namespace_for_qualified_identifier(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
-
-    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-        __abstract__ = True
-        __metatable_namespace__ = "com.acme.markets"
-        __markets_storage_app__ = "acme_markets"
-
-    class ProjectQualifiedOverrideTable(ProjectMarketsMetaTableMixin, MarketsBase):
-        __metatable_identifier__ = "com.acme.markets.ProjectQualifiedOverride"
-        __metatable_description__ = (
-            "Project-local table used to verify environment namespace replacement "
-            "for qualified identifiers."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert ProjectQualifiedOverrideTable.__metatable_identifier__ == (
-        "mainsequence.tests.ProjectQualifiedOverride"
     )
 
 
@@ -469,6 +398,36 @@ def test_resolve_models_accepts_project_local_row_wrapper() -> None:
         AssetTable,
         ExtensionAssetDetailsTable,
     ]
+
+
+def test_resolve_models_follows_keys_inside_the_projects_own_base() -> None:
+    assert resolve_markets_meta_table_models([ExtensionAssetReviewTable]) == [
+        AssetTable,
+        ExtensionAssetDetailsTable,
+        ExtensionAssetReviewTable,
+    ]
+    assert meta_tables.markets_foreign_key_target_identifiers(ExtensionAssetReviewTable) == [
+        markets_table_storage_name(ExtensionAssetDetailsTable)
+    ]
+
+
+def test_resolve_models_searches_the_projects_base_only_for_a_key_target() -> None:
+    class SharedTableBase(DeclarativeBase):
+        metadata = MetaData()
+
+    class SelectedTable(MarketsMetaTableMixin, SharedTableBase):
+        __metatable_identifier__ = "test.Selected"
+
+        asset_uid: Mapped[uuid.UUID] = mapped_column(
+            Uuid(as_uuid=True), ForeignKey(AssetTable.__table__.c.uid), primary_key=True
+        )
+
+    class SecondClassOfTheSameTable(MarketsMetaTableMixin, SharedTableBase):
+        __metatable_identifier__ = "test.SecondClassOfTheSameTable"
+        __table__ = SelectedTable.__table__
+
+    assert SecondClassOfTheSameTable.__table__ is SelectedTable.__table__
+    assert resolve_markets_meta_table_models([SelectedTable]) == [AssetTable, SelectedTable]
 
 
 def test_project_local_asset_detail_row_aliases_uid_to_asset_uid() -> None:

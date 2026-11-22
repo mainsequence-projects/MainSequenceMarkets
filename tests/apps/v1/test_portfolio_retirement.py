@@ -296,8 +296,8 @@ def test_retired_portfolios_filters_by_retirement_time(monkeypatch) -> None:
     live, early, late = (str(uuid.uuid4()) for _ in range(3))
     captured: dict[str, object] = {}
 
-    def search_model(context, *, model, in_filters, limit):
-        captured.update(in_filters=in_filters, limit=limit)
+    def read_every_model_row(context, *, model, in_filters):
+        captured.update(in_filters=in_filters)
         return {
             "rows": [
                 {"uid": live, "retired_at": None},
@@ -306,7 +306,9 @@ def test_retired_portfolios_filters_by_retirement_time(monkeypatch) -> None:
             ]
         }
 
-    monkeypatch.setattr("msm.repositories.crud.search_model", search_model)
+    monkeypatch.setattr(
+        "msm.repositories.complete_reads.read_every_model_row", read_every_model_row
+    )
 
     assert set(retired_portfolios(FakeContext(), [live, early, late, None])) == {early, late}
     assert set(retired_portfolios(FakeContext(), [live, early, late], as_of=RETIRED_AT)) == {early}
@@ -321,11 +323,14 @@ def test_a_refused_target_write_reports_the_retired_portfolio(monkeypatch) -> No
     portfolio_uid = str(uuid.uuid4())
     monkeypatch.setattr(
         services,
-        "get_account_by_uid",
-        lambda context, uid: {"row": {"uid": account_uid, "account_name": "Some account"}},
-    )
-    monkeypatch.setattr(
-        services, "_account_target_allocation_uid", lambda context, account_uid: None
+        "read_account_with_stored_target_allocation",
+        lambda context, account_uid: {
+            "row": {
+                "uid": account_uid,
+                "account_name": "Some account",
+                "stored_target_allocation_uid": None,
+            }
+        },
     )
     monkeypatch.setattr(
         "msm.repositories.accounts.replace_account_target_positions_snapshot",

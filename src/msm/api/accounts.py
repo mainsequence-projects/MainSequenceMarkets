@@ -8,7 +8,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from msm.api.base import MarketsMetaTableRow, PayloadWithRenamedFields, pre_3_0_field
+from msm.api.base import MarketsMetaTableRow
 from msm.api.remote import RemoteRowOperations
 from msm.models import (
     AccountGroupTable,
@@ -161,7 +161,6 @@ class Account(MarketsMetaTableRow):
     account_is_active: bool = False
     account_group_uid: uuid.UUID | None = None
     holdings_storage_table_uid: uuid.UUID | None = None
-    holdings_data_node_uid: uuid.UUID | None = pre_3_0_field("holdings_storage_table_uid")
     metadata_json: dict[str, Any] | None = None
 
     @classmethod
@@ -267,11 +266,8 @@ class Account(MarketsMetaTableRow):
         return positions
 
 
-class AccountCreate(PayloadWithRenamedFields):
+class AccountCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "holdings_storage_table_uid": "holdings_data_node_uid",
-    }
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     account_name: str = Field(min_length=1, max_length=255)
@@ -286,11 +282,8 @@ class AccountUpsert(AccountCreate):
     """Payload for inserting or updating an account."""
 
 
-class AccountUpdate(PayloadWithRenamedFields):
+class AccountUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "holdings_storage_table_uid": "holdings_data_node_uid",
-    }
 
     account_name: str | None = Field(default=None, max_length=255)
     is_paper: bool | None = None
@@ -315,7 +308,6 @@ class AccountHoldingsSet(MarketsMetaTableRow):
     account_uid: uuid.UUID
     time_index: dt.datetime
     source_storage_table_uid: uuid.UUID | None = None
-    source_data_node_uid: uuid.UUID | None = pre_3_0_field("source_storage_table_uid")
 
     @classmethod
     def create(
@@ -346,11 +338,8 @@ class AccountHoldingsSet(MarketsMetaTableRow):
         return super().update(uid, values)
 
 
-class AccountHoldingsSetCreate(PayloadWithRenamedFields):
+class AccountHoldingsSetCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "source_storage_table_uid": "source_data_node_uid",
-    }
 
     account_uid: uuid.UUID | str
     time_index: dt.datetime
@@ -366,11 +355,8 @@ class AccountHoldingsSetUpsert(AccountHoldingsSetCreate):
     """Payload for inserting or updating an account holdings set."""
 
 
-class AccountHoldingsSetUpdate(PayloadWithRenamedFields):
+class AccountHoldingsSetUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    __renamed_fields__: ClassVar[dict[str, str]] = {
-        "source_storage_table_uid": "source_data_node_uid",
-    }
 
     source_storage_table_uid: uuid.UUID | str | None = None
 

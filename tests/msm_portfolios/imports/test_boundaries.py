@@ -11,7 +11,6 @@ def test_core_msm_does_not_import_msm_portfolios() -> None:
     allowed_cross_package_files = {
         "migrations/registry.py",
         "identity.py",
-        "_deprecated_imports.py",
         "api/remote.py",
     }
     offenders: list[str] = []

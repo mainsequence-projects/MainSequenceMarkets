@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -11,10 +10,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
+from examples.msm.platform.bootstrap import use_local_runtime
 from examples.msm.assets.utils import (
     EXAMPLE_CURRENCY_ASSET_TYPE,
     EXAMPLE_EURUSD_OPENFIGI_FIGI,
@@ -22,8 +18,6 @@ from examples.msm.assets.utils import (
     EXAMPLE_USD_CURRENCY,
 )
 from msm.constants import ASSET_TYPE_CURRENCY
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm
 
@@ -34,6 +28,7 @@ if TYPE_CHECKING:
 def create_eurusd_currency_spot() -> dict[str, Any]:
     """Create EUR/USD from OpenFIGI and publish current display snapshots."""
 
+    use_local_runtime()
     msm.start_engine(
         models=[
             "AssetType",

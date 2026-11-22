@@ -12,6 +12,11 @@ their revision, and `cli`/`command_center` are renamed `msm_cli` and
 version locations, provider key, model registry, version-table binding, and
 revision history those ADRs record are unchanged.
 
+Amended 2026-11-22
+([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)):
+`versions/mainsequence_examples` is removed with the namespace override that selected it.
+The provider key, history location and version table do not change.
+
 Tracked by
 [MainSequenceMarkets#14](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/14).
 

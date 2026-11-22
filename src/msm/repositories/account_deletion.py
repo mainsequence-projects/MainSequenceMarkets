@@ -142,9 +142,16 @@ class _AccountScope:
             OrdersStorage.account_identifier == self.account_identifier()
         )
 
-    def other_order_identifiers(self) -> Any:
-        return select(OrdersStorage.order_identifier).where(
-            OrdersStorage.account_identifier != self.account_identifier()
+    def ordered_by_another_account(self, order_identifier: Any) -> Any:
+        """Whether an order of another account has ``order_identifier``: one index probe."""
+
+        other = aliased(OrdersStorage, name="other_account_order")
+        return (
+            select(literal(1))
+            .select_from(other)
+            .where(other.order_identifier == order_identifier)
+            .where(other.account_identifier != self.account_identifier())
+            .exists()
         )
 
     def order_manager_identifiers(self) -> Any:
@@ -185,7 +192,7 @@ def _row_filters(scope: _AccountScope) -> dict[str, Callable[[], Any]]:
         # Order events have no foreign key: they name an order only by its identifier.
         # Events whose identifier another account's order also uses stay.
         "order_events": lambda: OrderEventsStorage.order_identifier.in_(scope.order_identifiers())
-        & OrderEventsStorage.order_identifier.not_in(scope.other_order_identifiers()),
+        & ~scope.ordered_by_another_account(OrderEventsStorage.order_identifier),
         "trades": lambda: TradesStorage.account_identifier == scope.account_identifier(),
         "orders": lambda: OrdersStorage.account_identifier == scope.account_identifier(),
         "order_managers": lambda: OrderManagerTable.target_account_uid == scope.account_uid(),
@@ -258,6 +265,7 @@ def account_delete_statements(
     *,
     uid: uuid.UUID | str,
     unique_identifier: str,
+    row_counts: Mapping[str, int],
 ) -> list[GuardedStatement | Any]:
     """The account delete as ordered statements for one transaction.
 
@@ -267,6 +275,13 @@ def account_delete_statements(
     their rows; the account. The account statement is guarded: it must delete exactly
     the account read before, with the same ``unique_identifier``, or nothing is deleted.
     MetaTables checks a guard after each statement, so statements may follow it.
+
+    ``row_counts`` are the read's counts by table key (`ACCOUNT_HISTORY_KEYS`). A table
+    the read found empty gets no statement, so the transaction neither reads nor locks
+    it. A row written there after the read is still handled by its foreign key: a
+    ``CASCADE`` key deletes it with its parent, and a ``RESTRICT`` key refuses the
+    transaction, which then deletes nothing. Order events have no key, so their
+    statement runs whenever the account has orders.
     """
 
     scope = _scope(uid, unique_identifier)
@@ -274,7 +289,7 @@ def account_delete_statements(
     statements: list[GuardedStatement | Any] = [
         delete(table.model).where(filters[table.key]())
         for table in ACCOUNT_DELETE_TABLES
-        if table.key != "accounts"
+        if table.key != "accounts" and _has_rows(table.key, row_counts)
     ]
     statements.append(
         GuardedStatement(
@@ -288,18 +303,27 @@ def account_delete_statements(
     return statements
 
 
+def _has_rows(key: str, row_counts: Mapping[str, int]) -> bool:
+    if key == "order_events":
+        return row_counts["order_events"] > 0 or row_counts["orders"] > 0
+    return row_counts[key] > 0
+
+
 def build_delete_account_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
     unique_identifier: str,
+    row_counts: Mapping[str, int],
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
     """Compile the account delete for the context's DataSource (ADR 0050)."""
 
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
     return compile_markets_statements(
-        account_delete_statements(uid=uid, unique_identifier=unique_identifier),
+        account_delete_statements(
+            uid=uid, unique_identifier=unique_identifier, row_counts=row_counts
+        ),
         context=with_delete_deadline(context),
         operation="delete",
         data_source_uid=data_source_uid,
@@ -312,16 +336,20 @@ def delete_account(
     *,
     uid: uuid.UUID | str,
     unique_identifier: str,
+    row_counts: Mapping[str, int],
 ) -> dict[str, Any]:
     """Delete the account and every Markets row that references it, or nothing.
 
-    Answers with the deleted account row, or with no rows when the account no longer
-    exists under ``unique_identifier``. A foreign key that refuses the delete raises
-    the MetaTables error, and nothing is deleted.
+    ``row_counts`` are `read_account_delete`'s counts. Answers with the deleted account
+    row, or with no rows when the account no longer exists under ``unique_identifier``.
+    A foreign key that refuses the delete raises the MetaTables error, and nothing is
+    deleted.
     """
 
     return execute_markets_write(
-        build_delete_account_operation(context, uid=uid, unique_identifier=unique_identifier),
+        build_delete_account_operation(
+            context, uid=uid, unique_identifier=unique_identifier, row_counts=row_counts
+        ),
         context=context,
         refused_by=(ACCOUNT_DELETE_GUARD,),
     )
