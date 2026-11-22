@@ -46,9 +46,11 @@ class LiquidityConstrained(RebalanceStrategyBase):
         description="Maximum fraction of observed liquidity usable at one event.",
     )
     total_notional: float = Field(
-        default=50_000_000,
         gt=0,
-        description="Portfolio notional used to translate liquidity capacity into weight.",
+        description=(
+            "Portfolio notional used to translate liquidity capacity into weight. Required: whoever runs the strategy gives it, and there "
+            "is no default size (#113)."
+        ),
     )
 
     def declared_dependencies(

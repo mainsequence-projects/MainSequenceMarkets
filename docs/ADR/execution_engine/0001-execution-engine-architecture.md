@@ -794,7 +794,9 @@ These came up in the discussion. They are kept here so they can be taken up agai
 - **Size.** The size is never a constant in the strategy. It is given by whoever runs it: the
   fund in live, the portfolio in a backtest. It is always set, and a run without it raises.
   The default of 50,000,000 in `VolumeParticipation`, `LiquidityConstrained` and
-  `TrailingAverageDailyVolumeParticipation` is wrong and goes.
+  `TrailingAverageDailyVolumeParticipation` is wrong and goes. Done on 2026-11-22
+  ([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)):
+  `total_notional` is required there.
 - **Strategy registry.** Portfolios and direct asset rows name their strategy through
   `RebalanceStrategyMetadata`, by `rebalance_strategy_uid`.
 - **Internal matching** of the whole intent is a setting of the strategy.

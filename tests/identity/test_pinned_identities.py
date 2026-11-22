@@ -289,11 +289,11 @@ PINNED_NESTED_SIGNAL_UIDS = {
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
     # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
-    "interpolated_prices_valuation": "88a9857661fa5030c9d01318aea565c9",
+    "interpolated_prices_valuation": "e8ea249fbcc51ab8a05bd98b8d25f425",
     # Execution windows are datetime.time values, which hash as ISO strings.
     "time_weighted_rebalance": "16873d7471f38d9601da7788431dd82e",
-    "volume_participation_rebalance": "acc17a70c739cc44a016e068b7e9b719",
-    "trailing_average_daily_volume_rebalance": "b92d246bd419001f616069b9c5d76595",
+    "volume_participation_rebalance": "8cb21ddaf75e765f62e533c5036b2ac8",
+    "trailing_average_daily_volume_rebalance": "a390b8f5fac98eb454edae04dd25b981",
 }
 
 PINNED_STRATEGY_REVISIONS = {
@@ -301,16 +301,16 @@ PINNED_STRATEGY_REVISIONS = {
     # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
-        "f63423115cd1fc4f0df7f36912273b38255d22401f4cbe7871f1c0450a330bc4"
+        "6f50d05f8299103a5d556884046376781f2a3d850661073db3a024944073209a"
     ),
     "time_weighted_on_interpolated_prices": (
         "117747a0d0ba54996865125f475bd3305ef0b103d0cf6e4b6e8910793a119123"
     ),
     "volume_participation_on_interpolated_prices": (
-        "4e5ab6fe53eae5548b8e7b41050cef90d1bd37cdbc24fcb4a2d15f06b21bc7d5"
+        "92bced795b35dd3c576adae24939cf2e3a1b137aef0d3a982fe80f093ea52e72"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "83b68dff11c34f209be83eb0bbed66663c574f4f74685b22f9a3aabd8ec7b0ed"
+        "54a43abc19cce56ac80cca34b7f103438be6ae07c83de40f4f0d5ca617c48a6d"
     ),
 }
 

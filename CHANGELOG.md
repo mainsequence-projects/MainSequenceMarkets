@@ -7,6 +7,20 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: a sized strategy is given its size**
+  ([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)).
+  `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` no longer default `total_notional` to
+  50,000,000: a configuration without it is refused with a `ValidationError` naming
+  `total_notional`. The size sets how much of the portfolio a bar's capacity trades, so
+  the default silently changed results; whoever runs the strategy gives it (execution
+  engine ADR 0001). A configuration that leaves it out must now pass it; passing
+  50,000,000 keeps the old behaviour but gives the strategy, and a portfolio that uses
+  it, a new revision and configuration hash, because a size given is hashed. The pinned
+  identities of these strategies are updated.
+
 ### Fixed
 
 - **PostgreSQL writes a holdings or target snapshot of 10,000 positions**

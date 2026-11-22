@@ -125,9 +125,11 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
         description="Maximum fraction of the current observed intraday bar volume.",
     )
     total_notional: float = Field(
-        default=50_000_000,
         gt=0,
-        description="Portfolio notional used to translate target weights into notional.",
+        description=(
+            "Portfolio notional used to translate target weights into notional. Required: whoever runs the strategy gives it, and there "
+            "is no default size (#113)."
+        ),
     )
 
     @field_validator("execution_start", "execution_end", mode="before")

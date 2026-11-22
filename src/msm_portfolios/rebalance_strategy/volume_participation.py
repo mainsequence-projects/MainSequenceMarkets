@@ -50,9 +50,11 @@ class VolumeParticipation(RebalanceStrategyBase):
         description="Maximum fraction of observed quantity volume executable in one bar.",
     )
     total_notional: float = Field(
-        default=50_000_000,
         gt=0,
-        description="Portfolio notional used to translate execution capacity into weight.",
+        description=(
+            "Portfolio notional used to translate execution capacity into weight. Required: whoever runs the strategy gives it, and there "
+            "is no default size (#113)."
+        ),
     )
 
     @field_validator("rebalance_start", "rebalance_end", mode="before")

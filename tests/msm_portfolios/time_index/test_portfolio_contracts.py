@@ -251,12 +251,32 @@ def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> Non
     assert "calendar_event" in str(close)
 
 
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: VolumeParticipation(execution_bars_instance=valuation_source("bars")),
+        lambda: LiquidityConstrained(liquidity_source_instance=valuation_source("liquidity")),
+        lambda: TrailingAverageDailyVolumeParticipation(
+            daily_liquidity_instance=valuation_source("daily"),
+            execution_bars_instance=valuation_source("bars"),
+        ),
+    ],
+    ids=["volume participation", "liquidity constrained", "trailing ADV"],
+)
+def test_a_sized_strategy_without_a_size_is_refused(build) -> None:
+    # The size is never a constant of the strategy: whoever runs it gives it (#113).
+    with pytest.raises(ValidationError) as refused:
+        build()
+
+    assert [error["loc"] for error in refused.value.errors()] == [("total_notional",)]
+
+
 def test_rebalance_strategy_serialization_includes_declared_dependency_identity() -> None:
     first = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"))
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"), total_notional=1_000.0)
     )
     second = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"))
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"), total_notional=1_000.0)
     )
 
     assert first != second
@@ -558,7 +578,9 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
     node.signal_weights = signal
-    node.rebalance_strategy = LiquidityConstrained(liquidity_source_instance=liquidity)
+    node.rebalance_strategy = LiquidityConstrained(
+        liquidity_source_instance=liquidity, total_notional=1_000.0
+    )
 
     # The signal is a published series (ADR 0060): read by the rebalance, never run by it.
     assert node.dependencies() == {"available_liquidity": liquidity}
@@ -1325,6 +1347,7 @@ def test_trailing_daily_volume_strategy_declares_both_observed_sources() -> None
     strategy = TrailingAverageDailyVolumeParticipation(
         daily_liquidity_instance=daily,
         execution_bars_instance=intraday,
+        total_notional=1_000.0,
     )
 
     assert strategy.declared_dependencies() == {
