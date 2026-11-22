@@ -141,8 +141,9 @@ MyRebalanceState = configured_portfolio_rebalance_state_storage(
 )
 ```
 
-`MyBase` is the application's own declarative base, and its provider targets
-`MyBase.metadata` (`platform/metatable_migrations` has the template).
+`MyBase` is the application's own declarative base, for its hand-written tables too,
+and its provider targets `MyBase.metadata` (`platform/metatable_migrations` has the
+template).
 
 Bind the engine to them: `rebalance_output_table=` on `PortfoliosUpdater`,
 `PortfolioWeights` and `run_portfolio`, and `output_table=` on the calendar events and

@@ -1,5 +1,8 @@
 """Publish one Index identity through separate frequency-owned datasets.
 
+The two tables are the provider's own: its namespace, storage app and declarative
+base, migrated by its own provider (`index_values_frequency_migration.py`).
+
 This is an identity and storage example. It deliberately does not model the
 instrument or process that supplied the 10-year swap-yield observation.
 """
@@ -7,15 +10,37 @@ instrument or process that supplied the 10-year swap-yield observation.
 from __future__ import annotations
 
 import pandas as pd
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 
-from metatables import PlatformTimeIndexMetaTable
+from metatables import PlatformTimeIndexMetaTable, sqlalchemy_naming_convention
 
 from msm.time_index.indices import IndexValuesUpdater, configured_index_values_storage
 from msm.api.indices import Index
 
 INDEX_IDENTIFIER = "USD_SWAP_10Y"
-ONE_MINUTE_VALUES_STORAGE = configured_index_values_storage(cadence="1m")
-DAILY_VALUES_STORAGE = configured_index_values_storage(cadence="1d")
+PROVIDER_NAMESPACE = "index-values-example"
+PROVIDER_STORAGE_APP = "index_values_example"
+
+
+class ProviderBase(DeclarativeBase):
+    """The provider's own base: its migration provider targets this metadata."""
+
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+ONE_MINUTE_VALUES_STORAGE = configured_index_values_storage(
+    cadence="1m",
+    namespace=PROVIDER_NAMESPACE,
+    storage_app=PROVIDER_STORAGE_APP,
+    base=ProviderBase,
+)
+DAILY_VALUES_STORAGE = configured_index_values_storage(
+    cadence="1d",
+    namespace=PROVIDER_NAMESPACE,
+    storage_app=PROVIDER_STORAGE_APP,
+    base=ProviderBase,
+)
 FREQUENCY_STORAGE_MODELS = (ONE_MINUTE_VALUES_STORAGE, DAILY_VALUES_STORAGE)
 
 

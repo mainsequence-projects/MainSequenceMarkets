@@ -7,20 +7,24 @@ from types import SimpleNamespace
 import uuid
 
 import pytest
-from sqlalchemy import ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
 os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 
 import msm.bootstrap as bootstrap
-from msm.base import MarketsBase, MarketsMetaTableMixin
+from msm.base import MarketsMetaTableMixin
 from msm.models import AssetTable
 from msm.settings import DEFAULT_MARKETS_NAMESPACE
 
 
-class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
+class ProjectBase(DeclarativeBase):
+    metadata = MetaData()
+
+
+class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, ProjectBase):
     __metatable_identifier__ = "test.BootstrapExtensionAssetDetails"
     __metatable_description__ = (
         "Project-local asset details table used to verify bootstrap dependency "
@@ -29,7 +33,7 @@ class BootstrapExtensionAssetDetailsTable(MarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )

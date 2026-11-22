@@ -159,8 +159,25 @@ Downstream projects must not set or override `__markets_storage_app__` on built-
 ms-markets models. Set it only on project-local models before migration and
 registration.
 
+Project-local extension models are declared on the project's own declarative
+base, never on `MarketsBase`, which is for built-in models. The project's
+migration provider targets that base's metadata
+(`.agents/skills/ms_markets/platform/metatable_migrations/SKILL.md`). A key to
+Markets passes the column object.
+
 ```python
-from msm.base import MarketsBase, MarketsMetaTableMixin
+import uuid
+
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import ForeignKey, MetaData, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from msm.base import MarketsMetaTableMixin
+from msm.models import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
@@ -169,10 +186,17 @@ class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
     __markets_base_identifier__ = "MyAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid."
+    )
+
+    asset_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
+        primary_key=True,
+        info={"description": "Canonical AssetTable uid for this detail row."},
     )
 ```
 
@@ -187,7 +211,7 @@ registration path.
 
 When adding a new built-in markets MetaTable model:
 
-1. Define the SQLAlchemy model with `MarketsMetaTableMixin`.
+1. Define the SQLAlchemy model with `MarketsMetaTableMixin` and `MarketsBase`.
 2. Add a meaningful `__metatable_description__`.
 3. Declare platform-managed foreign keys with normal SQLAlchemy
    `ForeignKey(f"{TargetModel.__table__.fullname}.column", ...)`.
@@ -259,12 +283,14 @@ objects may inherit directly from Pydantic `BaseModel`, but their runtime
 attachment still belongs to `msm.start_engine(models=[...])` and their table
 dependencies must be explicit.
 
-When reviewing or implementing extension support, verify the ADR 0018 target:
+When reviewing or implementing extension support, verify:
 
-- `msm.start_engine(models=[CustomTable])` accepts project-local
-  `MarketsBase` subclasses that are not in `markets_sqlalchemy_models()`.
+- `msm.start_engine(models=[CustomTable])` accepts project-local models that carry
+  a Markets mixin on the project's own declarative base and are not in
+  `markets_sqlalchemy_models()`, and row API classes over them.
 - SQLAlchemy `ForeignKey(...)` targets are expanded transitively, so a custom
-  asset detail table pulls in `AssetTable` before runtime attachment.
+  asset detail table pulls in `AssetTable` before runtime attachment, and a table
+  keyed to another table of the same project base pulls that table in.
 - Duplicate logical identifiers fail before runtime attachment.
 - Backend MetaTable resources are finalized before runtime and runtime binding
   uses the same direct lookup path used by built-ins.

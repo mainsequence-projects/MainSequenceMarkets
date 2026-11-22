@@ -237,6 +237,11 @@ sets the project's default `__metatable_namespace__` and, when needed,
 the namespace and base identifier into the globally unique catalog/runtime
 identity. Set the mixin attributes before model import/mapping.
 
+Project-local storage classes are declared on the project's own declarative
+base, never on `MarketsBase`, which is for built-in ms-markets models. The
+project's migration provider targets that base's metadata, and the foreign key
+passes Markets' column object.
+
 `MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
 set before model import. Use that for isolated tests and examples.
 
@@ -244,12 +249,17 @@ set before model import. Use that for isolated tests and examples.
 import datetime
 
 import pandas as pd
-from sqlalchemy import DateTime, Float, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import DateTime, Float, ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsTimeIndexMetaTableMixin
 from msm.time_index.assets import AssetUpdaterConfiguration, AssetTimestampedUpdater
 from msm.models.assets.core import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
@@ -258,7 +268,7 @@ class MyProjectMarketsStorageMixin(MarketsTimeIndexMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
+class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, Base):
     __markets_base_identifier__ = "ExampleAssetMetricsTS"
     __metatable_description__ = (
         "Timestamped asset metric observations keyed by asset identifier "
@@ -274,10 +284,7 @@ class ExampleAssetMetricStorage(MyProjectMarketsStorageMixin, MarketsBase):
     )
     asset_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(
-            f"{AssetTable.__table__.fullname}.unique_identifier",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(AssetTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
         nullable=False,
         info={"label": "Asset", "description": "AssetTable.unique_identifier value."},
     )

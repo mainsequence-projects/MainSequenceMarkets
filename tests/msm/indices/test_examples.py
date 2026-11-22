@@ -12,6 +12,7 @@ from examples.msm.indices import (  # noqa: E402
     delta_hedged_option_index,
     extension_owned_index_storage,
     formula_index,
+    index_values_frequency_migration,
     plain_index_values,
 )
 
@@ -49,6 +50,19 @@ def test_plain_index_values_share_identity_across_frequencies() -> None:
         "USD_SWAP_10Y_METHOD_A",
         "USD_SWAP_10Y_METHOD_B",
     )
+
+
+def test_frequency_example_migrates_its_tables_with_its_own_provider() -> None:
+    models = plain_index_values.FREQUENCY_STORAGE_MODELS
+    migration = index_values_frequency_migration.migration
+
+    assert list(migration.metatable_models) == list(models)
+    assert [model.__cadence__ for model in models] == ["1m", "1d"]
+    assert migration.target_metadata is plain_index_values.ProviderBase.metadata
+    assert set(migration.target_metadata.tables) == {model.__table__.key for model in models}
+    assert migration.package != "msm"
+    assert not migration.script_location.startswith("msm_migrations")
+    assert not migration.version_table.startswith("ms_markets__")
 
 
 def test_extension_metadata_holds_only_the_extensions_table() -> None:

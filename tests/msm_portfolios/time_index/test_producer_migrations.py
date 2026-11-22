@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
+import os
+import re
+import sys
+from pathlib import Path
+from types import ModuleType
+
+import pytest
 from alembic.autogenerate import produce_migrations
 from alembic.migration import MigrationContext
 from alembic.operations import ops
 from sqlalchemy import ForeignKey, MetaData, String, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from metatables import PlatformManagedMetaTable, sqlalchemy_naming_convention
+from metatables import sqlalchemy_naming_convention
 from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )
+from msm.api.base import MarketsMetaTableRow
+from msm.base import MarketsBase, MarketsMetaTableMixin
 from msm.models import AssetTable, CalendarTable, IndexTable, PortfolioTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
+from msm.models.registration import resolve_markets_meta_table_models
 from msm.storage_instances import configured_time_index_instance
 from msm.time_index.indices import configured_index_values_storage
 from msm_portfolios.time_index.contract_instances import (
@@ -25,6 +35,21 @@ from msm_portfolios.time_index.contract_instances import (
 from msm_portfolios.time_index.prices.storage import (
     InterpolatedPricesStorage,
     configured_interpolated_prices_storage,
+)
+
+REPOSITORY = Path(__file__).resolve().parents[3]
+SKILLS = ".agents/skills/ms_markets"
+GUIDANCE = (
+    f"{SKILLS}/assets/asset_indexed_updaters/SKILL.md",
+    f"{SKILLS}/assets/asset_model_extension/SKILL.md",
+    f"{SKILLS}/platform/bootstrap_registration/SKILL.md",
+    f"{SKILLS}/platform/metatable_migrations/SKILL.md",
+    "docs/knowledge/msm/assets/asset_indexed_updaters.md",
+    "docs/knowledge/msm/models/index.md",
+    "docs/knowledge/msm/platform/meta_table_registration.md",
+    "examples/msm/platform/custom_asset_details_extension.py",
+    "examples/msm/indices/extension_owned_index_storage.py",
+    "examples/msm/indices/index_values_frequency_migration.py",
 )
 
 
@@ -49,10 +74,13 @@ def test_a_producer_following_the_skill_template_migrates_only_its_own_tables(
     class Base(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
-    class FollowedIndexTable(PlatformManagedMetaTable, Base):
-        __tablename__ = "producer_app__followed_index"
+    class ProducerMixin(MarketsMetaTableMixin):
+        __abstract__ = True
         __metatable_namespace__ = "producer-app"
-        __metatable_identifier__ = "producer_app.followed_index"
+        __markets_storage_app__ = "producer_app"
+
+    class FollowedIndexTable(ProducerMixin, Base):
+        __markets_base_identifier__ = "FollowedIndex"
         __metatable_description__ = "One row per Markets index that the producer follows."
 
         index_identifier: Mapped[str] = mapped_column(
@@ -119,4 +147,83 @@ def test_a_producer_following_the_skill_template_migrates_only_its_own_tables(
         )
     }
     assert _autogenerate(engine, provider) == []
+    engine.dispose()
+
+
+def _guidance_code(path: str) -> list[str]:
+    """The code a project copies from one guidance file: each block that declares a base."""
+
+    text = (REPOSITORY / path).read_text()
+    if path.endswith(".py"):
+        return [text]
+    blocks = re.findall(r"^```python\n(.*?)^```", text, re.S | re.M)
+    return [block for block in blocks if "DeclarativeBase" in block]
+
+
+def _run_as_project_module(code: str, path: str, monkeypatch) -> ModuleType:
+    module = ModuleType("extension_guidance_project")
+    module.__file__ = str(REPOSITORY / path)
+    module.__package__ = "extension_guidance"
+    # The migrations template names a hook that each project writes itself.
+    module.refresh_project_market_specs = lambda context: None
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    with monkeypatch.context() as patch:
+        # An example may set environment defaults when imported; they end with it.
+        patch.setattr(os, "environ", os.environ.copy())
+        exec(compile(code, module.__file__, "exec"), module.__dict__)
+    return module
+
+
+@pytest.mark.parametrize("path", GUIDANCE)
+def test_a_project_following_the_guidance_migrates_only_its_own_tables(
+    path, tmp_path, monkeypatch, sqlite_revisions
+) -> None:
+    engine = sqlite_revisions.engine(tmp_path / "markets.sqlite", "head")
+    blocks = _guidance_code(path)
+    assert blocks, "the guidance shows no table on a project's own declarative base"
+
+    for code in blocks:
+        module = _run_as_project_module(code, path, monkeypatch)
+        declared = [value for value in vars(module).values() if isinstance(value, type)]
+        migration = getattr(module, "migration", None)
+        if migration is None:
+            (base,) = [value for value in declared if DeclarativeBase in value.__bases__]
+            migration = build_metatable_migration_provider(
+                package="my_project",
+                migration_namespace="my-project",
+                script_location="my_project.migrations:",
+                version_location_prefix="my_project.migrations:versions",
+                target_metadata=base.metadata,
+                alembic_registry=build_alembic_version_metatable(
+                    class_name="MyProjectAlembicVersion",
+                    namespace="my-project",
+                    identifier="my_project.alembic_version",
+                    schema=None,
+                    table_name="my_project__alembic_version",
+                ),
+                metatable_models=[mapper.class_ for mapper in base.registry.mappers],
+            )
+        models = list(migration.metatable_models)
+        own_tables = {model.__table__.name for model in models}
+        assert own_tables
+        assert not any(issubclass(model, MarketsBase) for model in models)
+        assert {table.name for table in migration.target_metadata.tables.values()} == own_tables
+
+        changes = _autogenerate(engine, migration)
+
+        assert {change.table_name for change in changes} == own_tables
+        created = {change.table_name for change in changes if isinstance(change, ops.CreateTableOp)}
+        assert created == own_tables
+
+        # What the guidance then passes to msm.start_engine is accepted, each on its own.
+        rows = [
+            value
+            for value in declared
+            if value.__module__ == module.__name__ and issubclass(value, MarketsMetaTableRow)
+        ]
+        for selector in (*models, *rows):
+            assert resolve_markets_meta_table_models([selector])
+
+        migration.target_metadata.create_all(engine)
+        assert _autogenerate(engine, migration) == []
     engine.dispose()

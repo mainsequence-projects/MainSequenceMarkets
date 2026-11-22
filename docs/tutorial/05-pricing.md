@@ -605,7 +605,8 @@ built-in tables.
 
 ### Markets MetaTable models
 
-Use this workflow when adding or reviewing a market-domain relational table:
+Use this workflow when adding or reviewing a built-in market-domain relational
+table:
 
 1. Define the SQLAlchemy model under `msm.models` with
    `MarketsMetaTableMixin` and `MarketsBase`.
@@ -656,13 +657,18 @@ migrated and registered with the same path as built-in tables:
 1. Define an abstract project-local mixin with the project's default
    `__metatable_namespace__` and, when needed, a project-owned
    `__markets_storage_app__`.
-2. Define the SQLAlchemy model with that mixin and `MarketsBase`.
+2. Define the SQLAlchemy model with that mixin on the project's own declarative
+   base, whose `MetaData` uses `metatables.sqlalchemy_naming_convention()`. Never
+   use `MarketsBase`: it is for built-in models.
 3. Give it one stable `__markets_base_identifier__`; ms-markets combines this
    base identifier with the mixin namespace to produce the globally unique
    MetaTable identifier.
-4. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets.
-5. Add a revision to the project's own migration provider that creates or
-   changes the table, and apply it to the local runtime with
+4. Declare relationships with normal SQLAlchemy `ForeignKey(...)` targets. A key
+   to Markets passes the column object, as in
+   `ForeignKey(AssetTable.__table__.c.uid)`.
+5. Add a revision to the project's own migration provider, which targets that
+   base's metadata, that creates or changes the table, and apply it to the local
+   runtime with
    `metatables --local migrations upgrade --provider <provider> head`. Hosted
    environments receive it from the project's deployment migration Job.
 6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.

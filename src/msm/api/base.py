@@ -7,8 +7,6 @@ from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
-from msm.base import MarketsBase
-
 RowT = TypeVar("RowT", bound="MarketsMetaTableRow")
 Payload = BaseModel | Mapping[str, Any] | None
 
@@ -18,8 +16,9 @@ class MarketsMetaTableRow(BaseModel):
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
-    __table__: ClassVar[type[MarketsBase]]
-    __required_tables__: ClassVar[Sequence[type[MarketsBase]]]
+    __table__: ClassVar[type[Any]]
+    """The mapped model: a built-in one, or a project's on the project's own base."""
+    __required_tables__: ClassVar[Sequence[type[Any]]]
     __upsert_keys__: ClassVar[Sequence[str]] = ()
     __delete_refusal__: ClassVar[str | None] = None
     """Why rows of this class are never deleted one by one; ``delete`` then refuses."""

@@ -18,14 +18,21 @@ from examples.msm.platform.bootstrap import (
 os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm  # noqa: E402
+from metatables import sqlalchemy_naming_convention  # noqa: E402
 from pydantic import AliasChoices, Field  # noqa: E402
-from sqlalchemy import ForeignKey  # noqa: E402
-from sqlalchemy.orm import Mapped, mapped_column  # noqa: E402
+from sqlalchemy import ForeignKey, MetaData  # noqa: E402
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column  # noqa: E402
 from sqlalchemy.types import String, Uuid  # noqa: E402
 
 from msm.api.base import MarketsMetaTableRow  # noqa: E402
-from msm.base import MarketsBase, MarketsMetaTableMixin  # noqa: E402
+from msm.base import MarketsMetaTableMixin  # noqa: E402
 from msm.models import AssetTable  # noqa: E402
+
+
+class Base(DeclarativeBase):
+    """The project's own base: its migration provider targets this metadata."""
+
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
@@ -36,7 +43,7 @@ class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
     """Project-local one-to-one asset detail table."""
 
     __markets_base_identifier__ = "MyAssetDetails"
@@ -48,7 +55,7 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this custom detail row."},

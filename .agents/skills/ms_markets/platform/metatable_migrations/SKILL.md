@@ -156,11 +156,12 @@ The project migration provider owns the migrated model list and targets the meta
 of the project's own declarative base:
 
 ```python
-from metatables import PlatformManagedMetaTable, sqlalchemy_naming_convention
+from metatables import sqlalchemy_naming_convention
 from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )
+from msm.base import MarketsMetaTableMixin
 from msm.models import IndexTable
 from msm_portfolios.time_index.contract_instances import (
     configured_portfolio_rebalance_state_storage,
@@ -173,10 +174,14 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-class ProjectMarketTable(PlatformManagedMetaTable, Base):
-    __tablename__ = "my_project__market_table"
+class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
+    __abstract__ = True
     __metatable_namespace__ = "my-project"
-    __metatable_identifier__ = "my_project.market_table"
+    __markets_storage_app__ = "my_project"
+
+
+class ProjectMarketTable(ProjectMarketsMetaTableMixin, Base):
+    __markets_base_identifier__ = "MarketTable"
     __metatable_description__ = "One row per Markets Index that the project follows."
 
     index_identifier: Mapped[str] = mapped_column(
@@ -219,6 +224,13 @@ metadata holds the project's tables and no Markets table:
 - `Base` is the project's own base, never `MarketsBase`, whose metadata holds every
   Markets table. Its `MetaData` sets no `schema`: Alembic would write that schema
   onto each key to Markets.
+- Every model in `metatable_models` is on `Base`, hand-written or factory-built. A
+  model on another base is missing from the target, so its table is never created
+  and the upgrade fails. When the target holds no table at all, MetaTables 0.1.71
+  compares every table of the database, and autogenerate drops them all.
+- A table that `msm.start_engine` attaches carries a Markets mixin with the
+  project's own namespace and storage app, as above. It refuses a table built only
+  on `PlatformManagedMetaTable`.
 - A key to a Markets table passes Markets' column object, as above, or
   `ForeignKey(AssetTable.__table__.c.uid)` for a key to `uid`. SQLAlchemy resolves a
   key given as text only inside one `MetaData`, so
@@ -257,6 +269,7 @@ or mutate schema. The MetaTables provider already owns schema work.
 - Project tables are listed in the project provider.
 - `target_metadata` is the metadata of the project's own base and holds no Markets
   table; keys to Markets pass column objects.
+- Every project table, hand-written or factory-built, is on that base.
 - A generated revision has operations on the project's tables only.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.

@@ -89,10 +89,13 @@ from msm.models.assets import AssetTable
 
 asset_uid = mapped_column(
     Uuid(as_uuid=True),
-    ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="RESTRICT"),
+    ForeignKey(AssetTable.__table__.c.uid, ondelete="RESTRICT"),
     nullable=False,
 )
 ```
+
+A key given as text resolves only inside one metadata, so a key from a project's
+table to a Markets table always passes the column object.
 
 The authored target is the SQLAlchemy table/column. The MetaTables migration
 provider reserves and finalizes the MetaTables, while Alembic renders and applies the
@@ -160,18 +163,26 @@ msm.start_engine(models=["Asset"])
 ```
 
 Project-local extension models use the same startup boundary. The registered
-artifact is the SQLAlchemy MetaTable model class, not the Pydantic row wrapper:
+artifact is the SQLAlchemy MetaTable model class, not the Pydantic row wrapper.
+The model is declared on the project's own declarative base, never on
+`MarketsBase`, whose metadata holds every Markets table, and the project's
+migration provider targets that base's metadata
+([MetaTable migrations](metatable_migrations.md)):
 
 ```python
 import uuid
 
-import msm
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from metatables import sqlalchemy_naming_convention
+from sqlalchemy import ForeignKey, MetaData
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import String, Uuid
 
-from msm.base import MarketsBase, MarketsMetaTableMixin
+from msm.base import MarketsMetaTableMixin
 from msm.models.assets import AssetTable
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
@@ -180,7 +191,7 @@ class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
     __markets_storage_app__ = "my_project_markets"
 
 
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
+class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
     __markets_base_identifier__ = "MyAssetDetails"
     __metatable_description__ = (
         "Project-local asset details keyed one-to-one by AssetTable.uid for "
@@ -189,7 +200,7 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
 
     asset_uid: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey(f"{AssetTable.__table__.fullname}.uid", ondelete="CASCADE"),
+        ForeignKey(AssetTable.__table__.c.uid, ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         info={"description": "Canonical AssetTable uid for this custom detail row."},
@@ -199,13 +210,19 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
         nullable=False,
         info={"description": "Internal asset class assigned by the project."},
     )
+```
 
+After the project's provider has migrated the table, the application attaches it:
+
+```python
+import msm
 
 msm.start_engine(models=[MyAssetDetailsTable])
 ```
 
 Startup expands SQLAlchemy `ForeignKey(...)` dependencies, so `AssetTable` is
-verified and attached before `MyAssetDetailsTable`. The caller does not pass a
+verified and attached before `MyAssetDetailsTable`, and so is another table of
+the project's base that a selected table references. The caller does not pass a
 MetaTable UID.
 
 `__metatable_namespace__` is the project-local default namespace for extension
@@ -226,22 +243,8 @@ table has been migrated and registered points the model at a different physical
 table name and must go through the normal MetaTables migration and registration
 path.
 
-Projects with several extension tables can define an abstract local mixin once:
-
-```python
-class MyProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-    __abstract__ = True
-    __metatable_namespace__ = "com.my_company.markets"
-    __markets_storage_app__ = "my_project_markets"
-
-
-class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, MarketsBase):
-    __markets_base_identifier__ = "MyAssetDetails"
-    __metatable_description__ = (
-        "Project-local asset details keyed one-to-one by AssetTable.uid for "
-        "custom analytics and internal classification."
-    )
-```
+Projects with several extension tables define the base and the abstract local
+mixin once and declare every table on both.
 
 Already-qualified `__metatable_identifier__` values are still accepted for
 existing models. Prefer `__markets_base_identifier__` on new project-local
