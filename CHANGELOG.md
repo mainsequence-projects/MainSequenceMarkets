@@ -9,6 +9,15 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- **Intraday bars upsampled to a longer frequency are bars of that frequency**
+  ([#117](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/117)).
+  `InterpolatedPrices` raised `KeyError: "['interpolated'] not in index"` for 1-minute
+  bars upsampled to 5 or 15 minutes. For 5 → 15 and 15 → 60 minutes it wrote the source
+  bars unaggregated, and other pairs gave overlapping windows, one per source bar, the
+  first opening before the market. It now writes one bar per target interval of each
+  session: aligned to the open, the last one ending at the close, with the interval's
+  open, high, low, close, summed volume and trade count, volume-weighted VWAP, and
+  `interpolated` only when every source bar in it was filled forward.
 - **A calendar's events in a shared table start from its own events**
   ([#119](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/119)).
   One `PortfolioCalendarEventsTS` table holds every calendar's events. A calendar's

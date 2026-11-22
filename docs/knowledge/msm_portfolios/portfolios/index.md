@@ -1010,6 +1010,15 @@ key the table:
 - the upsample frequency, the source's cadence when there is none;
 - the interpolation rule.
 
+An intraday source upsampled to a longer frequency, minute bars to 15-minute bars for
+example, gives one bar per target interval of each session of the asset's calendar. The
+intervals start at the session's open, and the last one ends at its close and can be
+shorter. A source bar belongs to the interval its close falls in. The bar is stamped at
+the interval's end, with `open_time` its start: the first open, the last close, the
+highest high and lowest low, the summed volume and trade count, and the VWAP weighted by
+volume. It is `interpolated` only when every source bar in it was filled forward. Daily
+sources are not upsampled.
+
 `interpolated_prices_instance_key` computes the key, for the migration and for the
 updater alike. Cadences are read stripped and lower-case. The table belongs to the
 application that interpolates: it declares the table on its own base and migrates it
