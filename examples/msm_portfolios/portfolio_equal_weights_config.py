@@ -44,6 +44,7 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "CalendarSessionRule",
     "CalendarException",
     "AssetCalendar",
+    "IndexType",
     "Portfolio",
     "SignalMetadata",
     "RebalanceStrategyMetadata",

@@ -17,7 +17,13 @@ def main() -> None:
 
     use_local_runtime()
     msm.start_engine(
-        models=["IndexType", "Index"],
+        models=[
+            "IndexType",
+            "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
+        ],
     )
 
     from msm.api.indices import Index, IndexType
@@ -42,6 +48,8 @@ def main() -> None:
         unique_identifier="USD-SOFR",
         index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR",
+        calculation_method="custom",
+        value_format="percent",
     )
 
     IndexConventionDetails.upsert(

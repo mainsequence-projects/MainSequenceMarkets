@@ -54,6 +54,7 @@ def build_fixed_weights_signal() -> FixedWeights:
 def build_fair_value_portfolio_configuration(
     *,
     valuation_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    calendar_events: TimeIndexTableUpdater | TimeIndexTableRef,
 ) -> PortfolioConfiguration:
     signal_weights = build_fixed_weights_signal()
     return PortfolioConfiguration(
@@ -65,6 +66,7 @@ def build_fair_value_portfolio_configuration(
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
+                    calendar_events_instance=calendar_events,
                     calendar_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
                     session_label="regular",
                     rebalance_event="market_close",
@@ -86,10 +88,12 @@ def valuation_source_from_uid(source_time_index_meta_table_uid: str) -> TimeInde
 def run_configuration_example(
     *,
     source_time_index_meta_table_uid: str,
+    calendar_events_time_index_meta_table_uid: str,
 ) -> dict[str, Any]:
     valuation_source = valuation_source_from_uid(source_time_index_meta_table_uid)
     portfolio_configuration = build_fair_value_portfolio_configuration(
         valuation_source=valuation_source,
+        calendar_events=TimeIndexTableRef.from_uid(calendar_events_time_index_meta_table_uid),
     )
     return {
         "portfolio_unique_identifier": PORTFOLIO_UNIQUE_IDENTIFIER,
@@ -111,6 +115,14 @@ def main() -> None:
             "time_index, asset_identifier, and fair_value columns."
         ),
     )
+    parser.add_argument(
+        "--calendar-events-time-index-meta-table-uid",
+        required=True,
+        help=(
+            "UID of the registered TimeIndexMetaTable that PortfolioCalendarEvents publishes "
+            f"{CRYPTO_CALENDAR_UNIQUE_IDENTIFIER}'s market opens and closes to."
+        ),
+    )
     args = parser.parse_args()
     if args.source_time_index_meta_table_uid in (None, ""):
         raise RuntimeError(
@@ -121,6 +133,7 @@ def main() -> None:
 
     result = run_configuration_example(
         source_time_index_meta_table_uid=str(args.source_time_index_meta_table_uid),
+        calendar_events_time_index_meta_table_uid=args.calendar_events_time_index_meta_table_uid,
     )
     for key, value in result.items():
         print(f"{key}: {value}")

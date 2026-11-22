@@ -59,6 +59,8 @@ spx = Index.upsert(
     unique_identifier="SPX",
     index_type=INDEX_TYPE_EQUITY,
     display_name="S&P 500 Index",
+    calculation_method="custom",
+    value_format="decimal",
 )
 usd = Asset.upsert(unique_identifier="USD", asset_type=ASSET_TYPE_CURRENCY)
 
@@ -103,6 +105,7 @@ future = register_index_future_from_figis(
     "BBG01SWCTHK4",
     underlying_index_figi="BBG000KKFC45",
     underlying_index_type=INDEX_TYPE_EQUITY,
+    underlying_index_value_format="decimal",
     settlement_asset_uid=usd.uid,
     margin_asset_uid=usd.uid,
     kind="EXPIRING",
@@ -117,8 +120,9 @@ future = register_index_future_from_figis(
 ```
 
 The helper requires the underlying index OpenFIGI row to have
-`marketSector="Index"`. It does not infer settlement asset, margin asset,
-contract size, or expiry from OpenFIGI.
+`marketSector="Index"`. It does not infer the index's value format, settlement
+asset, margin asset, contract size, or expiry from OpenFIGI. A new index is
+`custom`; an existing one keeps its `calculation_method`.
 
 See `examples/msm/assets/derivatives/index_future_from_openfigi.py` for the concrete
 workflow using index FIGI `BBG000KKFC45` and future FIGI `BBG01SWCTHK4`.
@@ -183,6 +187,10 @@ import msm
 
 msm.start_engine(models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"])
 ```
+
+A process that also writes the underlying `Index`, as both workflows above do,
+adds the other tables `Index` requires: `IndexDatasetAvailability`,
+`IndexFormulaDefinition` and `IndexFormulaInput`.
 
 Examples and development scripts select the
 [local runtime](../../../concepts.md#namespaces-and-sandboxes) before importing the API

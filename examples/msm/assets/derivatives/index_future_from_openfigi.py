@@ -35,7 +35,16 @@ def create_index_future_from_openfigi() -> dict[str, Any]:
 
     use_local_runtime()
     msm.start_engine(
-        models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"],
+        models=[
+            "AssetType",
+            "Asset",
+            "IndexType",
+            "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
+            "FutureAssetDetails",
+        ],
     )
 
     from msm.api.assets import Asset, AssetType
@@ -52,6 +61,7 @@ def create_index_future_from_openfigi() -> dict[str, Any]:
         EXAMPLE_FUTURE_FIGI,
         underlying_index_figi=EXAMPLE_UNDERLYING_INDEX_FIGI,
         underlying_index_type=INDEX_TYPE_EQUITY,
+        underlying_index_value_format="decimal",
         settlement_asset_uid=settlement_asset.uid,
         margin_asset_uid=settlement_asset.uid,
         kind="EXPIRING",

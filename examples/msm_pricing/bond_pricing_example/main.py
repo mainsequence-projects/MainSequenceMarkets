@@ -41,6 +41,9 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "BondAssetDetails",
             "IndexType",
             "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
         ],
     )
 
@@ -92,6 +95,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
             "Curve",
             "CurveBuildingDetails",
             "AssetCurrentPricingDetails",
+            "AssetPricingDetailsStorage",
             "PricingMarketDataSet",
             "PricingMarketDataSetBinding",
             "PricingMarketDataSetCurveBinding",
@@ -207,6 +211,8 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
         unique_identifier=EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
         index_type=INDEX_TYPE_INTEREST_RATE,
         display_name="USD SOFR Example 3M",
+        calculation_method="custom",
+        value_format="percent",
         description="Example USD SOFR-style 3M floating-rate index.",
     )
     _print_step(

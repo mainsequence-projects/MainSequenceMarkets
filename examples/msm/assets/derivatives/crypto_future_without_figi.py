@@ -39,7 +39,16 @@ def create_crypto_future_without_figi() -> dict[str, Any]:
 
     use_local_runtime()
     msm.start_engine(
-        models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"],
+        models=[
+            "AssetType",
+            "Asset",
+            "IndexType",
+            "Index",
+            "IndexDatasetAvailability",
+            "IndexFormulaDefinition",
+            "IndexFormulaInput",
+            "FutureAssetDetails",
+        ],
     )
 
     from msm.api.assets import Asset, AssetType
@@ -61,6 +70,8 @@ def create_crypto_future_without_figi() -> dict[str, Any]:
         unique_identifier=EXAMPLE_UNDERLYING_INDEX_IDENTIFIER,
         index_type=INDEX_TYPE_CRYPTO,
         display_name="BTC/USDT Perpetual Reference Index",
+        calculation_method="custom",
+        value_format="decimal",
         description=(
             "Local crypto venue reference index used as the underlying for a "
             "BTC/USDT perpetual future."

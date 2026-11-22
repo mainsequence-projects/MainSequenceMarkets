@@ -57,8 +57,12 @@ bars. A focused configuration example is available at
 
 ```bash
 python examples/msm_portfolios/portfolio_custom_valuation_column_example.py \
-  --source-time-index-meta-table-uid <fair-value-time-index-meta-table-uid>
+  --source-time-index-meta-table-uid <fair-value-time-index-meta-table-uid> \
+  --calendar-events-time-index-meta-table-uid <calendar-events-time-index-meta-table-uid>
 ```
+
+Its `CalendarEventSignal` reads the market opens and closes from the second table,
+which `PortfolioCalendarEvents` publishes.
 
 The source bar frequency is read from the registered source table's cadence
 metadata, then used with `__metatable_extra_hash_components__` to select a
