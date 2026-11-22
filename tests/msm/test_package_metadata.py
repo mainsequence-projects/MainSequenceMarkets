@@ -63,7 +63,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # rebuilds a time-index table's stored statistics after a compiled-SQL write changes it
     # (MetaTables#117), which the account and portfolio deletes rely on, and 0.1.71 binds
     # SQLite compiled SQL by position (MetaTables#121), so preparing a bulk upsert's statements
-    # no longer takes time quadratic in their values.
+    # no longer takes time quadratic in their values, and 0.1.73 keeps autogenerate from
+    # dropping tables a provider does not own (MetaTables#125).
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -73,7 +74,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.65") not in requirement.specifier
     assert Version("0.1.68") not in requirement.specifier
     assert Version("0.1.70") not in requirement.specifier
-    assert Version("0.1.71") in requirement.specifier
+    assert Version("0.1.72") not in requirement.specifier
+    assert Version("0.1.73") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

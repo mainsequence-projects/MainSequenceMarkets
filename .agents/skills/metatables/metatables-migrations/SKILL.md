@@ -240,6 +240,12 @@ table in it; a table's role for a caller is the strongest across its namespaces.
      --message "create ledger"
    ```
 
+   Autogenerate compares only the target's tables, by schema and name, and never
+   proposes dropping a table. Write a table's drop by hand in a revision created with
+   `--no-autogenerate`. Do not set `include_name_hook` to get drops generated: the
+   hook replaces that protection, and one that admits another owner's table lets a
+   revision delete it.
+
 Use `--source-root` and `--code-repository-root` when the application does not
 use the default `src/` layout. Keep applied revisions immutable; add a new
 revision for every later schema change.
@@ -359,6 +365,15 @@ Read `docs/operations/recovery-and-observability.md`.
 
 - If provider loading fails, verify the import path, model registry, metadata,
   version-table binding, and installed `metatables` version.
+- If `revision` refuses because `target_metadata` holds no table, the models are not
+  defined or imported yet, or they use another declarative base than the target.
+  Target their base's metadata or `metadata_for_models(models)`; listing them in the
+  registry alone does not add them. Use `--no-autogenerate` only for a revision meant
+  to be written by hand.
+- If a revision generated before client 0.1.73 holds a `drop_table`, confirm the table
+  is this provider's before applying it: those versions could generate drops of other
+  owners' tables. If it is not, remove the drop and its downgrade counterpart from a
+  revision that was never applied; if it was applied somewhere, tell the user.
 - If the provider loads another package's code or revisions, find the file that
   its module resolves to with
   `python -c "import importlib.util as u; print(u.find_spec('migrations').origin)"`,

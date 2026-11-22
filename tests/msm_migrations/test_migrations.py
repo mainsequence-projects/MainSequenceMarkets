@@ -265,12 +265,10 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
 def test_migration_provider_filters_unrelated_tables() -> None:
     asset_table_name = AssetTable.__table__.name
 
+    # Alembic names no schema for the default one, which MetaTables pins to `public`. A table
+    # of the same name in another schema is not Markets' (MetaTables#125).
     assert migration.include_name(asset_table_name, "table", {"schema_name": None})
-    assert migration.include_name(
-        asset_table_name,
-        "table",
-        {"schema_name": MARKETS_DEFAULT_SCHEMA},
-    )
+    assert not migration.include_name(asset_table_name, "table", {"schema_name": "another_schema"})
     assert not migration.include_name("unrelated_table", "table", {"schema_name": None})
     assert migration.include_name("unrelated_index", "index", {"schema_name": None})
 

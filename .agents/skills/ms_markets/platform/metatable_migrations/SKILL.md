@@ -222,12 +222,18 @@ Autogenerate compares every table in `target_metadata` with the database, so tha
 metadata holds the project's tables and no Markets table:
 
 - `Base` is the project's own base, never `MarketsBase`, whose metadata holds every
-  Markets table. Its `MetaData` sets no `schema`: Alembic would write that schema
-  onto each key to Markets.
+  Markets table: autogenerate would drop a column that a newer Markets deployment
+  added. Its `MetaData` sets no `schema`: Alembic would write that schema onto each
+  key to Markets.
 - Every model in `metatable_models` is on `Base`, hand-written or factory-built. A
   model on another base is missing from the target, so its table is never created
-  and the upgrade fails. When the target holds no table at all, MetaTables 0.1.71
-  compares every table of the database, and autogenerate drops them all.
+  and the upgrade fails. When the target holds no table at all, MetaTables 0.1.73
+  and later refuse to autogenerate. Earlier clients wrote a revision that drops
+  every table in the database: read any revision they generated before applying it.
+- Autogenerate never drops a table (MetaTables 0.1.73). Write the project's own
+  drops by hand, in a revision created with `--no-autogenerate`. Set no
+  `include_name_hook` to get them generated: it replaces both protections, so a
+  hook that admits another owner's table gets that table dropped.
 - A table that `msm.start_engine` attaches carries a Markets mixin with the
   project's own namespace and storage app, as above. It refuses a table built only
   on `PlatformManagedMetaTable`.
