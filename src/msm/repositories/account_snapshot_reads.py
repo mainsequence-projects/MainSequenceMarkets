@@ -6,6 +6,9 @@ joined tables come back under a prefix: ``target__``, ``portfolio__``, ``holding
 ``fund__``, ``fundset__``, ``allocation__`` and ``assetref__``; `prefixed_columns` takes
 one table's columns out of a row.
 
+Each read answers every row of its snapshot (`msm.repositories.complete_reads`): a
+builder compiles the page at ``offset``, and the ``read_`` function reads them all.
+
 ``assetref__`` columns are the asset of a row (``uid``, ``identifier``) and its latest
 snapshot's ``name`` and ``ticker``, the asset reference the services answer with; they
 are null when the asset or its snapshot does not exist.
@@ -15,10 +18,10 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import and_, asc, desc, func, or_, select, true
+from sqlalchemy import Text, and_, asc, cast, desc, func, or_, select, true
 from sqlalchemy.orm import aliased
 
 from metatables import MetaTableCompiledSQLOperation
@@ -36,12 +39,8 @@ from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositi
 from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 
-from .base import (
-    MarketsRepositoryContext,
-    compile_markets_statement,
-    execute_markets_operation,
-    with_max_rows,
-)
+from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
+from .complete_reads import compile_page, page_select, read_every_row
 
 SnapshotOrder = Literal["asc", "desc"]
 
@@ -67,7 +66,7 @@ def build_account_target_snapshot_operation(
     order: SnapshotOrder,
     target_positions_date: dt.datetime | None,
     include_asset_detail: bool,
-    limit: int,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
     """One read: the account, its target snapshot, the snapshot's rows and their labels.
 
@@ -77,7 +76,7 @@ def build_account_target_snapshot_operation(
     no row when the account does not exist; one row with null ``position_set_uid`` when
     it has no such snapshot; otherwise one row per position (null ``target__`` columns
     when the snapshot has none) with its ``portfolio__`` row and, with
-    ``include_asset_detail``, its asset reference. ``limit`` bounds the rows.
+    ``include_asset_detail``, its asset reference.
     """
 
     candidates = (
@@ -127,20 +126,21 @@ def build_account_target_snapshot_operation(
         )
         .outerjoin(PortfolioTable, PortfolioTable.uid == TargetPositionsStorage.portfolio_uid)
         .where(AccountTable.uid == account_uid)
-        .limit(limit)
     )
+    key = (f"{TARGET}target_type", f"{TARGET}target_uid")
+    statement = page_select(statement, key=key, offset=offset)
     if include_asset_detail:
         statement = _with_asset_references(
-            statement, AssetTable.uid == TargetPositionsStorage.asset_uid
+            statement, AssetTable.uid == TargetPositionsStorage.asset_uid, key=key
         )
-    return _compile(statement, context)
+    return compile_page(statement, context=context)
 
 
 def read_account_target_snapshot(
     context: MarketsRepositoryContext, **kwargs: Any
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_account_target_snapshot_operation(context, **kwargs),
+    return read_every_row(
+        lambda offset: build_account_target_snapshot_operation(context, offset=offset, **kwargs),
         context=context,
     )
 
@@ -190,14 +190,14 @@ def build_account_holdings_snapshot_operation(
     order: SnapshotOrder,
     holdings_date: dt.datetime | None,
     include_asset_detail: bool,
-    limit: int,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
     """One read: the account and its holdings at one time, with their asset references.
 
     The time is ``holdings_date``, else the account's latest (``order="desc"``) or
     earliest holdings time. The statement answers no row when the account does not
     exist, one row with null ``holding__`` columns when it holds nothing at that time,
-    and otherwise one row per holding. ``limit`` bounds the rows.
+    and otherwise one row per holding.
     """
 
     if holdings_date is not None:
@@ -222,20 +222,23 @@ def build_account_holdings_snapshot_operation(
             ),
         )
         .where(AccountTable.uid == account_uid)
-        .limit(limit)
     )
+    key = (f"{HOLDING}asset_identifier",)
+    statement = page_select(statement, key=key, offset=offset)
     if include_asset_detail:
         statement = _with_asset_references(
-            statement, AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier
+            statement,
+            AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier,
+            key=key,
         )
-    return _compile(statement, context)
+    return compile_page(statement, context=context)
 
 
 def read_account_holdings_snapshot(
     context: MarketsRepositoryContext, **kwargs: Any
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_account_holdings_snapshot_operation(context, **kwargs),
+    return read_every_row(
+        lambda offset: build_account_holdings_snapshot_operation(context, offset=offset, **kwargs),
         context=context,
     )
 
@@ -247,7 +250,7 @@ def build_account_holdings_set_operation(
     order: SnapshotOrder,
     holdings_date: dt.datetime | None,
     include_asset_detail: bool,
-    limit: int,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
     """One read: the account, one of its holdings sets and that set's rows.
 
@@ -255,7 +258,7 @@ def build_account_holdings_set_operation(
     earliest, ties broken by uid. The statement answers no row when the account does
     not exist; one row with null ``holdings_set_uid`` when it has no such set; otherwise
     one row per holding of the set (null ``holding__`` columns when it has none), with
-    its asset reference under ``include_asset_detail``. ``limit`` bounds the rows.
+    its asset reference under ``include_asset_detail``.
     """
 
     direction = _direction(order)
@@ -291,18 +294,21 @@ def build_account_holdings_set_operation(
             ),
         )
         .where(AccountTable.uid == account_uid)
-        .limit(limit)
     )
+    key = (f"{HOLDING}time_index", f"{HOLDING}asset_identifier")
+    statement = page_select(statement, key=key, offset=offset)
     if include_asset_detail:
         statement = _with_asset_references(
-            statement, AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier
+            statement,
+            AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier,
+            key=key,
         )
-    return _compile(statement, context)
+    return compile_page(statement, context=context)
 
 
 def read_account_holdings_set(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_account_holdings_set_operation(context, **kwargs),
+    return read_every_row(
+        lambda offset: build_account_holdings_set_operation(context, offset=offset, **kwargs),
         context=context,
     )
 
@@ -313,7 +319,7 @@ def build_account_fund_holdings_operation(
     account_uid: uuid.UUID | str,
     source_account_holdings_set_uid: uuid.UUID | str,
     include_asset_detail: bool,
-    limit: int,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
     """One read: the account's virtual funds with what each holds from one holdings set.
 
@@ -321,31 +327,14 @@ def build_account_fund_holdings_operation(
     ``source_account_holdings_set_uid`` (at most one: the pair is unique) and its
     ``allocation__`` rows from that set, one row each, or one row with null
     ``allocation__`` columns when it has the set alone; with ``include_asset_detail``,
-    each row's asset reference. A fund with neither answers no row. ``limit`` bounds the
-    allocation rows and, apart from them, leaves room for as many funds with a set
-    alone, so neither kind of row takes the other's place.
+    each row's asset reference. A fund with neither answers no row.
     """
 
-    allocations = (
-        select(*VirtualFundHoldingsStorage.__table__.columns)
-        .where(
-            VirtualFundHoldingsStorage.source_account_holdings_set_uid
-            == source_account_holdings_set_uid,
-            VirtualFundHoldingsStorage.virtual_fund_uid.in_(
-                select(VirtualFundTable.uid).where(VirtualFundTable.account_uid == account_uid)
-            ),
-        )
-        .limit(limit)
-        .cte("fund_allocations")
-        .prefix_with("MATERIALIZED")
-    )
     columns = [
         *_labelled(VirtualFundTable, FUND),
         *_labelled(VirtualFundHoldingsSetTable, FUND_SET),
-        *(column.label(f"{ALLOCATION}{column.name}") for column in allocations.c),
+        *_labelled(VirtualFundHoldingsStorage, ALLOCATION),
     ]
-    # The allocation rows first, at most ``limit``; the rest is for funds with a set alone.
-    max_rows = 2 * limit
     statement = (
         select(*columns)
         .select_from(VirtualFundTable)
@@ -357,27 +346,82 @@ def build_account_fund_holdings_operation(
                 == source_account_holdings_set_uid,
             ),
         )
-        .outerjoin(allocations, allocations.c.virtual_fund_uid == VirtualFundTable.uid)
+        .outerjoin(
+            VirtualFundHoldingsStorage,
+            and_(
+                VirtualFundHoldingsStorage.virtual_fund_uid == VirtualFundTable.uid,
+                VirtualFundHoldingsStorage.source_account_holdings_set_uid
+                == source_account_holdings_set_uid,
+            ),
+        )
         .where(
             VirtualFundTable.account_uid == account_uid,
             or_(
                 VirtualFundHoldingsSetTable.uid.is_not(None),
-                allocations.c.time_index.is_not(None),
+                VirtualFundHoldingsStorage.time_index.is_not(None),
             ),
         )
-        .order_by(allocations.c.time_index.is_(None))
-        .limit(max_rows)
     )
+    key = (f"{FUND}uid", f"{ALLOCATION}time_index", f"{ALLOCATION}asset_identifier")
+    statement = page_select(statement, key=key, offset=offset)
     if include_asset_detail:
         statement = _with_asset_references(
-            statement, AssetTable.unique_identifier == allocations.c.asset_identifier
+            statement,
+            AssetTable.unique_identifier == VirtualFundHoldingsStorage.asset_identifier,
+            key=key,
         )
-    return _compile(statement, with_max_rows(context, max_rows))
+    return compile_page(statement, context=context)
 
 
 def read_account_fund_holdings(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_account_fund_holdings_operation(context, **kwargs),
+    return read_every_row(
+        lambda offset: build_account_fund_holdings_operation(context, offset=offset, **kwargs),
+        context=context,
+    )
+
+
+def build_account_holdings_snapshots_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: uuid.UUID | str,
+    order: SnapshotOrder = "desc",
+    holdings_dates: Sequence[dt.datetime] | None = None,
+    snapshots: int = 1,
+    offset: int = 0,
+) -> MetaTableCompiledSQLOperation:
+    """One read: the holdings rows of several of an account's snapshots, ordered by time.
+
+    The snapshots are those at ``holdings_dates``, else the latest (``order="desc"``) or
+    earliest ``snapshots`` of them.
+    """
+
+    direction = _direction(order)
+    if holdings_dates is not None:
+        wanted: Any = list(holdings_dates)
+    else:
+        times = aliased(AccountHoldingsStorage, name="holdings_times")
+        wanted = (
+            select(times.time_index)
+            .where(times.account_uid == account_uid)
+            .distinct()
+            .order_by(direction(times.time_index))
+            .limit(snapshots)
+        )
+    statement = select(*AccountHoldingsStorage.__table__.columns).where(
+        AccountHoldingsStorage.account_uid == account_uid,
+        AccountHoldingsStorage.time_index.in_(wanted),
+    )
+    key = ("-time_index" if order == "desc" else "time_index", "asset_identifier")
+    return compile_page(page_select(statement, key=key, offset=offset), context=context)
+
+
+def read_account_holdings_snapshots(
+    context: MarketsRepositoryContext, **kwargs: Any
+) -> dict[str, Any]:
+    return read_every_row(
+        lambda offset: build_account_holdings_snapshots_operation(
+            context, offset=offset, **kwargs
+        ),
         context=context,
     )
 
@@ -391,7 +435,7 @@ def _labelled(model: Any, prefix: str, *, names: tuple[str, ...] | None = None) 
     ]
 
 
-def _with_asset_references(statement: Any, asset_onclause: Any) -> Any:
+def _with_asset_references(statement: Any, asset_onclause: Any, *, key: Sequence[str]) -> Any:
     """``statement``'s rows, each with its asset and that asset's latest snapshot.
 
     The latest snapshot times are found in one pass over the snapshots, for all the rows'
@@ -401,6 +445,11 @@ def _with_asset_references(statement: Any, asset_onclause: Any) -> Any:
     chunk's, for each. PostgreSQL turns a join or a plain ``IN`` into that when it expects
     few assets, as without statistics: ``IS true`` keeps the membership test a filter of
     the one pass, and ``MATERIALIZED`` keeps the pass from running again for each row.
+    The identifiers are cast to ``TEXT`` there: PostgreSQL hashes the test only when it
+    expects them to fit ``work_mem``, and it counts about 500 bytes for a ``VARCHAR(255)``,
+    so a whole page would be compared row by row.
+
+    The rows are a `page_select`, whose order ``key`` names; the join keeps that order.
     """
 
     identifier_label = f"{ASSET_REFERENCE}identifier"
@@ -420,7 +469,7 @@ def _with_asset_references(statement: Any, asset_onclause: Any) -> Any:
         )
         .where(
             select(identifier).where(identifier.is_not(None)).exists(),
-            AssetSnapshotsStorage.asset_identifier.in_(select(identifier)).is_(true()),
+            AssetSnapshotsStorage.asset_identifier.in_(select(cast(identifier, Text))).is_(true()),
         )
         .group_by(AssetSnapshotsStorage.asset_identifier)
         .cte("latest_asset_snapshots")
@@ -441,6 +490,7 @@ def _with_asset_references(statement: Any, asset_onclause: Any) -> Any:
                 AssetSnapshotsStorage.time_index == latest.c.time_index,
             ),
         )
+        .order_by(*(rows.c[name] for name in key))
     )
 
 
@@ -474,12 +524,14 @@ __all__ = [
     "build_account_fund_holdings_operation",
     "build_account_holdings_set_operation",
     "build_account_holdings_snapshot_operation",
+    "build_account_holdings_snapshots_operation",
     "build_account_target_snapshot_operation",
     "build_account_with_stored_target_allocation_operation",
     "prefixed_columns",
     "read_account_fund_holdings",
     "read_account_holdings_set",
     "read_account_holdings_snapshot",
+    "read_account_holdings_snapshots",
     "read_account_target_snapshot",
     "read_account_with_stored_target_allocation",
 ]

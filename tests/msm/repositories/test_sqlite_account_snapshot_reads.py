@@ -406,7 +406,7 @@ def test_holdings_by_fund_find_the_latest_of_many_holdings_sets(sqlite_markets) 
 @pytest.mark.parametrize(
     ("idle", "set_only", "holders", "held"),
     [(30, 0, 1, 480), (0, 30, 1, 480), (100, 500, 1, 500), (0, 5, 3, 367)],
-    ids=["idle funds", "funds with a set alone", "both at their caps", "past the rows' cap"],
+    ids=["idle funds", "funds with a set alone", "500 of both", "over 500 allocations"],
 )
 def test_holdings_by_fund_keep_a_place_for_allocations_and_for_funds(
     sqlite_markets, idle, set_only, holders, held
@@ -422,11 +422,10 @@ def test_holdings_by_fund_keep_a_place_for_allocations_and_for_funds(
     )
 
     allocated = [len(group["holdings"]) for group in by_fund["funds"]]
-    # Every fund with a set, also one whose rows are past the cap; no fund with nothing.
+    # Every fund with a set or rows; no fund with nothing.
     assert len(allocated) == set_only + holders
-    assert sum(allocated) >= min(holders * held, 500)
-    if holders * held <= 500:
-        assert by_fund["residuals"] == []
+    assert sum(allocated) == holders * held
+    assert by_fund["residuals"] == []
 
 
 def test_the_asset_snapshots_are_not_read_once_per_asset(sqlite_markets, monkeypatch) -> None:

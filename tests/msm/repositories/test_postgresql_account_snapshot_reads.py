@@ -8,6 +8,8 @@ assets, as it does on tables without statistics, so both are tested.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from metatables.api.backend.backends.restricted_sql import parameters_for
@@ -44,10 +46,25 @@ def test_the_asset_snapshots_are_not_scanned_once_per_asset(
         assert all(loops <= (5 if held else 0) for loops in runs), runs
 
 
-def _executed_plan(engine, operation) -> dict:
+def test_a_full_page_of_assets_is_hashed_within_a_small_work_mem(
+    postgresql_markets, monkeypatch
+) -> None:
+    # Not hashed, the membership test compares each snapshot with each of the page's assets.
+    engine, context, _operations = postgresql_markets
+    account = seed_account_snapshots(engine, held=10_000, other_snapshots=2_000)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ANALYZE")
+
+    for operation in account_read_operations(monkeypatch, context, account):
+        assert "hashed SubPlan" in json.dumps(_executed_plan(engine, operation, work_mem="1MB"))
+
+
+def _executed_plan(engine, operation, *, work_mem: str | None = None) -> dict:
     statement = operation.statement
     values = parameters_for(statement.parameters, statement.parameter_types, "postgresql")
     with engine.connect() as connection:
+        if work_mem:
+            connection.exec_driver_sql(f"SET LOCAL work_mem = '{work_mem}'")
         explained = connection.exec_driver_sql(
             f"EXPLAIN (ANALYZE, TIMING OFF, FORMAT JSON) {statement.sql}", values or {}
         ).scalar_one()

@@ -175,6 +175,10 @@ direct account snapshots and virtual-fund-grouped views.
     `portfolio_uid`, so the selected row can be written directly into a target
     position payload
 - `GET /api/v1/account/{account_uid}/holdings/`
+  - returns every row of the snapshot, as the target, by-fund and allocation
+    reads do. The operation counts given for these routes hold up to 10,000
+    rows and 8 MiB an operation; a larger answer is read in pages, again until
+    two reads agree, and fails rather than answer a part
   - supports `order`, `limit=1`, `include_asset_detail`, and exact
     `holdings_date`
   - costs one MetaTables operation: the account, its holdings at the selected
@@ -193,10 +197,9 @@ direct account snapshots and virtual-fund-grouped views.
   - selects one `AccountHoldingsSetTable` source snapshot for the account
   - costs two MetaTables operations: the account with that holdings set and
     its rows; then the account's virtual funds with what each holds from it
-  - reads at most 500 allocation rows; quantities past that cap show as
-    unallocated in `residuals`. Funds that hold a set and no rows are read
-    beside them, not in their place; funds with nothing from the selected set
-    are not read
+  - answers every holding and allocation row of that set, and every fund that
+    has a set or rows from it; funds with nothing from the selected set are
+    not read
   - groups persisted `VirtualFundHoldingsStorage` allocation rows by
     `VirtualFundTable.uid` where each `VirtualFundHoldingsSetTable` references
     the selected source account holdings set
@@ -287,9 +290,10 @@ direct account snapshots and virtual-fund-grouped views.
 - `POST /api/v1/account/{account_uid}/add-holdings/`
   - writes one account holdings snapshot and returns the same
     `AccountHoldingsSnapshotResponse` contract as the holdings read endpoint
-  - costs three MetaTables operations whatever the number of positions: read
-    the account, read every position's asset in one select, and write; the
-    response is built from the rows the write returns, not read back
+  - costs three MetaTables operations up to 1,000 positions: read the account,
+    read every position's asset in one select, and write; the response is
+    built from the rows the write returns, not read back. Past 1,000 the
+    assets are read 1,000 at a time and the whole snapshot is read back
   - request body contains `holdings_date`, `overwrite`, and `positions`
   - each position uses the storage field name `asset_identifier`; one `400`
     names every unknown `asset_identifier`

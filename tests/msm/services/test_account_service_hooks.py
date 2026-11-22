@@ -24,7 +24,7 @@ CORE_HOOKS = (
     "_asset_reference_details_by_identifier",
     "_asset_snapshot_references_by_unique_identifier",
     "_build_account_holdings_frame",
-    "_search_account_holdings_rows",
+    "read_account_holdings_snapshots",
 )
 
 

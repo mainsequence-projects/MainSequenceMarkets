@@ -25,10 +25,10 @@ from msm.repositories.account_snapshot_reads import (
     read_account_holdings_set,
 )
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from msm.repositories.complete_reads import read_every_model_row
 from msm.repositories.crud import get_model_by_uid, search_model
 
 DEFAULT_VIRTUAL_FUND_PAGE_SIZE = 25
-MAX_VIRTUAL_FUND_SCAN_LIMIT = 500
 
 
 def list_virtual_fund_rows_response(
@@ -267,7 +267,6 @@ def get_account_holdings_by_fund_response(
             order=order,
             holdings_date=_datetime_or_none(holdings_date),
             include_asset_detail=include_asset_detail,
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
         )
     )
     if not rows:
@@ -287,7 +286,6 @@ def get_account_holdings_by_fund_response(
             account_uid=resolved_account_uid,
             source_account_holdings_set_uid=source_account_holdings_set_uid,
             include_asset_detail=include_asset_detail,
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
         )
     )
     virtual_fund_rows = _distinct_rows(fund_rows, FUND)
@@ -392,13 +390,14 @@ def _virtual_fund_holdings_snapshot_time(
     virtual_fund_uid: str,
     order: Literal["asc", "desc"],
 ) -> dt.datetime | None:
-    aggregate = (
-        func.min(VirtualFundHoldingsSetTable.time_index)
-        if order == "asc"
-        else func.max(VirtualFundHoldingsSetTable.time_index)
-    )
-    statement = select(aggregate.label("time_index")).where(
-        VirtualFundHoldingsSetTable.virtual_fund_uid == virtual_fund_uid
+    time_index = VirtualFundHoldingsSetTable.time_index
+    # The column itself, not its min or max: SQLite returns an aggregate without its
+    # column's type, so without its UTC offset.
+    statement = (
+        select(time_index.label("time_index"))
+        .where(VirtualFundHoldingsSetTable.virtual_fund_uid == virtual_fund_uid)
+        .order_by(time_index.asc() if order == "asc" else time_index.desc())
+        .limit(1)
     )
     result = execute_markets_operation(
         compile_markets_statement(
@@ -441,14 +440,13 @@ def _virtual_fund_holdings_rows(
     holdings_date: dt.datetime,
 ) -> list[dict[str, Any]]:
     return _operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=VirtualFundHoldingsStorage,
             filters={
                 "virtual_fund_uid": virtual_fund_uid,
                 "time_index": holdings_date,
             },
-            limit=MAX_VIRTUAL_FUND_SCAN_LIMIT,
         )
     )
 
@@ -480,7 +478,7 @@ def _asset_references_by_unique_identifier(
     *,
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    """Each row's asset reference, from one read of the rows' assets."""
+    """Each row's asset reference, from one read of the rows' assets per row cap of them."""
 
     identifiers = sorted(
         {
@@ -492,16 +490,17 @@ def _asset_references_by_unique_identifier(
     if not identifiers:
         return {}
 
-    from msm.services.assets import asset_reference_details
+    from msm.services.accounts.core import _asset_reference_details_by_identifier
 
     details_by_identifier = {
-        str(row["asset_identifier"]): {
-            "uid": row.get("asset_uid"),
-            "name": row.get("name"),
-            "ticker": row.get("ticker"),
+        identifier: {
+            "uid": detail.get("asset_uid"),
+            "name": detail.get("name"),
+            "ticker": detail.get("ticker"),
         }
-        for row in asset_reference_details(identifiers, repository_context=context)
-        if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, "")
+        for identifier, detail in _asset_reference_details_by_identifier(
+            context, identifiers=identifiers
+        ).items()
     }
     return _asset_references(rows, details_by_identifier=details_by_identifier)
 

@@ -1497,7 +1497,7 @@ def test_core_add_account_holdings_snapshot_writes_frame_and_returns_snapshot(
         "replace_account_holdings_snapshot",
         fake_replace_account_holdings_snapshot,
     )
-    monkeypatch.setattr(account_services, "_search_account_holdings_rows", no_read_back)
+    monkeypatch.setattr(account_services, "read_account_holdings_snapshots", no_read_back)
 
     snapshot = account_services.add_account_holdings_snapshot_response(
         context,

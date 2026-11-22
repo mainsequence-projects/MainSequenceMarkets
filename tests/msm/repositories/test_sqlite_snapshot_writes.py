@@ -248,7 +248,8 @@ def test_clearing_the_target_writes_an_empty_position_set_and_deactivates_the_al
         STORED_WHEN,
         "2026-11-11 15:30:00.000000",
     ]
-    assert [row["uid"] for row in cleared["rows"]] == [position_sets[1]["uid"]]
+    # The answer renders the uid dashed, as the MetaTables route does; the table stores it as hex.
+    assert [uuid.UUID(row["uid"]).hex for row in cleared["rows"]] == [position_sets[1]["uid"]]
     assert _rows(engine, "SELECT is_active FROM ms_markets__accounttargetallocation") == [{"is_active": 0}]
     # History keeps the earlier snapshot; the clear adds an empty one.
     assert _rows(engine, "SELECT position_set_uid FROM ms_markets__targetpositionsts") == [
@@ -413,7 +414,7 @@ def test_a_holdings_publish_names_every_unknown_asset_and_writes_nothing(
 def test_a_holdings_publish_over_the_row_cap_reads_the_rows_its_write_did_not_return(
     sqlite_markets, monkeypatch
 ) -> None:
-    """A write returns at most an operation's `max_rows` rows; the rest are read in pages."""
+    """A write returns at most an operation's `max_rows` rows; one read then returns them all."""
 
     from msm.services import add_account_holdings_snapshot_response
     from msm.services.accounts import get_account_holdings_snapshot_response
@@ -433,8 +434,8 @@ def test_a_holdings_publish_over_the_row_cap_reads_the_rows_its_write_did_not_re
         positions=_holdings_positions(identifiers),
     )
 
-    # Account; assets in pages of two; the write; its five rows in pages of two.
-    assert operations == ["select"] + ["select"] * 3 + ["upsert"] + ["select"] * 3
+    # Account; assets in pages of two; the write; its five rows in one read.
+    assert operations == ["select"] + ["select"] * 3 + ["upsert", "select"]
     assert [row["asset_identifier"] for row in snapshot["holdings"]] == identifiers
     assert snapshot == get_account_holdings_snapshot_response(
         sqlite_markets.context,

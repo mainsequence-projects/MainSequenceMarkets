@@ -56,18 +56,13 @@ def retired_portfolios(
     """
 
     from msm.models import PortfolioTable
-    from msm.repositories.crud import search_model
+    from msm.repositories.complete_reads import read_every_model_row
 
     uids = sorted({str(uuid.UUID(str(value))) for value in portfolio_uids if value not in (None, "")})
     if not uids:
         return {}
     rows = operation_result_rows(
-        search_model(
-            context,
-            model=PortfolioTable,
-            in_filters={"uid": uids},
-            limit=len(uids),
-        )
+        read_every_model_row(context, model=PortfolioTable, in_filters={"uid": uids})
     )
     retired: dict[str, dt.datetime] = {}
     for row in rows:

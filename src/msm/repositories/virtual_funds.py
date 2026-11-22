@@ -38,6 +38,12 @@ from msm.repositories.base import (
     execute_markets_write,
     resolve_markets_sql_target,
 )
+from msm.repositories.complete_reads import (
+    compile_page,
+    page_select,
+    read_every_model_row,
+    read_every_row,
+)
 from msm.models import VirtualFundHoldingsSetTable, VirtualFundTable
 from msm.time_index.accounts.virtual_funds.storage import (
     AccountAllocationLinesStorage,
@@ -214,12 +220,13 @@ def build_search_account_virtual_fund_allocation_operation(
     *,
     account_uid: uuid.UUID | str,
     source_account_holdings_set_uid: uuid.UUID | str,
-    limit: int = 5_000,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
-    """Select what the account's funds hold for one holdings snapshot.
+    """Select a page of what the account's funds hold for one holdings snapshot.
 
     One row per holdings set and, when it has them, per holdings row: the fund,
-    its holdings set, and the row's ``asset_identifier`` and ``extra_details``.
+    its holdings set, and the row's ``time_index``, ``asset_identifier`` and
+    ``extra_details``.
     """
 
     statement = (
@@ -228,6 +235,7 @@ def build_search_account_virtual_fund_allocation_operation(
             VirtualFundTable.unique_identifier.label("unique_identifier"),
             VirtualFundTable.target_portfolio_uid.label("target_portfolio_uid"),
             VirtualFundHoldingsSetTable.uid.label("holdings_set_uid"),
+            VirtualFundHoldingsStorage.time_index.label("time_index"),
             VirtualFundHoldingsStorage.asset_identifier.label("asset_identifier"),
             VirtualFundHoldingsStorage.extra_details.label("extra_details"),
         )
@@ -246,40 +254,36 @@ def build_search_account_virtual_fund_allocation_operation(
             VirtualFundHoldingsSetTable.source_account_holdings_set_uid
             == uuid.UUID(str(source_account_holdings_set_uid))
         )
-        .order_by(VirtualFundTable.unique_identifier)
-        .limit(limit)
     )
-    return compile_markets_statement(statement, context=context, operation="select")
+    key = ("unique_identifier", "holdings_set_uid", "time_index", "asset_identifier")
+    return compile_page(page_select(statement, key=key, offset=offset), context=context)
 
 
 def search_account_virtual_fund_allocation(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_search_account_virtual_fund_allocation_operation(context, **kwargs),
+    """Every row of what the account's funds hold for one holdings snapshot."""
+
+    return read_every_row(
+        lambda offset: build_search_account_virtual_fund_allocation_operation(
+            context, offset=offset, **kwargs
+        ),
         context=context,
     )
-
-
-def build_search_virtual_funds_by_unique_identifiers_operation(
-    context: MarketsRepositoryContext,
-    *,
-    unique_identifiers: Sequence[str],
-) -> MetaTableCompiledSQLOperation:
-    statement = select(VirtualFundTable).where(
-        VirtualFundTable.unique_identifier.in_([str(value) for value in unique_identifiers])
-    )
-    return compile_markets_statement(statement, context=context, operation="select")
 
 
 def search_virtual_funds_by_unique_identifiers(
     context: MarketsRepositoryContext,
-    **kwargs: Any,
+    *,
+    unique_identifiers: Sequence[str],
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_search_virtual_funds_by_unique_identifiers_operation(context, **kwargs),
-        context=context,
+    """Every virtual fund that has one of ``unique_identifiers``."""
+
+    return read_every_model_row(
+        context,
+        model=VirtualFundTable,
+        in_filters={"unique_identifier": [str(value) for value in unique_identifiers]},
     )
 
 
@@ -312,9 +316,9 @@ def build_search_account_allocation_lines_operation(
     account_uid: uuid.UUID | str,
     source_account_holdings_set_uid: uuid.UUID | str | None = None,
     time_index: dt.datetime | None = None,
-    limit: int = 5_000,
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
-    """Select the lines of one allocation of an account's holdings.
+    """Select a page of the lines of one allocation of an account's holdings.
 
     The allocation is the one of ``source_account_holdings_set_uid``, or the one
     at ``time_index``, or with neither the account's latest. One row per owner
@@ -359,18 +363,19 @@ def build_search_account_allocation_lines_operation(
         .outerjoin(VirtualFundTable, VirtualFundTable.uid == lines.virtual_fund_uid)
         .where(lines.account_uid == account)
         .where(which)
-        .order_by(lines.owner_type.desc(), lines.owner_uid, lines.asset_identifier)
-        .limit(limit)
     )
-    return compile_markets_statement(statement, context=context, operation="select")
+    key = ("-owner_type", "owner_uid", "asset_identifier", "holdings_set_uid")
+    return compile_page(page_select(statement, key=key, offset=offset), context=context)
 
 
 def search_account_allocation_lines(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_search_account_allocation_lines_operation(context, **kwargs),
+    return read_every_row(
+        lambda offset: build_search_account_allocation_lines_operation(
+            context, offset=offset, **kwargs
+        ),
         context=context,
     )
 
@@ -435,10 +440,12 @@ def _input_values(
     *,
     postgresql: bool,
 ) -> Any:
-    """The rows of one write input as a ``VALUES`` CTE.
+    """The rows of one write input, as a CTE.
 
-    PostgreSQL needs each value cast to its column's type. SQLite binds without
-    casts: it casts ``DATETIME`` and ``JSON`` to numbers.
+    On PostgreSQL they are one JSONB parameter, read as a typed recordset: a value bound
+    for each column of each row passed MetaTables' 1,000,000 characters of SQL at about
+    2,000 rows, and PostgreSQL's 65,535 parameters after it. On SQLite they are a
+    ``VALUES`` list, bound without casts: it casts ``DATETIME`` and ``JSON`` to numbers.
     """
 
     json_type = JSONB if postgresql else JSON
@@ -448,26 +455,40 @@ def _input_values(
             return json_type()
         return Uuid(as_uuid=True) if kind is Uuid else kind()
 
-    def value(key: str, kind: Any, row: Mapping[str, Any], index: int) -> Any:
+    def value(key: str, kind: Any, row: Mapping[str, Any]) -> Any:
         raw = row.get(key)
         if kind is Uuid:
             raw = uuid.UUID(str(raw))
-        elif kind is Float:
-            raw = float(raw)
-        elif kind is SmallInteger:
-            raw = int(raw)
-        elif kind is None:
-            raw = dict(raw or {})
-        elif raw is not None:
-            raw = str(raw)
-        parameter = bindparam(f"{name}_{key}_{index}", value=raw, type_=type_of(kind))
-        return cast(parameter, type_of(kind)) if postgresql else parameter
+            return str(raw) if postgresql else raw
+        if kind is Float:
+            return float(raw)
+        if kind is SmallInteger:
+            return int(raw)
+        if kind is None:
+            return dict(raw or {})
+        return None if raw is None else str(raw)
+
+    typed = [column(key, type_of(kind)) for key, kind in columns]
+    if postgresql:
+        payload = [{key: value(key, kind, row) for key, kind in columns} for row in rows]
+        parameter = cast(bindparam(f"{name}_rows", value=payload, type_=JSONB()), JSONB())
+        recordset = (
+            func.jsonb_to_recordset(parameter)
+            .table_valued(*typed)
+            .render_derived(name=f"{name}_recordset", with_types=True)
+        )
+        return select(*recordset.c).cte(name)
 
     return (
-        values(*(column(key, type_of(kind)) for key, kind in columns), name=name)
+        values(*typed, name=name)
         .data(
             [
-                tuple(value(key, kind, row, index) for key, kind in columns)
+                tuple(
+                    bindparam(
+                        f"{name}_{key}_{index}", value=value(key, kind, row), type_=type_of(kind)
+                    )
+                    for key, kind in columns
+                )
                 for index, row in enumerate(rows)
             ]
         )
@@ -911,7 +932,6 @@ __all__ = [
     "ALLOCATION_WRITE_GUARD",
     "build_search_account_allocation_lines_operation",
     "build_search_account_virtual_fund_allocation_operation",
-    "build_search_virtual_funds_by_unique_identifiers_operation",
     "build_write_account_virtual_fund_allocation_operation",
     "search_account_allocation_lines",
     "search_account_virtual_fund_allocation",

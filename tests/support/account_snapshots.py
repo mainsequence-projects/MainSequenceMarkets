@@ -48,7 +48,8 @@ def seed_account_snapshots(
 
     Before those funds it has ``idle`` funds with nothing and ``set_only`` funds with a
     holdings set and no row. Its target names the held assets, or one portfolio when it
-    holds none. Each held asset has one old snapshot; other assets have
+    holds none. With no holder it holds one unit of each asset, in no fund. Each held
+    asset has one old snapshot; other assets have
     ``other_snapshots`` newer ones between them.
     """
 
@@ -146,7 +147,7 @@ def seed_account_snapshots(
                 "account_uid": account,
                 "asset_identifier": name,
                 "holdings_set_uid": source,
-                "quantity": float(holders),
+                "quantity": float(max(holders, 1)),
                 "direction": 1,
             }
             for _uid, name in assets

@@ -16,7 +16,7 @@ _asset_snapshot_references_by_unique_identifier = (
     _core._asset_snapshot_references_by_unique_identifier
 )
 _build_account_holdings_frame = _core._build_account_holdings_frame
-_search_account_holdings_rows = _core._search_account_holdings_rows
+read_account_holdings_snapshots = _core.read_account_holdings_snapshots
 
 
 # One read of its own: it uses none of the hooks below.
@@ -39,7 +39,7 @@ _UNPATCHED_CORE_ACCOUNT_HOOKS: dict[str, Any] = {
         "_asset_reference_details_by_identifier",
         "_asset_snapshot_references_by_unique_identifier",
         "_build_account_holdings_frame",
-        "_search_account_holdings_rows",
+        "read_account_holdings_snapshots",
     )
 }
 

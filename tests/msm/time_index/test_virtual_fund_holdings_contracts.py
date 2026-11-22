@@ -160,7 +160,7 @@ def test_virtual_fund_allocation_bound_allows_remaining_source_quantity(monkeypa
         raise AssertionError(model)
 
     monkeypatch.setattr(
-        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+        "msm.services.accounts.virtual_fund_holdings.read_every_model_row", fake_search_model
     )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",
@@ -203,7 +203,7 @@ def test_virtual_fund_allocation_bound_rejects_overallocation(monkeypatch) -> No
         raise AssertionError(model)
 
     monkeypatch.setattr(
-        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+        "msm.services.accounts.virtual_fund_holdings.read_every_model_row", fake_search_model
     )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",
@@ -237,7 +237,7 @@ def test_short_source_holdings_do_not_fund_long_allocations(monkeypatch) -> None
         raise AssertionError(model)
 
     monkeypatch.setattr(
-        "msm.services.accounts.virtual_fund_holdings.search_model", fake_search_model
+        "msm.services.accounts.virtual_fund_holdings.read_every_model_row", fake_search_model
     )
     frame = build_virtual_fund_holdings_frame(
         allocation_time="2026-05-25T10:00:00+00:00",

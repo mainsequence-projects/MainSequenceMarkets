@@ -11,7 +11,7 @@ from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.time_index.accounts.storage import AccountHoldingsStorage
 from msm.repositories.base import MarketsRepositoryContext
-from msm.repositories.crud import search_model
+from msm.repositories.complete_reads import read_every_model_row
 from msm.services.holdings import validate_holdings_frame
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -157,12 +157,10 @@ def _source_account_holdings_rows(
         return {}
 
     rows = operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=AccountHoldingsStorage,
-            filters={},
             in_filters={"holdings_set_uid": source_uids},
-            limit=max(500, len(source_uids) * 100),
         )
     )
     source_rows: dict[tuple[str, str, int], float] = {}
@@ -187,12 +185,10 @@ def _existing_virtual_fund_allocation_rows(
     if not source_uid_list:
         return []
     return operation_result_rows(
-        search_model(
+        read_every_model_row(
             context,
             model=VirtualFundHoldingsStorage,
-            filters={},
             in_filters={"source_account_holdings_set_uid": source_uid_list},
-            limit=max(500, len(source_uid_list) * 100),
         )
     )
 

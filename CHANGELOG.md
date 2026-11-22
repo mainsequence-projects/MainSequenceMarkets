@@ -58,9 +58,8 @@ Read "Upgrading" at the end of this entry.
 - **Fewer MetaTables round trips behind an account's target and holdings**
   ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)). Each
   MetaTables request is a round trip, so these requests now join in one select what
-  they read one table at a time. Within their 500-row caps their answers are the same,
-  apart from the two fixes to these reads under "Fixed". In holdings by fund, funds
-  with nothing from the selected holdings set no longer count toward the cap on funds.
+  they read one table at a time. Their answers are the same, apart from the fixes to
+  these reads under "Fixed".
   - `GET /api/v1/account/{account_uid}/target-positions/`: one request, was five (six
     when the target names assets): the account, its snapshot, the snapshot's rows and
     their portfolios and assets.
@@ -72,9 +71,8 @@ Read "Upgrading" at the end of this entry.
     with its holdings set and that set's rows, then its virtual funds with what each
     holds from the set.
 
-  The selects are in `msm.repositories.account_snapshot_reads`. Holdings by fund still
-  caps allocation rows at 500 on their own, so funds without rows cannot push one out;
-  quantities past that cap still show as unallocated in `residuals`. Each select finds
+  The selects are in `msm.repositories.account_snapshot_reads`. The counts are for an
+  answer within one MetaTables statement (10,000 rows and 8 MiB). Each select finds
   its assets' latest snapshot times in one pass over the asset snapshots, not one per
   asset, and reading the names at those times can take a second pass. No migration is
   needed.
@@ -236,6 +234,37 @@ Read "Upgrading" at the end of this entry.
 - **A target position carries its portfolio's reference whatever the number of
   portfolios.** The reference came from the first 500 portfolios read; a position naming
   another had no `portfolio` and answered its uid as `unique_identifier`.
+- **An account snapshot is read whole.** Reads stopped, without a word, at a row cap
+  and answered the part as the whole:
+  - holdings, target positions (and a target write's answer), virtual-fund holdings,
+    and both sides of holdings by fund, at 500 rows. An account with 300 assets in each
+    of two funds showed 100 of its 600 allocations as unallocated;
+  - the allocation's holdings, target and assets, its stored lines, and its checks of
+    known funds and retired portfolios, at 1,000 rows, MetaTables' default, whatever
+    the 5,000 in the code. A plan from cut inputs could be applied: in a test with
+    1,101 assets it saved 178 false deltas;
+  - `validate_virtual_fund_allocation_bounds`, at 500 rows or more by the number of
+    holdings sets, which let an allocation exceed what the account holds;
+  - `AccountHoldingsSnapshots.get_many`, which paged by time alone, an order that does
+    not fix the rows of each page.
+
+  They read with `msm.repositories.complete_reads`, which answers every row or raises
+  `IncompleteReadError`. Past 10,000 rows or 8 MiB a read takes several requests and is
+  repeated until two agree, so that a write between pages cannot mix two snapshots.
+  Allocations already saved from cut inputs are account history and are left as saved.
+
+  **Breaking** for callers of the repositories: these reads take no `limit`
+  (`search_account_allocation_lines`, `search_account_virtual_fund_allocation` and the
+  readers of `msm.repositories.account_snapshot_reads`; their builders take `offset`),
+  and `build_search_virtual_funds_by_unique_identifiers_operation` is removed: use
+  `search_virtual_funds_by_unique_identifiers`.
+- **A large allocation can be written on PostgreSQL.** It bound a value for each column
+  of each row and passed MetaTables' 1,000,000 characters of SQL between 500 and 600
+  assets in two funds. Each input is now one JSONB parameter; the rows stored are the
+  same.
+- **A virtual fund's latest holdings can be read on SQLite.** The read of the latest
+  time lost its UTC offset and the request failed with
+  `Timestamps require a UTC offset.`
 - **Registering an Index from OpenFIGI works**
   ([#110](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/110)).
   The three helpers raised a `ValidationError`, since they passed neither

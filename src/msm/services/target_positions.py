@@ -36,7 +36,6 @@ TARGET_POSITION_EXPOSURE_FIELDS = (
     "single_asset_quantity",
 )
 
-DEFAULT_TARGET_POSITION_SCAN_LIMIT = 500
 PortfolioWeightResolver = Callable[[str], Sequence[Mapping[str, Any]] | pd.DataFrame]
 
 
@@ -259,7 +258,6 @@ def get_account_target_positions_snapshot_response(
             order=normalized_order,
             target_positions_date=_datetime_or_none(target_positions_date),
             include_asset_detail=include_asset_detail,
-            limit=DEFAULT_TARGET_POSITION_SCAN_LIMIT,
         )
     )
     if not rows:
