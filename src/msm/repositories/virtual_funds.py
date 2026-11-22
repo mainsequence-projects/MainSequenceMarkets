@@ -8,7 +8,6 @@ from typing import Any
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
 from sqlalchemy import (
-    JSON,
     DateTime,
     Float,
     SmallInteger,
@@ -17,16 +16,14 @@ from sqlalchemy import (
     and_,
     bindparam,
     cast,
-    column,
     func,
     insert,
     literal,
     or_,
     select,
     update,
-    values,
 )
-from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from msm.repositories.base import (
@@ -38,6 +35,7 @@ from msm.repositories.base import (
     execute_markets_write,
     resolve_markets_sql_target,
 )
+from msm.repositories.write_inputs import input_rows
 from msm.repositories.complete_reads import (
     compile_page,
     page_select,
@@ -433,69 +431,6 @@ _LINE_COLUMNS = [
 ]
 
 
-def _input_values(
-    name: str,
-    columns: Sequence[tuple[str, Any]],
-    rows: Sequence[Mapping[str, Any]],
-    *,
-    postgresql: bool,
-) -> Any:
-    """The rows of one write input, as a CTE.
-
-    On PostgreSQL they are one JSONB parameter, read as a typed recordset: a value bound
-    for each column of each row passed MetaTables' 1,000,000 characters of SQL at about
-    2,000 rows, and PostgreSQL's 65,535 parameters after it. On SQLite they are a
-    ``VALUES`` list, bound without casts: it casts ``DATETIME`` and ``JSON`` to numbers.
-    """
-
-    json_type = JSONB if postgresql else JSON
-
-    def type_of(kind: Any) -> Any:
-        if kind is None:
-            return json_type()
-        return Uuid(as_uuid=True) if kind is Uuid else kind()
-
-    def value(key: str, kind: Any, row: Mapping[str, Any]) -> Any:
-        raw = row.get(key)
-        if kind is Uuid:
-            raw = uuid.UUID(str(raw))
-            return str(raw) if postgresql else raw
-        if kind is Float:
-            return float(raw)
-        if kind is SmallInteger:
-            return int(raw)
-        if kind is None:
-            return dict(raw or {})
-        return None if raw is None else str(raw)
-
-    typed = [column(key, type_of(kind)) for key, kind in columns]
-    if postgresql:
-        payload = [{key: value(key, kind, row) for key, kind in columns} for row in rows]
-        parameter = cast(bindparam(f"{name}_rows", value=payload, type_=JSONB()), JSONB())
-        recordset = (
-            func.jsonb_to_recordset(parameter)
-            .table_valued(*typed)
-            .render_derived(name=f"{name}_recordset", with_types=True)
-        )
-        return select(*recordset.c).cte(name)
-
-    return (
-        values(*typed, name=name)
-        .data(
-            [
-                tuple(
-                    bindparam(
-                        f"{name}_{key}_{index}", value=value(key, kind, row), type_=type_of(kind)
-                    )
-                    for key, kind in columns
-                )
-                for index, row in enumerate(rows)
-            ]
-        )
-        .cte(name)
-    )
-
-
 def _allocation_inputs(
     funds: Sequence[Mapping[str, Any]],
     lines: Sequence[Mapping[str, Any]],
@@ -609,7 +544,7 @@ def build_write_account_virtual_fund_allocation_operation(
     upserted_funds = None
     gate = not_allocated
     if fund_rows:
-        fund_inputs = _input_values("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=True)
+        fund_inputs = input_rows("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=True)
         funds_insert = postgresql_insert(VirtualFundTable).from_select(
             ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
             select(
@@ -659,7 +594,7 @@ def build_write_account_virtual_fund_allocation_operation(
             )
         )
     if holding_rows:
-        holding_inputs = _input_values(
+        holding_inputs = input_rows(
             "holding_inputs", _HOLDING_INPUT_COLUMNS, holding_rows, postgresql=True
         )
         fund_set_uids = fund_inputs.alias("fund_set_uids")
@@ -698,7 +633,7 @@ def build_write_account_virtual_fund_allocation_operation(
             )
         )
     if line_rows:
-        line_inputs = _input_values("line_inputs", _LINE_INPUT_COLUMNS, line_rows, postgresql=True)
+        line_inputs = input_rows("line_inputs", _LINE_INPUT_COLUMNS, line_rows, postgresql=True)
         ctes.append(line_inputs)
         if upserted_funds is None:
             line_source = line_inputs
@@ -783,7 +718,7 @@ def _virtual_fund_allocation_statement_list(
     fund_rows, holding_rows, line_rows = _allocation_inputs(funds, lines)
 
     def fund_inputs() -> Any:
-        return _input_values("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=False)
+        return input_rows("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=False)
 
     not_allocated = ~_snapshot_is_allocated(account_param(), source_param())
     statements: list[GuardedStatement | Any] = []
@@ -843,7 +778,7 @@ def _virtual_fund_allocation_statement_list(
             )
         )
     if holding_rows:
-        holding_inputs = _input_values(
+        holding_inputs = input_rows(
             "holding_inputs", _HOLDING_INPUT_COLUMNS, holding_rows, postgresql=False
         )
         statements.append(
@@ -880,7 +815,7 @@ def _virtual_fund_allocation_statement_list(
             .returning(VirtualFundHoldingsStorage)
         )
     if line_rows:
-        line_inputs = _input_values(
+        line_inputs = input_rows(
             "line_inputs", _LINE_INPUT_COLUMNS, line_rows, postgresql=False
         )
         statements.append(

@@ -9,6 +9,13 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- **PostgreSQL writes a holdings or target snapshot of 10,000 positions**
+  ([#112](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/112)).
+  `POST /api/v1/account/{account_uid}/add-holdings/` refused more than 3,951 positions
+  and `add-target-positions` more than 2,846 asset positions, with a `502`: each bound a
+  value for every column of every row, and the statement passed MetaTables' 1,000,000
+  characters of SQL. Both now send their positions as one JSONB parameter, as the
+  allocation write does since 5.0.0, and store the same rows. SQLite was not affected.
 - **Intraday bars upsampled to a longer frequency are bars of that frequency**
   ([#117](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/117)).
   `InterpolatedPrices` raised `KeyError: "['interpolated'] not in index"` for 1-minute
