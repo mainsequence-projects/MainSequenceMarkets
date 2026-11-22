@@ -155,6 +155,28 @@ def test_upsert_index_from_openfigi_result_keeps_a_stored_calculation_method(mar
     assert index.calculation_method == "formula"
 
 
+def test_upsert_index_from_openfigi_result_keeps_a_percent_index_and_its_suffix(markets) -> None:
+    stored = Index.upsert(
+        unique_identifier="BBG000KKFC45",
+        index_type=INDEX_TYPE_EQUITY,
+        display_name="Percent Index",
+        calculation_method="custom",
+        value_format="percent",
+        value_suffix="p.a.",
+    )
+
+    openfigi.upsert_index_from_openfigi_result(
+        INDEX_RESULT,
+        index_type=INDEX_TYPE_EQUITY,
+        value_format="percent",
+    )
+
+    index = Index.get_by_unique_identifier("BBG000KKFC45")
+    assert index.uid == stored.uid
+    assert index.value_format == "percent"
+    assert index.value_suffix == "p.a."
+
+
 def test_upsert_index_from_openfigi_result_requires_index_market_sector() -> None:
     with pytest.raises(ValueError, match="marketSector 'Index'"):
         openfigi.upsert_index_from_openfigi_result(
