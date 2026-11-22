@@ -51,6 +51,16 @@ def test_plain_index_values_share_identity_across_frequencies() -> None:
     )
 
 
+def test_extension_metadata_holds_only_the_extensions_table() -> None:
+    storage = extension_owned_index_storage.ExtensionIndexObservationsStorage
+
+    assert set(extension_owned_index_storage.ExtensionBase.metadata.tables) == {
+        storage.__table__.key
+    }
+    (key,) = storage.__table__.foreign_keys
+    assert key.target_fullname == "ms_markets__index.unique_identifier"
+
+
 def test_extension_can_publish_a_unit_free_canonical_projection() -> None:
     output = extension_owned_index_storage.run()
     canonical = output["canonical_values"].reset_index()

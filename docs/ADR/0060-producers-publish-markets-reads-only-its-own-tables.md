@@ -204,7 +204,11 @@ provider. `configured_signal_weights_storage`, `configured_portfolio_weights_sto
 
 A private table may reference a registry row with a physical foreign key and declares its
 delete action. The key points from the dependent to the core and is the only coupling
-between them. Markets does not discover, count or name such a table:
+between them. Since
+[#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108) that holds
+in the dependent's metadata too: the key passes the core's column object and no core table
+is copied there, so the dependent's migrations change only its own tables.
+Markets does not discover, count or name such a table:
 
 - a registry delete deletes Markets' own rows and lets the database apply every key;
 - a `RESTRICT` key that refuses answers 409 with the database's message;

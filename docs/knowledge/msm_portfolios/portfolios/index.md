@@ -559,10 +559,12 @@ updater = PortfoliosUpdater(
 Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
 `<storage_app>__<contract>__<instance_key>` and whose MetaTable identifier is
 `<Contract>.<instance_key>`, prefixed with the namespace when it is not the
-default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). With
-`base=`, the referenced core tables are copied into the application's metadata
-so the foreign keys resolve without importing the core classes into its
-migration scope. `configured_portfolio_calendar_events_storage` and
+default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). `base=` is
+the application's own declarative base, and its Alembic provider targets that
+base's metadata. The instance's foreign keys point at Markets' own column
+objects and no Markets table is copied into that metadata, so autogenerate
+changes the application's tables only.
+`configured_portfolio_calendar_events_storage` and
 `configured_portfolio_event_ledger_storage` take the same arguments.
 `configured_time_index_instance` (`msm.storage_instances`) builds an instance
 of any other Markets storage.
@@ -577,10 +579,10 @@ table in the application's namespace; the table keeps its storage identity and
 identifier suffix, and none of the three enters `update_hash`.
 
 A private table may reference a registry row with a physical foreign key (the
-factories copy the contract's keys to `Portfolio.unique_identifier`, `Asset`
-and `Calendar`) and declares its delete action. That key points from the
-application to Markets and is the only coupling between them. Markets does not
-discover, count or name the table:
+factories give each instance the contract's keys to
+`Portfolio.unique_identifier`, `Asset` and `Calendar`) and declares its delete
+action. That key points from the application to Markets and is the only
+coupling between them. Markets does not discover, count or name the table:
 
 - a registry delete deletes Markets' own rows and lets the database apply
   every key;

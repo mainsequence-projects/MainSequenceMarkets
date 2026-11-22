@@ -24,11 +24,6 @@ class ExtensionBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-# Copy only the referenced core table into the extension registry so SQLAlchemy
-# can resolve the foreign key while the extension continues to own its schema.
-IndexTable.__table__.to_metadata(ExtensionBase.metadata)
-
-
 class ExtensionIndexObservationsStorage(MarketsTimeIndexMetaTableMixin, ExtensionBase):
     """Example rich observation contract owned outside the core library."""
 
@@ -57,7 +52,9 @@ class ExtensionIndexObservationsStorage(MarketsTimeIndexMetaTableMixin, Extensio
     )
     index_identifier: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey(f"{IndexTable.__table__.fullname}.unique_identifier", ondelete="RESTRICT"),
+        # Markets' own column, never a copy of its table: ExtensionBase.metadata holds only
+        # this extension's tables, so its provider migrates only those.
+        ForeignKey(IndexTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
         nullable=False,
     )
     bid: Mapped[float] = mapped_column(Float, nullable=False)

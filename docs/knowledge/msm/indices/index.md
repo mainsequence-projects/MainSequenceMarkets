@@ -135,7 +135,7 @@ ProviderDailyValues = configured_index_values_storage(
     cadence="1d",
     namespace="my_provider",
     storage_app="my_provider",
-    base=ProviderBase,  # when the provider's own Alembic provider migrates it
+    base=ProviderBase,  # the provider's own base, whose metadata its Alembic provider targets
 )
 ```
 

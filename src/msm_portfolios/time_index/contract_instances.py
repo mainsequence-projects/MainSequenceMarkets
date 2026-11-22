@@ -39,7 +39,6 @@ from msm.models.assets.core import AssetTable
 from msm.models.calendars import CalendarTable
 from msm.models.portfolios.core import PortfolioTable
 from msm.settings import markets_identifier, markets_namespace
-from msm.storage_instances import markets_reference_table
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioEventLedgerStorage,
@@ -199,12 +198,12 @@ def configured_contract_instance_storage(
     ``namespace`` is the MetaTables namespace that owns the instance; it defaults
     to the active Markets namespace, which is right only for the Markets
     deployment itself. ``storage_app`` is the physical-name app segment, for
-    example ``my_app``. ``base`` is the application's SQLAlchemy
-    declarative base when the provider migrates the instance with its own
-    Alembic provider; the contract's foreign-key target tables are copied into
-    that base's metadata so SQLAlchemy can resolve the constraints, exactly as
-    ``examples/msm/indices/extension_owned_index_storage.py`` does. With the
-    default ``MarketsBase`` the instance lives in the Markets registry.
+    example ``my_app``. ``base`` is the application's own SQLAlchemy
+    declarative base, whose metadata its Alembic provider targets. The instance
+    adds only its own table to that metadata: the contract's foreign keys point
+    at Markets' own columns, as in
+    ``examples/msm/indices/extension_owned_index_storage.py``, so the
+    application's autogenerate never compares a Markets table.
 
     The result has the contract's columns, dtypes, nullability, time index and
     index names. Its MetaTable identifier is ``<Contract>.<instance_key>``,
@@ -345,18 +344,15 @@ def _copy_contract_table(
     if isinstance(existing, Table):
         return existing
 
-    constraints: list[ForeignKeyConstraint] = []
-    for foreign_key in definition.foreign_keys:
-        target = markets_reference_table(
-            foreign_key.target_table.__table__, metadata, [foreign_key.target_column]
+    # Column objects, not names: a name resolves only inside the table's own MetaData.
+    constraints = [
+        ForeignKeyConstraint(
+            [foreign_key.source_column],
+            [foreign_key.target_table.__table__.c[foreign_key.target_column]],
+            ondelete=foreign_key.ondelete,
         )
-        constraints.append(
-            ForeignKeyConstraint(
-                [foreign_key.source_column],
-                [f"{target.fullname}.{foreign_key.target_column}"],
-                ondelete=foreign_key.ondelete,
-            )
-        )
+        for foreign_key in definition.foreign_keys
+    ]
     columns = [column._copy() for column in definition.core_storage.__table__.columns]
     table = Table(
         table_name,

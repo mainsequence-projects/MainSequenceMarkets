@@ -44,9 +44,11 @@ def test_instances_keep_the_core_schema_in_the_provider_namespace(core) -> None:
     assert getattr(instance, "__cadence__", None) == getattr(core, "__cadence__", None)
     foreign_keys = sorted((fk.parent.name, fk.target_fullname) for fk in instance.__table__.foreign_keys)
     assert foreign_keys == sorted((fk.parent.name, fk.target_fullname) for fk in core.__table__.foreign_keys)
-    # The referenced Markets tables are copies in the provider's metadata, not Markets classes.
+    # The keys are Markets' own columns; no Markets table is copied into the provider's metadata.
+    core_targets = {fk.parent.name: fk.column for fk in core.__table__.foreign_keys}
     for fk in instance.__table__.foreign_keys:
-        assert fk.column.table.metadata is ProviderBase.metadata
+        assert fk.column is core_targets[fk.parent.name]
+        assert fk.column.table.key not in ProviderBase.metadata.tables
 
 
 def test_instances_are_cached_and_validate_their_key() -> None:
@@ -56,8 +58,8 @@ def test_instances_are_cached_and_validate_their_key() -> None:
         configured_time_index_instance(DiscountCurvesStorage, instance_key="bad key")
 
 
-def test_instances_on_a_provider_base_share_copied_targets_and_attach() -> None:
-    """Several Asset foreign keys on one base reuse one copied target (was a TypeError)."""
+def test_instances_on_a_provider_base_key_to_markets_tables_and_attach() -> None:
+    """Several Asset foreign keys on one base resolve to Markets' table and attach it."""
 
     from msm.api.remote import use_remote_backend, use_runtime_backend
     from msm.models import AssetTable
@@ -75,7 +77,7 @@ def test_instances_on_a_provider_base_share_copied_targets_and_attach() -> None:
     )
 
     assert trades.__table__.metadata is ProviderBase.metadata
-    assert AssetTable.__table__.fullname in ProviderBase.metadata.tables
+    assert AssetTable.__table__.fullname not in ProviderBase.metadata.tables
     assert curves.__table__.name in ProviderBase.metadata.tables
 
     resolved = resolve_markets_meta_table_models([trades])
@@ -92,8 +94,8 @@ def test_instances_on_a_provider_base_share_copied_targets_and_attach() -> None:
         use_runtime_backend()
 
 
-def test_a_provider_base_holds_only_reference_copies_of_markets_tables() -> None:
-    """Copied targets keep only their key column, so the provider metadata sorts on its own."""
+def test_a_provider_base_holds_only_the_providers_tables() -> None:
+    """The keys to Markets copy no table, and the provider metadata still sorts on its own."""
 
     from msm_portfolios.time_index.contract_instances import (
         configured_portfolio_event_ledger_storage,
@@ -104,13 +106,9 @@ def test_a_provider_base_holds_only_reference_copies_of_markets_tables() -> None
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
     kwargs = {"instance_key": "main", "namespace": "ns-ref", "storage_app": "ns_ref", "base": OwnBase}
-    configured_portfolio_rebalance_state_storage(**kwargs)
-    configured_portfolio_event_ledger_storage(**kwargs)
+    rebalance = configured_portfolio_rebalance_state_storage(**kwargs)
+    ledger = configured_portfolio_event_ledger_storage(**kwargs)
 
-    sorted_names = [table.name for table in OwnBase.metadata.sorted_tables]
-    assert "ns_ref__portfoliorebalancestatets__main" in sorted_names
-    portfolio = OwnBase.metadata.tables["ms_markets__portfolio"]
-    asset = OwnBase.metadata.tables["ms_markets__asset"]
-    assert [column.name for column in portfolio.c] == ["unique_identifier"]
-    assert [column.name for column in asset.c] == ["unique_identifier"]
-    assert not portfolio.foreign_keys and not asset.foreign_keys
+    assert sorted(table.name for table in OwnBase.metadata.sorted_tables) == sorted(
+        [rebalance.__table__.name, ledger.__table__.name]
+    )

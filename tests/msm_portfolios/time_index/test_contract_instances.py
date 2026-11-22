@@ -225,7 +225,7 @@ def test_identifier_is_stable_and_derived_from_contract_and_instance_key() -> No
         configured_contract_instance_storage("BarsTS", instance_key="x")
 
 
-def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
+def test_provider_base_receives_only_the_instance_keyed_to_markets_columns() -> None:
     class ProviderBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
@@ -238,13 +238,11 @@ def test_provider_base_receives_copies_of_the_referenced_core_tables() -> None:
 
     assert issubclass(instance, ProviderBase)
     assert instance.__table__.metadata is ProviderBase.metadata
-    assert set(ProviderBase.metadata.tables) == {
-        "app__portfoliorebalancestatets__own_base",
-        AssetTable.__table__.name,
-        PortfolioTable.__table__.name,
-    }
+    assert set(ProviderBase.metadata.tables) == {"app__portfoliorebalancestatets__own_base"}
     assert "app__portfoliorebalancestatets__own_base" not in MarketsBase.metadata.tables
-    assert ProviderBase.metadata.tables[AssetTable.__table__.name] is not AssetTable.__table__
+    targets = {key.parent.name: key.column for key in instance.__table__.foreign_keys}
+    assert targets["asset_identifier"] is AssetTable.__table__.c.unique_identifier
+    assert targets["portfolio_identifier"] is PortfolioTable.__table__.c.unique_identifier
 
 
 def test_instances_carry_the_series_lookup_index_of_their_contract() -> None:

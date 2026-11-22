@@ -17,7 +17,6 @@ MetaTable registration:
 - `metatables.migrations.build_alembic_version_metatable`
 - `metatables.migrations.build_metatable_migration_provider`
 - `metatables.migrations.build_metatable_model_registry`
-- `metatables.migrations.metadata_for_models`
 - `metatables.migrations.run_mainsequence_alembic_env`
 - the `metatables migrations ... --provider <package>.migrations:migration` CLI
 - the `metatables-migrations` skill that `metatables copy-metatables-skills`
@@ -153,14 +152,43 @@ ms-markets `docs/releasing.md` lists the grants for its own deployment.
 
 ## Expected Project Pattern
 
-The project migration provider owns the migrated model list:
+The project migration provider owns the migrated model list and targets the metadata
+of the project's own declarative base:
 
 ```python
+from metatables import PlatformManagedMetaTable, sqlalchemy_naming_convention
 from metatables.migrations import (
     build_alembic_version_metatable,
     build_metatable_migration_provider,
 )
+from msm.models import IndexTable
+from msm_portfolios.time_index.contract_instances import (
+    configured_portfolio_rebalance_state_storage,
+)
+from sqlalchemy import ForeignKey, MetaData, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+class ProjectMarketTable(PlatformManagedMetaTable, Base):
+    __tablename__ = "my_project__market_table"
+    __metatable_namespace__ = "my-project"
+    __metatable_identifier__ = "my_project.market_table"
+    __metatable_description__ = "One row per Markets Index that the project follows."
+
+    index_identifier: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey(IndexTable.__table__.c.unique_identifier, ondelete="RESTRICT"),
+        primary_key=True,
+    )
+
+
+ProjectRebalanceState = configured_portfolio_rebalance_state_storage(
+    instance_key="main", namespace="my-project", storage_app="my_project", base=Base
+)
 
 ProjectAlembicVersion = build_alembic_version_metatable(
     class_name="ProjectAlembicVersion",
@@ -179,10 +207,32 @@ migration = build_metatable_migration_provider(
     alembic_registry=ProjectAlembicVersion,
     metatable_models=[
         ProjectMarketTable,
+        ProjectRebalanceState,
     ],
     after_register_metatables=refresh_project_market_specs,
 )
 ```
+
+Autogenerate compares every table in `target_metadata` with the database, so that
+metadata holds the project's tables and no Markets table:
+
+- `Base` is the project's own base, never `MarketsBase`, whose metadata holds every
+  Markets table. Its `MetaData` sets no `schema`: Alembic would write that schema
+  onto each key to Markets.
+- A key to a Markets table passes Markets' column object, as above, or
+  `ForeignKey(AssetTable.__table__.c.uid)` for a key to `uid`. SQLAlchemy resolves a
+  key given as text only inside one `MetaData`, so
+  `ForeignKey("ms_markets__asset.uid")` on `Base` raises `NoReferencedTableError`.
+  The ms-markets instance factories key their instances by column object.
+- Never copy a Markets table into that metadata, with `to_metadata` or as a `Table`
+  of the same name. Autogenerate would compare the copy with the deployed table and
+  drop whatever the copy lacks.
+- Target `Base.metadata` itself. `metadata_for_models` copies the models' tables,
+  which turns their keys back into text that does not resolve.
+
+The revision file still holds only the physical name and key column, for example
+`["ms_markets__index.unique_identifier"]`, and needs no Markets import and no include
+hook.
 
 Always pass both `script_location` and `version_location_prefix`, pointing at
 the provider's own module the way
@@ -205,6 +255,9 @@ or mutate schema. The MetaTables provider already owns schema work.
 - Provider construction uses `metatables.migrations` helpers unless a
   documented helper gap requires a direct constructor.
 - Project tables are listed in the project provider.
+- `target_metadata` is the metadata of the project's own base and holds no Markets
+  table; keys to Markets pass column objects.
+- A generated revision has operations on the project's tables only.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.
 - Generated revisions with unchanged FK drop/create churn from `None` versus

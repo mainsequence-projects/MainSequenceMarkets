@@ -141,16 +141,20 @@ MyRebalanceState = configured_portfolio_rebalance_state_storage(
 )
 ```
 
+`MyBase` is the application's own declarative base, and its provider targets
+`MyBase.metadata` (`platform/metatable_migrations` has the template).
+
 Bind the engine to them: `rebalance_output_table=` on `PortfoliosUpdater`,
 `PortfolioWeights` and `run_portfolio`, and `output_table=` on the calendar events and
 ledger updaters. `configured_time_index_instance` builds an instance of any other
 Markets storage.
 
 A private table may reference a registry row with a physical foreign key (the
-factories copy the contract's keys to `Portfolio.unique_identifier`, `Asset` and
-`Calendar`) and declares its delete action. That key points from the application to
-Markets and is the only coupling between them. Markets does not discover, count or
-name the table:
+factories give each instance the contract's keys to `Portfolio.unique_identifier`,
+`Asset` and `Calendar`) and declares its delete action. That key points from the
+application to Markets and is the only coupling between them, in the application's
+metadata too: the key passes Markets' own column object, and no Markets table is
+copied there. Markets does not discover, count or name the table:
 
 - a registry delete deletes Markets' own rows and lets the database apply every key;
 - a `RESTRICT` key that refuses answers 409 with the database's message;
@@ -213,6 +217,7 @@ Nothing moves by itself. A person runs, in each Environment:
 - [ ] Every read of those series goes through a recipe or a series operation.
 - [ ] Private tables are built with the factories and deleted with
       `delete_private_series` before registry deletes.
+- [ ] The metadata the application's provider targets holds no Markets table.
 - [ ] A new Environment needs no person's step for Markets beyond the application's own
       access to the Markets API (and, once, `assign-manager` for rows that predate
       ADR 0060).

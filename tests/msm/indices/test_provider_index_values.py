@@ -62,7 +62,7 @@ def test_markets_keeps_its_table_and_a_provider_gets_its_own() -> None:
     assert [c.name for c in provider.__table__.columns] == [c.name for c in markets.__table__.columns]
     assert provider.__index_names__ == markets.__index_names__
     assert provider.__table__.metadata is ProviderBase.metadata
-    assert IndexTable.__table__.fullname in ProviderBase.metadata.tables
+    assert IndexTable.__table__.fullname not in ProviderBase.metadata.tables
     assert {fk.target_fullname for fk in provider.__table__.foreign_keys} == {
         fk.target_fullname for fk in markets.__table__.foreign_keys
     }

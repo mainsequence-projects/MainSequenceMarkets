@@ -31,7 +31,11 @@ collisions in databases that host multiple independent providers. The provider
 and its revision graph belong to ms-markets alone. A downstream project that
 adds its own tables declares its own provider, module, and version table; it
 neither adds revisions to the ms-markets graph nor applies
-`msm_migrations:migration`, which only the ms-markets deployment migrates.
+`msm_migrations:migration`, which only the ms-markets deployment migrates. Its
+target metadata is that of its own declarative base and holds no Markets table:
+a key to Markets passes the column object, such as
+`ForeignKey(AssetTable.__table__.c.uid)`, so autogenerate changes the project's
+tables only.
 
 Although the physical table is in PostgreSQL `public`, the provider metadata
 authors default-schema tables as `schema=None`. `public` is the database

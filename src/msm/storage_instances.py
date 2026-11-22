@@ -13,6 +13,10 @@ signal weights are never instances: they are published to Markets' own tables
 (ADR 0060). An application's private portfolio state uses the portfolio package's own
 contract-instance factories.
 
+Those foreign keys point at Markets' own ``Column`` objects. No Markets table is
+copied into the provider's metadata, so ``target_metadata=<its base>.metadata``
+migrates the provider's tables only.
+
 The instance is named ``<storage_app>__<core table>__<instance_key>`` and
 identified as ``<CoreIdentifier>.<instance_key>``, namespace-prefixed outside the
 default Markets namespace.
@@ -22,10 +26,9 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
-from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import Column, ForeignKeyConstraint, Index, MetaData, Table
+from sqlalchemy import ForeignKeyConstraint, Index, MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import PlatformTimeIndexMetaTable, schema_index_name, schema_table_name
@@ -49,9 +52,10 @@ def configured_time_index_instance(
 
     ``namespace`` is the MetaTables namespace that owns the instance, for example
     ``my-provider``; ``storage_app`` the physical-name app segment, for example
-    ``my_provider``; ``base`` the provider's declarative base when its own Alembic
-    provider migrates the instance (the referenced Markets tables are copied into
-    that base's metadata, so the migration never imports Markets classes).
+    ``my_provider``; ``base`` the provider's own declarative base, whose metadata
+    its Alembic provider targets. The instance adds only its own table to that
+    metadata: its foreign keys point at Markets' own columns, so the provider's
+    autogenerate never compares a Markets table.
     """
 
     key = str(instance_key).strip().lower()
@@ -68,44 +72,6 @@ def configured_time_index_instance(
     return _configured_time_index_instance(
         core_storage, key, markets_namespace(namespace), app, base or MarketsBase
     )
-
-
-def markets_reference_table(
-    core_table: Table,
-    metadata: MetaData,
-    columns: Iterable[str],
-) -> Table:
-    """A Markets table as a foreign-key target inside a provider's ``metadata``.
-
-    Only the referenced key columns are copied, without the Markets table's own
-    foreign keys, so the provider's metadata sorts and autogenerates on its own
-    (ADR 0047: extension migrations reference core tables by physical name and
-    key column). The provider's migrations never create this table.
-    """
-
-    if core_table.metadata is metadata:
-        return core_table
-    table = metadata.tables.get(core_table.key)
-    if table is None:
-        table = Table(
-            core_table.name,
-            metadata,
-            schema=core_table.schema,
-            info=dict(core_table.info or {}),
-        )
-    for name in dict.fromkeys(columns):
-        if name not in table.c:
-            column = core_table.c[name]
-            table.append_column(
-                Column(
-                    name,
-                    column.type,
-                    primary_key=column.primary_key,
-                    nullable=column.nullable,
-                    unique=column.unique,
-                )
-            )
-    return table
 
 
 def time_index_instance_identifier(core_storage: type[Any], instance_key: str) -> str:
@@ -184,21 +150,15 @@ def _copy_table(
     existing = metadata.tables.get(table_name)
     if isinstance(existing, Table):
         return existing
-    constraints = []
-    for foreign_key in core_table.foreign_key_constraints:
-        targets = []
-        for element in foreign_key.elements:
-            target_table = markets_reference_table(
-                element.column.table, metadata, [element.column.name]
-            )
-            targets.append(f"{target_table.fullname}.{element.column.name}")
-        constraints.append(
-            ForeignKeyConstraint(
-                list(foreign_key.column_keys),
-                targets,
-                ondelete=foreign_key.ondelete,
-            )
+    # Column objects, not names: a name resolves only inside the table's own MetaData.
+    constraints = [
+        ForeignKeyConstraint(
+            list(foreign_key.column_keys),
+            [element.column for element in foreign_key.elements],
+            ondelete=foreign_key.ondelete,
         )
+        for foreign_key in core_table.foreign_key_constraints
+    ]
     table = Table(
         table_name,
         metadata,
@@ -217,6 +177,5 @@ def _copy_table(
 
 __all__ = [
     "configured_time_index_instance",
-    "markets_reference_table",
     "time_index_instance_identifier",
 ]

@@ -178,11 +178,13 @@ def configured_interpolated_prices_storage(
 ) -> type[MarketsBase]:
     """Build the storage class for one interpolated-price storage identity.
 
-    By default the table lives in the Markets namespace and registry. A provider
-    that interpolates its own bars passes its ``namespace``, ``storage_app`` and,
-    when its own Alembic provider migrates the table, its declarative ``base``
-    (ADR 0047): the table is then ``<storage_app>__interpolated_prices__<suffix>``
-    in that namespace, with the same identifier, columns and storage identity.
+    Called with none of ``namespace``, ``storage_app`` and ``base``, it builds
+    Markets' own table. A provider that interpolates its own bars passes all three:
+    its namespace, its app segment and its own declarative base, whose metadata
+    its Alembic provider targets (ADR 0047). The table is then
+    ``<storage_app>__interpolated_prices__<suffix>`` in that namespace, with the
+    same identifier, columns and storage identity. Its key points at Markets' own
+    column, so no Markets table enters that metadata.
     """
 
     if namespace is not None or storage_app is not None or base is not None:
@@ -334,17 +336,15 @@ def _copy_interpolated_prices_table(
     if isinstance(existing, Table):
         return existing
 
-    from msm.storage_instances import markets_reference_table
-
-    asset_table = markets_reference_table(AssetTable.__table__, metadata, ["unique_identifier"])
     columns = [column._copy() for column in InterpolatedPricesStorage.__table__.columns]
     table = Table(
         table_name,
         metadata,
         *columns,
+        # The Column object, not its name: a name resolves only inside the table's own MetaData.
         ForeignKeyConstraint(
             [ASSET_IDENTIFIER_DIMENSION],
-            [f"{asset_table.fullname}.unique_identifier"],
+            [AssetTable.__table__.c.unique_identifier],
             ondelete="RESTRICT",
         ),
         schema=InterpolatedPricesStorage.__table__.schema,
