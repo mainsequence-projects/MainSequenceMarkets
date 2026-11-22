@@ -29,8 +29,9 @@ provider-specific records. The API does not flatten those separate models into `
   - returns Markets' rows only. Data an application keeps about a row, in its
     own tables, is read from that application; Markets never reads it (ADR 0060)
 - `GET /api/v1/asset/monitor/frame/`
-  - supports `search`, `limit`, `offset`, optional `asset_type`, and repeated
-    `unique_identifiers`
+  - supports `search`, `limit`, `offset`, optional exact `asset_type`, and repeated
+    `unique_identifiers`; the search, `asset_type` and the page apply in the database,
+    so every offset is reachable
   - returns a Command Center `TabularFrameResponse`
   - exposes the `core.tabular_frame@v1` contract for
     `main-sequence-markets__asset-screener`
@@ -71,7 +72,7 @@ provider-specific records. The API does not flatten those separate models into `
     bulk-delete action
 - `GET /api/v1/asset-category/{uid}/`
   - returns `AssetCategoryDetailResponse` with category display fields,
-    membership-backed `number_of_assets`, and an `assets_list` configuration
+    `number_of_assets`, its members counted in the database, and an `assets_list` configuration
     whose default filter is `categories__uid=<category_uid>`
 - `POST /api/v1/asset-category/`
   - creates a category

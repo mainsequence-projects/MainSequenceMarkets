@@ -41,6 +41,23 @@ and this project follows versioned releases.
   answer, it answers `500` with `error_type` `IncompleteReadAfterWriteError` and says the
   write is stored. `msm.client` raises `IncompleteReadError` for both, with `written`
   telling them apart.
+- **Asset-category reads answer every member, and the asset, category and index lists
+  page past 500 rows**
+  ([#116](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/116)).
+  `msm.services.asset_master_lists` read at most 500 rows and sorted, filtered and sliced
+  them in Python. A category of 1,101 assets answered 500 members in its record and 500
+  as `number_of_assets` on `GET /api/v1/asset-category/{uid}/`, and writing its record
+  back deleted the other 601. `bulk_delete_asset_category_records` with `select_all`
+  deleted 500 of 601 categories and reported success. Pages past 500 rows came back
+  short or empty, as on `GET /api/v1/asset/monitor/frame/` with 1,101 assets, and
+  `list_asset_catalog_rows` left out OpenFIGI names past the first 500. A category's
+  record now answers every member or raises `IncompleteReadError` (after a create or
+  update, as the answer of a stored write), `number_of_assets` is counted in the
+  database, and `select_all` reads every category. `list_asset_rows`,
+  `list_asset_catalog_rows`, `list_index_catalog_rows`, `list_asset_category_rows` and
+  `list_asset_category_rows_response` search, page and count in the database, matching
+  with SQL `LIKE`, ignoring case. `list_asset_rows` and `list_asset_rows_response` take an
+  exact `asset_type`, which the monitor frame passes with its `limit` and `offset`.
 
 ## [5.1.0] - 2026-11-22
 

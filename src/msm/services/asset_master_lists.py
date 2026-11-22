@@ -1,8 +1,16 @@
+"""The asset, asset-category and index lists and records behind the frontend routes.
+
+A page is paged in the database, in a total order that ends in the uid, and its total is
+counted there. A read that needs a whole set, such as a category's members, reads every
+row or raises `IncompleteReadError` (`msm.repositories.complete_reads`). A search matches
+its fields as substrings with SQL ``LIKE``, ignoring case.
+"""
+
 from __future__ import annotations
 
 import datetime as dt
-from collections import Counter
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -17,31 +25,41 @@ from msm.models import (
     OpenFigiAssetDetailsTable,
 )
 from msm.repositories import MarketsRepositoryContext
-from msm.repositories.base import compile_markets_statement, execute_markets_operation
-from msm.repositories.crud import delete_model, get_model_by_uid, search_model
+from msm.repositories.base import (
+    compile_markets_statement,
+    execute_markets_operation,
+    with_max_rows,
+)
+from msm.repositories.complete_reads import (
+    answering_a_write,
+    compile_page,
+    page_select,
+    read_every_model_row,
+    read_every_row,
+)
+from msm.repositories.crud import count_model, delete_model, get_model_by_uid
 from msm.services.asset_categories import (
     create_asset_category as service_create_asset_category,
     delete_asset_category as service_delete_asset_category,
     get_asset_category_by_uid as service_get_asset_category_by_uid,
     get_asset_category_by_unique_identifier as service_get_asset_category_by_unique_identifier,
-    list_asset_category_memberships as service_list_asset_category_memberships,
     replace_asset_category_memberships as service_replace_asset_category_memberships,
-    search_asset_categories as service_search_asset_categories,
     update_asset_category as service_update_asset_category,
 )
 from msm.services.assets import (
     asset_reference_details,
     delete_asset as service_delete_asset,
     get_asset_by_uid as service_get_asset_by_uid,
-    get_asset_by_unique_identifier as service_get_asset_by_unique_identifier,
-    search_assets as service_search_assets,
 )
 from msm.services.provider_details import search_openfigi_details as service_search_openfigi_details
 
-DEFAULT_SCAN_FLOOR = 100
-MAX_SCAN_LIMIT = 500
 DEFAULT_FRONTEND_PAGE_SIZE = 50
 _UNSET = object()
+_CATEGORY_ORDER = (
+    func.lower(AssetCategoryTable.display_name),
+    func.lower(AssetCategoryTable.unique_identifier),
+    AssetCategoryTable.uid,
+)
 
 
 def list_index_catalog_rows(
@@ -51,40 +69,27 @@ def list_index_catalog_rows(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    scan_limit = _scan_limit(offset=offset, limit=limit)
-    index_rows = _operation_result_rows(search_model(context, model=IndexTable, limit=scan_limit))
-    normalized_rows = [
-        _build_index_list_row(index_row)
-        for index_row in index_rows
-        if isinstance(index_row, Mapping) and index_row.get("uid") not in (None, "")
-    ]
-    normalized_rows.sort(
-        key=lambda row: (
-            str(row["display_name"]).lower(),
-            str(row["unique_identifier"]).lower(),
-            str(row["uid"]),
-        )
+    """One page of the indexes, by display name, searched over their identity and text."""
+
+    statement = _where_search(
+        select(IndexTable),
+        search,
+        (
+            cast(IndexTable.uid, String),
+            IndexTable.unique_identifier,
+            IndexTable.index_type,
+            IndexTable.display_name,
+            IndexTable.description,
+        ),
+    ).order_by(
+        func.lower(IndexTable.display_name),
+        func.lower(IndexTable.unique_identifier),
+        IndexTable.uid,
     )
-
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row.get("index_type"),
-                    row["display_name"],
-                    row.get("description"),
-                    row.get("provider"),
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
-
-    return normalized_rows[offset : offset + limit]
+    return [
+        _build_index_list_row(row)
+        for row in _page_rows(context, statement, limit=limit, offset=offset)
+    ]
 
 
 def list_asset_catalog_rows(
@@ -95,69 +100,52 @@ def list_asset_catalog_rows(
     offset: int = 0,
     category_uid: str | None = None,
 ) -> list[dict[str, Any]]:
-    scan_limit = _scan_limit(offset=offset, limit=limit)
-    category_asset_uids: tuple[str, ...] | None = None
-    if category_uid not in (None, ""):
-        category_asset_uids = tuple(
-            _category_membership_asset_uids(
-                context,
-                category_uid=str(category_uid),
-            )
-        )
-        asset_rows = (
-            _operation_result_rows(
-                service_search_assets(
-                    context,
-                    uids=category_asset_uids,
-                    limit=max(scan_limit, len(category_asset_uids)),
-                )
-            )
-            if category_asset_uids
-            else []
-        )
-    else:
-        asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
+    """One page of the assets with their OpenFIGI details, by identifier.
 
-    detail_rows = _operation_result_rows(
-        service_search_openfigi_details(context, limit=MAX_SCAN_LIMIT)
+    ``category_uid`` keeps a category's members. ``search`` matches the uid, identifier,
+    FIGI, name, ticker, exchange code, market sector and security type, the asset type
+    when OpenFIGI names none, ignoring case.
+    """
+
+    security_type = func.coalesce(
+        func.nullif(OpenFigiAssetDetailsTable.security_type, ""), AssetTable.asset_type
     )
-    details_by_asset_uid = {
-        str(row["asset_uid"]): row
-        for row in detail_rows
-        if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-    }
-
-    merged_rows = [
-        _build_asset_list_row(
-            asset_row=asset_row,
-            detail_row=details_by_asset_uid.get(str(asset_row.get("uid"))),
+    statement = (
+        select(
+            AssetTable.uid,
+            AssetTable.unique_identifier,
+            AssetTable.asset_type,
+            OpenFigiAssetDetailsTable.figi,
+            OpenFigiAssetDetailsTable.name,
+            OpenFigiAssetDetailsTable.ticker,
+            OpenFigiAssetDetailsTable.exchange_code,
+            OpenFigiAssetDetailsTable.security_market_sector,
+            OpenFigiAssetDetailsTable.security_type,
         )
-        for asset_row in asset_rows
-        if isinstance(asset_row, Mapping) and asset_row.get("uid") not in (None, "")
+        .select_from(AssetTable)
+        .outerjoin(
+            OpenFigiAssetDetailsTable,
+            OpenFigiAssetDetailsTable.asset_uid == AssetTable.uid,
+        )
+    )
+    statement = _where_search(
+        _in_category(statement, category_uid),
+        search,
+        (
+            cast(AssetTable.uid, String),
+            AssetTable.unique_identifier,
+            OpenFigiAssetDetailsTable.figi,
+            OpenFigiAssetDetailsTable.name,
+            OpenFigiAssetDetailsTable.ticker,
+            OpenFigiAssetDetailsTable.exchange_code,
+            OpenFigiAssetDetailsTable.security_market_sector,
+            security_type,
+        ),
+    ).order_by(func.lower(AssetTable.unique_identifier), AssetTable.uid)
+    return [
+        _build_asset_list_row(asset_row=row, detail_row=row)
+        for row in _page_rows(context, statement, limit=limit, offset=offset)
     ]
-    merged_rows.sort(key=lambda row: (str(row["unique_identifier"]).lower(), str(row["uid"])))
-
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        merged_rows = [
-            row
-            for row in merged_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row.get("figi"),
-                    row.get("name"),
-                    row.get("ticker"),
-                    row.get("exchange_code"),
-                    row.get("security_market_sector"),
-                    row.get("security_type"),
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
-
-    return merged_rows[offset : offset + limit]
 
 
 def list_asset_rows(
@@ -168,114 +156,43 @@ def list_asset_rows(
     offset: int = 0,
     category_uid: str | None = None,
     unique_identifiers: Sequence[str] | None = None,
+    asset_type: str | None = None,
 ) -> list[dict[str, Any]]:
+    """One page of `list_asset_rows_response`'s assets, without their count.
+
+    With ``unique_identifiers``, the assets of those identifiers instead, in the order
+    asked, ``search`` and ``category_uid`` aside.
+    """
+
     normalized_unique_identifiers = tuple(
-        str(identifier).strip()
-        for identifier in (unique_identifiers or ())
-        if str(identifier).strip()
+        dict.fromkeys(
+            str(identifier).strip()
+            for identifier in (unique_identifiers or ())
+            if str(identifier).strip()
+        )
     )
     if normalized_unique_identifiers:
-        asset_rows = [
-            row
-            for identifier in normalized_unique_identifiers
-            for row in _operation_result_rows(
-                service_get_asset_by_unique_identifier(
-                    context,
-                    unique_identifier=identifier,
-                )
+        asset_rows = _operation_result_rows(
+            read_every_model_row(
+                context,
+                model=AssetTable,
+                filters={"asset_type": asset_type or None},
+                in_filters={"unique_identifier": normalized_unique_identifiers},
             )
-        ]
-        normalized_rows = [
-            _build_asset_record(asset_row) for asset_row in _deduplicate_rows_by_uid(asset_rows)
-        ]
+        )
+        normalized_rows = [_build_asset_record(asset_row) for asset_row in asset_rows]
         normalized_rows.sort(
-            key=lambda row: (
-                normalized_unique_identifiers.index(row["unique_identifier"])
-                if row["unique_identifier"] in normalized_unique_identifiers
-                else len(normalized_unique_identifiers)
-            )
+            key=lambda row: normalized_unique_identifiers.index(row["unique_identifier"])
         )
         return normalized_rows[offset : offset + limit]
 
-    scan_limit = _scan_limit(offset=offset, limit=limit)
-    normalized_search = search.strip().lower()
-    category_asset_uids: tuple[str, ...] | None = None
-    if category_uid not in (None, ""):
-        category_asset_uids = tuple(
-            _category_membership_asset_uids(
-                context,
-                category_uid=str(category_uid),
-            )
-        )
-        asset_rows = (
-            _operation_result_rows(
-                service_search_assets(
-                    context,
-                    uids=category_asset_uids,
-                    limit=max(scan_limit, len(category_asset_uids)),
-                )
-            )
-            if category_asset_uids
-            else []
-        )
-    else:
-        asset_rows = _operation_result_rows(service_search_assets(context, limit=scan_limit))
-    if normalized_search and category_asset_uids is None:
-        asset_rows.extend(
-            _operation_result_rows(
-                service_search_assets(
-                    context,
-                    unique_identifier_contains=search.strip(),
-                    limit=scan_limit,
-                )
-            )
-        )
-    ticker_matched_asset_uids: set[str] = set()
-    if normalized_search:
-        detail_rows = _operation_result_rows(
-            service_search_openfigi_details(
-                context,
-                ticker_contains=search.strip(),
-                limit=scan_limit,
-            )
-        )
-        ticker_matched_asset_uids = {
-            str(row["asset_uid"])
-            for row in detail_rows
-            if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-        }
-        if ticker_matched_asset_uids:
-            asset_rows.extend(
-                _operation_result_rows(
-                    service_search_assets(
-                        context,
-                        uids=tuple(sorted(ticker_matched_asset_uids)),
-                        limit=scan_limit,
-                    )
-                )
-            )
-
-    normalized_rows = [
-        _build_asset_record(asset_row) for asset_row in _deduplicate_rows_by_uid(asset_rows)
+    statement = _asset_rows_select(
+        search=search, category_uid=category_uid, asset_type=asset_type
+    )
+    return [
+        _build_asset_record(row)
+        for row in _page_rows(context, statement, limit=limit, offset=offset)
     ]
-    normalized_rows.sort(key=lambda row: (str(row["unique_identifier"]).lower(), str(row["uid"])))
-
-    if normalized_search:
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if row["uid"] in ticker_matched_asset_uids
-            or _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row.get("asset_type"),
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
-
-    return normalized_rows[offset : offset + limit]
 
 
 def list_asset_rows_response(
@@ -285,58 +202,24 @@ def list_asset_rows_response(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
     category_uid: str | None = None,
+    asset_type: str | None = None,
 ) -> dict[str, Any]:
-    """Return an authoritative page from the canonical asset registry."""
+    """Return an authoritative page from the canonical asset registry.
 
-    statement = select(AssetTable)
-    if category_uid not in (None, ""):
-        statement = statement.join(
-            AssetCategoryMembershipTable,
-            AssetCategoryMembershipTable.asset_uid == AssetTable.uid,
-        ).where(AssetCategoryMembershipTable.category_uid == str(category_uid))
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        statement = statement.outerjoin(
-            OpenFigiAssetDetailsTable,
-            OpenFigiAssetDetailsTable.asset_uid == AssetTable.uid,
-        )
-        needle = f"%{normalized_search}%"
-        statement = statement.where(
-            or_(
-                func.lower(cast(AssetTable.uid, String)).like(needle),
-                func.lower(AssetTable.unique_identifier).like(needle),
-                func.lower(func.coalesce(AssetTable.asset_type, "")).like(needle),
-                func.lower(func.coalesce(OpenFigiAssetDetailsTable.ticker, "")).like(needle),
-            )
-        )
-    statement = statement.order_by(
-        func.lower(AssetTable.unique_identifier),
-        AssetTable.uid,
-    )
-    count_statement = select(func.count().label("count")).select_from(statement.subquery())
-    count_rows = _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                count_statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
-    rows = _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement.limit(limit).offset(offset),
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
+    The assets by identifier, ``category_uid`` keeping a category's members and
+    ``asset_type`` one type. ``search`` matches the uid, identifier, asset type and
+    OpenFIGI ticker, ignoring case. ``count`` is how many match.
+    """
+
+    statement = _asset_rows_select(
+        search=search, category_uid=category_uid, asset_type=asset_type
     )
     return {
-        "count": int(count_rows[0]["count"]) if count_rows else 0,
-        "results": [_build_asset_record(row) for row in rows],
+        "count": _count_rows(context, statement),
+        "results": [
+            _build_asset_record(row)
+            for row in _page_rows(context, statement, limit=limit, offset=offset)
+        ],
     }
 
 
@@ -491,58 +374,36 @@ def list_asset_category_rows_response(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
 ) -> dict[str, Any]:
-    scan_limit = _scan_limit(offset=offset, limit=limit)
-    category_rows = _operation_result_rows(
-        service_search_asset_categories(context, limit=scan_limit)
-    )
-    membership_rows = _operation_result_rows(
-        service_list_asset_category_memberships(context, limit=MAX_SCAN_LIMIT)
-    )
-    membership_counts = Counter(
-        str(row["category_uid"])
-        for row in membership_rows
-        if isinstance(row, Mapping) and row.get("category_uid") not in (None, "")
-    )
+    """One page of the categories with their member counts, by display name.
 
-    normalized_rows = [
+    ``search`` matches the uid, identifier, display name, description and member count,
+    ignoring case; the pagination counts every category that matches.
+    """
+
+    number_of_assets = _category_asset_count()
+    statement = _where_search(
+        _category_list_select(number_of_assets),
+        search,
+        (
+            cast(AssetCategoryTable.uid, String),
+            AssetCategoryTable.unique_identifier,
+            AssetCategoryTable.display_name,
+            AssetCategoryTable.description,
+            cast(number_of_assets, String),
+        ),
+    ).order_by(*_CATEGORY_ORDER)
+    rows = [
         _build_asset_category_list_row(
-            category_row=category_row,
-            number_of_assets=membership_counts.get(str(category_row.get("uid")), 0),
+            category_row=row,
+            number_of_assets=int(row["number_of_assets"] or 0),
         )
-        for category_row in category_rows
-        if isinstance(category_row, Mapping) and category_row.get("uid") not in (None, "")
+        for row in _page_rows(context, statement, limit=limit, offset=offset)
     ]
-    normalized_rows.sort(
-        key=lambda row: (
-            str(row["display_name"]).lower(),
-            str(row["unique_identifier"]).lower(),
-            str(row["uid"]),
-        )
-    )
-
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row["display_name"],
-                    row["description"],
-                    row["number_of_assets"],
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
-
-    total_items = len(normalized_rows)
     return {
         "search": search.strip(),
-        "rows": normalized_rows[offset : offset + limit],
+        "rows": rows,
         "pagination": _build_frontend_list_pagination(
-            total_items=total_items,
+            total_items=_count_rows(context, statement),
             limit=limit,
             offset=offset,
         ),
@@ -556,40 +417,14 @@ def list_asset_category_rows(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    scan_limit = _scan_limit(offset=offset, limit=limit)
-    category_rows = _operation_result_rows(
-        service_search_asset_categories(context, limit=scan_limit)
-    )
-    normalized_rows = [
-        _build_asset_category_record(category_row)
-        for category_row in category_rows
-        if isinstance(category_row, Mapping) and category_row.get("uid") not in (None, "")
-    ]
-    normalized_rows.sort(
-        key=lambda row: (
-            str(row["display_name"]).lower(),
-            str(row["unique_identifier"]).lower(),
-            str(row["uid"]),
+    """One page of `list_asset_category_rows_page`'s categories, without their count."""
+
+    return [
+        _build_asset_category_record(row)
+        for row in _page_rows(
+            context, _category_rows_select(search), limit=limit, offset=offset
         )
-    )
-
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        normalized_rows = [
-            row
-            for row in normalized_rows
-            if _matches_search(
-                values=(
-                    row["uid"],
-                    row["unique_identifier"],
-                    row["display_name"],
-                    row["description"],
-                ),
-                normalized_search=normalized_search,
-            )
-        ]
-
-    return normalized_rows[offset : offset + limit]
+    ]
 
 
 def list_asset_category_rows_page(
@@ -599,49 +434,19 @@ def list_asset_category_rows_page(
     limit: int = DEFAULT_FRONTEND_PAGE_SIZE,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """Return an authoritative page from the canonical category registry."""
+    """Return an authoritative page from the canonical category registry.
 
-    statement = select(AssetCategoryTable)
-    normalized_search = search.strip().lower()
-    if normalized_search:
-        needle = f"%{normalized_search}%"
-        statement = statement.where(
-            or_(
-                func.lower(cast(AssetCategoryTable.uid, String)).like(needle),
-                func.lower(AssetCategoryTable.unique_identifier).like(needle),
-                func.lower(AssetCategoryTable.display_name).like(needle),
-                func.lower(func.coalesce(AssetCategoryTable.description, "")).like(needle),
-            )
-        )
-    statement = statement.order_by(
-        func.lower(AssetCategoryTable.display_name),
-        func.lower(AssetCategoryTable.unique_identifier),
-        AssetCategoryTable.uid,
-    )
-    count_statement = select(func.count().label("count")).select_from(statement.subquery())
-    count_rows = _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                count_statement,
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
-    rows = _operation_result_rows(
-        execute_markets_operation(
-            compile_markets_statement(
-                statement.limit(limit).offset(offset),
-                context=context,
-                operation="select",
-            ),
-            context=context,
-        )
-    )
+    The categories by display name; ``search`` matches the uid, identifier, display name
+    and description, ignoring case. ``count`` is how many match.
+    """
+
+    statement = _category_rows_select(search)
     return {
-        "count": int(count_rows[0]["count"]) if count_rows else 0,
-        "results": [_build_asset_category_record(row) for row in rows],
+        "count": _count_rows(context, statement),
+        "results": [
+            _build_asset_category_record(row)
+            for row in _page_rows(context, statement, limit=limit, offset=offset)
+        ],
     }
 
 
@@ -665,11 +470,15 @@ def get_asset_category_frontend_detail(
     if category_row is None:
         return None
 
-    membership_asset_uids = _category_membership_asset_uids(
-        context,
-        category_uid=str(category_row["uid"]),
-    )
     category_uid = str(category_row["uid"])
+    count_rows = _operation_result_rows(
+        count_model(
+            context,
+            model=AssetCategoryMembershipTable,
+            filters={"category_uid": category_uid},
+        )
+    )
+    number_of_assets = int(count_rows[0]["count"]) if count_rows else 0
     display_name = _string_or_empty(category_row.get("display_name"))
     unique_identifier = _string_or_empty(category_row.get("unique_identifier"))
 
@@ -703,7 +512,7 @@ def get_asset_category_frontend_detail(
                 "name": "number_of_assets",
                 "label": "Assets",
                 "value_type": "number",
-                "value": len(membership_asset_uids),
+                "value": number_of_assets,
             },
         ],
         "actions": {
@@ -764,7 +573,8 @@ def create_asset_category_record(
             asset_uids=asset_uids,
         )
 
-    return get_asset_category_record(context, uid=str(created_row["uid"]))
+    with answering_a_write():
+        return get_asset_category_record(context, uid=str(created_row["uid"]))
 
 
 def update_asset_category_record(
@@ -799,7 +609,9 @@ def update_asset_category_record(
             asset_uids=_normalize_asset_uid_values(assets) or [],
         )
 
-    return get_asset_category_record(context, uid=uid)
+    wrote = bool(update_values) or assets is not _UNSET
+    with answering_a_write() if wrote else nullcontext():
+        return get_asset_category_record(context, uid=uid)
 
 
 def delete_asset_category_record(
@@ -1048,18 +860,22 @@ def _category_membership_asset_uids(
     *,
     category_uid: str,
 ) -> list[str]:
-    membership_rows = _operation_result_rows(
-        service_list_asset_category_memberships(
-            context,
-            category_uid=category_uid,
-            limit=MAX_SCAN_LIMIT,
-        )
+    """Every member of the category, by asset uid, or `IncompleteReadError`.
+
+    A category's ``(category_uid, asset_uid)`` pairs are unique, so the asset uid orders
+    its members totally; the members came in that order through the pair's index before.
+    """
+
+    statement = select(AssetCategoryMembershipTable.asset_uid).where(
+        AssetCategoryMembershipTable.category_uid == category_uid
     )
-    return [
-        str(row["asset_uid"])
-        for row in membership_rows
-        if isinstance(row, Mapping) and row.get("asset_uid") not in (None, "")
-    ]
+    membership_rows = read_every_row(
+        lambda offset: compile_page(
+            page_select(statement, key=("asset_uid",), offset=offset), context=context
+        ),
+        context=context,
+    )["rows"]
+    return [str(row["asset_uid"]) for row in membership_rows]
 
 
 def _filter_asset_category_rows_for_bulk_delete(
@@ -1073,27 +889,25 @@ def _filter_asset_category_rows_for_bulk_delete(
     description: str | None,
     description_contains: str | None,
 ) -> list[dict[str, Any]]:
-    category_rows = _operation_result_rows(
-        service_search_asset_categories(
-            context,
-            limit=MAX_SCAN_LIMIT,
-        )
-    )
-    membership_rows = _operation_result_rows(
-        service_list_asset_category_memberships(context, limit=MAX_SCAN_LIMIT)
-    )
-    membership_counts = Counter(
-        str(row["category_uid"])
-        for row in membership_rows
-        if isinstance(row, Mapping) and row.get("category_uid") not in (None, "")
-    )
+    """Every category the filters match, each with its member count.
+
+    Every category is read, with its count, in one select (`read_every_row`), and the
+    filters match them here.
+    """
+
+    statement = _category_list_select(_category_asset_count())
+    category_rows = read_every_row(
+        lambda offset: compile_page(
+            page_select(statement, key=("uid",), offset=offset), context=context
+        ),
+        context=context,
+    )["rows"]
     normalized_rows = [
         _build_asset_category_list_row(
             category_row=row,
-            number_of_assets=membership_counts.get(str(row.get("uid")), 0),
+            number_of_assets=int(row["number_of_assets"] or 0),
         )
         for row in category_rows
-        if isinstance(row, Mapping) and row.get("uid") not in (None, "")
     ]
 
     normalized_search = (search or "").strip().lower()
@@ -1261,6 +1075,129 @@ def _build_frontend_list_pagination(
     }
 
 
+def _asset_rows_select(*, search: str, category_uid: str | None, asset_type: str | None) -> Any:
+    """The assets of `list_asset_rows_response`, by identifier."""
+
+    statement = _in_category(select(AssetTable), category_uid)
+    if asset_type not in (None, ""):
+        statement = statement.where(AssetTable.asset_type == asset_type)
+    if search.strip():
+        statement = _where_search(
+            statement.outerjoin(
+                OpenFigiAssetDetailsTable,
+                OpenFigiAssetDetailsTable.asset_uid == AssetTable.uid,
+            ),
+            search,
+            (
+                cast(AssetTable.uid, String),
+                AssetTable.unique_identifier,
+                AssetTable.asset_type,
+                OpenFigiAssetDetailsTable.ticker,
+            ),
+        )
+    return statement.order_by(func.lower(AssetTable.unique_identifier), AssetTable.uid)
+
+
+def _in_category(statement: Any, category_uid: str | None) -> Any:
+    """``statement``'s assets that are members of the category, or all when it is empty."""
+
+    if category_uid in (None, ""):
+        return statement
+    return statement.join(
+        AssetCategoryMembershipTable,
+        AssetCategoryMembershipTable.asset_uid == AssetTable.uid,
+    ).where(AssetCategoryMembershipTable.category_uid == str(category_uid))
+
+
+def _category_rows_select(search: str) -> Any:
+    """The category rows of `list_asset_category_rows_page`, by display name."""
+
+    return _where_search(
+        select(AssetCategoryTable),
+        search,
+        (
+            cast(AssetCategoryTable.uid, String),
+            AssetCategoryTable.unique_identifier,
+            AssetCategoryTable.display_name,
+            AssetCategoryTable.description,
+        ),
+    ).order_by(*_CATEGORY_ORDER)
+
+
+def _category_asset_count() -> Any:
+    """How many members the category of the enclosing select has."""
+
+    return (
+        select(func.count())
+        .select_from(AssetCategoryMembershipTable)
+        .where(AssetCategoryMembershipTable.category_uid == AssetCategoryTable.uid)
+        .scalar_subquery()
+    )
+
+
+def _category_list_select(number_of_assets: Any) -> Any:
+    """Each category's list columns and ``number_of_assets``, counted in the database."""
+
+    return select(
+        AssetCategoryTable.uid,
+        AssetCategoryTable.unique_identifier,
+        AssetCategoryTable.display_name,
+        AssetCategoryTable.description,
+        number_of_assets.label("number_of_assets"),
+    )
+
+
+def _where_search(statement: Any, search: str, columns: Sequence[Any]) -> Any:
+    """``statement``'s rows with ``search`` in one of ``columns``, ignoring case."""
+
+    normalized_search = search.strip().lower()
+    if not normalized_search:
+        return statement
+    needle = f"%{normalized_search}%"
+    return statement.where(
+        or_(*(func.lower(func.coalesce(column, "")).like(needle) for column in columns))
+    )
+
+
+def _page_rows(
+    context: MarketsRepositoryContext,
+    statement: Any,
+    *,
+    limit: int,
+    offset: int,
+) -> list[dict[str, Any]]:
+    """The rows of ``statement`` from ``offset``, at most ``limit``, all in one answer."""
+
+    return _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                statement.limit(limit).offset(offset),
+                context=with_max_rows(context, limit),
+                operation="select",
+            ),
+            context=context,
+        )
+    )
+
+
+def _count_rows(context: MarketsRepositoryContext, statement: Any) -> int:
+    """How many rows ``statement`` matches, counted in the database."""
+
+    count_rows = _operation_result_rows(
+        execute_markets_operation(
+            compile_markets_statement(
+                select(func.count().label("count")).select_from(
+                    statement.order_by(None).subquery()
+                ),
+                context=context,
+                operation="select",
+            ),
+            context=context,
+        )
+    )
+    return int(count_rows[0]["count"]) if count_rows else 0
+
+
 def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list[dict[str, Any]]:
     if result is None:
         return []
@@ -1290,20 +1227,6 @@ def _operation_result_rows(result: Mapping[str, Any] | list[Any] | None) -> list
 def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | None:
     rows = _operation_result_rows(result)
     return rows[0] if rows else None
-
-
-def _deduplicate_rows_by_uid(rows: Sequence[Any]) -> list[Mapping[str, Any]]:
-    deduplicated_rows: list[Mapping[str, Any]] = []
-    seen_uids: set[str] = set()
-    for row in rows:
-        if not isinstance(row, Mapping) or row.get("uid") in (None, ""):
-            continue
-        uid = str(row["uid"])
-        if uid in seen_uids:
-            continue
-        seen_uids.add(uid)
-        deduplicated_rows.append(row)
-    return deduplicated_rows
 
 
 def _matches_search(*, values: Sequence[Any], normalized_search: str) -> bool:
@@ -1379,10 +1302,6 @@ def _mapping_or_none(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, Mapping):
         return None
     return dict(value)
-
-
-def _scan_limit(*, offset: int, limit: int) -> int:
-    return min(max(offset + limit, DEFAULT_SCAN_FLOOR), MAX_SCAN_LIMIT)
 
 
 __all__ = [
