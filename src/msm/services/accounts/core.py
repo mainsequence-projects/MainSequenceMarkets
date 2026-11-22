@@ -14,6 +14,7 @@ from msm.api.base import operation_result_rows
 from msm.models import AccountTable
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.base import compile_markets_statement, execute_markets_operation
+from msm.repositories.complete_reads import answering_a_write
 from msm.repositories import account_allocation_models as allocation_model_repository
 from msm.repositories import accounts as account_repository
 from msm.repositories.account_snapshot_reads import (
@@ -311,13 +312,14 @@ def add_account_holdings_snapshot_response(
         raise RuntimeError("Account holdings replacement did not insert any rows.")
     if len(written_rows) < len(write_positions):
         # A write returns at most an operation's row cap of the rows it inserted.
-        written_rows = operation_result_rows(
-            read_account_holdings_snapshots(
-                context,
-                account_uid=resolved_account_uid,
-                holdings_dates=[normalized_holdings_date],
+        with answering_a_write():
+            written_rows = operation_result_rows(
+                read_account_holdings_snapshots(
+                    context,
+                    account_uid=resolved_account_uid,
+                    holdings_dates=[normalized_holdings_date],
+                )
             )
-        )
 
     return _build_account_holdings_snapshot(
         account_uid=resolved_account_uid,

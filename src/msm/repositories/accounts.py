@@ -61,7 +61,7 @@ from .base import (
     execute_markets_write,
     resolve_markets_sql_target,
 )
-from .complete_reads import page_context, whole_page
+from .complete_reads import answering_a_write, page_context, whole_page
 from .crud import (
     build_create_model_operation,
     build_get_model_by_uid_operation,
@@ -1972,15 +1972,16 @@ def replace_account_target_positions_snapshot(
     if rows is None:
         from .account_snapshot_reads import read_account_target_snapshot
 
-        return read_account_target_snapshot(
-            context,
-            account_uid=kwargs["account_uid"],
-            order="desc",
-            target_positions_date=_utc_timestamp(
-                kwargs["target_positions_date"], field_name="target_positions_date"
-            ),
-            include_asset_detail=kwargs.get("include_asset_detail", True),
-        )
+        with answering_a_write():
+            return read_account_target_snapshot(
+                context,
+                account_uid=kwargs["account_uid"],
+                order="desc",
+                target_positions_date=_utc_timestamp(
+                    kwargs["target_positions_date"], field_name="target_positions_date"
+                ),
+                include_asset_detail=kwargs.get("include_asset_detail", True),
+            )
     return {**result, "rows": rows, "row_count": len(rows)}
 
 

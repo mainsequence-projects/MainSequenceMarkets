@@ -11,7 +11,8 @@ A select that fits one statement costs one request.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from sqlalchemy import func, select
@@ -37,7 +38,37 @@ _STATEMENT = "read__statement"
 
 
 class IncompleteReadError(RuntimeError):
-    """A read could not answer every row of one state of its tables."""
+    """A read could not answer every row of one state of its tables.
+
+    ``written`` is true when the read was a write's answer, read after the write
+    committed: the write is stored, and sending it again would write it twice. The
+    Markets API answers the two apart (#115) and ``msm.client`` raises this again.
+    """
+
+    def __init__(self, message: str | None = None, *, written: bool = False) -> None:
+        self.written = written
+        super().__init__(
+            message
+            or (
+                f"The write is stored, but reading it back changed or was cut in each of "
+                f"{READ_ATTEMPTS} reads. Read it again; do not send the write again."
+                if written
+                else f"The rows changed or were cut in each of {READ_ATTEMPTS} reads, so none "
+                "is returned: a part would look like the whole. Try again."
+            )
+        )
+
+
+@contextmanager
+def answering_a_write() -> Iterator[None]:
+    """Mark an `IncompleteReadError` inside as the answer of a write that committed."""
+
+    try:
+        yield
+    except IncompleteReadError as error:
+        if error.written:
+            raise
+        raise IncompleteReadError(written=True) from error
 
 
 def page_select(statement: Any, *, key: Sequence[str], offset: int) -> Any:
@@ -109,10 +140,7 @@ def read_every_row(
         if rows is not None and (one_statement or rows == previous):
             return {"rows": rows, "row_count": len(rows)}
         previous = rows
-    raise IncompleteReadError(
-        f"The rows changed or were cut in each of {READ_ATTEMPTS} reads, so none is returned: "
-        "a part would look like the whole. Try again."
-    )
+    raise IncompleteReadError()
 
 
 def read_every_model_row(
@@ -183,6 +211,7 @@ __all__ = [
     "IncompleteReadError",
     "READ_ATTEMPTS",
     "READ_PAGE_ROWS",
+    "answering_a_write",
     "compile_page",
     "key_order",
     "page_context",

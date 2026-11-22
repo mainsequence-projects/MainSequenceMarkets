@@ -7,6 +7,17 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A read that cannot answer every row reaches an API caller typed**
+  ([#115](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/115)).
+  `IncompleteReadError` answered a bare `500` with a plain-text body. It now answers
+  `503` with `Retry-After` and `error_type` `IncompleteReadError`. When the read was the
+  answer of a write that had committed, such as a target or holdings write past one
+  answer, it answers `500` with `error_type` `IncompleteReadAfterWriteError` and says the
+  write is stored. `msm.client` raises `IncompleteReadError` for both, with `written`
+  telling them apart.
+
 ## [5.1.0] - 2026-11-22
 
 Minor release 5.1.0: an account's target history in one call, one round trip fewer

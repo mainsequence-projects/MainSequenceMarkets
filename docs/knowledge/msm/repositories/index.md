@@ -121,7 +121,9 @@ the inputs of a write) does not take a `limit`: a part of it looks like the whol
 
 A page holds 10,000 rows. An answer in one statement costs one request. One in several
 statements is read again until two reads agree, so a write between pages cannot mix two
-states, and `IncompleteReadError` is raised when none agree.
+states, and `IncompleteReadError` is raised when none agree. Wrap a read that answers a
+write after its commit in `answering_a_write()`: its error then has `written=True`, which
+the Markets API answers apart, so that a caller does not send the write again.
 
 A write can answer such a select in its own request: its transaction ends with
 `page_select(..., offset=0)`, compiled with `page_context(context)`, and

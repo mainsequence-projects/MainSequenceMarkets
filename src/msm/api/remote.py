@@ -134,6 +134,13 @@ class MarketsInvalidStatementError(MarketsApiError):
     retryable = False
 
 
+INCOMPLETE_READ_ERROR_TYPE = "IncompleteReadError"
+"""``error_type`` of the Markets API's ``503`` when a read could not answer every row."""
+
+INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE = "IncompleteReadAfterWriteError"
+"""``error_type`` of its ``500`` when a write committed and reading its answer failed."""
+
+
 class MarketsOperationUnsupported(MarketsApiError, NotImplementedError):
     """The operation is not offered: the Markets API answers HTTP 501.
 
@@ -527,6 +534,12 @@ def raise_for_error(status_code: int, detail: str, error_type: str | None) -> No
         raise MarketsUpstreamError(detail, status_code=status_code)
     if error_type == INVALID_STATEMENT_ERROR_TYPE:
         raise MarketsInvalidStatementError(detail)
+    if error_type in (INCOMPLETE_READ_ERROR_TYPE, INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE):
+        from msm.repositories.complete_reads import IncompleteReadError
+
+        raise IncompleteReadError(
+            detail, written=error_type == INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE
+        )
     if status_code in (401, 403):
         raise MarketsAccessError(detail)
     if status_code == 404:
@@ -557,6 +570,8 @@ __all__ = [
     "MarketsUpstreamError",
     "RemoteBackend",
     "RemoteRowOperations",
+    "INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE",
+    "INCOMPLETE_READ_ERROR_TYPE",
     "INVALID_STATEMENT_ERROR_TYPE",
     "UPSTREAM_ERROR_TYPE",
     "WRITE_OPERATIONS",
