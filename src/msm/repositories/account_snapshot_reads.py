@@ -40,7 +40,7 @@ from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsSto
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 
 from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
-from .complete_reads import compile_page, page_select, read_every_row
+from .complete_reads import compile_page, key_order, page_select, read_every_row
 
 SnapshotOrder = Literal["asc", "desc"]
 
@@ -57,6 +57,42 @@ def prefixed_columns(row: Mapping[str, Any], prefix: str) -> dict[str, Any]:
     """The columns of ``row`` under ``prefix``, without it."""
 
     return {key[len(prefix) :]: value for key, value in row.items() if key.startswith(prefix)}
+
+
+def account_target_snapshot_select(
+    *,
+    account_uid: uuid.UUID | str,
+    order: SnapshotOrder,
+    target_positions_date: dt.datetime | None,
+    include_asset_detail: bool,
+    offset: int = 0,
+) -> Any:
+    """The select of `build_account_target_snapshot_operation`, not compiled.
+
+    The target write also ends its transaction with it, at offset 0, to answer what it
+    wrote (``msm.repositories.accounts``).
+    """
+
+    candidates = _account_position_sets(account_uid).where(
+        AccountTargetAllocationTable.is_active == true()
+    )
+    if target_positions_date is not None:
+        candidates = candidates.where(
+            PositionSetTable.position_set_time == target_positions_date
+        ).order_by(PositionSetTable.uid.asc())
+    else:
+        direction = _direction(order)
+        candidates = candidates.order_by(
+            direction(PositionSetTable.position_set_time),
+            direction(PositionSetTable.uid),
+        )
+    return _target_rows_page(
+        candidates.limit(1).subquery("target_snapshot"),
+        account_uid=account_uid,
+        key=(f"{TARGET}target_type", f"{TARGET}target_uid"),
+        include_asset_detail=include_asset_detail,
+        offset=offset,
+    )
 
 
 def build_account_target_snapshot_operation(
@@ -79,60 +115,13 @@ def build_account_target_snapshot_operation(
     ``include_asset_detail``, its asset reference.
     """
 
-    candidates = (
-        select(
-            PositionSetTable.uid.label("uid"),
-            PositionSetTable.position_set_time.label("position_set_time"),
-        )
-        .join(
-            AccountTargetAllocationTable,
-            PositionSetTable.account_target_allocation_uid == AccountTargetAllocationTable.uid,
-        )
-        .where(AccountTargetAllocationTable.account_uid == account_uid)
-        .where(AccountTargetAllocationTable.is_active == true())
-        .where(PositionSetTable.position_set_time.is_not(None))
+    statement = account_target_snapshot_select(
+        account_uid=account_uid,
+        order=order,
+        target_positions_date=target_positions_date,
+        include_asset_detail=include_asset_detail,
+        offset=offset,
     )
-    if target_positions_date is not None:
-        candidates = candidates.where(
-            PositionSetTable.position_set_time == target_positions_date
-        ).order_by(PositionSetTable.uid.asc())
-    else:
-        direction = _direction(order)
-        candidates = candidates.order_by(
-            direction(PositionSetTable.position_set_time),
-            direction(PositionSetTable.uid),
-        )
-    snapshot = candidates.limit(1).subquery("target_snapshot")
-
-    columns = [
-        AccountTable.uid.label("account_uid"),
-        snapshot.c.uid.label("position_set_uid"),
-        snapshot.c.position_set_time.label("position_set_time"),
-        *_labelled(TargetPositionsStorage, TARGET),
-        *_labelled(
-            PortfolioTable, PORTFOLIO, names=("uid", "unique_identifier", "published_index_uid")
-        ),
-    ]
-    statement = (
-        select(*columns)
-        .select_from(AccountTable)
-        .outerjoin(snapshot, true())
-        .outerjoin(
-            TargetPositionsStorage,
-            and_(
-                TargetPositionsStorage.position_set_uid == snapshot.c.uid,
-                TargetPositionsStorage.time_index == snapshot.c.position_set_time,
-            ),
-        )
-        .outerjoin(PortfolioTable, PortfolioTable.uid == TargetPositionsStorage.portfolio_uid)
-        .where(AccountTable.uid == account_uid)
-    )
-    key = (f"{TARGET}target_type", f"{TARGET}target_uid")
-    statement = page_select(statement, key=key, offset=offset)
-    if include_asset_detail:
-        statement = _with_asset_references(
-            statement, AssetTable.uid == TargetPositionsStorage.asset_uid, key=key
-        )
     return compile_page(statement, context=context)
 
 
@@ -141,6 +130,66 @@ def read_account_target_snapshot(
 ) -> dict[str, Any]:
     return read_every_row(
         lambda offset: build_account_target_snapshot_operation(context, offset=offset, **kwargs),
+        context=context,
+    )
+
+
+def build_account_target_history_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: uuid.UUID | str,
+    order: SnapshotOrder,
+    snapshots: int,
+    skip: int,
+    include_asset_detail: bool,
+    offset: int = 0,
+) -> MetaTableCompiledSQLOperation:
+    """One read: several of an account's target snapshots, with their rows and labels.
+
+    The snapshots are the ``snapshots`` after the first ``skip`` of all the account's
+    position sets, latest first (``order="desc"``) or earliest first, ties broken by uid.
+    They are history, so unlike the current target they include those of an inactive
+    allocation: a clear, and what came before it. Each row is as
+    `build_account_target_snapshot_operation` answers it, with ``snapshot_count``, how
+    many snapshots the account has. ``offset`` pages the rows, not the snapshots.
+    """
+
+    direction = _direction(order)
+    position_sets = _account_position_sets(account_uid)
+    count = (
+        select(func.count())
+        .select_from(position_sets.subquery("account_position_sets"))
+        .scalar_subquery()
+    )
+    page = (
+        position_sets.order_by(
+            direction(PositionSetTable.position_set_time),
+            direction(PositionSetTable.uid),
+        )
+        .limit(snapshots)
+        .offset(skip)
+        .subquery("target_snapshot")
+    )
+    sign = "-" if order == "desc" else ""
+    statement = _target_rows_page(
+        page,
+        account_uid=account_uid,
+        key=(
+            f"{sign}position_set_time",
+            f"{sign}position_set_uid",
+            f"{TARGET}target_type",
+            f"{TARGET}target_uid",
+        ),
+        include_asset_detail=include_asset_detail,
+        offset=offset,
+        extra=(count.label("snapshot_count"),),
+    )
+    return compile_page(statement, context=context)
+
+
+def read_account_target_history(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
+    return read_every_row(
+        lambda offset: build_account_target_history_operation(context, offset=offset, **kwargs),
         context=context,
     )
 
@@ -426,6 +475,63 @@ def read_account_holdings_snapshots(
     )
 
 
+def _account_position_sets(account_uid: uuid.UUID | str) -> Any:
+    return (
+        select(
+            PositionSetTable.uid.label("uid"),
+            PositionSetTable.position_set_time.label("position_set_time"),
+        )
+        .join(
+            AccountTargetAllocationTable,
+            PositionSetTable.account_target_allocation_uid == AccountTargetAllocationTable.uid,
+        )
+        .where(AccountTargetAllocationTable.account_uid == account_uid)
+        .where(PositionSetTable.position_set_time.is_not(None))
+    )
+
+
+def _target_rows_page(
+    snapshots: Any,
+    *,
+    account_uid: uuid.UUID | str,
+    key: Sequence[str],
+    include_asset_detail: bool,
+    offset: int,
+    extra: Sequence[Any] = (),
+) -> Any:
+    """One page of the account with ``snapshots``, their rows and the rows' labels."""
+
+    statement = (
+        select(
+            AccountTable.uid.label("account_uid"),
+            snapshots.c.uid.label("position_set_uid"),
+            snapshots.c.position_set_time.label("position_set_time"),
+            *extra,
+            *_labelled(TargetPositionsStorage, TARGET),
+            *_labelled(
+                PortfolioTable, PORTFOLIO, names=("uid", "unique_identifier", "published_index_uid")
+            ),
+        )
+        .select_from(AccountTable)
+        .outerjoin(snapshots, true())
+        .outerjoin(
+            TargetPositionsStorage,
+            and_(
+                TargetPositionsStorage.position_set_uid == snapshots.c.uid,
+                TargetPositionsStorage.time_index == snapshots.c.position_set_time,
+            ),
+        )
+        .outerjoin(PortfolioTable, PortfolioTable.uid == TargetPositionsStorage.portfolio_uid)
+        .where(AccountTable.uid == account_uid)
+    )
+    statement = page_select(statement, key=key, offset=offset)
+    if include_asset_detail:
+        statement = _with_asset_references(
+            statement, AssetTable.uid == TargetPositionsStorage.asset_uid, key=key
+        )
+    return statement
+
+
 def _labelled(model: Any, prefix: str, *, names: tuple[str, ...] | None = None) -> list[Any]:
     columns = model.__table__.columns
     return [
@@ -490,7 +596,7 @@ def _with_asset_references(statement: Any, asset_onclause: Any, *, key: Sequence
                 AssetSnapshotsStorage.time_index == latest.c.time_index,
             ),
         )
-        .order_by(*(rows.c[name] for name in key))
+        .order_by(*key_order(rows.c, key))
     )
 
 
@@ -521,10 +627,12 @@ __all__ = [
     "HOLDING",
     "PORTFOLIO",
     "TARGET",
+    "account_target_snapshot_select",
     "build_account_fund_holdings_operation",
     "build_account_holdings_set_operation",
     "build_account_holdings_snapshot_operation",
     "build_account_holdings_snapshots_operation",
+    "build_account_target_history_operation",
     "build_account_target_snapshot_operation",
     "build_account_with_stored_target_allocation_operation",
     "prefixed_columns",
@@ -532,6 +640,7 @@ __all__ = [
     "read_account_holdings_set",
     "read_account_holdings_snapshot",
     "read_account_holdings_snapshots",
+    "read_account_target_history",
     "read_account_target_snapshot",
     "read_account_with_stored_target_allocation",
 ]

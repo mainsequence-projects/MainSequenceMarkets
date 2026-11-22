@@ -7,6 +7,41 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **An account's target history in one call**
+  ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)):
+  `GET /api/v1/account/{account_uid}/target-positions/history/`
+  (`listAccountTargetPositionsHistory`), its discovery route and
+  `MarketsClient.account_target_positions_history`. It pages up to 50 snapshots, latest
+  or earliest first, each as the target read answers one, in one MetaTables operation up
+  to 10,000 rows and 8 MiB. Unlike the target read it includes the snapshots of an
+  inactive target allocation, so a clear is an empty snapshot followed by what it
+  cleared.
+- **The MetaTables operations of each request in the log**
+  ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)): a line
+  `MetaTables operations=N METHOD ROUTE status=S duration_ms=D` for each request that
+  sent any, and `metatables_operations` in the fields the platform launcher copies into
+  its completion line.
+
+### Changed
+
+- **One round trip fewer behind a target write and a registration**
+  ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)):
+  - `POST /api/v1/account/{account_uid}/add-target-positions/` sends two MetaTables
+    operations, was three: the transaction that writes the snapshot also reads it back.
+    The write and that read now share one 15-second deadline, and a read that fails
+    rolls the write back instead of failing after the commit. A snapshot over one
+    answer (10,000 rows or 8 MiB) is still read back after it.
+  - `POST /api/v1/account/registration/` reads once, was twice: a first registration
+    and a sync send two operations, was three, and an identical repeat one, was two.
+  - On PostgreSQL a refused target write with positions changes nothing at all, as on
+    SQLite. It kept its update of the allocation model and of the target allocation's
+    display name.
+  - In the repositories, `replace_account_target_positions_snapshot` takes `read_back`
+    and `include_asset_detail`, and the registration state read takes
+    `asset_identifiers`. Their defaults answer what they answered.
+
 ## [5.0.0] - 2026-11-22
 
 Breaking release 5.0.0. It finishes

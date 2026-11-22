@@ -49,6 +49,21 @@ def discover_account_target_allocation_targets(request: Request) -> ResourceDisc
 
 
 @router.get(
+    "/account/{account_uid}/target-positions/history/discovery/",
+    response_model=ResourceDiscovery,
+    operation_id="discoverAccountTargetPositionsHistory",
+    summary="Discover an account's target positions history",
+    openapi_extra=_DISCOVERY_OPENAPI,
+    responses=_DISCOVERY_ERRORS,
+)
+def discover_account_target_positions_history(
+    account_uid: str, request: Request
+) -> ResourceDiscovery:
+    del account_uid
+    return _response("account-target-positions-history", request)
+
+
+@router.get(
     "/asset/discovery/",
     response_model=ResourceDiscovery,
     operation_id="discoverAssets",

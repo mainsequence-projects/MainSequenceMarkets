@@ -95,6 +95,7 @@ _EXPORTS = {
     "get_account_holdings_by_fund_response": ".accounts",
     "get_account_holdings_snapshot_response": ".accounts",
     "get_account_holdings_snapshots_response": ".accounts",
+    "get_account_target_positions_history_response": ".target_positions",
     "get_account_target_positions_snapshot_response": ".target_positions",
     "list_portfolio_account_targets_response": ".target_positions",
     "PortfolioRetiredError": ".portfolio_lifecycle",

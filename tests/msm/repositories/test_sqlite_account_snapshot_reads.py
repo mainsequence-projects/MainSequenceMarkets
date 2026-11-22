@@ -1,8 +1,9 @@
 """An account's target, holdings and holdings by fund, each in as few reads as it can.
 
 Each MetaTables request is a round trip (issue 94). A target read and a holdings read are
-one statement; holdings by fund are two, the account's set and then its funds; a target
-write reads the account, writes, and reads the snapshot back.
+one statement, as is a page of target history; holdings by fund are two, the account's
+set and then its funds; a target write reads the account, then writes and reads the
+snapshot back in one transaction.
 """
 
 from __future__ import annotations
@@ -14,12 +15,14 @@ import pytest
 import sqlalchemy as sa
 
 from metatables.api.backend.backends.restricted_sql import parameters_for
+from msm.repositories import complete_reads
 from msm.repositories.accounts import (
     replace_account_holdings_snapshot,
     replace_account_target_positions_snapshot,
 )
 from msm.services import (
     add_account_target_positions_snapshot_response,
+    get_account_target_positions_history_response,
     get_account_target_positions_snapshot_response,
 )
 from msm.services.accounts import (
@@ -29,6 +32,7 @@ from msm.services.accounts import (
 from msm.services.accounts.account_virtual_allocations import (
     allocate_account_virtual_funds_in_context,
 )
+from msm.services.target_positions import AccountTargetPositionsSnapshotExistsError
 from tests.support.account_registration import _record_operations
 from tests.support.account_snapshots import account_read_operations, seed_account_snapshots
 from tests.support.sqlite_markets import WHEN, _account, _asset, _insert, _portfolio, _rows
@@ -223,7 +227,7 @@ def test_a_target_read_labels_a_portfolio_whatever_the_number_of_portfolios(
     assert position["unique_identifier"] == f"portfolio-{named.hex[:8]}"
 
 
-def test_a_target_write_reads_the_account_and_then_the_snapshot_once(
+def test_a_target_write_is_the_account_read_and_one_transaction(
     sqlite_markets, monkeypatch
 ) -> None:
     engine = sqlite_markets.engine
@@ -250,12 +254,154 @@ def test_a_target_write_reads_the_account_and_then_the_snapshot_once(
         positions=[],
     )
 
-    assert operations == ["read", "transaction", "read", "read"]
+    assert operations == ["read", "transaction", "read"]
     assert missing is None
     assert written == get_account_target_positions_snapshot_response(
         sqlite_markets.context, account_uid=str(account)
     )
     assert [row["target_type"] for row in written["positions"]] == ["asset", "portfolio"]
+
+
+def test_a_refused_target_write_is_refused_by_the_transaction_that_reads_it_back(
+    sqlite_markets, monkeypatch
+) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    asset = _asset(engine, "AAPL")
+
+    def write(quantity, **kwargs):
+        return add_account_target_positions_snapshot_response(
+            sqlite_markets.context,
+            account_uid=str(account),
+            target_positions_date=WHEN,
+            positions=[{**_in_asset(str(asset), quantity), "metadata_json": None}],
+            **kwargs,
+        )
+
+    write(5)
+    operations = _record_operations(monkeypatch)
+
+    with pytest.raises(AccountTargetPositionsSnapshotExistsError):
+        write(7)
+    assert operations == ["read", "transaction"]
+    replaced = write(9, overwrite=True)
+
+    assert [row["single_asset_quantity"] for row in replaced["positions"]] == ["9.0"]
+    assert operations == ["read", "transaction"] * 2
+
+
+def test_a_target_write_over_one_answers_rows_is_read_back_whole(
+    sqlite_markets, monkeypatch
+) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    assets = [_asset(engine, f"A{index}") for index in range(7)]
+    monkeypatch.setattr(complete_reads, "READ_PAGE_ROWS", 4)
+    operations = _record_operations(monkeypatch)
+
+    written = add_account_target_positions_snapshot_response(
+        sqlite_markets.context,
+        account_uid=str(account),
+        target_positions_date=WHEN,
+        positions=[{**_in_asset(str(asset), 1), "metadata_json": None} for asset in assets],
+    )
+
+    assert len({row["target_uid"] for row in written["positions"]}) == 7
+    # Two pages, read until two reads agree, as any read over one statement.
+    assert operations == ["read", "transaction"] + ["read"] * 4
+
+
+def test_a_target_history_is_one_statement_newest_first(sqlite_markets, monkeypatch) -> None:
+    engine = sqlite_markets.engine
+    account, other = _account(engine), _account(engine)
+    asset = _asset(engine, "AAPL")
+    _snapshot(engine, "AAPL", EARLIER, "Apple Inc.", "AAPL")
+    portfolio = _portfolio(engine)
+    days = [WHEN - dt.timedelta(days=age) for age in (3, 2, 1)]
+
+    def write(when, positions, owner=account):
+        return add_account_target_positions_snapshot_response(
+            sqlite_markets.context,
+            account_uid=str(owner),
+            target_positions_date=when,
+            positions=[{**position, "metadata_json": None} for position in positions],
+        )
+
+    written = [
+        write(days[0], [_in_portfolio(str(portfolio), 0.5), _in_asset(str(asset), 1)]),
+        write(days[1], [_in_asset(str(asset), 2)]),
+        write(days[2], [_in_portfolio(str(portfolio), 0.7)]),
+    ]
+    write(WHEN, [_in_asset(str(asset), 8)], other)
+    no_target = _account(engine)
+    operations = _record_operations(monkeypatch)
+
+    def history(owner=account, **kwargs):
+        return get_account_target_positions_history_response(
+            sqlite_markets.context, account_uid=str(owner), **kwargs
+        )
+
+    whole, newest, next_page, oldest, past_the_end = (
+        history(),
+        history(limit=2),
+        history(limit=2, offset=2),
+        history(limit=1, order="asc"),
+        history(offset=5),
+    )
+    empty, missing = history(no_target), history(uuid.uuid4())
+
+    assert operations == ["read"] * 7
+    assert whole == {"count": 3, "results": written[::-1]}
+    assert newest == {"count": 3, "results": [written[2], written[1]]}
+    assert next_page == {"count": 3, "results": [written[0]]}
+    assert oldest == {"count": 3, "results": [written[0]]}
+    assert past_the_end == {"count": 3, "results": []}
+    assert empty == {"count": 0, "results": []}
+    assert missing is None
+
+
+def test_a_target_history_keeps_a_clear_and_what_it_cleared(sqlite_markets) -> None:
+    # A clear sets the allocation inactive, which the current target's read skips.
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    asset = _asset(engine, "AAPL")
+
+    def write(when, positions):
+        return add_account_target_positions_snapshot_response(
+            sqlite_markets.context,
+            account_uid=str(account),
+            target_positions_date=when,
+            positions=positions,
+        )
+
+    targeted = write(EARLIER, [{**_in_asset(str(asset), 4), "metadata_json": None}])
+    cleared = write(WHEN, [])
+
+    history = get_account_target_positions_history_response(
+        sqlite_markets.context, account_uid=str(account)
+    )
+
+    assert history["count"] == 2
+    latest, before = history["results"]
+    assert latest["target_positions_date"] == WHEN
+    assert latest["positions"] == []
+    assert uuid.UUID(latest["position_set_uid"]) == uuid.UUID(cleared["position_set_uid"])
+    assert before == targeted
+
+
+def test_a_target_history_is_whole_over_one_answers_rows(sqlite_markets, monkeypatch) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    assets = [_asset(engine, f"A{index}") for index in range(5)]
+    for when in (EARLIER, WHEN):
+        _target(sqlite_markets, account, [_in_asset(asset, 1.0) for asset in assets], when=when)
+    monkeypatch.setattr(complete_reads, "READ_PAGE_ROWS", 3)
+
+    history = get_account_target_positions_history_response(
+        sqlite_markets.context, account_uid=str(account)
+    )
+
+    assert [len({row["target_uid"] for row in each["positions"]}) for each in history["results"]] == [5, 5]
 
 
 def test_a_holdings_read_is_one_statement(sqlite_markets, monkeypatch) -> None:

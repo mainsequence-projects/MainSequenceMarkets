@@ -253,7 +253,10 @@ after the target was written, pass the capture's time and the earlier
 An application that reaches ms-markets only through the Markets API writes and
 reads the target with `add_account_target_positions`, `account_target_positions`
 and `clear_account_target_positions`; an empty target clears it and leaves an
-empty snapshot in its history. A target that names a retired portfolio is refused
+empty snapshot in its history. It reads several snapshots with
+`account_target_positions_history(account_uid, limit=...)`, one request for up to 50,
+cleared ones included; don't call `account_target_positions` once per snapshot.
+A target that names a retired portfolio is refused
 (`MarketsConflictError`). It allocates with
 `virtual_fund_allocation_policies`, `virtual_fund_allocation_policy`,
 `plan_account_virtual_funds` and `allocate_account_virtual_funds`. The allocate

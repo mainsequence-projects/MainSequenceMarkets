@@ -47,10 +47,7 @@ def page_select(statement: Any, *, key: Sequence[str], offset: int) -> Any:
     it descending.
     """
 
-    columns = statement.selected_columns
-    order = [
-        columns[name[1:]].desc() if name.startswith("-") else columns[name].asc() for name in key
-    ]
+    order = key_order(statement.selected_columns, key)
     return (
         statement.add_columns(
             func.count().over().label(_MATCHED),
@@ -63,14 +60,40 @@ def page_select(statement: Any, *, key: Sequence[str], offset: int) -> Any:
     )
 
 
+def key_order(columns: Any, key: Sequence[str]) -> list[Any]:
+    """The order ``key`` names among ``columns``: ``-`` before a name orders it descending."""
+
+    return [
+        columns[name[1:]].desc() if name.startswith("-") else columns[name].asc() for name in key
+    ]
+
+
 def compile_page(
     statement: Any, *, context: MarketsOperationContext
 ) -> MetaTableCompiledSQLOperation:
     """Compile a `page_select` so that MetaTables returns the whole page."""
 
-    return compile_markets_statement(
-        statement, context=with_max_rows(context, READ_PAGE_ROWS), operation="select"
-    )
+    return compile_markets_statement(statement, context=page_context(context), operation="select")
+
+
+def page_context(context: MarketsOperationContext) -> MarketsOperationContext:
+    """``context`` whose answers hold a whole page."""
+
+    return with_max_rows(context, READ_PAGE_ROWS)
+
+
+def whole_page(page: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]] | None:
+    """The rows of a `page_select` at offset 0 that another operation answered, if they are all.
+
+    A write whose transaction ends in that select has its answer here. ``None`` when the
+    select matched more rows than it answered: they are then read with `read_every_row`.
+    """
+
+    rows = [dict(row) for row in page]
+    matched = {int(row.pop(_MATCHED)) for row in rows}
+    for row in rows:
+        row.pop(_STATEMENT)
+    return rows if matched == {len(rows)} else None
 
 
 def read_every_row(
@@ -161,7 +184,10 @@ __all__ = [
     "READ_ATTEMPTS",
     "READ_PAGE_ROWS",
     "compile_page",
+    "key_order",
+    "page_context",
     "page_select",
     "read_every_model_row",
     "read_every_row",
+    "whole_page",
 ]

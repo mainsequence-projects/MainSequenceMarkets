@@ -5,8 +5,10 @@ from collections.abc import Sequence
 from typing import Any
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
+from sqlalchemy import and_, func, literal, select
 
 from msm.models import AssetTable
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 
 from .base import (
     MarketsCompiledWrite,
@@ -203,7 +205,68 @@ def delete_asset(
     )
 
 
+def asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool) -> Any:
+    """The assets ``identifiers`` name, each with its latest snapshot's values."""
+
+    if not latest_snapshot:
+        return (
+            select(
+                AssetTable.uid.label("asset_uid"),
+                AssetTable.unique_identifier.label("asset_identifier"),
+                AssetTable.asset_type.label("asset_type"),
+                literal(None).label("snapshot_time"),
+                literal(None).label("time_index"),
+                literal(None).label("name"),
+                literal(None).label("ticker"),
+                literal(None).label("exchange_code"),
+                literal(None).label("asset_ticker_group_id"),
+            )
+            .select_from(AssetTable)
+            .where(AssetTable.unique_identifier.in_(identifiers))
+            .order_by(AssetTable.unique_identifier.asc())
+        )
+
+    latest_snapshots = (
+        select(
+            AssetSnapshotsStorage.asset_identifier.label("asset_identifier"),
+            func.max(AssetSnapshotsStorage.time_index).label("snapshot_time"),
+        )
+        .where(AssetSnapshotsStorage.asset_identifier.in_(identifiers))
+        .group_by(AssetSnapshotsStorage.asset_identifier)
+        .subquery()
+    )
+
+    return (
+        select(
+            AssetTable.uid.label("asset_uid"),
+            AssetTable.unique_identifier.label("asset_identifier"),
+            AssetTable.asset_type.label("asset_type"),
+            AssetSnapshotsStorage.time_index.label("snapshot_time"),
+            AssetSnapshotsStorage.time_index.label("time_index"),
+            AssetSnapshotsStorage.name.label("name"),
+            AssetSnapshotsStorage.ticker.label("ticker"),
+            AssetSnapshotsStorage.exchange_code.label("exchange_code"),
+            AssetSnapshotsStorage.asset_ticker_group_id.label("asset_ticker_group_id"),
+        )
+        .select_from(AssetTable)
+        .outerjoin(
+            latest_snapshots,
+            latest_snapshots.c.asset_identifier == AssetTable.unique_identifier,
+        )
+        .outerjoin(
+            AssetSnapshotsStorage,
+            and_(
+                AssetSnapshotsStorage.asset_identifier == latest_snapshots.c.asset_identifier,
+                AssetSnapshotsStorage.time_index == latest_snapshots.c.snapshot_time,
+            ),
+        )
+        .where(AssetTable.unique_identifier.in_(identifiers))
+        .order_by(AssetTable.unique_identifier.asc())
+    )
+
+
 __all__ = [
+    "asset_reference_select",
     "build_create_asset_operation",
     "build_delete_asset_operation",
     "build_get_asset_by_uid_operation",

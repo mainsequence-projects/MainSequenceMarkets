@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import uuid
 
 import pytest
@@ -65,7 +66,9 @@ def links(markets) -> dict[str, str]:
 
 
 def writes(markets) -> int:
-    return sum(1 for sql in markets.statements if not sql.lstrip().upper().startswith("SELECT"))
+    # A read may start with WITH; a write names what it changes.
+    changes = re.compile(r"\b(INSERT INTO|DELETE FROM|UPDATE \S+ SET)\b", re.IGNORECASE)
+    return sum(1 for sql in markets.statements if changes.search(sql))
 
 
 def test_link_many_links_assets_by_identifier_in_one_transaction(markets, monkeypatch) -> None:
@@ -318,8 +321,8 @@ def test_account_registration_links_new_assets_in_its_one_transaction(markets, m
 
     result = register_account(markets.context, request)
 
-    # The two reads of a registration, the calendar, then one transaction for everything.
-    assert operations == ["read", "read", "read", "transaction"]
+    # The registration's read, the calendar, then one transaction for everything.
+    assert operations == ["read", "read", "transaction"]
     assert result.response["written"]["asset_calendars"] == {"created": 2, "changed": 0}
     assert links(markets) == {"venue::AAPL": "NYSE", "venue::MSFT": "NYSE"}
     audit = [write for write in result.writes if write.resource == "asset-calendar"]

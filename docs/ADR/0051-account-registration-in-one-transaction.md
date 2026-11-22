@@ -16,7 +16,10 @@ below). It builds on two fixes:
 Statement lists run on PostgreSQL and SQLite, as in
 [ADR 0050](0050-account-deletion.md) (MetaTables ADR 0026).
 
-Implemented on `development` for 3.4.0; see "Implementation Notes".
+Implemented on `development` for 3.4.0; see "Implementation Notes". Decision 2's two
+reads became one select on 2026-11-22
+([issue 94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)); see
+"2026-11-22: one read" there.
 
 ## Context
 
@@ -99,6 +102,9 @@ The request:
   dialects.
 
 ### 2. Two reads
+
+Amended on 2026-11-22: the two reads below are one select. What they read, and what
+is decided from them, is unchanged.
 
 The route makes exactly two reads, whatever the number of assets or positions:
 
@@ -396,3 +402,12 @@ what is missing, and the caller makes any ownership check in its own sidecar.
     on PostgreSQL when `MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL` names a disposable
     `markets_*` database on localhost. It binds and executes each statement as MetaTables'
     PostgreSQL backend does. It passed against PostgreSQL 16.
+
+### 2026-11-22: one read
+
+[Issue 94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94): each
+MetaTables request is a round trip, and the two reads did not depend on each other.
+`build_account_registration_state_operation` now answers both in one select, the assets
+under `asset__` columns, read with `msm.repositories.complete_reads`. A first
+registration and a sync of known assets make one read and one transaction, and an
+identical repeat one read. The tests count these.

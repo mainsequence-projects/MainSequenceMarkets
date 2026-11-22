@@ -313,6 +313,34 @@ def get_account_target_positions(
     return AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
 
 
+def get_account_target_positions_history(
+    *,
+    account_uid: str,
+    order: str = "desc",
+    limit: int = 10,
+    offset: int = 0,
+    include_asset_detail: bool = True,
+) -> dict[str, object] | None:
+    runtime = _get_target_positions_runtime()
+    history = _get_account_target_positions_history_response(
+        runtime.context,
+        account_uid=account_uid,
+        order=order,
+        limit=limit,
+        offset=offset,
+        include_asset_detail=include_asset_detail,
+    )
+    if history is None:
+        return None
+    return {
+        "count": int(history["count"]),
+        "results": [
+            AccountTargetPositionsSnapshotResponse.model_validate(snapshot)
+            for snapshot in history["results"]
+        ],
+    }
+
+
 @registry_write("account", "add:account-target-positions")
 def add_account_target_positions(
     *,
@@ -593,6 +621,12 @@ def _add_account_holdings_snapshot_response(context, **kwargs):
     from msm.services import add_account_holdings_snapshot_response
 
     return add_account_holdings_snapshot_response(context, **kwargs)
+
+
+def _get_account_target_positions_history_response(context, **kwargs):
+    from msm.services import get_account_target_positions_history_response
+
+    return get_account_target_positions_history_response(context, **kwargs)
 
 
 def _get_account_target_positions_snapshot_response(context, **kwargs):

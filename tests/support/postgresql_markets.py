@@ -80,7 +80,9 @@ def postgresql_markets(monkeypatch):
                 names = [column.name for column in cursor.description or ()]
                 expected = getattr(statement, "expect_rows", None) if guarded else None
                 count = len(rows) if cursor.description else max(cursor.rowcount, 0)
-                if expected is not None and count != expected:
+                if expected is not None and (
+                    count < 1 if expected == "at_least_one" else count != expected
+                ):
                     connection.rollback()
                     raise MetaTableTransactionGuardError(
                         "guard", statement_index=index, label=statement.label,

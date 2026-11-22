@@ -8,13 +8,14 @@ from typing import Any
 
 from sqlalchemy import and_, func, literal, select
 
-from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.models import AssetTable
+from msm.repositories.assets import asset_reference_select
 from msm.repositories.base import (
     MarketsOperationContext,
     compile_markets_statement,
     execute_markets_operation,
 )
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 
 AssetReferenceExecutor = Callable[
     [Any],
@@ -40,7 +41,7 @@ def asset_reference_details(
     if not identifiers:
         return []
 
-    statement = _asset_reference_select(identifiers, latest_snapshot=latest_snapshot)
+    statement = asset_reference_select(identifiers, latest_snapshot=latest_snapshot)
     rows = _execute_statement(
         repository_context=repository_context,
         statement=statement,
@@ -99,64 +100,6 @@ def asset_identifiers_by_ticker(
         executor=executor,
     )
     return [str(row["asset_identifier"]) for row in rows if row.get("asset_identifier")]
-
-
-def _asset_reference_select(identifiers: Sequence[str], *, latest_snapshot: bool):
-    if not latest_snapshot:
-        return (
-            select(
-                AssetTable.uid.label("asset_uid"),
-                AssetTable.unique_identifier.label("asset_identifier"),
-                AssetTable.asset_type.label("asset_type"),
-                literal(None).label("snapshot_time"),
-                literal(None).label("time_index"),
-                literal(None).label("name"),
-                literal(None).label("ticker"),
-                literal(None).label("exchange_code"),
-                literal(None).label("asset_ticker_group_id"),
-            )
-            .select_from(AssetTable)
-            .where(AssetTable.unique_identifier.in_(identifiers))
-            .order_by(AssetTable.unique_identifier.asc())
-        )
-
-    latest_snapshots = (
-        select(
-            AssetSnapshotsStorage.asset_identifier.label("asset_identifier"),
-            func.max(AssetSnapshotsStorage.time_index).label("snapshot_time"),
-        )
-        .where(AssetSnapshotsStorage.asset_identifier.in_(identifiers))
-        .group_by(AssetSnapshotsStorage.asset_identifier)
-        .subquery()
-    )
-
-    return (
-        select(
-            AssetTable.uid.label("asset_uid"),
-            AssetTable.unique_identifier.label("asset_identifier"),
-            AssetTable.asset_type.label("asset_type"),
-            AssetSnapshotsStorage.time_index.label("snapshot_time"),
-            AssetSnapshotsStorage.time_index.label("time_index"),
-            AssetSnapshotsStorage.name.label("name"),
-            AssetSnapshotsStorage.ticker.label("ticker"),
-            AssetSnapshotsStorage.exchange_code.label("exchange_code"),
-            AssetSnapshotsStorage.asset_ticker_group_id.label("asset_ticker_group_id"),
-        )
-        .select_from(AssetTable)
-        .outerjoin(
-            latest_snapshots,
-            latest_snapshots.c.asset_identifier == AssetTable.unique_identifier,
-        )
-        .outerjoin(
-            AssetSnapshotsStorage,
-            and_(
-                AssetSnapshotsStorage.asset_identifier == latest_snapshots.c.asset_identifier,
-                AssetSnapshotsStorage.time_index == latest_snapshots.c.snapshot_time,
-            ),
-        )
-        .where(AssetTable.unique_identifier.in_(identifiers))
-        .order_by(AssetTable.unique_identifier.asc())
-    )
 
 
 def _asset_reference_select_by_uids(asset_uids: Sequence[uuid.UUID], *, latest_snapshot: bool):

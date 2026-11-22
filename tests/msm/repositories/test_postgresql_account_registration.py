@@ -48,7 +48,7 @@ def test_registration_runs_on_postgresql_and_repeats_idempotently(postgresql_mar
 
     first = register_account(context, _request())
 
-    assert operations == ["read", "read", "transaction"]
+    assert operations == ["read", "transaction"]
     assert first.response["written"]["assets"] == {"created": 2, "changed": 0}
     assert first.response["written"]["asset_types"] == {"created": 2, "changed": 0}
     assert first.response["written"]["holdings"] == {"created": 2, "changed": 0}
@@ -63,7 +63,7 @@ def test_registration_runs_on_postgresql_and_repeats_idempotently(postgresql_mar
 
     operations.clear()
     repeat = register_account(context, _request())
-    assert operations == ["read", "read"]
+    assert operations == ["read"]
     assert repeat.response["holdings_set_uid"] == first.response["holdings_set_uid"]
 
     operations.clear()
@@ -71,7 +71,7 @@ def test_registration_runs_on_postgresql_and_repeats_idempotently(postgresql_mar
         context,
         _request(holdings_date=DAY_2, positions=[{"asset_identifier": "venue::AAPL", "quantity": "4"}]),
     )
-    assert operations == ["read", "read", "transaction"]
+    assert operations == ["read", "transaction"]
     assert sync.response["written"]["holdings_sets"] == {"created": 1, "changed": 0}
     assert sync.response["written"]["assets"] == {"created": 0, "changed": 0}
 

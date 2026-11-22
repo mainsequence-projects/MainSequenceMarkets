@@ -1,11 +1,11 @@
 """Register an account and write its holdings snapshot in one call (ADR 0051).
 
-Two reads, then at most one transaction:
+One read, then at most one transaction. The read answers every asset the request names
+with its latest snapshot, and the account by ``unique_identifier`` with its holdings at
+``holdings_date`` (a request whose assets name a calendar reads that calendar too, and
+those assets' links).
 
-1. ``asset_reference_details`` for every asset the request names;
-2. the account by ``unique_identifier``, with its holdings at ``holdings_date``.
-
-From them the service decides what is missing or changed, refuses what it must before
+From it the service decides what is missing or changed, refuses what it must before
 anything is written, and sends the writes as one statement list
 (``msm.repositories.account_registration``). When nothing differs it sends nothing.
 """
@@ -25,6 +25,7 @@ from msm.constants import ASSET_TYPE_CURRENCY_DEFINITION, BUILT_IN_ASSET_TYPE_DE
 from msm.repositories import MarketsRepositoryContext
 from msm.repositories.account_registration import (
     ACCOUNT_COLUMNS,
+    ASSET_STATE,
     AccountRegistrationWrites,
     AccountWrite,
     HoldingPosition,
@@ -34,7 +35,6 @@ from msm.repositories.account_registration import (
     register_account as run_registration,
 )
 from msm.repositories.asset_registration import NewAsset, NewAssetType
-from msm.repositories.base import with_max_rows
 from msm.services.accounts.core import AccountHoldingsSnapshotExistsError
 from msm.services.assets.currency import AssetTypeConflictError
 from msm.time_index.assets.snapshots import SNAPSHOT_VALUE_COLUMNS
@@ -112,9 +112,9 @@ def register_account(
             f"this one names {len(identifiers)}."
         )
 
-    details = _asset_details(context, identifiers)
-    state = _account_state(
+    details, state = _registration_state(
         context,
+        identifiers=identifiers,
         account_identifier=account_identifier,
         holdings_date=holdings_date,
         position_count=len(positions),
@@ -268,35 +268,17 @@ def _snapshot_row(identifier: str, snapshot: Any) -> SnapshotRow | None:
     return row
 
 
-def _asset_details(
-    context: MarketsRepositoryContext,
-    identifiers: Sequence[str],
-) -> dict[str, dict[str, Any]]:
-    """Read 1: each existing asset's uid, type and latest snapshot, in one select."""
-
-    from msm.services.assets import asset_reference_details
-
-    rows = asset_reference_details(
-        list(identifiers),
-        repository_context=with_max_rows(context, len(identifiers)),
-    )
-    return {
-        str(row["asset_identifier"]): dict(row)
-        for row in rows
-        if isinstance(row, Mapping) and row.get("asset_identifier") not in (None, "")
-    }
-
-
-def _account_state(
+def _registration_state(
     context: MarketsRepositoryContext,
     *,
+    identifiers: Sequence[str],
     account_identifier: str,
     holdings_date: dt.datetime,
     position_count: int,
-) -> _AccountState:
-    """Read 2: the account and its holdings at ``holdings_date``, in one select.
+) -> tuple[dict[str, dict[str, Any]], _AccountState]:
+    """The registration's read: the named assets, and the account's state.
 
-    One more row than the request's positions is read: more stored rows than positions
+    One more holding than the request's positions is read: more stored rows than positions
     already means the holdings differ.
     """
 
@@ -305,8 +287,24 @@ def _account_state(
         account_identifier=account_identifier,
         holdings_date=holdings_date,
         max_rows=position_count + 1,
+        asset_identifiers=identifiers,
     )
-    rows = operation_result_rows(result)
+    details: dict[str, dict[str, Any]] = {}
+    account_rows: list[Mapping[str, Any]] = []
+    for row in operation_result_rows(result):
+        identifier = row.get(f"{ASSET_STATE}asset_identifier")
+        if identifier in (None, ""):
+            account_rows.append(row)
+            continue
+        details[str(identifier)] = {
+            name.removeprefix(ASSET_STATE): value
+            for name, value in row.items()
+            if name.startswith(ASSET_STATE)
+        }
+    return details, _account_state(account_rows, position_count=position_count)
+
+
+def _account_state(rows: Sequence[Mapping[str, Any]], *, position_count: int) -> _AccountState:
     if not rows:
         return _AccountState(row=None, holdings_set_uid=None, holdings={}, holdings_complete=True)
     holdings = {

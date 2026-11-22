@@ -23,6 +23,8 @@ from metatables.runtime_contract import DataSourceResolutionError
 
 from msm.base import MarketsBase
 
+from .operation_count import count_operation
+
 
 @dataclass(frozen=True)
 class MarketsMetaTableHandle:
@@ -250,6 +252,7 @@ def execute_markets_operation(
     *,
     context: MarketsOperationContext,
 ) -> dict[str, Any]:
+    count_operation()
     return MetaTable.execute_operation(operation, timeout=context.timeout)
 
 
@@ -269,6 +272,7 @@ def execute_markets_write(
 
     if not isinstance(write, MetaTableCompiledSQLTransaction):
         return execute_markets_operation(write, context=context)
+    count_operation()
     try:
         return MetaTable.execute_transaction(write, timeout=context.timeout)
     except MetaTableTransactionGuardError as error:

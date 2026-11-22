@@ -1892,21 +1892,20 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
     def fake_replace_account_target_positions_snapshot(context, **kwargs):
         captured["context"] = context
         captured.update(kwargs)
-        return {"rows": [{"target_uid": str(asset_uid)}]}
+        # With read_back the write answers the snapshot as its read does.
+        return {
+            "rows": [
+                {
+                    "account_uid": str(account_uid),
+                    "position_set_uid": "position-set-uid",
+                    "position_set_time": target_positions_date,
+                }
+            ]
+        }
 
     monkeypatch.setattr(
         "msm.repositories.accounts.replace_account_target_positions_snapshot",
         fake_replace_account_target_positions_snapshot,
-    )
-    monkeypatch.setattr(
-        target_position_services,
-        "get_account_target_positions_snapshot_response",
-        lambda context, **kwargs: {
-            "related_account_uid": str(account_uid),
-            "target_positions_date": target_positions_date,
-            "position_set_uid": "position-set-uid",
-            "positions": [],
-        },
     )
 
     snapshot = target_position_services.add_account_target_positions_snapshot_response(
@@ -1933,6 +1932,7 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
     assert captured["account_name"] == "Some account"
     assert captured["target_positions_date"] == target_positions_date
     assert captured["overwrite"] is True
+    assert captured["read_back"] is True
     assert captured["positions"] == [
         {
             "target_type": "asset",
