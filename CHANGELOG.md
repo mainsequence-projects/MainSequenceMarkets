@@ -7,6 +7,13 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-11-22
+
+Minor release 5.1.0: an account's target history in one call, one round trip fewer
+behind a target write and a registration, and each request's MetaTables operations in
+the log ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)).
+No migration.
+
 ### Added
 
 - **An account's target history in one call**
