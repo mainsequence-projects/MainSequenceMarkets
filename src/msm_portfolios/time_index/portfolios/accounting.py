@@ -520,8 +520,9 @@ class _RecordedFillBooker:
     once, at its decision: the instant before its earliest moment, with the NAV and
     the prices last observed before it, the same set for every asset. Each asset
     then fills its fixed count, or the recorded fraction of its open order, at its
-    own recorded price. A rebalance sized at each fill, or without a recorded
-    earliest moment (a strategy with its own bars), is sized at each fill.
+    own recorded price; a strategy with its own bars records one fill per slice
+    (#90). A rebalance sized at each fill, or without a recorded earliest moment, is
+    sized at each fill.
     """
 
     def __init__(
@@ -546,10 +547,7 @@ class _RecordedFillBooker:
         }
         self._decisions: dict[pd.Timestamp, dict[str, dict[str, float]]] = {}
         # Sizing at each fill is the execution policy's other choice (ADR 0058).
-        sized_at_decision = (
-            strategy.own_execution_prices() is None
-            and strategy.fill_policy().sizing == "at_decision"
-        )
+        sized_at_decision = strategy.fill_policy().sizing == "at_decision"
         for intent_id, group in booked.groupby("rebalance_intent_id", sort=True):
             if not sized_at_decision:
                 break

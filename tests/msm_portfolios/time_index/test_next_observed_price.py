@@ -418,6 +418,9 @@ def test_a_bar_strategy_skips_the_signals_own_bar_and_interpolated_bars() -> Non
 def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
     bars = bar_frame(
         [
+            # The signal's own bars size the order (#90).
+            ("2026-11-18T10:00Z", "AAPL", False),
+            ("2026-11-18T10:00Z", "MSFT", False),
             ("2026-11-18T10:30Z", "AAPL", False),
             ("2026-11-18T10:30Z", "MSFT", False),
             ("2026-11-18T11:00Z", "AAPL", False),
@@ -436,7 +439,8 @@ def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
         signal_frame([("2026-11-18T10:00:00Z", {"AAPL": 0.5, "MSFT": 0.5})]),
     )
 
-    # TimeWeighted starts its clock at 10:30. At 11:00 only AAPL has a bar.
+    # TimeWeighted starts its clock at 10:30. At 11:00 only AAPL has a bar; MSFT's
+    # order waits, writes no row, and catches up at 11:30.
     assert moved(result) == {
         (utc("2026-11-18T11:00Z"), "AAPL"),
         (utc("2026-11-18T11:30Z"), "AAPL"),
@@ -446,7 +450,7 @@ def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
         ASSET_IDENTIFIER
     )
     assert at_eleven.loc["AAPL", "execution_price"] == 100.0
-    assert pd.isna(at_eleven.loc["MSFT", "execution_price"])
+    assert "MSFT" not in at_eleven.index
 
 
 # --- The calendar ------------------------------------------------------------------------

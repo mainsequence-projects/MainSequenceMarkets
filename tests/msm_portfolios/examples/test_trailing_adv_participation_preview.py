@@ -17,6 +17,8 @@ from examples.msm_portfolios.portfolio_trailing_adv_participation_preview import
     target_weights,
     transition_summary,
 )
+from msm_portfolios.rebalance_strategy import TrailingAverageDailyVolumeParticipation
+from tests.support.rebalance import PublishedTable
 
 
 def test_preview_parses_timezone_aware_targets_and_signal_frame() -> None:
@@ -45,50 +47,58 @@ def test_preview_rejects_duplicate_assets_and_naive_timestamps() -> None:
 
 
 def test_preview_reads_only_bounded_target_asset_inputs() -> None:
-    class Source:
-        def __init__(self) -> None:
-            self.queries: list[dict] = []
-
-        def get_df_between_dates(self, **kwargs) -> pd.DataFrame:
-            self.queries.append(kwargs)
-            return pd.DataFrame()
-
-    daily = Source()
-    execution = Source()
-
-    class Strategy:
-        @staticmethod
-        def declared_dependencies() -> dict:
-            return {"daily_liquidity": daily, "execution_bars": execution}
-
-        @staticmethod
-        def required_input_contract() -> dict:
-            contract = SimpleNamespace(asset_scoped=True)
-            return {"daily_liquidity": contract, "execution_bars": contract}
-
-        @staticmethod
-        def dependency_window(name, start, end):
-            if name == "daily_liquidity":
-                start = pd.Timestamp(start) - pd.Timedelta(days=60)
-            return pd.Timestamp(start).to_pydatetime(), pd.Timestamp(end).to_pydatetime()
-
+    """The daily history from 60 days back; the bars of the window, and each asset's
+    last bar before it, which sizes an order whose first bar opens the window (#90)."""
+    rows = [
+        ("2026-01-02T21:00:00Z", asset, 100.0, 1_000.0)
+        for asset in ("BTC-USD", "ETH-USD", "SOL-USD")
+    ] + [
+        ("2025-10-01T21:00:00Z", "BTC-USD", 100.0, 1_000.0),
+        ("2026-01-05T14:00:00Z", "BTC-USD", 100.0, 1_000.0),
+        ("2026-01-05T14:30:00Z", "BTC-USD", 100.0, 1_000.0),
+        ("2026-01-05T15:00:00Z", "ETH-USD", 100.0, 1_000.0),
+        ("2026-01-05T22:00:00Z", "BTC-USD", 100.0, 1_000.0),
+    ]
+    frame = pd.DataFrame(rows, columns=["time_index", ASSET_IDENTIFIER, "close", "volume"])
+    frame["vwap"] = frame["close"]
+    index = ["time_index", ASSET_IDENTIFIER]
+    strategy = TrailingAverageDailyVolumeParticipation(
+        daily_liquidity_instance=PublishedTable.build("daily", frame, index=index),
+        execution_bars_instance=PublishedTable.build("bars", frame, index=index),
+        history_lookback_days=60,
+        total_notional=50_000_000,
+    )
     start = pd.Timestamp("2026-01-05T14:30:00Z")
     end = pd.Timestamp("2026-01-05T21:00:00Z")
+
     result = load_observed_inputs(
-        Strategy(),  # type: ignore[arg-type]
+        strategy,
         start=start,
         end=end,
         asset_identifiers=["BTC-USD", "ETH-USD"],
     )
 
     assert set(result) == {"daily_liquidity", "execution_bars"}
-    assert daily.queries[0]["start_date"] == (start - pd.Timedelta(days=60)).to_pydatetime()
-    assert execution.queries[0]["start_date"] == start.to_pydatetime()
-    for query in (daily.queries[0], execution.queries[0]):
-        assert query["end_date"] == end.to_pydatetime()
-        assert query["dimension_filters"] == {
-            ASSET_IDENTIFIER: ["BTC-USD", "ETH-USD"]
-        }
+    read = {
+        name: sorted(
+            (stamp.isoformat(), asset)
+            for stamp, asset in frame_read.index.to_list()
+        )
+        for name, frame_read in result.items()
+    }
+    assert read["daily_liquidity"] == [
+        ("2026-01-02T21:00:00+00:00", "BTC-USD"),
+        ("2026-01-02T21:00:00+00:00", "ETH-USD"),
+        ("2026-01-05T14:00:00+00:00", "BTC-USD"),
+        ("2026-01-05T14:30:00+00:00", "BTC-USD"),
+        ("2026-01-05T15:00:00+00:00", "ETH-USD"),
+    ]
+    assert read["execution_bars"] == [
+        ("2026-01-02T21:00:00+00:00", "ETH-USD"),
+        ("2026-01-05T14:00:00+00:00", "BTC-USD"),
+        ("2026-01-05T14:30:00+00:00", "BTC-USD"),
+        ("2026-01-05T15:00:00+00:00", "ETH-USD"),
+    ]
 
 
 def test_preview_summary_exposes_capacity_and_execution_facts() -> None:
@@ -106,24 +116,28 @@ def test_preview_summary_exposes_capacity_and_execution_facts() -> None:
                 "remaining_weight_delta": 0.55,
                 "strategy_state": json.dumps(
                     {
-                        "schema_version": 1,
-                        "history_observations": 20,
-                        "trailing_average_daily_notional": 10_000_000.0,
-                        "daily_notional_limit": 500_000.0,
-                        "daily_notional_consumed": 50_000.0,
-                        "daily_notional_remaining": 450_000.0,
+                        "schema_version": 2,
+                        "bar": {
+                            "history_observations": 20,
+                            "trailing_average_daily_notional": 10_000_000.0,
+                            "daily_notional_limit": 500_000.0,
+                            "daily_notional_consumed": 50_000.0,
+                            "daily_notional_remaining": 450_000.0,
+                        },
                     }
                 ),
             }
         ]
     )
     strategy = SimpleNamespace(
-        parse_strategy_state=lambda row: json.loads(row["strategy_state"])
+        parse_strategy_state=lambda row: json.loads(row["strategy_state"]),
+        total_notional=50_000_000.0,
     )
 
     summary = transition_summary(strategy, transitions)  # type: ignore[arg-type]
 
     assert summary.iloc[0]["execution_price"] == 50_000.0
-    assert summary.iloc[0]["executed_quantity"] == 1.0
+    # 1 share of the book is 50,000,000 shares of the asset.
+    assert summary.iloc[0]["quantity"] == 50_000_000.0
     assert summary.iloc[0]["history_observations"] == 20
     assert summary.iloc[0]["daily_notional_remaining"] == 450_000.0

@@ -411,6 +411,8 @@ def bar_frame(stamps: list[str], asset: str = "AAPL") -> pd.DataFrame:
 
 BARS = bar_frame(
     [
+        # The 10:00 signal's own bar sizes its order (#90).
+        "2026-11-18T10:00Z",
         "2026-11-18T10:30Z",
         "2026-11-18T11:00Z",
         "2026-11-18T11:30Z",
@@ -480,10 +482,10 @@ TEN = signal_frame([("2026-11-18T10:00:00Z", {"AAPL": 0.05})])
             ],
         ),
         (
-            # Starts its clock at 10:30 and moves 1,800 / 45,000 of the way by 11:00.
+            # Starts its clock at 10:30, trading nothing there, and fills 1,800 / 45,000
+            # of its order by 11:00.
             TimeWeighted,
             [
-                (utc("2026-11-18T10:30Z"), "AAPL", "pending", 0.0, 0.0, False),
                 (utc("2026-11-18T11:00Z"), "AAPL", "partial", 0.0, 0.002, True),
                 (utc("2026-11-18T11:30Z"), "AAPL", "expired", 0.002, 0.002, False),
             ],
@@ -499,6 +501,14 @@ def test_an_order_filling_over_several_bars_stops_when_its_signal_expires(
     expired = result[result["execution_status"] == "expired"].iloc[0]
     assert expired["executed_weight_delta"] == 0.0
     assert expired["remaining_weight_delta"] == pytest.approx(0.05 - expected[-1][4])
+    # The order of 0.05 / 100 of the book keeps its fills and drops the rest (#90).
+    state = json.loads(expired["strategy_state"])
+    filled = expected[-1][4] / 100.0
+    assert state["held_shares"] == pytest.approx(filled)
+    assert state["filled_shares"] == pytest.approx(filled)
+    assert state["remaining_shares"] == 0.0
+    assert state["cancelled_shares"] == pytest.approx(0.0005 - filled)
+    assert state["cancel_reason"] == "signal_lifetime"
     # Without a lifetime the order keeps filling after 11:30.
     unlimited = run_bars(bar_strategy(strategy_class, BARS), BARS, TEN)
     assert unlimited["time_index"].max() == utc("2026-11-18T12:30Z")
@@ -518,7 +528,9 @@ def test_a_bar_strategy_does_not_fall_back_to_the_previous_signal() -> None:
     At 14:00 the 11:10 signal is older than two hours: nothing trades, and the 10:00
     target, older still, does not resume. It ends expired, keeping its 2%.
     """
-    bars = bar_frame(["2026-11-18T10:30Z", "2026-11-18T11:00Z", "2026-11-18T14:00Z"])
+    bars = bar_frame(
+        ["2026-11-18T10:00Z", "2026-11-18T10:30Z", "2026-11-18T11:00Z", "2026-11-18T14:00Z"]
+    )
     signals = signal_frame(
         [("2026-11-18T10:00:00Z", {"AAPL": 0.05}), ("2026-11-18T11:10:00Z", {"AAPL": 0.03})]
     )
@@ -532,12 +544,13 @@ def test_a_bar_strategy_does_not_fall_back_to_the_previous_signal() -> None:
         (utc("2026-11-18T14:00Z"), "AAPL", "expired", 0.02, 0.02, False),
     ]
     assert expired.iloc[-1]["target_signal_time_index"] == utc("2026-11-18T10:00:00Z")
-    # Without a lifetime the 11:10 target replaces the 10:00 one at 14:00.
+    # Without a lifetime the 11:10 target replaces the 10:00 one at 14:00; the old
+    # order ends without a row, as at the next observed price (#90).
     replaced = run_bars(bar_strategy(VolumeParticipation, bars), bars, signals)
     assert bar_rows(replaced)[2:] == [
-        (utc("2026-11-18T14:00Z"), "AAPL", "superseded", 0.02, 0.02, False),
         (utc("2026-11-18T14:00Z"), "AAPL", "complete", 0.02, 0.03, True),
     ]
+    assert replaced.iloc[-1]["target_signal_time_index"] == utc("2026-11-18T11:10:00Z")
 
 
 def test_a_resumed_bar_strategy_expires_as_one_full_run_does() -> None:

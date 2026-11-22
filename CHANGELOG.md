@@ -20,6 +20,19 @@ and this project follows versioned releases.
 
 ### Changed
 
+- **Breaking: strategies with their own bars size the order at the decision and pay for
+  it with cash** ([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)).
+  `TimeWeighted`, `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` fix each order once, with each asset's last
+  bar before the earliest moment, and each bar fills a slice of it. They have the
+  `execution_policy` of `ImmediateSignal`, with its defaults: sells before buys, buys
+  limited to the cash on hand, buys short of cash filling the same fraction, and what a buy
+  cannot pay cancelled once the sells have filled. Their rows record the book's shares and
+  cash, so the weights path values them from shares and the ledger books each slice of its
+  own order; they write no `pending` or `superseded` rows. `total_notional` is the money
+  one unit of the book stands for. Results change, and so do the identities of these
+  strategies and of the portfolios that use them. `apply_event` is replaced by
+  `bar_slices`.
 - **Breaking: a sized strategy is given its size**
   ([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)).
   `VolumeParticipation`, `LiquidityConstrained` and

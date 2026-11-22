@@ -358,6 +358,17 @@ Rules:
   assets fill independently, only a fill writes a rebalance-state row, and a
   missing price makes the trade wait. Strategies with their own bars trade at them
   under the same conditions.
+- `TimeWeighted`, `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` fill each order over several of their own
+  bars (#90). The order is sized once, at the decision: target weight x NAV / price,
+  with each asset's last bar strictly before the earliest moment, which is the first of
+  the strategy's bars after the signal. Each bar fills a slice the strategy decides
+  (elapsed time, volume, liquidity, trailing daily volume), never more than the order
+  has open, and their `execution_policy` applies the cash setting to the slices. Their
+  rows record the book (`held_shares`, `cash`) like `ImmediateSignal`'s, with the
+  strategy's facts under `strategy_state["bar"]`; no `pending` or `superseded` rows.
+  The three sized strategies require `total_notional`, the money one unit of their book
+  stands for; it turns a bar's capacity into shares of the order.
 - `ImmediateSignal` rebalances at every new signal. It requires
   `calendar_events_instance` (a `PortfolioCalendarEvents` publishing both
   `market_open` and `market_close`) and `calendar_identifier`, the portfolio's
@@ -373,8 +384,8 @@ Rules:
   with no observed price at all raises. `fail_on_missing_values=True` on
   `ValuationAlignmentPolicy` or `MarketPriceValuationModel` refuses a stale price
   instead (default `False`).
-- `ImmediateSignal.execution_policy` (`ExecutionPolicy`) holds the execution choices;
-  its defaults are the owner's decisions: shares sized at the decision, no negative
+- `execution_policy` (`ExecutionPolicy`), on every built-in strategy, holds the
+  execution choices; its defaults are the owner's decisions: shares sized at the decision, no negative
   cash (`negative_cash`: `fraction_of_nav`, or `fixed_amount` only with a ledger),
   sells before buys, pro-rata allocation of too little cash, cut-and-cancel of an
   uncovered buy once the
@@ -408,8 +419,6 @@ Rules:
   governed lookups must not fall back to a local pandas or synthetic calendar.
   A window outside the calendar's `valid_from`..`valid_to` raises
   `CalendarRangeError`.
-- `TimeWeighted` and `VolumeParticipation` are not supported public strategies
-  until their bar-driven execution implementations are complete.
 - The authoritative portfolio universe is the signal output frame. A signal
   `get_asset_list()` is preflight/context only.
 - Required valuation assets are derived from signal output, previous portfolio

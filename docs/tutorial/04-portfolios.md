@@ -152,7 +152,12 @@ contract. `TimeWeighted` consumes observed price bars,
 VWAP-times-volume only to estimate a daily notional cap while executing at an
 observable intraday price, and
 `LiquidityConstrained` consumes price plus available-liquidity observations.
-Missing capacity leaves persisted work pending or partial. Adding a strategy
+Each sizes its order once, at the decision, as `ImmediateSignal` does, and fills
+it in slices, one per bar, under the same `execution_policy`; missing capacity
+leaves the order open until a later bar
+([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)).
+`total_notional` is the money one unit of the strategy's book stands for: it
+turns a bar's volume or liquidity into shares of the order. Adding a strategy
 does not add a branch or date generator to `PortfolioRebalance`,
 `PortfolioWeights`, or `PortfoliosUpdater`.
 

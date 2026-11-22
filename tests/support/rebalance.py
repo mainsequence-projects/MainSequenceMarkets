@@ -1,7 +1,8 @@
 """Published tables and strategies for running rebalances at the next observed price.
 
 `tests/msm_portfolios/time_index/test_next_observed_price.py` (issue #89, ADR 0058) and
-`test_execution_policy.py` define these; the currency tests reuse them.
+`test_execution_policy.py` define these; the currency, signal-lifetime and bar-strategy
+tests reuse them.
 """
 
 from __future__ import annotations
@@ -254,7 +255,15 @@ def calendar(identifier: str = "XNYS", sessions=NYSE) -> PublishedCalendarEvents
 class IncrementalRebalance:
     """Drive ``PortfolioRebalance.update()`` run after run against published inputs."""
 
-    def __init__(self, *, strategy, signals: PublishedTable, prices: PublishedTable, storage):
+    def __init__(
+        self,
+        *,
+        strategy,
+        signals: PublishedTable,
+        prices: PublishedTable,
+        storage,
+        assets: tuple[str, ...] = ("AAPL", "ILLQ"),
+    ):
         self.strategy = strategy
         self.signals = signals
         self.prices = prices
@@ -272,7 +281,7 @@ class IncrementalRebalance:
         node.book_unit_value = None
         node.output_table = storage
         node._retirement_boundary = lambda: None
-        node._required_asset_identifiers = lambda: ["AAPL", "ILLQ"]
+        node._required_asset_identifiers = lambda: list(assets)
         node.get_last_observation = self._last_observation
         node.get_df_between_dates = self._rows_between
         self.node = node
@@ -312,7 +321,8 @@ class IncrementalRebalance:
 
     def run(self, at: str) -> pd.DataFrame:
         run_time = utc(at)
-        for source in (self.strategy.calendar_events_instance, self.signals, self.prices):
+        sources = (*self.strategy.declared_dependencies().values(), self.signals, self.prices)
+        for source in sources:
             source.published_until = run_time
         node = self.node
         node.update_statistics = self._statistics()
@@ -337,21 +347,26 @@ def stock_strategy(
         calendar_events_instance=events,
         calendar_identifier="XNYS",
         **strategy_fields,
-        execution_model_instance=TargetWeightExecutionModel(
-            instrument_specs=tuple(
-                InstrumentExecutionSpec(
-                    asset_identifier=asset,
-                    quantity_unit="shares",
-                    target_measure="market_value_weight",
-                    contract_multiplier=1.0,
-                    quantity_step=1.0,
-                    price_asset_identifier="USD",
-                    settlement_style="cash",
-                    terms_version="stock-v1",
-                )
-                for asset in assets
+        execution_model_instance=stock_execution_model(assets),
+    )
+
+
+def stock_execution_model(assets=("AAPL",)) -> TargetWeightExecutionModel:
+    """Whole shares quoted and settled in USD."""
+    return TargetWeightExecutionModel(
+        instrument_specs=tuple(
+            InstrumentExecutionSpec(
+                asset_identifier=asset,
+                quantity_unit="shares",
+                target_measure="market_value_weight",
+                contract_multiplier=1.0,
+                quantity_step=1.0,
+                price_asset_identifier="USD",
+                settlement_style="cash",
+                terms_version="stock-v1",
             )
-        ),
+            for asset in assets
+        )
     )
 
 

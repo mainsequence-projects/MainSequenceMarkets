@@ -33,6 +33,7 @@ from msm_portfolios.rebalance_strategy import (
     PriceConversion,
     ProportionalExecutionCostModel,
     TargetWeightExecutionModel,
+    VolumeParticipation,
     observed_prices,
 )
 from msm_portfolios.time_index import PortfolioEngine
@@ -155,8 +156,20 @@ def test_the_fx_source_is_part_of_the_portfolio_identity() -> None:
     ).get("fx_source_instance")
 
 
-def test_a_fixed_cash_limit_needs_a_ledger() -> None:
-    strategy = always_open_strategy(
+def bar_strategy(**fields) -> VolumeParticipation:
+    return VolumeParticipation(
+        execution_bars_instance=PublishedTable.build(
+            "bars", prices(), index=["time_index", ASSET_IDENTIFIER]
+        ),
+        total_notional=10_000.0,
+        **fields,
+    )
+
+
+# A strategy with its own bars has the same execution policy and the same rule (#90).
+@pytest.mark.parametrize("strategy_of", [always_open_strategy, bar_strategy])
+def test_a_fixed_cash_limit_needs_a_ledger(strategy_of) -> None:
+    strategy = strategy_of(
         execution_policy=ExecutionPolicy(negative_cash="fixed_amount", negative_cash_limit=500.0)
     )
 
@@ -165,7 +178,7 @@ def test_a_fixed_cash_limit_needs_a_ledger() -> None:
     assert build_with(strategy, accounting_configuration=ledger_configuration())
     # A fraction of NAV needs no currency.
     assert build_with(
-        always_open_strategy(
+        strategy_of(
             execution_policy=ExecutionPolicy(
                 negative_cash="fraction_of_nav", negative_cash_limit=0.5
             )

@@ -8,17 +8,23 @@ from pydantic import Field
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.rebalance_strategy.bars import SizedBarStrategy
 from msm_portfolios.rebalance_strategy.base import (
-    AssetExecution,
+    BarSlice,
     RebalanceInputContract,
-    RebalanceTarget,
-    RebalanceStrategyBase,
     dependency_events,
 )
+from msm_portfolios.rebalance_strategy.execution_policy import RebalanceBook
 
 
-class LiquidityConstrained(RebalanceStrategyBase):
-    """Execute target deltas within observed available-liquidity capacity."""
+class LiquidityConstrained(SizedBarStrategy):
+    """Fill each order in slices within each observation's available liquidity.
+
+    The order is fixed at the decision (#90). An observation's slice is at most
+    ``max_liquidity_fraction`` of its available liquidity: an amount in the portfolio's
+    currency, or a quantity of the asset, turned into shares of the book with
+    ``total_notional``.
+    """
 
     timing_mode: Literal["liquidity_constrained"] = "liquidity_constrained"
     liquidity_source_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
@@ -28,7 +34,7 @@ class LiquidityConstrained(RebalanceStrategyBase):
     price_column: str = Field(
         default="mid_price",
         min_length=1,
-        description="Observed price used for quantity conversion and execution provenance.",
+        description="Observed field each slice fills at, a close or a mark.",
     )
     available_liquidity_column: str = Field(
         default="available_notional",
@@ -44,13 +50,6 @@ class LiquidityConstrained(RebalanceStrategyBase):
         gt=0,
         le=1,
         description="Maximum fraction of observed liquidity usable at one event.",
-    )
-    total_notional: float = Field(
-        gt=0,
-        description=(
-            "Portfolio notional used to translate liquidity capacity into weight. Required: whoever runs the strategy gives it, and there "
-            "is no default size (#113)."
-        ),
     )
 
     def declared_dependencies(
@@ -89,65 +88,43 @@ class LiquidityConstrained(RebalanceStrategyBase):
         end_ts = self._as_utc_timestamp(end)
         return events[(timestamps >= start_ts) & (timestamps <= end_ts)]
 
-    def apply_event(
+    def bar_slices(
         self,
         *,
         event_time: pd.Timestamp,
-        event_source: str,
         event_observations: dict[str, pd.DataFrame],
-        target: RebalanceTarget,
-        current_weights: dict[str, float],
-        previous_asset_state: dict[str, dict],
-        new_target: bool,
+        book: RebalanceBook,
+        prices: dict[str, float],
+        bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
-    ) -> dict[str, AssetExecution]:
-        del event_time, event_source, previous_asset_state, new_target, execution_context
+    ) -> dict[str, BarSlice]:
+        del event_time, book, bar_states, execution_context
         observations = event_observations["available_liquidity"]
         rows_by_asset = {
             str(row[ASSET_IDENTIFIER_DIMENSION]): row
             for row in observations.to_dict(orient="records")
         }
-        executions: dict[str, AssetExecution] = {}
-        for asset in sorted(set(current_weights) | set(target.weights)):
-            current = float(current_weights.get(asset, 0.0))
-            remaining = float(target.weights.get(asset, 0.0)) - current
-            row = rows_by_asset.get(asset, {})
-            price_value = row.get(self.price_column)
-            liquidity_value = row.get(self.available_liquidity_column)
-            price = None if pd.isna(price_value) else float(price_value)
-            liquidity = None if pd.isna(liquidity_value) else float(liquidity_value)
+        slices: dict[str, BarSlice] = {}
+        for asset, price in prices.items():
+            value = rows_by_asset.get(asset, {}).get(self.available_liquidity_column)
+            liquidity = None if value is None or pd.isna(value) else float(value)
             if liquidity is None or liquidity <= 0:
                 available_notional = 0.0
             elif self.available_liquidity_unit == "notional":
                 available_notional = liquidity
-            elif price is None or price <= 0:
-                available_notional = 0.0
             else:
                 available_notional = liquidity * price
-            capacity_weight = available_notional * self.max_liquidity_fraction / self.total_notional
-            executed_delta = min(abs(remaining), capacity_weight)
-            if remaining < 0:
-                executed_delta = -executed_delta
-            weight_after = current + executed_delta
-            executed_notional = abs(executed_delta) * self.total_notional
-            executed_quantity = (
-                None
-                if price is None or price <= 0
-                else executed_delta * self.total_notional / price
-            )
-            executions[asset] = AssetExecution(
-                weight_after=weight_after,
-                execution_price=price,
-                executed_quantity=executed_quantity,
-                executed_notional=executed_notional,
+            capacity = available_notional * self.max_liquidity_fraction
+            slices[asset] = BarSlice(
+                shares=self.shares_for_notional(capacity, price),
                 observed_available_liquidity=liquidity,
-                strategy_state={
-                    "capacity_weight": capacity_weight,
+                state={
+                    "capacity_notional": capacity,
                     "liquidity_fraction": self.max_liquidity_fraction,
                     "liquidity_unit": self.available_liquidity_unit,
                 },
             )
-        return executions
+        return slices
 
 
 __all__ = ["LiquidityConstrained"]

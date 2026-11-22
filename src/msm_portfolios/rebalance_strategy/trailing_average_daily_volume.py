@@ -12,13 +12,13 @@ from pydantic import Field, field_validator, model_validator
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm_portfolios.rebalance_strategy.bars import SizedBarStrategy
 from msm_portfolios.rebalance_strategy.base import (
-    AssetExecution,
+    BarSlice,
     RebalanceInputContract,
-    RebalanceTarget,
-    RebalanceStrategyBase,
     dependency_events,
 )
+from msm_portfolios.rebalance_strategy.execution_policy import BookEntry, RebalanceBook
 
 
 @dataclass(frozen=True)
@@ -33,8 +33,16 @@ class _TrailingExecutionContext:
     session_date_by_event: dict[pd.Timestamp, str]
 
 
-class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
-    """Cap intraday execution using only completed trailing daily liquidity."""
+class TrailingAverageDailyVolumeParticipation(SizedBarStrategy):
+    """Fill each order in slices capped by trailing daily and current bar liquidity.
+
+    The order is fixed at the decision (#90). A bar's slice, in the portfolio's
+    currency, is at most what is left of the asset's daily cap
+    (``max_daily_participation`` of its trailing average daily notional, from completed
+    days only) and ``max_bar_participation`` of the bar's notional; ``total_notional``
+    turns it into shares of the book. The daily cap counts what filled, which the
+    execution policy's cash rules can make less than the bar allowed.
+    """
 
     timing_mode: Literal["trailing_average_daily_volume_participation"] = (
         "trailing_average_daily_volume_participation"
@@ -124,14 +132,6 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
         le=1,
         description="Maximum fraction of the current observed intraday bar volume.",
     )
-    total_notional: float = Field(
-        gt=0,
-        description=(
-            "Portfolio notional used to translate target weights into notional. Required: whoever runs the strategy gives it, and there "
-            "is no default size (#113)."
-        ),
-    )
-
     @field_validator("execution_start", "execution_end", mode="before")
     @classmethod
     def _parse_time(cls, value: object) -> object:
@@ -292,19 +292,17 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
             session_date_by_event=session_dates,
         )
 
-    def apply_event(
+    def bar_slices(
         self,
         *,
         event_time: pd.Timestamp,
-        event_source: str,
         event_observations: dict[str, pd.DataFrame],
-        target: RebalanceTarget,
-        current_weights: dict[str, float],
-        previous_asset_state: dict[str, dict],
-        new_target: bool,
+        book: RebalanceBook,
+        prices: dict[str, float],
+        bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
-    ) -> dict[str, AssetExecution]:
-        del event_source, new_target
+    ) -> dict[str, BarSlice]:
+        del book
         if not isinstance(execution_context, _TrailingExecutionContext):
             raise TypeError("Trailing execution context was not prepared.")
         session_date = execution_context.session_date_by_event[event_time]
@@ -313,23 +311,17 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
         bars_by_asset = {
             str(row[ASSET_IDENTIFIER_DIMENSION]): row for row in bars.to_dict(orient="records")
         }
-        executions: dict[str, AssetExecution] = {}
-
-        for asset in sorted(set(current_weights) | set(target.weights)):
-            current = float(current_weights.get(asset, 0.0))
-            remaining_weight = float(target.weights.get(asset, 0.0)) - current
-            prior_state = self.parse_strategy_state(previous_asset_state.get(asset))
+        slices: dict[str, BarSlice] = {}
+        for asset, price in prices.items():
+            previous = bar_states.get(asset, {})
+            # The daily cap is the asset's, whatever target it trades toward.
             consumed = (
-                float(prior_state.get("daily_notional_consumed", 0.0))
-                if prior_state.get("session_date") == session_date
+                float(previous.get("daily_notional_consumed") or 0.0)
+                if previous.get("session_date") == session_date
                 else 0.0
             )
-
-            bar = bars_by_asset.get(asset, {})
-            price_value = bar.get(self.execution_price_column)
-            volume_value = bar.get(self.execution_volume_column)
-            price = None if price_value is None or pd.isna(price_value) else float(price_value)
-            volume = None if volume_value is None or pd.isna(volume_value) else float(volume_value)
+            value = bars_by_asset.get(asset, {}).get(self.execution_volume_column)
+            volume = None if value is None or pd.isna(value) else float(value)
             facts = capacities.get((event_time, asset), _TrailingCapacity(None, 0))
             daily_limit = (
                 None
@@ -337,41 +329,36 @@ class TrailingAverageDailyVolumeParticipation(RebalanceStrategyBase):
                 else facts.average_daily_notional * self.max_daily_participation
             )
             daily_remaining = 0.0 if daily_limit is None else max(daily_limit - consumed, 0.0)
-            bar_limit = (
-                0.0
-                if price is None or volume is None
-                else price * volume * self.max_bar_participation
-            )
-            remaining_notional = abs(remaining_weight) * self.total_notional
-            executed_notional = min(remaining_notional, daily_remaining, bar_limit)
-            executed_delta = executed_notional / self.total_notional
-            if remaining_weight < 0:
-                executed_delta = -executed_delta
-            weight_after = current + executed_delta
-            consumed_after = consumed + executed_notional
-            quantity = None if price is None else executed_delta * self.total_notional / price
-
-            executions[asset] = AssetExecution(
-                weight_after=weight_after,
-                execution_price=price,
-                executed_quantity=quantity,
-                executed_notional=executed_notional,
+            bar_limit = 0.0 if volume is None else price * volume * self.max_bar_participation
+            slices[asset] = BarSlice(
+                shares=self.shares_for_notional(min(daily_remaining, bar_limit), price),
                 observed_volume=volume,
-                strategy_state={
+                state={
                     "session_date": session_date,
                     "history_observations": facts.history_observations,
                     "trailing_average_daily_notional": facts.average_daily_notional,
                     "daily_notional_limit": daily_limit,
-                    "daily_notional_consumed": consumed_after,
+                    "daily_notional_consumed": consumed,
                     "daily_notional_remaining": (
-                        None if daily_limit is None else max(daily_limit - consumed_after, 0.0)
+                        None if daily_limit is None else max(daily_limit - consumed, 0.0)
                     ),
                     "bar_notional_limit": bar_limit,
                     "daily_participation_limit": self.max_daily_participation,
                     "bar_participation_limit": self.max_bar_participation,
                 },
             )
-        return executions
+        return slices
+
+    def bar_state(self, *, bar_slice: BarSlice, entry: BookEntry) -> dict[str, Any]:
+        """Count what filled at the bar, in the portfolio's currency, against the daily cap."""
+        state = dict(bar_slice.state)
+        consumed = state["daily_notional_consumed"] + abs(entry.shares * entry.price) * (
+            self.total_notional
+        )
+        limit = state["daily_notional_limit"]
+        state["daily_notional_consumed"] = consumed
+        state["daily_notional_remaining"] = None if limit is None else max(limit - consumed, 0.0)
+        return state
 
     def _minimum_history(self) -> int:
         return (

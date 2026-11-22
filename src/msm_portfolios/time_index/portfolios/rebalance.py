@@ -86,7 +86,8 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self.valuation_asset_identifier = str(build.valuation_asset_identifier)
         self.fx_source = build.fx_source_instance
         accounting = build.accounting_configuration
-        # A ledger's initial NAV gives the book a currency (ADR 0059).
+        # A ledger's initial NAV gives the book a currency (ADR 0059); a strategy with
+        # its own size uses that instead (RebalanceStrategyBase.book_unit_value).
         self.book_unit_value = None if accounting is None else float(accounting.initial_nav)
         return self
 
@@ -166,23 +167,30 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 .unique()
                 .tolist()
             )
-        observed_inputs = self._observed_inputs(start=start, end=end, assets=assets)
         previous_state = self._previous_state(latest)
+        held = (
+            []
+            if previous_state is None
+            else previous_state.reset_index()[ASSET_IDENTIFIER_DIMENSION].astype(str).tolist()
+        )
+        # The newest recorded rebalance's open orders trade at their first eligible
+        # price from its earliest moment on, which can be before this window.
+        since = self.rebalance_strategy.recorded_earliest_moment(previous_state, signals)
+        price_start = start
+        if since is not None and since < pd.Timestamp(start):
+            price_start = since
+        observed_inputs = read_strategy_inputs(
+            self.rebalance_strategy,
+            start=start,
+            end=end,
+            assets=assets,
+            held=held,
+            prices_since=price_start,
+        )
         fill_prices = None
         reference_prices = None
         price_conversion = None
         if self.rebalance_strategy.own_execution_prices() is None:
-            held = (
-                []
-                if previous_state is None
-                else previous_state.reset_index()[ASSET_IDENTIFIER_DIMENSION].astype(str).tolist()
-            )
-            # The newest recorded rebalance's open orders trade at their first eligible
-            # price from its earliest moment on, which can be before this window.
-            since = self.rebalance_strategy.recorded_earliest_moment(previous_state, signals)
-            price_start = start
-            if since is not None and since < pd.Timestamp(start):
-                price_start = since
             fill_prices, reference_prices, price_conversion = self._portfolio_prices(
                 start=price_start,
                 end=end,
@@ -343,38 +351,6 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             conversion,
         )
 
-    def _observed_inputs(
-        self,
-        *,
-        start: Any,
-        end: Any,
-        assets: list[str],
-    ) -> dict[str, pd.DataFrame]:
-        dependencies = self.rebalance_strategy.declared_dependencies()
-        contracts = self.rebalance_strategy.required_input_contract()
-        if set(dependencies) != set(contracts):
-            raise ValueError(
-                "Rebalance strategy dependency names and input-contract names must match."
-            )
-        result: dict[str, pd.DataFrame] = {}
-        for name in sorted(dependencies):
-            source_start, source_end = self.rebalance_strategy.dependency_window(name, start, end)
-            contract = contracts[name]
-            result[name] = read_rebalance_input(
-                dependencies[name],
-                dependency_name=name,
-                contract=contract,
-                start=source_start,
-                end=source_end,
-                seed_coordinates=self.rebalance_strategy.dependency_seed_coordinates(name),
-                dimension_filters=(
-                    {ASSET_IDENTIFIER_DIMENSION: assets}
-                    if contract.asset_scoped and assets
-                    else None
-                ),
-            )
-        return result
-
     def _previous_state(self, latest: Any | None) -> pd.DataFrame | None:
         """Return the latest rebalance-state row of every asset of the portfolio.
 
@@ -480,6 +456,56 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
     @classmethod
     def _required_output_table(cls) -> type[PortfolioRebalanceStateStorage]:
         return PortfolioRebalanceStateStorage
+
+
+def read_strategy_inputs(
+    strategy: RebalanceStrategyBase,
+    *,
+    start: Any,
+    end: Any,
+    assets: list[str],
+    held: list[str] | tuple[str, ...] = (),
+    prices_since: Any | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Read every input ``strategy`` declares, each over its ``dependency_window``.
+
+    ``assets`` and ``held`` filter the asset-scoped inputs. The input a strategy trades
+    at (``own_execution_prices``) values its book and sizes each rebalance with each
+    asset's last row before its earliest moment (#90): it is read from
+    ``prices_since``, the newest recorded rebalance's earliest moment, when that is
+    earlier than the window, with each asset's last row before then.
+    """
+    dependencies = strategy.declared_dependencies()
+    contracts = strategy.required_input_contract()
+    if set(dependencies) != set(contracts):
+        raise ValueError("Rebalance strategy dependency names and input-contract names must match.")
+    universe = list(dict.fromkeys([*assets, *held]))
+    own_prices = strategy.own_execution_prices()
+    result: dict[str, pd.DataFrame] = {}
+    for name in sorted(dependencies):
+        source_start, source_end = strategy.dependency_window(name, start, end)
+        seeds = strategy.dependency_seed_coordinates(name)
+        if own_prices is not None and name == own_prices[0]:
+            if prices_since is not None and pd.Timestamp(prices_since) < pd.Timestamp(
+                source_start
+            ):
+                source_start = prices_since
+            seeds = (*seeds, *({ASSET_IDENTIFIER_DIMENSION: asset} for asset in universe))
+        contract = contracts[name]
+        result[name] = read_rebalance_input(
+            dependencies[name],
+            dependency_name=name,
+            contract=contract,
+            start=source_start,
+            end=source_end,
+            seed_coordinates=seeds,
+            dimension_filters=(
+                {ASSET_IDENTIFIER_DIMENSION: universe}
+                if contract.asset_scoped and universe
+                else None
+            ),
+        )
+    return result
 
 
 def read_rebalance_input(
@@ -723,4 +749,5 @@ __all__ = [
     "normalize_rebalance_input",
     "normalize_rebalance_state_frame",
     "read_rebalance_input",
+    "read_strategy_inputs",
 ]

@@ -315,7 +315,8 @@ Decided after this ADR, in [ADR 0059](0059-portfolio-currency-fx-and-drifting-we
 the fixed-amount cash limit, the portfolio's currency and FX source, cash across
 currencies, and weights that drift in the weights-only path. Decision sizing and the cash
 rule for the strategies with their own bars are
-[issue #90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90).
+[issue #90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90),
+built on 2026-11-22 (see "Implementation Notes").
 
 Also not decided here:
 
@@ -415,6 +416,57 @@ Rejected by the owner: existing portfolios get new identities instead.
   `PortfolioWeights` projects cancelled rows, which can carry a partial fill.
 - Tests: `tests/msm_portfolios/time_index/test_next_observed_price.py` and
   `test_execution_policy.py`.
+
+### 2026-11-22: strategies with their own bars (#90)
+
+[Issue #90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)
+applies decisions 6a and 9 to `TimeWeighted`, `VolumeParticipation`,
+`LiquidityConstrained` and `TrailingAverageDailyVolumeParticipation`. Decision 6a's "a
+strategy with its own bars records no earliest moment and is sized at each fill" no
+longer holds.
+
+- **The earliest moment.** A bar trades only toward a signal observed strictly before
+  it (decision 2), so a new target's moment, and its earliest moment, is the first of
+  the strategy's selected bars after its signal (the first bar inside the strategy's
+  window). The issue says "the last observations strictly before the earliest moment"
+  without naming that moment for these strategies; this reading is the implementation's.
+- **Sizing at the decision.** The order is fixed at the instant before the earliest
+  moment: target weight x NAV / price, with each asset's last row of the strategy's own
+  bars strictly before it. Interpolated rows count there, as they value the portfolio
+  (decision 6a); they never fill. A target with an asset that has no bar before its
+  earliest moment cannot be sized and raises, as at the next observed price.
+- **Slices.** At each bar the strategy's `bar_slices` say how much of each open order
+  may trade there (`BarSlice`, in shares of the book); `ExecutionPolicy.step(...,
+  slices=...)` books them with the cash rules and never fills more than an order has
+  open. `TimeWeighted`: what the even schedule from the earliest moment to that day's
+  `rebalance_end` is still short of, so an order that missed bars catches up.
+  `VolumeParticipation`: `max_percent_volume_in_bar` of the bar's volume.
+  `LiquidityConstrained`: `max_liquidity_fraction` of the available liquidity.
+  `TrailingAverageDailyVolumeParticipation`: the lesser of what is left of the daily cap
+  and `max_bar_participation` of the bar's notional; the cap counts what filled.
+- **Cash.** Buys short of cash at one bar fill the same fraction of their slices; once
+  the rebalance's sells have filled, what a buy cannot pay is cut and its order
+  cancelled (`insufficient_cash`). Without a calendar, `calendar_gating` has no effect.
+- **The book.** The rows are those of decision 9 (schema 2), written only for a step of
+  an order, at its bar, with `event_source` the bar's input and the strategy's facts
+  about the bar under `strategy_state["bar"]`. No `pending` or `superseded` row is
+  written: a newer target replaces the running rebalance at its earliest moment. A
+  resumed run rebuilds the book from the stored rows; `PortfolioRebalance` reads the
+  strategy's bars from the newest rebalance's earliest moment with each asset's last bar
+  before it (`read_strategy_inputs`).
+- **The book's unit.** It is the NAV at the portfolio's first rebalance. For the three
+  strategies sized in money or volume (`SizedBarStrategy`), one unit is
+  `total_notional` in the portfolio's currency, with or without a ledger:
+  `RebalanceStrategyBase.book_unit_value`. `TimeWeighted` has no size; a ledger's
+  initial NAV gives its book a currency, as for `ImmediateSignal`.
+- **The ledger** runs each rebalance's decision and books every slice as a fill, at its
+  bar's price and time, trading the recorded fraction of its own open order; its own
+  cut applies (`cash_floor`).
+- Code: `BarSlice`, `RebalanceStrategyBase.bar_slices`, `bar_state` and
+  `book_unit_value`; `BarStrategy` and `SizedBarStrategy`
+  (`rebalance_strategy/bars.py`); `ExecutionPolicy.size_at_fill`. `apply_event` and the
+  weight-based loop are removed (this amends ADR 0040, decision 2).
+- Tests: `tests/msm_portfolios/time_index/test_bar_strategy_orders.py`.
 
 ## Not Verified
 

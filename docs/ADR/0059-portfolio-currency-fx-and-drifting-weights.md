@@ -92,7 +92,8 @@ turnover as before.
 
 Rows without a book (weights supplied directly, or the strategies with their own bars until
 #90) carry no shares and are valued from constant weights as before; rows with and without a
-book are never mixed in one valuation.
+book are never mixed in one valuation. Since #90 the strategies with their own bars record a
+book too (see "Implementation Notes").
 
 ## Worked Example
 
@@ -118,7 +119,8 @@ Half in BTC bought at 100, half cash. BTC is 100, 110, 121 on three days.
 
 - Sizing at the decision and the cash setting for `TimeWeighted`, `VolumeParticipation`,
   `LiquidityConstrained` and the trailing-ADV strategy: #90. Until then they record no
-  shares, and the weights path values them from constant weights.
+  shares, and the weights path values them from constant weights. Built on 2026-11-22
+  (see "Implementation Notes").
 
 ## Implementation Notes
 
@@ -135,6 +137,35 @@ Half in BTC bought at 100, half cash. BTC is 100, 110, 121 on three days.
 - `PortfolioWeightsStorage.held_shares` and `book_cash`, Alembic revision 0030;
   `PortfoliosUpdater` values from them.
 - Tests: `tests/msm_portfolios/time_index/test_portfolio_currency.py`.
+
+### 2026-11-22: strategies with their own bars (#90)
+
+[Issue #90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90) gives
+`TimeWeighted`, `VolumeParticipation`, `LiquidityConstrained` and
+`TrailingAverageDailyVolumeParticipation` the `execution_policy` of `ImmediateSignal`, with
+the same defaults, and a book (ADR 0058, "Implementation Notes").
+
+- **Drifting weights.** Their rows record `held_shares` and `cash` like `ImmediateSignal`'s,
+  so `PortfolioWeights` projects `held_shares` and `book_cash` for them and the weights
+  path values them from shares (decision 5). They are no longer valued from constant
+  weights.
+- **The book's unit and `total_notional`.** The three strategies sized in money or volume
+  keep `total_notional`, required since #113, as the money one unit of their book stands
+  for: the portfolio's NAV at its first rebalance, in the portfolio's currency. A bar's
+  capacity of `q` shares is `q / total_notional` shares of the book, and an amount `a` at
+  price `p` is `a / (total_notional x p)`. A fixed-amount negative cash limit is converted
+  with `total_notional`, with or without a ledger. `TimeWeighted` has no size: as for
+  `ImmediateSignal`, only a ledger's `initial_nav` gives its book a currency.
+- **Two sizes with a ledger.** A ledger portfolio with one of the three still has two sizes
+  (execution engine ADR 0001, "Known Gaps"): the book is sized at `total_notional`, the
+  ledger at `initial_nav`. The ledger trades the same fraction of its own orders as each
+  slice traded of the book's, so with `initial_nav` different from `total_notional` it
+  trades `initial_nav / total_notional` times the shares a bar's capacity allowed. Nothing
+  refuses the difference; no decision says which size wins.
+- **Decision 3 unchanged.** A fixed-amount limit without `accounting_configuration` is
+  refused for every strategy, these included, although their book has a currency.
+- **FX.** A strategy's own bars are taken as priced in the portfolio's currency; no rate
+  converts them.
 
 ## Not Verified
 

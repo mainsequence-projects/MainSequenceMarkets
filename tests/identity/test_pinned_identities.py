@@ -288,29 +288,31 @@ PINNED_NESTED_SIGNAL_UIDS = {
 }
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
-    # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
-    "interpolated_prices_valuation": "e8ea249fbcc51ab8a05bd98b8d25f425",
+    # Rotated by the next-observed-price fill rule (issue #89, ADR 0058). All four
+    # rotated again with their bar strategies' execution_policy (#90).
+    "interpolated_prices_valuation": "80db060ede6d15e56f326968c4fc6b5e",
     # Execution windows are datetime.time values, which hash as ISO strings.
-    "time_weighted_rebalance": "16873d7471f38d9601da7788431dd82e",
-    "volume_participation_rebalance": "8cb21ddaf75e765f62e533c5036b2ac8",
-    "trailing_average_daily_volume_rebalance": "a390b8f5fac98eb454edae04dd25b981",
+    "time_weighted_rebalance": "38940994252d50f48edb51c124296c74",
+    "volume_participation_rebalance": "2cc4202b820a0d0a3aa9ec1b4f13af80",
+    "trailing_average_daily_volume_rebalance": "f38be6f3dec95b17596afc24730e6e9f",
 }
 
 PINNED_STRATEGY_REVISIONS = {
     # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
     # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
+    # The four bar strategies rotated again with their execution_policy (#90).
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
-        "6f50d05f8299103a5d556884046376781f2a3d850661073db3a024944073209a"
+        "0a8c643be4d6d3eae455830706d878e7a97f95b2efd526a143e0933f9a412c5b"
     ),
     "time_weighted_on_interpolated_prices": (
-        "117747a0d0ba54996865125f475bd3305ef0b103d0cf6e4b6e8910793a119123"
+        "412e686b88ae429af19b286a090dfaefcb91a8f5c01f91b8944398967a34b622"
     ),
     "volume_participation_on_interpolated_prices": (
-        "92bced795b35dd3c576adae24939cf2e3a1b137aef0d3a982fe80f093ea52e72"
+        "9f18caaaa45dacd095b17b4d3319b2f7a9f34dc672bdc542b9d8825e1738306b"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "54a43abc19cce56ac80cca34b7f103438be6ae07c83de40f4f0d5ca617c48a6d"
+        "fd041f762ac5f3fa0e3c435a0a64c57f7370da51e80ceede2285e92c390fb2da"
     ),
 }
 

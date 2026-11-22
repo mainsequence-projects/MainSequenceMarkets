@@ -823,15 +823,27 @@ The owner said not to worry about these for now.
 
 - `RebalanceStrategyBase` has two loops that call `apply_event`, `build_transitions` and
   `build_accounting_schedule` with `simulate_accounting_event`, and the choice of the target
-  is copied in both. The engine needs one entry that decides one event.
+  is copied in both. The engine needs one entry that decides one event. Since #89 and
+  [#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)
+  (2026-11-22) `apply_event` and the schedule are gone; `build_transitions` still has two
+  loops, one at the next observed price and one at a strategy's own bars, both running the
+  execution policy on a book. The bar loop asks the strategy for each bar's slice
+  (`bar_slices`).
 - The weights-only loop treats `weight_after` as executed. In the engine it is only what the
   strategy wants.
 - `TrailingAverageDailyVolumeParticipation` adds the notional it intends to trade to its
-  consumed capacity. Live it must add what was traded.
+  consumed capacity. Live it must add what was traded. Since #90 the backtest adds what
+  filled in the book, after the cash rules; live, it is still what the venue fills.
 - `TimeWeighted` advances by elapsed time and assumes each slice filled. `ImmediateSignal`
-  asks for everything at once. Neither has a rule for a part that does not fill.
+  asks for everything at once. Neither has a rule for a part that does not fill. Since
+  #90 both run the execution policy: a buy short of cash waits for the rebalance's sells
+  and is then cut, and `TimeWeighted`'s next slice is what its schedule is still short
+  of, so a part that did not fill is asked for again at the next bar.
 - A ledger portfolio has two sizes today: `initial_nav`, which is required, and the strategy's
-  own 50,000,000, which the strategy uses.
+  own 50,000,000, which the strategy uses. Since #113 and #90 the strategy's size is
+  `total_notional`, required, and it is the unit of the strategy's book; the ledger trades
+  the same fraction of its own orders, sized at `initial_nav`. The two can still differ
+  (ADR 0059, "Implementation Notes").
 - A weights-only portfolio has no size in its configuration.
 - A `Portfolio` row has a `signal_uid` and no strategy uid, and nothing writes the registry.
 - There is no VWAP strategy. The price bars carry a `vwap` column.

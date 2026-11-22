@@ -208,9 +208,9 @@ happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-nex
   target replaces the running rebalance at the first instant it could trade. A
   waiting asset looks for its price from its target's earliest moment, so a slow
   source's bar still counts when it arrives late.
-- **Execution policy.** These are facts. The choices are
-  `ImmediateSignal.execution_policy` (`ExecutionPolicy`, hash-bearing), whose
-  defaults are the owner's decisions: shares sized at the decision
+- **Execution policy.** These are facts. The choices are the strategy's
+  `execution_policy` (`ExecutionPolicy`, hash-bearing; every built-in strategy
+  has it), whose defaults are the owner's decisions: shares sized at the decision
   (`sizing="at_decision"`, or `"at_fill"`), no negative cash
   (`negative_cash`: `not_allowed`, `fraction_of_nav`, or `fixed_amount` with
   a ledger), sells before buys, buys short of
@@ -242,8 +242,8 @@ happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-nex
   its lifetime stops at its next event: the first instant one of its orders has an
   eligible price, or its next bar. It keeps what it filled, each unfinished order
   writes an `expired` row with no price and its weight unchanged, and the rest is
-  dropped (`cancelled_shares`, `cancel_reason: "signal_lifetime"` in the state
-  of a rebalance at the next observed price). The position ledger books what
+  dropped (`cancelled_shares`, `cancel_reason: "signal_lifetime"` in the row's
+  state). The position ledger books what
   filled and records each expiry as progress. Not set (`None`), a signal never
   expires and the strategy and its identities are as before; a lifetime is part
   of the strategy's revision and the portfolio's configuration hash.
@@ -255,8 +255,8 @@ been published. The dependency must publish both `market_open` and
 window are read explicitly, so a window that starts mid-session knows the market
 is open. Strategies with their own bars (`TimeWeighted`, `VolumeParticipation`,
 `LiquidityConstrained`, `TrailingAverageDailyVolumeParticipation`) trade at
-them, under the same conditions. Event selection and state transitions occur in the
-strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
+them, under the same conditions (see below). Event selection and state transitions
+occur in the strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
 `PortfoliosUpdater` builds a rebalance index.
 
 `calendar_identifier` and `calendar_events_instance` are required for
@@ -276,6 +276,49 @@ than 2018-01-01. A window that ends after the calendar's `valid_to` fails with
 `Portfolio.upsert(...)` writes only the portfolio identity row. Portfolio
 constituents, weights, values, and optional index publication are separate
 portfolio workflows.
+
+### Strategies with their own bars
+
+`TimeWeighted`, `VolumeParticipation`, `LiquidityConstrained` and
+`TrailingAverageDailyVolumeParticipation` fill each order over several of their own
+bars ([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)):
+
+- **The order is fixed at the decision.** A bar trades only toward a signal observed
+  strictly before it, so a new target's earliest moment is the first of the strategy's
+  bars after its signal (inside the strategy's window). Its order is sized once, at the
+  instant before: target weight x NAV / price, with each asset's last bar strictly
+  before the earliest moment, as `ImmediateSignal` sizes its own. A newer target
+  replaces the running rebalance at its earliest moment.
+- **Each bar fills a slice.** The strategy decides how much of each open order a bar
+  may trade; the slices never add up to more than the order, and an asset trades only
+  at its own observed bar, at that bar's price. `TimeWeighted` spreads the order evenly
+  from its earliest moment to `rebalance_end` that day: each bar's slice is what that
+  schedule is still short of, so an asset that missed bars catches up at its next one.
+  `VolumeParticipation` trades at most `max_percent_volume_in_bar` of a bar's volume,
+  `LiquidityConstrained` at most `max_liquidity_fraction` of the available liquidity,
+  and `TrailingAverageDailyVolumeParticipation` at most what is left of its daily cap and
+  `max_bar_participation` of the bar's notional.
+- **The cash setting applies.** The strategies have the same `execution_policy` as
+  `ImmediateSignal`, with the same defaults: sells are booked before buys at a bar,
+  buys use the cash on hand plus the allowed negative cash, buys short of cash fill
+  the same fraction of their slices, and once the rebalance's sells have filled, what
+  a buy cannot pay is cut and its order cancelled (`insufficient_cash`). The strategies
+  read no calendar, so `calendar_gating` has nothing to gate.
+- **The book.** Only a step of an order writes a row: `partial`, `complete`,
+  `cancelled` or `expired`, never `pending` or `superseded`. Each row's
+  `strategy_state` holds the decision, the order and the book's shares and cash, as for
+  `ImmediateSignal`, plus the strategy's facts about the bar under `"bar"` (volume,
+  liquidity, elapsed time, daily capacity). The weights path values the portfolio
+  from the book's shares, and a resumed run rebuilds the book from the stored rows.
+- **Size.** The book's unit is the NAV at the portfolio's first rebalance.
+  `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` require `total_notional`, the money one unit
+  of the book stands for: a bar's capacity of `q` shares of the asset is
+  `q / total_notional` shares of the book, and a fixed-amount negative cash limit is
+  converted with it. `executed_quantity` and `executed_notional` are in the book's
+  unit. With a ledger, the ledger trades the same fraction of its own orders, sized at
+  its `initial_nav`; when that differs from `total_notional` it trades
+  `initial_nav / total_notional` times what a bar's capacity allowed.
 
 ## General Rebalance Architecture
 
@@ -335,8 +378,8 @@ calendar.
 broker order/fill ledger. `PortfolioWeights` projects only state transitions
 that actually changed executed weights, and `PortfoliosUpdater` continues to
 value those weights at independent valuation-source observations. Missing
-future bars or liquidity leave a target `pending` or `partial`; they do not
-create a completion timestamp.
+future bars or liquidity leave an order open, `partial` or without a row yet;
+they do not create a completion timestamp.
 
 ### Trailing daily-liquidity participation
 
@@ -360,14 +403,16 @@ session execution window began. A current-session or future daily VWAP is
 never eligible because VWAP is an ex-post statistic. Daily input timestamps
 must therefore represent the right edge/availability time of completed bars.
 
-At each intraday bar, executable notional is the minimum of the remaining
-target notional, remaining per-session daily cap, and the configured fraction
-of the current observed bar's notional. The stored `execution_price` is always
-the configured field from the intraday execution source, such as `close`,
-`mid_price`, or an arrival-price observation. It is never the historical daily
-VWAP. Daily capacity consumed is persisted per asset in `strategy_state`, so a
-restart or a same-session target supersession cannot reset the participation
-limit.
+The order is fixed at the decision. At each intraday bar its slice is, in the
+portfolio's currency, the lesser of the remaining per-session daily cap and the
+configured fraction of the current observed bar's notional, and never more than
+the order has open; `total_notional` turns it into shares of the book. The stored
+`execution_price` is always the configured field from the intraday execution
+source, such as `close`, `mid_price`, or an arrival-price observation. It is never
+the historical daily VWAP. Daily capacity consumed counts what filled, after the
+execution policy's cash rules, and is persisted per asset in
+`strategy_state["bar"]`, so a restart or a same-session target supersession cannot
+reset the participation limit.
 
 The history read is bounded by `history_lookback_days`. Rolling daily capacity,
 signal targets, and timestamp-to-observation groups are prepared once per run;

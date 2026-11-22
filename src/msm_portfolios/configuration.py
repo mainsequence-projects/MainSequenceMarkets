@@ -607,7 +607,6 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         strategy = self.backtesting_weights_configuration.rebalance_strategy_instance
         if (
             self.accounting_configuration is None
-            and strategy.own_execution_prices() is None
             and strategy.fill_policy().negative_cash == "fixed_amount"
         ):
             raise ValueError(

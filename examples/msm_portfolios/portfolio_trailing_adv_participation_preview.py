@@ -1,8 +1,10 @@
 """Preview trailing-ADV rebalance transitions from registered market-data tables.
 
 This example reads completed daily liquidity and observable intraday execution
-bars for only the requested assets. It runs the same strategy state machine
-used by ``PortfolioRebalance``, but deliberately does not persist the preview.
+bars for only the requested assets, as ``PortfolioRebalance`` reads them: the
+execution bars include each asset's last bar before the window, which sizes the
+order at its decision. It runs the same strategy state machine, but deliberately
+does not persist the preview.
 """
 
 from __future__ import annotations
@@ -12,7 +14,6 @@ import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -25,6 +26,9 @@ from examples.msm_portfolios.portfolio_trailing_adv_participation_example import
 )
 from msm_portfolios.rebalance_strategy import (  # noqa: E402
     TrailingAverageDailyVolumeParticipation,
+)
+from msm_portfolios.time_index.portfolios.rebalance import (  # noqa: E402
+    read_strategy_inputs,
 )
 
 
@@ -98,49 +102,37 @@ def load_observed_inputs(
     end: pd.Timestamp,
     asset_identifiers: Sequence[str],
 ) -> dict[str, pd.DataFrame]:
-    """Read bounded, asset-filtered observations declared by the strategy."""
-    dependencies = strategy.declared_dependencies()
-    contracts = strategy.required_input_contract()
-    if set(dependencies) != set(contracts):
-        raise ValueError("Strategy dependency names and input-contract names must match.")
+    """Read bounded, asset-filtered observations declared by the strategy.
 
-    observed_inputs: dict[str, pd.DataFrame] = {}
-    for dependency_name in sorted(dependencies):
-        source_start, source_end = strategy.dependency_window(
-            dependency_name,
-            start.to_pydatetime(),
-            end.to_pydatetime(),
-        )
-        contract = contracts[dependency_name]
-        query: dict[str, Any] = {
-            "start_date": source_start,
-            "end_date": source_end,
-            "great_or_equal": True,
-            "less_or_equal": True,
-        }
-        if contract.asset_scoped:
-            query["dimension_filters"] = {
-                ASSET_IDENTIFIER: list(asset_identifiers),
-            }
-        frame = dependencies[dependency_name].get_df_between_dates(**query)
-        observed_inputs[dependency_name] = (
-            pd.DataFrame() if frame is None else frame.sort_index()
-        )
-    return observed_inputs
+    The daily history is read from ``history_lookback_days`` before ``start``. The
+    execution bars are read over the window, with each asset's last bar before it:
+    an order is sized with the last bar before its earliest moment.
+    """
+    return read_strategy_inputs(
+        strategy,
+        start=start,
+        end=end,
+        assets=list(asset_identifiers),
+    )
 
 
 def transition_summary(
     strategy: TrailingAverageDailyVolumeParticipation,
     transitions: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Expand the strategy state fields most useful when reviewing a preview."""
+    """Expand the strategy state fields most useful when reviewing a preview.
+
+    A row's ``executed_quantity`` is in shares of the rebalance's book, whose unit is
+    ``total_notional``; ``quantity`` is the same fill in shares of the asset.
+    """
     if transitions.empty:
         return pd.DataFrame()
     result = transitions.copy().reset_index(drop=True)
-    strategy_states = [
-        strategy.parse_strategy_state(row)
+    bar_states = [
+        strategy.parse_strategy_state(row).get("bar") or {}
         for row in result.to_dict(orient="records")
     ]
+    result["quantity"] = result["executed_quantity"] * strategy.total_notional
     for field_name in (
         "history_observations",
         "trailing_average_daily_notional",
@@ -148,15 +140,14 @@ def transition_summary(
         "daily_notional_consumed",
         "daily_notional_remaining",
     ):
-        result[field_name] = [state.get(field_name) for state in strategy_states]
+        result[field_name] = [state.get(field_name) for state in bar_states]
     return result[
         [
             "time_index",
             ASSET_IDENTIFIER,
             "execution_status",
             "execution_price",
-            "executed_quantity",
-            "executed_notional",
+            "quantity",
             "weight_before",
             "weight_after",
             "remaining_weight_delta",
