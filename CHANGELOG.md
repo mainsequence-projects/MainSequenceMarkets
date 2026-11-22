@@ -322,11 +322,13 @@ Read "Upgrading" at the end of this entry.
      Job fails until then;
   2. commit its revision, and apply it in each Environment before the updater runs. Keep
      the revisions that created the old tables in the provider's history: an Environment
-     that applied one cannot upgrade without it. A provider that already has a revision
-     cannot autogenerate this one: `migrations revision` refuses a revision that adds a
-     table to it, a MetaTables defect measured on 0.1.71 and 0.1.73, and "upgrade head",
-     which the error advises, does not help. A revision written by hand
-     (`--no-autogenerate`) and a new provider's first revision are not affected;
+     that applied one cannot upgrade without it. For a provider that already has a
+     revision, autogenerate this one with MetaTables' `--sqlalchemy-url`, against an
+     authoring database at that provider's head (the local runtime's SQLite file or a
+     copy of it, for example). Without that option MetaTables 0.1.71 and 0.1.73 refuse a
+     revision that adds a table, and "upgrade head", which the error advises, does not
+     help ([MetaTables#127](https://github.com/mainsequence-projects/MetaTables/issues/127)).
+     A new provider's first revision needs no such option;
   3. pass it as `output_table=`, and run interpolation. The table starts empty and fills
      from the updater's `offset_start`, 2017-07-20 by default, as far as the source still
      holds bars. Older bars need an earlier `offset_start` on the first run. No row moves

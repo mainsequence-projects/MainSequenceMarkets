@@ -35,9 +35,10 @@ update, and the error names it; see
 The example is a producer. It declares the interpolated-price table on its own base,
 in its own namespace, in `portfolio_equal_weights_config.py`, keyed by its configuration:
 the source's table name and cadence, the upsample frequency and the interpolation rule.
-Change one of them and the table is a new one, with a new revision to commit (which
-MetaTables 0.1.73 cannot autogenerate for a provider that already has one). The run
-script publishes example OHLCV source bars to
+Change one of them and the table is a new one, with a new revision to commit. For a
+provider that already has a revision, autogenerate it with `--sqlalchemy-url` against an
+authoring database at that provider's head: without that option MetaTables 0.1.73
+refuses to add a table. The run script publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
 `PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
 `PortfoliosUpdater`, creates or reuses the crypto
