@@ -7,6 +7,17 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **A signal older than the strategy's lifetime is disregarded**
+  ([#114](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/114)).
+  Every rebalance strategy has `signal_lifetime`, for example 30 minutes or 20 days.
+  An event acts only on the latest signal, and not at all once that signal is older
+  than the lifetime, counted from its `time_index`; there is no fallback to an earlier
+  signal. A rebalance whose signal expires keeps what it filled, and its unfinished
+  orders end with the new status `expired`. Without a lifetime nothing changes,
+  identities included.
+
 ### Changed
 
 - **Breaking: a sized strategy is given its size**

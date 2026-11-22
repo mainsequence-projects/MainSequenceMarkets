@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
+import metatables.updaters.configuration as update_configuration
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -36,9 +37,15 @@ ExecutionStatus = Literal[
     "complete",
     "superseded",
     "cancelled",
+    "expired",
     "rejected",
 ]
-TERMINAL_EXECUTION_STATUSES = frozenset({"complete", "superseded", "cancelled", "rejected"})
+TERMINAL_EXECUTION_STATUSES = frozenset(
+    {"complete", "superseded", "cancelled", "expired", "rejected"}
+)
+# Statuses that drop what is left of an order. Their row carries no price when nothing
+# filled then, and the ledger records it as progress.
+UNFILLED_ENDINGS = frozenset({"cancelled", "expired"})
 
 
 @dataclass(frozen=True)
@@ -115,6 +122,19 @@ class RebalanceStrategyBase(BaseModel):
         default="supersede_active",
         description="Policy applied when a newer signal replaces unfinished execution.",
     )
+    signal_lifetime: dt.timedelta | None = Field(
+        default=None,
+        gt=dt.timedelta(0),
+        exclude_if=lambda value: value is None,
+        description=(
+            "How long a signal stays valid after its time_index, for example 30 minutes "
+            "or 20 days. An event at time t acts only on the latest signal, and not at "
+            "all when t - signal time_index > signal_lifetime; there is no fallback to "
+            "an earlier signal. A rebalance whose signal passes it keeps what it filled "
+            "and ends 'expired'. None: a signal never expires. Hash-bearing when set."
+        ),
+        examples=["PT30M", "P20D"],
+    )
     execution_model_instance: SerializeAsAny[PositionExecutionModel] | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -131,6 +151,22 @@ class RebalanceStrategyBase(BaseModel):
 
     def get_explanation(self) -> str:
         return f"{self.__class__.__name__}: dependency-declaring rebalance state machine."
+
+    def signal_expired(self, signal_time_index: Any, time_index: Any) -> bool:
+        """Return whether a signal is too old to act on at ``time_index``.
+
+        The clock is economic time, never the job's: an event at ``time_index`` acts
+        on the latest signal, which is too old when ``time_index - signal_time_index >
+        signal_lifetime``. A signal exactly ``signal_lifetime`` old is still valid.
+        Measuring the age from the signal's own ``time_index`` is inferred from the
+        execution engine ADR's timer "at the signal's time plus the strategy's
+        lifetime"; the owner's decision does not name the clock (#114). Without a
+        lifetime no signal expires.
+        """
+        if self.signal_lifetime is None:
+            return False
+        age = self._as_utc_timestamp(time_index) - self._as_utc_timestamp(signal_time_index)
+        return age > pd.Timedelta(self.signal_lifetime)
 
     def declared_dependencies(self) -> dict[str, RebalanceDependency]:
         """Return deterministic named inputs required in addition to signal weights."""
@@ -238,10 +274,12 @@ class RebalanceStrategyBase(BaseModel):
         """Book the fills ``PortfolioRebalance`` recorded at one time.
 
         ``fills`` holds one row per asset that traded at ``time_index``, with its
-        ``weight_after``, ``execution_price`` and ``source_revision``. The strategy
-        decides nothing here. ``decided_quantities`` are the share counts the
-        rebalance fixed at its decision; each fill trades to its count at the
-        recorded price. Without them, quantities are sized from the NAV now.
+        ``weight_after``, ``execution_price`` and ``source_revision``, and one per
+        order cancelled or expired then without a fill, which has no price and is
+        recorded as progress. The strategy decides nothing here.
+        ``decided_quantities`` are the share counts the rebalance fixed at its
+        decision; each fill trades to its count at the recorded price. Without them,
+        quantities are sized from the NAV now.
         """
 
         model = self.execution_model_instance
@@ -276,7 +314,8 @@ class RebalanceStrategyBase(BaseModel):
             weight_after = float(row["weight_after"])
             self._require_finite("weight_after", weight_after, asset=asset)
             row_state = self.parse_strategy_state(row)
-            cancelled = str(row.get("execution_status")) == "cancelled"
+            # A cancelled or expired order dropped its remainder; the ledger records it.
+            ending = str(row.get("execution_status"))
             price = row.get("execution_price")
             priced = price is not None and not pd.isna(price)
             asset_executions[asset] = AssetExecution(
@@ -290,7 +329,7 @@ class RebalanceStrategyBase(BaseModel):
                 ),
                 strategy_state=row_state,
                 fill_fraction=float(row_state.get("fill_fraction", 1.0)),
-                status="cancelled" if cancelled else None,
+                status=ending if ending in UNFILLED_ENDINGS else None,
             )
             signal_target_weights[asset] = float(row["target_weight"])
         context = AccountingExecutionContext(
@@ -352,8 +391,11 @@ class RebalanceStrategyBase(BaseModel):
 
         Every asset trades only at a price observed strictly after the signal that
         set its target, at or after the earliest moment the portfolio calendar
-        allows, and assets fill independently (ADR 0058). A strategy with its own
-        bars trades at them; any other strategy trades each asset at its next
+        allows, and assets fill independently (ADR 0058). With a ``signal_lifetime``,
+        a signal is acted on only until it is that old (``signal_expired``): a target
+        too old at its first event never trades, and a running one ends ``expired``
+        at its first event after it, keeping what it filled (#114). A strategy with
+        its own bars trades at them; any other strategy trades each asset at its next
         observed price in ``fill_prices``, the portfolio's valuation source as
         returned by ``observed_prices``, run by its ``fill_policy``. A missing price
         never raises: the trade waits. ``reference_prices`` (``valuation_prices`` of
@@ -412,7 +454,8 @@ class RebalanceStrategyBase(BaseModel):
         signal at or before that moment. The earliest moment is the strategy's
         moment while the portfolio calendar is in session, otherwise the next
         session start. A target whose next session start is not published yet
-        waits for a later run.
+        waits for a later run. A target whose signal is past its lifetime at its
+        earliest moment never activates, and no earlier signal takes its place.
         """
         events = self._normalize_events(
             self.select_events(
@@ -439,7 +482,7 @@ class RebalanceStrategyBase(BaseModel):
             if latest is None:
                 continue
             earliest = earliest_moment(moment, sessions)
-            if earliest is None:
+            if earliest is None or self.signal_expired(latest.signal_time_index, earliest):
                 continue
             if activations and activations[-1][1].intent_id == latest.intent_id:
                 continue
@@ -559,6 +602,15 @@ class RebalanceStrategyBase(BaseModel):
                 continue
             if book is None or order_time is None:
                 break
+            if self.signal_expired(book.signal_time_index, order_time):
+                # The first instant an order could trade after the signal's lifetime:
+                # the rebalance keeps what it filled and every open order expires.
+                last_prices = references.last_prices(
+                    set(book.held) | set(book.orders), order_time
+                )
+                entries = book.expire(last_prices, book.nav(last_prices))
+                rows.extend(self._book_row(book, entry, order_time, None) for entry in entries)
+                continue
             due = {
                 asset: price
                 for asset, order in book.orders.items()
@@ -607,12 +659,17 @@ class RebalanceStrategyBase(BaseModel):
         book: RebalanceBook,
         entry: BookEntry,
         time_index: pd.Timestamp,
-        observed_price: float,
+        observed_price: float | None,
     ) -> dict[str, Any]:
-        """Return the row of one order step: the observed price, in its own currency."""
+        """Return the row of one order step: the observed price, in its own currency.
+
+        An expired order trades nothing and has no observed price.
+        """
         asset = entry.asset_identifier
         order = book.orders[asset]
-        traded = entry.status != "cancelled" or abs(entry.shares) > 0.0
+        traded = observed_price is not None and (
+            entry.status not in UNFILLED_ENDINGS or abs(entry.shares) > 0.0
+        )
         target_weight = float(book.target_weights.get(asset, 0.0))
         self._require_finite("target_weight", target_weight, asset=asset)
         self._require_finite("weight_after", entry.weight_after, asset=asset)
@@ -637,7 +694,7 @@ class RebalanceStrategyBase(BaseModel):
                     "schema_version": 2,
                     "earliest_time_index": book.earliest_time_index.isoformat(),
                     "decision_nav": book.decision_nav,
-                    "fx_rate": entry.price / observed_price,
+                    "fx_rate": None if observed_price is None else entry.price / observed_price,
                     "weight_at_decision": order.weight_at_decision,
                     "decision_price": order.decision_price,
                     "target_shares": order.target_shares,
@@ -896,15 +953,32 @@ class RebalanceStrategyBase(BaseModel):
                 target = persisted_target
             if target is None:
                 continue
-
-            new_target = active_intent != target.intent_id
-            if new_target and active_intent is not None:
-                rows.extend(
-                    self._superseded_rows(
+            if self.signal_expired(target.signal_time_index, event_time):
+                # The latest signal is the only candidate and it is too old: nothing
+                # trades. An unfinished intent, of it or of an older signal, stops here
+                # and keeps what it filled.
+                if active_intent is not None:
+                    expired = self._ended_rows(
                         event_time=event_time,
                         event_source=event_source,
                         active_intent=active_intent,
                         state_by_asset=state_by_asset,
+                        status="expired",
+                    )
+                    for row in expired:
+                        state_by_asset[str(row["asset_identifier"])] = row
+                    rows.extend(expired)
+                continue
+
+            new_target = active_intent != target.intent_id
+            if new_target and active_intent is not None:
+                rows.extend(
+                    self._ended_rows(
+                        event_time=event_time,
+                        event_source=event_source,
+                        active_intent=active_intent,
+                        state_by_asset=state_by_asset,
+                        status="superseded",
                     )
                 )
 
@@ -1178,13 +1252,19 @@ class RebalanceStrategyBase(BaseModel):
         return bool(rows) and all(row.get("execution_status") == "complete" for row in rows)
 
     @staticmethod
-    def _superseded_rows(
+    def _ended_rows(
         *,
         event_time: pd.Timestamp,
         event_source: str,
         active_intent: str,
         state_by_asset: dict[str, dict[str, Any]],
+        status: Literal["superseded", "expired"],
     ) -> list[dict[str, Any]]:
+        """End every unfinished asset of ``active_intent`` at ``event_time``, unchanged.
+
+        ``superseded`` when a newer target replaces it, ``expired`` when its signal
+        passed the strategy's lifetime. Each asset keeps its weight; nothing trades.
+        """
         rows: list[dict[str, Any]] = []
         for asset, prior in sorted(state_by_asset.items()):
             if str(prior.get("rebalance_intent_id")) != active_intent:
@@ -1198,7 +1278,7 @@ class RebalanceStrategyBase(BaseModel):
                     "time_index": event_time,
                     "asset_identifier": asset,
                     "event_source": event_source,
-                    "execution_status": "superseded",
+                    "execution_status": status,
                     "weight_before": weight,
                     "weight_after": weight,
                     "executed_weight_delta": 0.0,
@@ -1238,6 +1318,21 @@ class RebalanceStrategyBase(BaseModel):
     def _require_finite(name: str, value: float, *, asset: str) -> None:
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite for asset {asset!r}.")
+
+
+@update_configuration.serialize_argument.register(RebalanceStrategyBase)
+def _serialize_rebalance_strategy(value: RebalanceStrategyBase) -> dict[str, Any]:
+    """Serialize a strategy for MetaTables identities as any pydantic model is.
+
+    MetaTables writes every field, also one the model leaves out of its own dump. A
+    strategy without a ``signal_lifetime`` is written without it, so it keeps the
+    portfolio and update identities it had before the field existed; a lifetime is
+    hashed (#114).
+    """
+    serialized = update_configuration.serialize_argument.dispatch(BaseModel)(value)
+    if value.signal_lifetime is None:
+        serialized["serialized_model"].pop("signal_lifetime")
+    return serialized
 
 
 def earliest_moment(
@@ -1430,7 +1525,12 @@ class PriceConversion:
         return float(series[1][position])
 
 
-_ORDER_STATUS = {"partial": "open", "complete": "filled", "cancelled": "cancelled"}
+_ORDER_STATUS = {
+    "partial": "open",
+    "complete": "filled",
+    "cancelled": "cancelled",
+    "expired": "expired",
+}
 
 
 def _latest_rows_by_asset(previous_state: pd.DataFrame | None) -> dict[str, dict[str, Any]]:

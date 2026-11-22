@@ -203,8 +203,8 @@ happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-nex
   never count, and the fill column must be observed at its row's time, a close
   or a mark; `open`, `high`, `low` and `vwap` are refused.
 - **Independent fills.** Each asset fills at its own next price, and only a step
-  of its order writes a row (`complete`, `partial` or `cancelled`); between fills
-  the unfilled part is cash. A missing price makes the trade wait, and a newer
+  of its order writes a row (`complete`, `partial`, `cancelled` or `expired`);
+  between fills the unfilled part is cash. A missing price makes the trade wait, and a newer
   target replaces the running rebalance at the first instant it could trade. A
   waiting asset looks for its price from its target's earliest moment, so a slow
   source's bar still counts when it arrives late.
@@ -228,6 +228,25 @@ happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-nex
   ([ADR 0059](../../../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
 - **Time stamps.** A signal's `time_index` is the moment it was known, as a
   price's is; its producer is responsible for it.
+- **Signal lifetime.** `signal_lifetime` (a `timedelta`, for example 30 minutes
+  or 20 days) is a field of every rebalance strategy
+  ([#114](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/114)).
+  An event at time `t` acts only on the latest signal, and not at all when
+  `t - signal time_index > signal_lifetime`; a signal exactly that old is still
+  valid. There is no fallback to an earlier signal, which would be older still.
+  The age is measured in economic time from the signal's own `time_index`, never
+  by the job's clock: an inference from the execution engine ADR's timer at the
+  signal's time plus the lifetime, not a recorded decision. A target already too
+  old at its earliest moment, or at its first bar for a strategy with its own
+  bars, never trades and writes no row. A running rebalance whose signal passes
+  its lifetime stops at its next event: the first instant one of its orders has an
+  eligible price, or its next bar. It keeps what it filled, each unfinished order
+  writes an `expired` row with no price and its weight unchanged, and the rest is
+  dropped (`cancelled_shares`, `cancel_reason: "signal_lifetime"` in the state
+  of a rebalance at the next observed price). The position ledger books what
+  filled and records each expiry as progress. Not set (`None`), a signal never
+  expires and the strategy and its identities are as before; a lifetime is part
+  of the strategy's revision and the portfolio's configuration hash.
 
 `PortfolioCalendarEvents` publishes events only up to the time it runs, so a
 target set while the market is closed waits for a run after the next open has

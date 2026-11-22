@@ -29,6 +29,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SHARE_TOLERANCE = 1e-12
 INSUFFICIENT_CASH = "insufficient_cash"
+# Why an expired order's remainder was dropped: its signal passed the strategy's lifetime.
+SIGNAL_LIFETIME = "signal_lifetime"
 
 
 class ExecutionPolicy(BaseModel):
@@ -296,7 +298,7 @@ class BookOrder:
     remaining_shares: float = 0.0
     filled_shares: float = 0.0
     side: Literal["buy", "sell", "none"] = "none"
-    status: Literal["open", "filled", "cancelled"] = "open"
+    status: Literal["open", "filled", "cancelled", "expired"] = "open"
 
     def size(self, target_shares: float, held: float) -> None:
         self.target_shares = target_shares
@@ -310,8 +312,10 @@ class BookEntry:
     """What one instant did to one asset's order.
 
     ``status`` is the order's: ``partial`` while some of it is still open,
-    ``complete`` once all of it filled, ``cancelled`` once its remainder was cut.
-    ``shares`` may be zero for a cancellation or for an unchanged holding.
+    ``complete`` once all of it filled, ``cancelled`` once its remainder was cut,
+    ``expired`` once its signal passed the strategy's lifetime and its remainder was
+    dropped. ``shares`` may be zero for a cancellation, an expiry or an unchanged
+    holding.
     ``fill_fraction`` is the part of the order still open before this instant that
     filled: the ledger scales its own order by it.
     """
@@ -321,7 +325,7 @@ class BookEntry:
     price: float
     weight_before: float
     weight_after: float
-    status: Literal["partial", "complete", "cancelled"]
+    status: Literal["partial", "complete", "cancelled", "expired"]
     fill_fraction: float = 1.0
     cancelled_shares: float = 0.0
     cancel_reason: str | None = None
@@ -358,6 +362,40 @@ class RebalanceBook:
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"Rebalance {self.intent_id} has a non-positive NAV.")
         return value
+
+    def expire(self, last_prices: dict[str, float], nav: float) -> list[BookEntry]:
+        """End every open order: its signal passed the strategy's lifetime.
+
+        Each keeps the shares it filled; what is left of it is dropped and recorded
+        as ``cancelled_shares``, with the reason ``signal_lifetime``. Nothing trades.
+        ``last_prices`` value the holdings for the weights; ``nav`` is the book's NAV
+        at them.
+        """
+        entries = []
+        for asset in sorted(self.orders):
+            order = self.orders[asset]
+            if order.status != "open":
+                continue
+            held = self.held.get(asset, 0.0)
+            price = float(last_prices.get(asset, order.decision_price))
+            dropped = order.remaining_shares
+            order.remaining_shares = 0.0
+            order.status = "expired"
+            weight = held * price / nav
+            entries.append(
+                BookEntry(
+                    asset_identifier=asset,
+                    shares=0.0,
+                    price=price,
+                    weight_before=weight,
+                    weight_after=weight,
+                    status="expired",
+                    fill_fraction=0.0,
+                    cancelled_shares=dropped,
+                    cancel_reason=SIGNAL_LIFETIME,
+                )
+            )
+        return entries
 
     def has_pending_sells(self) -> bool:
         return any(
@@ -423,6 +461,7 @@ def order_side(shares: float | None) -> Literal["buy", "sell", "none"]:
 
 __all__ = [
     "INSUFFICIENT_CASH",
+    "SIGNAL_LIFETIME",
     "BookEntry",
     "BookOrder",
     "ExecutionPolicy",

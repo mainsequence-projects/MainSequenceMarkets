@@ -381,6 +381,15 @@ Rules:
   rebalance's sells have filled (reason `insufficient_cash`), and the portfolio
   calendar gating trades. The facts (observed price strictly after the signal, at or
   after the earliest moment, in session) are not settings.
+- Every rebalance strategy has `signal_lifetime` (a `timedelta`, default `None`: a
+  signal never expires). An event at `t` acts only on the latest signal, and not at
+  all when `t - signal time_index > signal_lifetime` (exactly that old is still
+  valid); there is no fallback to an earlier signal. The age is economic time from
+  the signal's `time_index`, never the job's clock. A target too old at its earliest
+  moment (or first bar) never trades; a running rebalance stops at its next event,
+  keeps what it filled, and each unfinished order writes an `expired` row without a
+  price; the ledger records it as progress. A lifetime is hashed; `None` leaves the
+  strategy's and the portfolio's identities unchanged.
 - `PortfolioBuildConfiguration.valuation_asset_identifier` (required) is the
   portfolio's currency; the accounting configuration has none. Declare
   `fx_source_instance` when an asset is quoted in another currency: the valuation

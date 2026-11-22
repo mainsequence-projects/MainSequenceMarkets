@@ -789,6 +789,20 @@ These came up in the discussion. They are kept here so they can be taken up agai
   lifetime is a different portfolio. Not set means a signal never expires. The last signal is
   the only candidate; there is no fallback to an earlier one. When the lifetime passes on a
   partly executed intent, it stops and keeps what it holds, under a new `expired` status.
+  Done on 2026-11-22 for the backtest path
+  ([#114](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/114)):
+  `RebalanceStrategyBase.signal_lifetime`, a `timedelta`, `None` by default. The decision
+  does not name the clock; the implementation infers it from step 1 of "7. A Signal
+  Passes Its Lifetime" (the signal's time plus the lifetime) and measures economic time,
+  never the job's: an event at `t` acts on the latest signal, which is too old when
+  `t - time_index > signal_lifetime`, so a signal exactly that old is still valid. A
+  target too old at its earliest moment, or at its first bar, never trades. A running
+  intent stops at its next event (the first instant an order has an eligible price, or
+  its next bar), and each unfinished order writes an `expired` row with no price; the
+  ledger records it as progress. The proposed engine's timer would end the intent at the
+  signal's time plus the lifetime; the backtest has no event there and ends it at the
+  next one, with the same fills. A strategy without a lifetime keeps its revision, its
+  portfolio configuration hash and its update hashes.
 - **Unfilled volume.** What happens when volume does not fill is the rebalance strategy's
   rule, never the engine's.
 - **Size.** The size is never a constant in the strategy. It is given by whoever runs it: the
