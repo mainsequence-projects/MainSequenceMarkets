@@ -1,8 +1,8 @@
 # Portfolios
 
 Construct an equal-weights portfolio end to end. The workflow runs in two
-stages: a schema-preparation step that provisions the interpolated price
-storage, then a run step that publishes prices, computes weights, and publishes
+stages: a migration of the example's own interpolated-price table, then a run step
+that publishes prices, computes weights, and publishes
 the portfolio's signal weights, weights and values to Markets. It reuses the calendar from
 [Calendars](02-calendars.md) as `Portfolio.calendar_uid`.
 
@@ -10,17 +10,21 @@ For the runtime model behind these row APIs, see [Core Concepts](../concepts.md)
 
 ## Two-stage equal-weights workflow
 
-Run the portfolio workflow in two stages:
+With Markets' own migrations applied, run the two stages from the repository root:
 
 ```bash
-python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+metatables --local migrations upgrade --provider examples.msm_portfolios.portfolio_equal_weights_migrations:migration head
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 Both write only to the [local runtime](../concepts.md#namespaces-and-sandboxes). The
-first stage cannot create a new interpolation table yet: its provider shares Markets'
-history, so MetaTables refuses to autogenerate that table's first revision. See
-[#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95).
+first stage applies a committed revision of the example's own provider. It creates one
+table, the same in every database, and changes none of Markets'.
+
+With updaters on, the second stage currently stops in the rebalance, after it has
+written the interpolated prices: `FixedWeights` dates its one signal 2018-01-02 and the
+example's bars begin in May 2026, so there is no price to size shares with.
+`--no-run-updaters` runs to the end.
 
 Every asset the portfolio prices must be linked to a stored calendar with
 `AssetCalendar` before interpolation runs. The run script links the example
@@ -28,25 +32,21 @@ assets to the `CRYPTO_24_7` calendar. An asset with no link fails the price
 update, and the error names it; see
 [An asset that gets price bars needs a trading calendar](01-assets.md#an-asset-that-gets-price-bars-needs-a-trading-calendar).
 
-The preparation script derives the configured interpolated price storage from
-the registered `ExternalPricesStorage` table and the example interpolation
-policy, finds or generates the real dynamic Alembic revision, and runs the dynamic
-provider upgrade before portfolio
-updaters write. If an older registered `ExternalPricesStorage` table is missing
-cadence metadata, the preparation step repairs that source metadata before
-deriving the dynamic interpolation table. The run script creates the
-optional portfolio `Index`, publishes example OHLCV source bars to
+The example is a producer. It declares the interpolated-price table on its own base,
+in its own namespace, in `portfolio_equal_weights_config.py`, keyed by its configuration:
+the source's table name and cadence, the upsample frequency and the interpolation rule.
+Change one of them and the table is a new one, with a new revision to commit (which
+MetaTables 0.1.73 cannot autogenerate for a provider that already has one). The run
+script publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
 `PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
 `PortfoliosUpdater`, creates or reuses the crypto
-`CRYPTO_24_7` calendar, and stores the calendar, index and signal on the
+`CRYPTO_24_7` calendar, and stores the calendar and signal on the
 `Portfolio` row. `SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater`
 publish their rows through the series operations
 ([Published Series](../knowledge/msm_portfolios/portfolios/index.md#published-series)).
-The price configuration stores the
-`ExternalPricesStorage` TimeIndexMetaTable UID on `InterpolatedPricesConfig`, so
-the explicit upstream interpolation node can recover the price source through
-the `metatables` TimeIndexTableRef lookup path. The portfolio configuration receives that
+The price configuration holds the source bars updater, and `InterpolatedPrices`
+receives the example's table as `output_table=`. The portfolio configuration receives that
 `InterpolatedPrices` node as `valuation_source_instance` and sets
 `valuation_column="close"`; `PortfoliosUpdater` does not create interpolation
 storage internally. Real portfolio extensions can pass any compatible
@@ -64,11 +64,10 @@ python examples/msm_portfolios/portfolio_custom_valuation_column_example.py \
 Its `CalendarEventSignal` reads the market opens and closes from the second table,
 which `PortfolioCalendarEvents` publishes.
 
-The source bar frequency is read from the registered source table's cadence
-metadata, then used with `__metatable_extra_hash_components__` to select a
-configured output storage table, so different source cadence, upsample
-frequency, and interpolation rule combinations do not collide inside one price
-table. The script prints the workflow steps, created row UIDs, source valuation
+`InterpolatedPrices` reads the registered source table's name and cadence, computes
+the key of its configuration, and refuses a table with another key or cadence, so
+different sources, source cadences, upsample frequencies and interpolation rules do
+not collide inside one price table. The script prints the workflow steps, created row UIDs, source valuation
 row counts, explicit valuation-source dependency details, and published TimeIndexTableUpdater
 storage UIDs.
 
@@ -78,8 +77,9 @@ repairing rows written by an affected older runtime, upgrade `ms-markets`
 before applying any `asset_identifier`-scoped tail delete, then replay the
 interpolation updater and downstream portfolio graph immediately.
 
-Asset-scope mappings use `asset_identifier` as their canonical identity key;
-the example supplies that key alongside `calendar`. Mapping payloads containing
+Asset-scope mappings use `asset_identifier` as their canonical identity key, and a
+`calendar` key is refused; the example's scope holds identifiers only. Mapping payloads
+containing
 `unique_identifier` are rejected, even when `asset_identifier` is also present.
 
 ## Understand the independent clocks

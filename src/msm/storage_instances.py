@@ -19,7 +19,12 @@ migrates the provider's tables only.
 
 The instance is named ``<storage_app>__<core table>__<instance_key>`` and
 identified as ``<CoreIdentifier>.<instance_key>``, namespace-prefixed outside the
-default Markets namespace.
+default Markets namespace. MetaTables' ``schema_table_name`` writes the name: it
+puts ``t_`` before a key that starts with a digit and shortens a name longer than
+63 characters.
+
+The factory has no default owner: namespace, storage app and declarative base
+are the caller's (#95).
 """
 
 from __future__ import annotations
@@ -32,8 +37,8 @@ from sqlalchemy import ForeignKeyConstraint, Index, MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import PlatformTimeIndexMetaTable, schema_index_name, schema_table_name
-from msm.base import MARKETS_TABLE_APP, MarketsBase, MarketsTimeIndexMetaTableMixin
-from msm.settings import markets_identifier, markets_namespace
+from msm.base import MarketsTimeIndexMetaTableMixin
+from msm.settings import markets_identifier
 
 INSTANCE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,62}$")
 STORAGE_CONTRACT_COMPONENT = "storage_contract"
@@ -44,18 +49,26 @@ def configured_time_index_instance(
     core_storage: type[PlatformTimeIndexMetaTable],
     *,
     instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
+    cadence: str | None = None,
 ) -> type[PlatformTimeIndexMetaTable]:
     """Build a provider-owned instance of ``core_storage``.
 
     ``namespace`` is the MetaTables namespace that owns the instance, for example
     ``my-provider``; ``storage_app`` the physical-name app segment, for example
     ``my_provider``; ``base`` the provider's own declarative base, whose metadata
-    its Alembic provider targets. The instance adds only its own table to that
-    metadata: its foreign keys point at Markets' own columns, so the provider's
-    autogenerate never compares a Markets table.
+    its Alembic provider targets. All three are required, and an empty value is
+    refused. The instance adds only its own table to that metadata: its foreign
+    keys point at Markets' own columns, so the provider's autogenerate never
+    compares a Markets table.
+
+    ``cadence`` is for a storage that declares none, where each instance has its
+    own: an interpolated-price table's cadence is its upsample frequency. An
+    instance of a storage that declares a cadence keeps it. One table has one
+    declaration: a second one that differs, in cadence or namespace for example,
+    is refused.
     """
 
     key = str(instance_key).strip().lower()
@@ -64,14 +77,54 @@ def configured_time_index_instance(
             "instance_key must be 1-63 lowercase letters, digits or underscores and start "
             f"with a letter or digit; got {instance_key!r}."
         )
-    app = str(storage_app).strip()
-    if not app:
-        raise ValueError("storage_app must be a non-empty app segment.")
+    owner_namespace, app, owner_base = require_instance_owner(namespace, storage_app, base)
     if not isinstance(core_storage, type) or not hasattr(core_storage, "__table__"):
         raise TypeError("core_storage must be a Markets time-index storage class.")
     return _configured_time_index_instance(
-        core_storage, key, markets_namespace(namespace), app, base or MarketsBase
+        core_storage,
+        key,
+        owner_namespace,
+        app,
+        owner_base,
+        _instance_cadence(core_storage, cadence),
     )
+
+
+def require_instance_owner(
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
+) -> tuple[str, str, type[DeclarativeBase]]:
+    """The owner of an instance, which no instance factory supplies by itself."""
+
+    owner_namespace = str(namespace or "").strip()
+    if not owner_namespace:
+        raise ValueError("namespace is required: the MetaTables namespace of the table's owner.")
+    app = required_storage_app(storage_app)
+    if not base:
+        raise ValueError(
+            "base is required: the owner's declarative base, whose metadata its migration "
+            "provider targets."
+        )
+    return owner_namespace, app, base
+
+
+def required_storage_app(storage_app: str) -> str:
+    """The owner's app segment of a table name, which has no default either."""
+
+    app = str(storage_app or "").strip()
+    if not app:
+        raise ValueError("storage_app is required: the owner's app segment of the table name.")
+    return app
+
+
+def normalized_cadence(cadence: str | None, *, argument: str = "cadence") -> str:
+    """``cadence`` as MetaTables registers it: stripped and lower-case."""
+
+    value = str(cadence or "").strip().lower()
+    if not value:
+        raise ValueError(f"{argument} must be a non-empty interval such as 5m or 1d.")
+    return value
 
 
 def time_index_instance_identifier(core_storage: type[Any], instance_key: str) -> str:
@@ -80,13 +133,16 @@ def time_index_instance_identifier(core_storage: type[Any], instance_key: str) -
     return f"{_core_identifier(core_storage)}.{str(instance_key).strip().lower()}"
 
 
-@lru_cache(maxsize=256)
+# Unbounded: every instance stays in its base's metadata anyway, and building one a second
+# time would be refused as a second declaration of its table.
+@lru_cache(maxsize=None)
 def _configured_time_index_instance(
     core_storage: type[Any],
     instance_key: str,
     namespace: str,
     storage_app: str,
     base: type[DeclarativeBase],
+    cadence: str | None,
 ) -> type[PlatformTimeIndexMetaTable]:
     core_table: Table = core_storage.__table__
     concept = core_table.name.split("__", 1)[-1]
@@ -122,14 +178,26 @@ def _configured_time_index_instance(
         "__time_index_name__": core_storage.__time_index_name__,
         "__index_names__": list(core_storage.__index_names__),
     }
-    cadence = getattr(core_storage, "__cadence__", None)
-    if cadence not in (None, ""):
+    if cadence:
         attributes["__cadence__"] = cadence
     return type(
         f"{core_storage.__name__}_{class_suffix}",
         (MarketsTimeIndexMetaTableMixin, base),
         attributes,
     )
+
+
+def _instance_cadence(core_storage: type[Any], cadence: str | None) -> str | None:
+    declared = getattr(core_storage, "__cadence__", None) or None
+    if cadence is None:
+        return declared
+    requested = normalized_cadence(cadence)
+    if declared and normalized_cadence(declared) != requested:
+        raise ValueError(
+            f"{_core_identifier(core_storage)} declares cadence {declared!r}, which its "
+            f"instances keep; got cadence {requested!r}."
+        )
+    return declared or requested
 
 
 def _core_identifier(core_storage: type[Any]) -> str:
@@ -147,9 +215,11 @@ def _copy_table(
     index_names: list[str],
     info: dict[str, Any],
 ) -> Table:
-    existing = metadata.tables.get(table_name)
-    if isinstance(existing, Table):
-        return existing
+    if table_name in metadata.tables:
+        raise ValueError(
+            f"{table_name} is already declared on this base, and one table has one declaration. "
+            "Use that one, or give another table another instance_key or storage_app."
+        )
     # Column objects, not names: a name resolves only inside the table's own MetaData.
     constraints = [
         ForeignKeyConstraint(

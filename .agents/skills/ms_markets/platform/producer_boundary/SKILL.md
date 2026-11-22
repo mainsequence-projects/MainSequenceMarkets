@@ -148,7 +148,9 @@ template).
 Bind the engine to them: `rebalance_output_table=` on `PortfoliosUpdater`,
 `PortfolioWeights` and `run_portfolio`, and `output_table=` on the calendar events and
 ledger updaters. `configured_time_index_instance` builds an instance of any other
-Markets storage.
+Markets storage. Every one of these factories requires `namespace`, `storage_app` and
+`base`: none builds in Markets' own by default. An interpolated-price table is such an
+instance, keyed by its configuration (`portfolios/portfolio_workflow`).
 
 A private table may reference a registry row with a physical foreign key (the
 factories give each instance the contract's keys to `Portfolio.unique_identifier`,

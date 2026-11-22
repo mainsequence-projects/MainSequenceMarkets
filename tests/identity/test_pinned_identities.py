@@ -36,6 +36,7 @@ from msm.time_index.assets import AssetSnapshot
 from msm.time_index.indices import configured_index_values_storage
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
+from msm.settings import DEFAULT_MARKETS_NAMESPACE
 from msm_migrations.registry import metatable_provider_models
 from msm_portfolios.configuration import (
     PortfolioConfigBaseModel,
@@ -56,6 +57,7 @@ from tests.support.pinned_identities import (
     NESTED_PORTFOLIOS,
     PINNED_PRE_RENAME_UPDATE_HASHES,
     STRATEGIES,
+    PinnedBase,
     _built_updaters,
     _interpolated_prices_storage,
     _portfolio_configuration,
@@ -313,8 +315,9 @@ PINNED_STRATEGY_REVISIONS = {
 PINNED_CONFIGURED_STORAGE = {
     "index_values_1d": ("ms_markets__index_values__t_1d", "IndexValuesTS.1d"),
     "interpolated_prices_1d_ffill": (
-        "ms_markets__interpolated_prices__eeb2539c105f51d0",
-        "InterpolatedPricesTS.eeb2539c105f51d0",
+        # Renamed by #95: the source's table name keys it, in its producer's namespace.
+        "pinned_app__interpolatedpricests__t_0597b45ae2d0ae00",
+        "pinned-app.InterpolatedPricesTS.0597b45ae2d0ae00",
     ),
     "rebalance_state_contract_instance": (
         "pinned_app__portfoliorebalancestatets__pinned_identity",
@@ -378,7 +381,9 @@ CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
     "interpolated_prices_1d_ffill": _interpolated_prices_storage,
     "rebalance_state_contract_instance": lambda: configured_portfolio_rebalance_state_storage(
         instance_key="pinned_identity",
+        namespace=DEFAULT_MARKETS_NAMESPACE,
         storage_app="pinned_app",
+        base=PinnedBase,
     ),
 }
 

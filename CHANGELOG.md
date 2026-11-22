@@ -15,6 +15,10 @@ stops copying Markets tables into producers' metadata
 ([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)), and
 Markets' namespace and table names can no longer be overridden: a sandbox is a separate
 database ([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)).
+An interpolated-price table is its producer's own, with one name in every Environment, and
+the time-index and portfolio-contract instance factories have no default namespace, app or
+base ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)).
+`configured_index_values_storage` keeps its defaults.
 Read "Upgrading" at the end of this entry.
 
 ### Changed
@@ -27,6 +31,30 @@ Read "Upgrading" at the end of this entry.
   revision` now refuses that target and never writes a table's drop. A provider that sets
   `include_name_hook` gets neither protection. The lock and `requirements.txt`, which
   hosted images install, select 0.1.73; no other locked package changes.
+- **Breaking: `InterpolatedPrices` writes the table its producer declares**
+  ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)).
+  It requires `output_table=` and refuses a class of another contract, key or cadence, and
+  a table registered with another cadence. The table is an instance of
+  `InterpolatedPricesTS` built with
+  `configured_time_index_instance`, which takes `cadence=` for a storage that declares
+  none. `interpolated_prices_instance_key` computes its key from the source's physical
+  table name, the source's cadence, the upsample frequency and the rule, for the migration
+  and the updater alike; a cadence is read stripped and lower-case. The source's UID,
+  different in each Environment, no longer names the table, so one committed revision
+  creates it in every Environment, as `<storage_app>__interpolatedpricests__<key>`, with
+  `t_` before a key that starts with a digit and a name over 63 characters shortened. Two
+  sources with one physical name in different data sources or schemas, interpolated by one
+  app with one configuration, get one table name.
+- **Breaking: the instance factories require their owner**
+  ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)).
+  `configured_time_index_instance`, `configured_contract_instance_storage` and its three
+  portfolio factories require `namespace`, `storage_app` and `base`, and refuse an empty
+  value. An omitted namespace was `mainsequence.markets`, an omitted app `ms_markets` and
+  an omitted base `MarketsBase`; `storage_app=None` named the app `none`.
+  `contract_instance_table_name` requires `storage_app`. `configured_time_index_instance`
+  also refuses a second, different declaration of one table on one base (another namespace
+  or cadence, for example), which silently shared the first one's table. The identities of
+  instances that already passed all three are unchanged.
 - **Fewer MetaTables round trips behind an account's target and holdings**
   ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)). Each
   MetaTables request is a round trip, so these requests now join in one select what
@@ -93,6 +121,17 @@ Read "Upgrading" at the end of this entry.
 
 ### Removed
 
+- **Breaking: the identity of interpolated-price tables by source UID**
+  ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)):
+  `configured_interpolated_prices_storage`, `interpolated_prices_output_table_name`,
+  `interpolated_prices_storage_identity_components`, their four
+  `INTERPOLATED_PRICES_*_COMPONENT` constants, the `storage_namespace`, `storage_app` and
+  `storage_base` arguments of `InterpolatedPrices`, and
+  `get_interpolated_prices_timeseries`, ADR 0030's transition helper, which could only
+  build the removed default. The equal-weight example's dynamic provider and preparation
+  script go too, with the account examples' `--skip-schema-prep` and `--revision-message`.
+  `msm_portfolios.contrib.prices` exported only that helper and no longer imports its
+  `updaters` module: import `msm_portfolios.contrib.prices.updaters`.
 - **The pre-3.0 import paths and class names (ADR 0048).** `msm.data_nodes`,
   `msm_portfolios.data_nodes`, `msm_pricing.data_nodes` and
   `msm_portfolios.contrib.prices.data_nodes`, with every submodule, are gone, and so are
@@ -156,11 +195,17 @@ Read "Upgrading" at the end of this entry.
   other columns, their indexes and their foreign keys: 24 of 29 operations for one
   interpolated-price and one rebalance-state instance on 4.2.4.
   `configured_time_index_instance`, `configured_contract_instance_storage` and its three
-  portfolio factories, `configured_index_values_storage` and
-  `configured_interpolated_prices_storage` now point the keys at Markets' own columns and
-  add only the instance's table to that metadata. The extension-owned Index example does
-  the same instead of copying the Index table. Tables, names, identifiers, storage
-  identities and keys are unchanged, so existing tables need no revision.
+  portfolio factories and `configured_index_values_storage` now point the keys at Markets'
+  own columns and add only the instance's table to that metadata. The extension-owned
+  Index example does the same instead of copying the Index table. This changes no table,
+  name, identifier, storage identity or key, so it needs no revision of existing tables;
+  interpolated-price tables are replaced by
+  [#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95).
+- **The equal-weight example can create its table**
+  ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)).
+  Its preparation step stopped before any revision: its dynamic provider shared Markets'
+  history, so MetaTables refused to autogenerate. The example now declares the table on
+  its own base and has its own provider and one committed revision.
 - **The extension guidance puts a project's tables on the project's own base**
   ([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)). Three
   skills, three knowledge pages, tutorial 5 and the custom asset-details example still
@@ -256,6 +301,53 @@ Read "Upgrading" at the end of this entry.
 - **Pass the value format to the OpenFIGI Index helpers**, as `value_format` or
   `underlying_index_value_format`: `decimal` for a level, `percent` for a rate stored as
   a decimal ratio.
+- **Give every instance factory its owner.** Pass the producer's `namespace`,
+  `storage_app` and `base`. With the values a table was built with, its name, identifier
+  and storage identity stay. Other values name another table, and no row moves to it: a
+  table built by omission was named with `mainsequence.markets` and `ms_markets`.
+- **Declare and migrate a new table for each interpolation configuration**
+  ([#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)),
+  in this order, in each project that runs `InterpolatedPrices`:
+  1. declare it with `configured_time_index_instance(InterpolatedPricesStorage, ...)`:
+     the project's namespace, storage app and base, the key from
+     `interpolated_prices_instance_key` and, as cadence, the upsample frequency. A
+     provider module that still imports a removed name fails to import, so its migration
+     Job fails until then;
+  2. commit its revision, and apply it in each Environment before the updater runs. Keep
+     the revisions that created the old tables in the provider's history: an Environment
+     that applied one cannot upgrade without it. A provider that already has a revision
+     cannot autogenerate this one: `migrations revision` refuses a revision that adds a
+     table to it, a MetaTables defect measured on 0.1.71 and 0.1.73, and "upgrade head",
+     which the error advises, does not help. A revision written by hand
+     (`--no-autogenerate`) and a new provider's first revision are not affected;
+  3. pass it as `output_table=`, and run interpolation. The table starts empty and fills
+     from the updater's `offset_start`, 2017-07-20 by default, as far as the source still
+     holds bars. Older bars need an earlier `offset_start` on the first run. No row moves
+     from the old table.
+- **Expect these identities to change with the new table's UID.** `InterpolatedPrices`
+  keeps its own update hash for the same configuration and source.
+  - An updater whose configuration holds an `InterpolatedPrices` gets a new update hash.
+  - A rebalance strategy that declares one, or an updater that holds one, as a dependency
+    (execution bars or liquidity, for example) gets a new strategy revision. A
+    `PortfolioEngine` ledger that already holds that strategy's fills then refuses its
+    next run (`Corrected source/state revisions require portfolio-tail replay`). Bind
+    that engine to a new ledger instance (another `instance_key`, so another new table
+    and revision): it computes the whole ledger from the initial state, and the old table
+    keeps what was recorded.
+  - A configuration that names the old table by `TimeIndexTableRef` still reads the old
+    table. Naming the new one gives it another portfolio configuration hash and, for a
+    signal, another `signal_uid`. A configuration that holds the updater keeps both.
+- **Remove the old interpolated-price tables in each Environment**, once nothing reads
+  them. Each Environment's table has its own name, and nothing drops it automatically.
+  Write a later revision of the provider by hand, with `op.drop_table(name,
+  if_exists=True)` for each of those names, and apply it in each Environment. A revision
+  that stays in the history creates its old table in every new Environment too, with no
+  catalog row, and that drop removes it there as well. It removes a protected table and
+  its catalog row: MetaTables' plain delete refuses an Alembic-managed table.
+- **An Environment that used the removed preparation step needs an operator.** That step
+  wrote its revisions into Markets' own history, in the installed package. Markets'
+  upgrade fails there with `Can't locate revision` once the file is gone, and this release
+  does not reconcile it.
 
 ## [4.2.3] - 2026-11-21
 

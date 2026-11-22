@@ -218,7 +218,8 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
             as the universe for both prices and portfolio construction.
             If None, the signal node is expected to define its own universe via get_asset_list().
         price_type:
-            Which source valuation field to use in legacy contributed price helpers.
+            Which source valuation field to use. Portfolio core reads
+            ``PortfolioBuildConfiguration.valuation_column`` instead.
         prices_configuration:
             Pricing configuration used to fetch and interpolate/upsample bars.
     """
@@ -246,8 +247,8 @@ class AssetsConfiguration(PortfolioConfigBaseModel):
         default="close",
         min_length=1,
         description=(
-            "Source valuation field used by legacy contributed price helpers. "
-            "Portfolio core uses PortfolioBuildConfiguration.valuation_column."
+            "Source valuation field. Portfolio core uses "
+            "PortfolioBuildConfiguration.valuation_column."
         ),
         examples=["close", "fair_value", "nav"],
     )

@@ -20,14 +20,12 @@ from examples.msm.accounts.account_portfolio_full_workflow import (  # noqa: E40
 
 def run_account_virtual_fund_allocation_example(
     *,
-    prepare_portfolio_schema: bool = True,
     run_portfolio_updaters: bool = True,
     apply_plan: bool = False,
 ):
     """Run the full account workflow with the virtual-fund allocation extension."""
 
     return run_account_portfolio_full_workflow(
-        prepare_portfolio_schema=prepare_portfolio_schema,
         use_portfolio_example=True,
         run_portfolio_updaters=run_portfolio_updaters,
         run_virtual_fund_allocation=True,
@@ -37,11 +35,6 @@ def run_account_virtual_fund_allocation_example(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--skip-schema-prep",
-        action="store_true",
-        help="Skip portfolio interpolation schema preparation.",
-    )
     parser.add_argument(
         "--no-run-portfolio-updaters",
         action="store_true",
@@ -54,7 +47,6 @@ def main() -> None:
     )
     args = parser.parse_args()
     run_account_virtual_fund_allocation_example(
-        prepare_portfolio_schema=not args.skip_schema_prep,
         run_portfolio_updaters=not args.no_run_portfolio_updaters,
         apply_plan=args.apply,
     )

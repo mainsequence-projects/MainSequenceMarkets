@@ -556,6 +556,9 @@ updater = PortfoliosUpdater(
 )
 ```
 
+`namespace`, `storage_app` and `base` are required and an empty value is refused:
+a factory never builds in Markets' namespace, app or base by default.
+
 Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
 `<storage_app>__<contract>__<instance_key>` and whose MetaTable identifier is
 `<Contract>.<instance_key>`, prefixed with the namespace when it is not the
@@ -567,16 +570,16 @@ changes the application's tables only.
 `configured_portfolio_calendar_events_storage` and
 `configured_portfolio_event_ledger_storage` take the same arguments.
 `configured_time_index_instance` (`msm.storage_instances`) builds an instance
-of any other Markets storage.
+of any other Markets storage, with the same three required arguments, and takes
+`cadence=` for a storage that declares none.
 
 Bind the engine to them with `rebalance_output_table=` on `PortfoliosUpdater`,
 `PortfolioWeights` and `run_portfolio`, and with `output_table=` on the
 calendar events and ledger updaters. `namespace=` on a node is the MetaTables
 hash namespace of the chain, not a table's namespace; a private table's
-namespace comes from its factory. `InterpolatedPrices` takes
-`storage_namespace=`, `storage_app=` and `storage_base=` to keep its derived
-table in the application's namespace; the table keeps its storage identity and
-identifier suffix, and none of the three enters `update_hash`.
+namespace comes from its factory. `InterpolatedPrices` requires `output_table=`,
+the application's own table of that interpolation configuration
+([The Table Of An Interpolation Configuration](#the-table-of-an-interpolation-configuration)).
 
 A private table may reference a registry row with a physical foreign key (the
 factories give each instance the contract's keys to
@@ -843,7 +846,8 @@ operation deletes the other side of the relationship.
 
 Portfolio time-index-table output is separate from registry MetaTables. These storage
 classes are registered through the same catalog bootstrap, after their FK target
-MetaTables:
+MetaTables. The exception is the table of `InterpolatedPrices`, which its producer
+declares and migrates:
 
 ```text
 +-----------------------------+             writes             +--------------------------------------+
@@ -854,7 +858,7 @@ MetaTables:
 | PortfoliosUpdater           |------------------------------->| PortfoliosStorage                    |
 | PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
 | External price updaters     |------------------------------->| ExternalPricesStorage                |
-| InterpolatedPrices          |------------------------------->| configured InterpolatedPricesStorage |
+| InterpolatedPrices          |------------------------------->| producer's InterpolatedPricesTS      |
 +-----------------------------+                                +--------------------------------------+
           engine node                                                         PlatformTimeIndexMetaTable
 
@@ -974,8 +978,8 @@ source price `TimeIndexTableUpdater` or `TimeIndexTableRef` is already part of t
 `source_time_index_meta_table_uid` when attaching an already registered
 compatible source table through `TimeIndexTableRef.from_uid(...)`.
 `InterpolatedPrices` validates the registered source cadence, exposes the
-resolved source from `dependencies()`, and writes the configured interpolation
-output.
+resolved source from `dependencies()`, and writes only the table of its own
+configuration, which it takes as `output_table=`.
 
 Timestamp-valued bar payloads such as `open_time`, `first_trade_time`, and
 `last_trade_time` remain timezone-aware datetimes throughout interpolation and
@@ -992,42 +996,87 @@ inclusive `asset_identifier`-scoped tail delete through
 interpolation updater and affected downstream graph. Do not update persisted
 time coordinates in place.
 
-The interpolation policy is storage identity, not row metadata.
-`InterpolatedPrices` builds a configured storage class whose
-`__metatable_extra_hash_components__` include the source `TimeIndexMetaTable`
-UID, the source table cadence, `upsample_frequency_id`, and
-`intraday_bar_interpolation_rule`; those components determine the configured
-physical table identity. The rows keep the normal price-bar grain
-`(time_index, asset_identifier)`. The policy values are not repeated on every
-price row.
+### The Table Of An Interpolation Configuration
 
-Configured interpolation storage is a dynamic schema artifact. It is derived
-from a real registered source price storage table and a concrete interpolation
-policy, so it is not part of the package-wide static `start_engine(...)` model
-list. Prepare it before the normal portfolio run:
+The interpolation policy is storage identity, not row metadata. Rows keep the normal
+price-bar grain `(time_index, asset_identifier)` and repeat no policy value, so one
+table holds one configuration, and another configuration is another table. Four values
+key the table:
+
+- the source's physical table name: `__table__.name` of its class in a migration,
+  `physical_table_name` of its registered table at run time. Its UID is not part of
+  the key, because it differs in each Environment;
+- the source's cadence;
+- the upsample frequency, the source's cadence when there is none;
+- the interpolation rule.
+
+`interpolated_prices_instance_key` computes the key, for the migration and for the
+updater alike. Cadences are read stripped and lower-case. The table belongs to the
+application that interpolates: it declares the table on its own base and migrates it
+with its own provider.
+
+```python
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
+
+from metatables import sqlalchemy_naming_convention
+from msm.storage_instances import configured_time_index_instance
+from msm_portfolios.time_index.prices.storage import (
+    InterpolatedPricesStorage,
+    interpolated_prices_instance_key,
+)
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+MyInterpolatedPrices = configured_time_index_instance(
+    InterpolatedPricesStorage,
+    instance_key=interpolated_prices_instance_key(
+        source_table_name="my_app__bars_1d",  # MyBars.__table__.name
+        source_cadence="1d",
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
+    ),
+    cadence="1d",  # the upsample frequency
+    namespace="my-app",
+    storage_app="my_app",
+    base=Base,
+)
+```
+
+The table is `<storage_app>__interpolatedpricests__<key>`, identified as
+`<namespace>.InterpolatedPricesTS.<key>` outside Markets' namespace. MetaTables puts
+`t_` before a key that starts with a digit and shortens a name longer than 63
+characters, so read the name from `MyInterpolatedPrices.__table__.name`. One committed
+revision creates it in every Environment.
+
+`InterpolatedPrices(..., output_table=MyInterpolatedPrices)` writes there. It computes
+the key from its own configuration and the registered source, and refuses a class of
+another contract, key or cadence, and a table registered with another cadence:
+correcting a class after its migration does not change what was registered. Its update
+identity does not include the table.
+
+A change of any of the four values needs a new table: declare it, commit its revision,
+and run interpolation to fill it. A first run starts at the updater's `offset_start`,
+2017-07-20 by default: give an earlier one before that run when the source holds older
+bars. The key holds no data source or schema, so two sources with one table name in
+different ones, interpolated by one app with one configuration, would share a table.
+
+The equal-weight example does this in
+`examples/msm_portfolios/portfolio_equal_weights_config.py`, with its provider and
+committed revision in `examples/msm_portfolios/portfolio_equal_weights_migrations/`.
+After Markets' own migrations, from the repository root:
 
 ```bash
-python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
+metatables --local migrations upgrade --provider examples.msm_portfolios.portfolio_equal_weights_migrations:migration head
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
-Both run only on the local runtime; see
-[Namespaces and sandboxes](../../../concepts.md#namespaces-and-sandboxes).
-The preparation step attaches the static schema, reads the registered
-`ExternalPricesStorage` UID and cadence metadata, builds the
-configured `InterpolatedPricesStorage` class, and uses the dynamic provider to find or
-generate the real dynamic Alembic revision. That provider shares Markets' history, so
-MetaTables refuses to autogenerate a first revision for the new table and the step stops
-there until
-[#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95) gives the
-example a provider of its own. Given a revision, the step runs the dynamic provider upgrade before any portfolio
-TimeIndexTableUpdater writes, even when a stale `TimeIndexMetaTable` metadata row already
-exists. Metadata alone is not considered schema preparation; the physical table
-must be created by the migration flow. If an older registered
-`ExternalPricesStorage` row is missing cadence metadata, the preparation script
-patches that metadata to the model-declared cadence before deriving the dynamic
-table. Runtime portfolio code then uses the registered table; it does not
-create or migrate dynamic storage.
+Both write only to the local runtime; see
+[Namespaces and sandboxes](../../../concepts.md#namespaces-and-sandboxes). Runtime
+portfolio code uses the registered table; it never creates or migrates one.
 
 `PortfolioBuildConfiguration.valuation_column` chooses which numeric column from
 the explicit valuation source drives portfolio returns. It is a string, not an
@@ -1087,7 +1136,9 @@ price_source = InterpolatedPrices(
         intraday_bar_interpolation_rule="ffill",
         source_price_instance=source_bars_node,
         upsample_frequency_id="1d",
-    )
+    ),
+    # Keyed by the source of these bars: see portfolio_equal_weights_config.py.
+    output_table=INTERPOLATED_PRICES_STORAGE,
 )
 
 signal_weights = FixedWeights.from_signal_configuration(...)
@@ -1370,8 +1421,8 @@ Rebalance state and portfolio weights also enforce `asset_identifier` against
 `AssetTable.unique_identifier`. Portfolio identity does not require a linked
 `IndexTable` row.
 
-See `examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py` for the
-schema-preparation stage and
+See `examples/msm_portfolios/portfolio_equal_weights_migrations/` for the example's
+own migrations and
 `examples/msm_portfolios/portfolio_equal_weights_run.py` for the normal
 portfolio run. The reusable implementation lives in
 `examples/msm_portfolios/portfolio_equal_weights_example.py`; it reuses the

@@ -19,6 +19,14 @@ base for its hand-written models too, the base that
 [issue #95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)
 requires for the factories' instances.
 
+Amended (2026-11-22, [issue #95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)):
+`configured_time_index_instance`, `configured_contract_instance_storage` and its three
+portfolio wrappers have no default owner. The owner chose to require
+the provider's namespace, storage app and base, and to build an interpolated-price table
+with the general instance factory, keyed by its configuration and the source's physical
+table name. `configured_interpolated_prices_storage`, which the context below cites, is
+removed.
+
 Proposed. Drafted 2026-10-25 from an analysis of this repository, of how
 applications consume it, and of the installed MetaTables and SDK contracts. The
 `development` branch has since moved to MetaTables 0.1.51, whose namespace and
@@ -208,6 +216,10 @@ mechanism, with these rules:
 - The extension's models, hand-written or factory-built, are declared on the
   extension's own declarative base, whose metadata its migration provider
   targets. `MarketsBase` is for Markets' own models (amended 2026-11-22).
+- `configured_time_index_instance`, `configured_contract_instance_storage` and its
+  portfolio wrappers require the extension's namespace, storage app and base: none of
+  the three defaults to Markets' own (amended 2026-11-22). The Index-values factory's
+  defaults stay until ADR 0060's open decision on Index values.
 - Registries that several applications populate gain a `managed_by`
   discriminator and an external reference, so "accounts of provider X" is a
   core filter rather than a join.

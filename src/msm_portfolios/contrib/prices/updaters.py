@@ -1,4 +1,3 @@
-import copy
 import datetime
 import uuid
 from typing import Annotated, Any
@@ -9,7 +8,12 @@ import pytz
 from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
 from tqdm import tqdm
 
-from metatables import UpdateStatistics, TimeIndexTableRef, TimeIndexTableUpdater
+from metatables import (
+    PlatformTimeIndexMetaTable,
+    TimeIndexTableRef,
+    TimeIndexTableUpdater,
+    UpdateStatistics,
+)
 from metatables.updaters.utils import (
     string_freq_to_time_delta,
     string_frequency_to_minutes,
@@ -20,6 +24,11 @@ from msm.time_index.assets.asset_indexed import (
 )
 from msm.time_index.utils.time import normalize_datetime64_ns_utc
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm.storage_instances import (
+    INSTANCE_KEY_COMPONENT,
+    STORAGE_CONTRACT_COMPONENT,
+    normalized_cadence,
+)
 from msm_portfolios.asset_scope import (
     asset_unique_identifier,
     refuse_scope_calendar,
@@ -31,9 +40,8 @@ from msm_portfolios.services.calendars import (
 )
 from msm_portfolios.time_index.prices.storage import (
     InterpolatedPricesStorage,
-    configured_interpolated_prices_storage,
+    interpolated_prices_instance_key,
 )
-from msm_portfolios.configuration import AssetsConfiguration
 from msm_portfolios.utils import TIMEDELTA
 
 _ONE_DAY = datetime.timedelta(days=1)
@@ -105,7 +113,7 @@ def _source_output_metadata(
     except ValueError as exc:
         raise RuntimeError(
             "InterpolatedPrices source_price_instance must have registered "
-            f"output metadata before interpolation can derive table identity: "
+            f"output metadata, where interpolation reads the source's table name and cadence: "
             f"{source_context}."
         ) from exc
 
@@ -146,6 +154,52 @@ def _resolve_interpolated_source_prices(
     return TimeIndexTableRef.from_uid(source_uid), source_uid
 
 
+def _require_output_table_of_configuration(
+    output_table: Any,
+    *,
+    instance_key: str,
+    cadence: str,
+) -> None:
+    """Refuse a table other than the one this configuration produces.
+
+    Rows are keyed only by time and asset, so one table holds one configuration.
+    """
+
+    contract = InterpolatedPricesStorage.__markets_authored_identifier__
+    identity = getattr(output_table, "__metatable_extra_hash_components__", None) or {}
+    bound = (
+        identity.get(STORAGE_CONTRACT_COMPONENT),
+        identity.get(INSTANCE_KEY_COMPONENT),
+        getattr(output_table, "__cadence__", None),
+    )
+    if bound != (contract, instance_key, cadence):
+        raise ValueError(
+            "InterpolatedPrices writes only the table its configuration produces: the "
+            f"{contract} instance with key {instance_key!r} and cadence {cadence!r}. "
+            f"output_table={getattr(output_table, '__name__', output_table)!s} has contract, key "
+            f"and cadence {bound!r}. Declare the table with "
+            f"configured_time_index_instance(InterpolatedPricesStorage, "
+            f"instance_key={instance_key!r}, cadence={cadence!r}, namespace=..., storage_app=..., "
+            "base=...) and migrate it with its owner's provider."
+        )
+
+
+def _registered_cadence(output_metadata: Any) -> Any:
+    profile = getattr(output_metadata, "time_indexed_profile", None)
+    cadence = getattr(profile, "cadence", None)
+    if cadence in (None, ""):
+        cadence = getattr(output_metadata, "cadence", None)
+    if cadence in (None, ""):
+        contract = getattr(output_metadata, "table_contract", None)
+        if isinstance(contract, dict):
+            authoring = contract.get("authoring")
+            if isinstance(authoring, dict):
+                time_indexed = authoring.get("time_indexed")
+                if isinstance(time_indexed, dict):
+                    cadence = time_indexed.get("cadence")
+    return cadence
+
+
 def _source_time_indexed_profile_cadence(
     source_prices_ts: TimeIndexTableUpdater | TimeIndexTableRef,
     *,
@@ -155,18 +209,7 @@ def _source_time_indexed_profile_cadence(
         source_prices_ts,
         source_context=source_time_index_meta_table_uid,
     )
-    profile = getattr(output_table, "time_indexed_profile", None)
-    cadence = getattr(profile, "cadence", None)
-    if cadence in (None, ""):
-        cadence = getattr(output_table, "cadence", None)
-    if cadence in (None, ""):
-        contract = getattr(output_table, "table_contract", None)
-        if isinstance(contract, dict):
-            authoring = contract.get("authoring")
-            if isinstance(authoring, dict):
-                time_indexed = authoring.get("time_indexed")
-                if isinstance(time_indexed, dict):
-                    cadence = time_indexed.get("cadence")
+    cadence = _registered_cadence(output_table)
     if cadence in (None, ""):
         raise RuntimeError(
             "InterpolatedPrices requires the source TimeIndexMetaTable to declare "
@@ -175,7 +218,7 @@ def _source_time_indexed_profile_cadence(
             "as a portfolio price source."
         )
 
-    cadence = str(cadence).strip().lower()
+    cadence = normalized_cadence(cadence, argument="source cadence")
     if not (cadence.endswith("d") or cadence.endswith("m")):
         raise ValueError(
             "InterpolatedPrices currently supports daily or minute source cadences. "
@@ -257,47 +300,6 @@ def _normalize_time_indexed_frame_ns_utc(frame: pd.DataFrame) -> pd.DataFrame:
             normalized[column_name] = normalize_datetime64_ns_utc(normalized[column_name])
 
     return normalized.set_index(index_names).sort_index()
-
-
-def get_interpolated_prices_timeseries(
-    assets_configuration: AssetsConfiguration | None = None,
-    asset_list=None,
-):
-    """
-    Creates an interpolated price time series for an asset configuration.
-    """
-
-    if assets_configuration is None:
-        assert asset_list is not None, "asset_list and assets_configuration both cant be None"
-    if assets_configuration is not None:
-        prices_configuration = copy.deepcopy(assets_configuration).prices_configuration
-        prices_configuration_kwargs = prices_configuration.model_dump(
-            exclude={
-                "forward_fill_to_now",
-                "is_live",
-            }
-        )
-
-        resolved_asset_list = asset_list
-        if resolved_asset_list is None:
-            resolved_asset_list = assets_configuration.asset_list
-
-        if resolved_asset_list is None:
-            return InterpolatedPrices(
-                interpolation_config=InterpolatedPricesConfig(
-                    asset_category_unique_id=assets_configuration.assets_category_unique_id,
-                    **prices_configuration_kwargs,
-                )
-            )
-        else:
-            return InterpolatedPrices(
-                interpolation_config=InterpolatedPricesConfig(
-                    asset_list=resolved_asset_list,
-                    **prices_configuration_kwargs,
-                )
-            )
-
-    raise Exception("Not implemented prices_configuration Kwargs")
 
 
 class UpsampleAndInterpolation:
@@ -772,17 +774,17 @@ class InterpolatedPrices(AssetIndexedUpdater):
         self,
         interpolation_config: InterpolatedPricesConfig,
         *args,
-        storage_namespace: str | None = None,
-        storage_app: str | None = None,
-        storage_base: Any | None = None,
+        output_table: type[PlatformTimeIndexMetaTable],
         **kwargs,
     ):
         """
         Initializes the InterpolatedPrices object.
 
-        ``storage_namespace``, ``storage_app`` and ``storage_base`` place the output
-        table in a provider's own namespace (ADR 0047); they change where rows land,
-        not ``update_hash``.
+        ``output_table`` is the table of this configuration, which its producer declares
+        and migrates: the ``InterpolatedPricesTS`` instance whose key
+        ``interpolated_prices_instance_key`` computes and whose cadence is the upsample
+        frequency (#95). Another table is refused. It is where rows land, and is no part
+        of this updater's ``update_hash``.
         """
         self.interpolation_config = interpolation_config
         for asset in interpolation_config.asset_list or []:
@@ -793,13 +795,6 @@ class InterpolatedPrices(AssetIndexedUpdater):
         source_prices_ts, source_time_index_meta_table_uid = _resolve_interpolated_source_prices(
             interpolation_config
         )
-        if "output_table" in kwargs:
-            raise TypeError(
-                "InterpolatedPrices output_table is derived from interpolation_config "
-                "through __metatable_extra_hash_components__; pass the source storage "
-                "configuration instead."
-            )
-
         if asset_category_unique_id is None:
             assert asset_list is not None, (
                 f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
@@ -808,15 +803,22 @@ class InterpolatedPrices(AssetIndexedUpdater):
             source_prices_ts,
             source_time_index_meta_table_uid=source_time_index_meta_table_uid,
         )
-        upsample_frequency_id = interpolation_config.upsample_frequency_id or source_cadence
-        output_table = configured_interpolated_prices_storage(
-            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
-            source_cadence=source_cadence,
-            upsample_frequency_id=upsample_frequency_id,
-            intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
-            namespace=storage_namespace,
-            storage_app=storage_app,
-            base=storage_base,
+        upsample_frequency_id = normalized_cadence(
+            interpolation_config.upsample_frequency_id or source_cadence,
+            argument="upsample_frequency_id",
+        )
+        _require_output_table_of_configuration(
+            output_table,
+            instance_key=interpolated_prices_instance_key(
+                source_table_name=_source_output_metadata(
+                    source_prices_ts,
+                    source_context=source_time_index_meta_table_uid,
+                ).physical_table_name,
+                source_cadence=source_cadence,
+                upsample_frequency_id=upsample_frequency_id,
+                intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
+            ),
+            cadence=upsample_frequency_id,
         )
 
         self.asset_category_unique_id = asset_category_unique_id
@@ -841,11 +843,16 @@ class InterpolatedPrices(AssetIndexedUpdater):
             *args,
             **kwargs,
         )
-
-    def _initialize_configuration(self, init_kwargs: dict) -> None:
-        for runtime_key in ("storage_namespace", "storage_app", "storage_base"):
-            init_kwargs.pop(runtime_key, None)
-        super()._initialize_configuration(init_kwargs=init_kwargs)
+        # Correcting a class after its migration leaves the registered cadence as it was, and
+        # whatever reads this table as a source takes its cadence from the catalog.
+        registered_cadence = _registered_cadence(self.output_metadata)
+        if str(registered_cadence or "").strip().lower() != upsample_frequency_id:
+            raise ValueError(
+                f"InterpolatedPrices output_table {output_table.__table__.name} is registered "
+                f"with cadence {registered_cadence!r}, and its configuration needs "
+                f"{upsample_frequency_id!r}. Declaring the class again does not change what "
+                "its migration registered."
+            )
 
     def dependencies(self):
         return {"bars_ts": self.bars_ts}

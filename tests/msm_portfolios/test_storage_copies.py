@@ -6,8 +6,16 @@ Split from ``tests/msm/test_storage_copies.py``, whose frames it shares through
 
 from __future__ import annotations
 
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
+
+from metatables import sqlalchemy_naming_convention
 from msm.storage_copies import TimeIndexRowsCopyConfiguration
 from tests.support.storage_copies import DAY, _frame
+
+
+class ProviderBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
 def test_the_real_copier_keeps_one_identity_per_source_and_target() -> None:
@@ -18,7 +26,10 @@ def test_the_real_copier_keeps_one_identity_per_source_and_target() -> None:
     )
 
     instance = configured_portfolio_event_ledger_storage(
-        instance_key="copytest", namespace="my-provider", storage_app="my_provider"
+        instance_key="copytest",
+        namespace="my-provider",
+        storage_app="my_provider",
+        base=ProviderBase,
     )
     before = dict(vars(instance))
     instance._bind_meta_table(

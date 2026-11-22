@@ -158,40 +158,15 @@ def print_virtual_fund_allocation_frames(frames: dict[str, pd.DataFrame]) -> Non
 
 def run_account_portfolio_full_workflow(
     *,
-    prepare_portfolio_schema: bool = True,
     use_portfolio_example: bool = True,
     run_portfolio_updaters: bool = True,
     run_virtual_fund_allocation: bool = False,
     apply_virtual_fund_allocation: bool = False,
-    revision_message: str | None = None,
 ) -> dict[str, Any]:
     """Create the account registry rows and publish account holdings."""
 
     use_local_runtime()
     print_section("Account Portfolio Full Workflow")
-
-    schema_preparation_result: dict[str, Any] | None = None
-    if prepare_portfolio_schema and use_portfolio_example:
-        print(
-            "Preparing the reusable portfolio example schema before account "
-            "target and holdings publication."
-        )
-        from examples.msm_portfolios.portfolio_equal_weights_prepare_schema import (
-            prepare_equal_weight_portfolio_schema,
-        )
-
-        schema_preparation_result = prepare_equal_weight_portfolio_schema(
-            run_after=False,
-            runtime_models=ACCOUNT_WORKFLOW_RUNTIME_MODELS,
-            revision_message=revision_message,
-        )
-        print(
-            "   Portfolio schema ready: "
-            f"configured_output_table="
-            f"{schema_preparation_result['configured_output_table']} "
-            f"configured_storage_uid="
-            f"{schema_preparation_result['configured_storage_uid']}"
-        )
 
     portfolio_example_result: dict[str, Any] | None = None
     if use_portfolio_example:
@@ -494,7 +469,6 @@ def run_account_portfolio_full_workflow(
         )
 
     result = {
-        "schema_preparation_result": schema_preparation_result,
         "use_portfolio_example": use_portfolio_example,
         "portfolio_example_result": portfolio_example_result,
         "asset_type": asset_type,
@@ -588,14 +562,6 @@ def _run_virtual_fund_allocation_extension(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--skip-schema-prep",
-        action="store_true",
-        help=(
-            "Skip dynamic portfolio schema preparation. Use only when the "
-            "configured interpolation table has already been migrated."
-        ),
-    )
-    parser.add_argument(
         "--standalone-target-sleeve",
         action="store_true",
         help=("Create a standalone Portfolio row instead of reusing the portfolio example output."),
@@ -607,11 +573,6 @@ def main() -> None:
             "When chaining the portfolio example, skip its TimeIndexTableUpdater publication; "
             "by default the full dependency tree is published."
         ),
-    )
-    parser.add_argument(
-        "--revision-message",
-        default=None,
-        help="Optional Alembic revision message for the dynamic portfolio schema step.",
     )
     parser.add_argument(
         "--with-virtual-fund-allocation",
@@ -629,12 +590,10 @@ def main() -> None:
     args = parser.parse_args()
 
     result = run_account_portfolio_full_workflow(
-        prepare_portfolio_schema=not args.skip_schema_prep,
         use_portfolio_example=not args.standalone_target_sleeve,
         run_portfolio_updaters=not args.no_run_portfolio_updaters,
         run_virtual_fund_allocation=args.with_virtual_fund_allocation,
         apply_virtual_fund_allocation=args.apply_virtual_fund_allocation,
-        revision_message=args.revision_message,
     )
     print("Workflow complete.")
     print("Used portfolio example:", result["use_portfolio_example"])

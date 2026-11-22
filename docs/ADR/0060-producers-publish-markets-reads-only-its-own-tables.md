@@ -202,6 +202,12 @@ producer builds its private state tables with them, in its own namespace, migrat
 provider. `configured_signal_weights_storage`, `configured_portfolio_weights_storage` and
 `configured_portfolios_storage` are removed with the instances they built.
 
+Amended (2026-11-22, [issue #95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)):
+the four require the producer's namespace, storage app and base, so none builds in
+Markets' by omission. An interpolated-price table is an instance of
+`configured_time_index_instance` like the others, keyed by its configuration, and
+`InterpolatedPrices` takes it as `output_table=`.
+
 A private table may reference a registry row with a physical foreign key and declares its
 delete action. The key points from the dependent to the core and is the only coupling
 between them. Since

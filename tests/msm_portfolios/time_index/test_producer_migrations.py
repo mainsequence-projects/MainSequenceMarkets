@@ -34,7 +34,7 @@ from msm_portfolios.time_index.contract_instances import (
 )
 from msm_portfolios.time_index.prices.storage import (
     InterpolatedPricesStorage,
-    configured_interpolated_prices_storage,
+    interpolated_prices_instance_key,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -44,6 +44,7 @@ GUIDANCE = (
     f"{SKILLS}/assets/asset_model_extension/SKILL.md",
     f"{SKILLS}/platform/bootstrap_registration/SKILL.md",
     f"{SKILLS}/platform/metatable_migrations/SKILL.md",
+    f"{SKILLS}/portfolios/portfolio_workflow/SKILL.md",
     "docs/knowledge/msm/assets/asset_indexed_updaters.md",
     "docs/knowledge/msm/models/index.md",
     "docs/knowledge/msm/platform/meta_table_registration.md",
@@ -92,18 +93,21 @@ def test_a_producer_following_the_skill_template_migrates_only_its_own_tables(
     owned = {"namespace": "producer-app", "storage_app": "producer_app", "base": Base}
     models = [
         FollowedIndexTable,
-        configured_time_index_instance(InterpolatedPricesStorage, instance_key="main", **owned),
+        configured_time_index_instance(
+            InterpolatedPricesStorage,
+            instance_key=interpolated_prices_instance_key(
+                source_table_name="producer_app__bars_1d",
+                source_cadence="1d",
+                upsample_frequency_id=None,
+                intraday_bar_interpolation_rule="ffill",
+            ),
+            cadence="1d",
+            **owned,
+        ),
         configured_portfolio_rebalance_state_storage(instance_key="main", **owned),
         configured_portfolio_calendar_events_storage(instance_key="main", **owned),
         configured_portfolio_event_ledger_storage(instance_key="main", **owned),
         configured_index_values_storage(cadence="1d", **owned),
-        configured_interpolated_prices_storage(
-            source_time_index_meta_table_uid="source-bars",
-            source_cadence="1d",
-            upsample_frequency_id=None,
-            intraday_bar_interpolation_rule="ffill",
-            **owned,
-        ),
     ]
     # The provider as the metatable_migrations skill's template builds it: no include hook.
     provider = build_metatable_migration_provider(

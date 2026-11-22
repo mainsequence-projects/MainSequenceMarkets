@@ -34,11 +34,12 @@ from sqlalchemy import ForeignKeyConstraint, Index, MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import PlatformTimeIndexMetaTable, schema_index_name, schema_table_name
-from msm.base import MARKETS_TABLE_APP, MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.base import MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
 from msm.models.calendars import CalendarTable
 from msm.models.portfolios.core import PortfolioTable
-from msm.settings import markets_identifier, markets_namespace
+from msm.settings import markets_identifier
+from msm.storage_instances import require_instance_owner, required_storage_app
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioEventLedgerStorage,
@@ -163,13 +164,13 @@ def contract_instance_table_name(
     contract: str,
     instance_key: str,
     *,
-    storage_app: str = MARKETS_TABLE_APP,
+    storage_app: str,
 ) -> str:
     """Return the physical table name of one instance in one app segment."""
 
     definition = portfolio_storage_contract(contract)
     return schema_table_name(
-        storage_app,
+        required_storage_app(storage_app),
         definition.name.lower(),
         suffix=contract_instance_key(instance_key),
     )
@@ -189,17 +190,17 @@ def configured_contract_instance_storage(
     contract: str,
     *,
     instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
 ) -> type[PlatformTimeIndexMetaTable]:
     """Build the storage class for one instance of one portfolio time-series contract.
 
-    ``namespace`` is the MetaTables namespace that owns the instance; it defaults
-    to the Markets namespace, which is right only for the Markets
-    deployment itself. ``storage_app`` is the physical-name app segment, for
-    example ``my_app``. ``base`` is the application's own SQLAlchemy
-    declarative base, whose metadata its Alembic provider targets. The instance
+    ``namespace`` is the MetaTables namespace that owns the instance, for example
+    ``my-app``. ``storage_app`` is the physical-name app segment, for example
+    ``my_app``. ``base`` is the application's own SQLAlchemy declarative base,
+    whose metadata its Alembic provider targets. All three are required, and an
+    empty value is refused: none falls back to Markets' own (#95). The instance
     adds only its own table to that metadata: the contract's foreign keys point
     at Markets' own columns, as in
     ``examples/msm/indices/extension_owned_index_storage.py``, so the
@@ -212,25 +213,22 @@ def configured_contract_instance_storage(
 
     definition = portfolio_storage_contract(contract)
     key = contract_instance_key(instance_key)
-    resolved_namespace = markets_namespace(namespace)
-    resolved_app = str(storage_app).strip()
-    if not resolved_app:
-        raise ValueError("storage_app must be a non-empty app segment.")
+    owner_namespace, app, owner_base = require_instance_owner(namespace, storage_app, base)
     return _configured_contract_instance_storage(
         definition.name,
         key,
-        resolved_namespace,
-        resolved_app,
-        base or MarketsBase,
+        owner_namespace,
+        app,
+        owner_base,
     )
 
 
 def configured_portfolio_rebalance_state_storage(
     *,
     instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
 ) -> type[PlatformTimeIndexMetaTable]:
     """Build one ``PortfolioRebalanceStateTS`` instance (rebalance intents and fills)."""
 
@@ -246,9 +244,9 @@ def configured_portfolio_rebalance_state_storage(
 def configured_portfolio_calendar_events_storage(
     *,
     instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
 ) -> type[PlatformTimeIndexMetaTable]:
     """Build one ``PortfolioCalendarEventsTS`` instance (session open and close events)."""
 
@@ -264,9 +262,9 @@ def configured_portfolio_calendar_events_storage(
 def configured_portfolio_event_ledger_storage(
     *,
     instance_key: str,
-    namespace: str | None = None,
-    storage_app: str = MARKETS_TABLE_APP,
-    base: type[DeclarativeBase] | None = None,
+    namespace: str,
+    storage_app: str,
+    base: type[DeclarativeBase],
 ) -> type[PlatformTimeIndexMetaTable]:
     """Build one ``PortfolioEventLedgerTS`` instance (the position-aware engine's ledger)."""
 

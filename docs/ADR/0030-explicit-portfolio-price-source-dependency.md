@@ -18,6 +18,15 @@ ADR's assignment of rebalance-index generation, executed-weight production,
 and final portfolio resampling to `PortfoliosDataNode`. The explicit upstream
 valuation-source decision remains in force.
 
+Amendment (2026-11-22, [issue #95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95)): the owner of an
+interpolation declares its table and passes it to `InterpolatedPrices` as
+`output_table=`. The table is keyed by the configuration, with the source's physical
+table name in place of its UID, so one committed revision creates it in every
+Environment. This supersedes what this ADR says of dynamic interpolation storage and of
+the example's preparation script: the equal-weight example now migrates its own table
+with its own provider. The transition helper `get_interpolated_prices_timeseries(...)`
+that Stage 8 retained is removed.
+
 Implemented in the portfolio configuration contract, `PortfoliosDataNode`,
 contributed signal configurations, the equal-weight portfolio example, docs,
 skills, changelog, and focused portfolio tests.

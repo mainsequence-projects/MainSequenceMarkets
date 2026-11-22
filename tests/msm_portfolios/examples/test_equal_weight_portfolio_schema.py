@@ -1,20 +1,37 @@
+"""The equal-weight example declares and migrates its own interpolated-price table (#95)."""
+
 from __future__ import annotations
 
-from types import SimpleNamespace
+import importlib
 
 import pytest
-from metatables.migrations import metadata_for_models
+from alembic import command
+from sqlalchemy import text
 
+from examples.msm.platform import bootstrap as example_runtime
 from examples.msm_portfolios import portfolio_equal_weights_config as config
 from examples.msm_portfolios import portfolio_equal_weights_example as example
-from examples.msm_portfolios import portfolio_equal_weights_prepare_schema as prep
+from metatables import TimeIndexMetaTable, TimeIndexTableRef
+from metatables.migrations import alembic_config_for_provider
+from msm.base import MarketsBase
+from msm_portfolios.time_index.prices.storage import (
+    ExternalPricesStorage,
+    interpolated_prices_instance_key,
+)
+from tests.support.pinned_identities import DATA_SOURCE_UID, PRICES_TABLE_UID, _bound
+
+MIGRATIONS = "examples.msm_portfolios.portfolio_equal_weights_migrations"
 
 
-def _configured_dynamic_table_name() -> str:
-    return config.configured_equal_weight_interpolated_prices_storage(
-        source_time_index_meta_table_uid="source-storage-uid",
-        source_cadence="1d",
-    ).__table__.name
+@pytest.fixture
+def provider(monkeypatch):
+    # Loading the example's provider selects the local runtime; the test stands in for it.
+    monkeypatch.setattr(example_runtime, "use_local_runtime", lambda: None)
+    return importlib.import_module(MIGRATIONS).migration
+
+
+def _schema(connection) -> dict[str, str | None]:
+    return dict(connection.execute(text("SELECT name, sql FROM sqlite_master")).all())
 
 
 def test_static_runtime_models_exclude_configured_interpolation_storage() -> None:
@@ -23,210 +40,90 @@ def test_static_runtime_models_exclude_configured_interpolation_storage() -> Non
     assert "PortfolioRebalanceStateStorage" in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
     assert all(isinstance(model, str) for model in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS)
     assert "InterpolatedPricesStorage" not in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
-    assert not any(
-        getattr(model, "__name__", "").startswith("InterpolatedPricesStorage_")
-        for model in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
+
+
+def test_the_example_declares_its_table_on_its_own_base() -> None:
+    table = config.INTERPOLATED_PRICES_STORAGE
+    key = interpolated_prices_instance_key(
+        source_table_name=ExternalPricesStorage.__table__.name,
+        source_cadence=ExternalPricesStorage.__cadence__,
+        upsample_frequency_id=config.PRICE_UPSAMPLE_FREQUENCY_ID,
+        intraday_bar_interpolation_rule=config.PRICE_INTERPOLATION_RULE,
     )
 
-
-def test_runtime_derives_configured_storage_from_registered_source_metadata() -> None:
-    source_meta_table = SimpleNamespace(
-        uid="source-storage-uid",
-        time_indexed_profile=SimpleNamespace(cadence="5m"),
+    assert list(config.ProviderBase.metadata.tables) == [table.__table__.name]
+    assert not issubclass(table, MarketsBase)
+    assert table.__metatable_identifier__ == (
+        f"{config.PROVIDER_NAMESPACE}.InterpolatedPricesTS.{key}"
     )
-
-    storage = example.build_example_interpolated_prices_storage(source_meta_table)
-    expected = config.configured_equal_weight_interpolated_prices_storage(
-        source_time_index_meta_table_uid="source-storage-uid",
-        source_cadence="5m",
+    assert table.__table__.name.startswith(
+        f"{config.PROVIDER_STORAGE_APP}__interpolatedpricests__"
     )
-
-    assert storage is expected
-    assert storage.__table__.name == expected.__table__.name
-    assert storage.__metatable_extra_hash_components__["source_time_index_meta_table_uid"] == (
-        "source-storage-uid"
-    )
-    assert storage.__metatable_extra_hash_components__["source_cadence"] == "5m"
+    assert table.__cadence__ == config.PRICE_UPSAMPLE_FREQUENCY_ID
 
 
-def test_source_cadence_reads_top_level_registered_metadata() -> None:
-    source_meta_table = SimpleNamespace(
-        time_indexed_profile=None,
-        cadence="1D",
-    )
-
-    assert config.source_cadence_from_meta_table(source_meta_table) == "1d"
+def test_the_provider_registers_and_targets_only_the_examples_table(provider) -> None:
+    # Alembic alone would create the table; MetaTables registers what this list holds.
+    assert list(provider.metatable_models) == [config.INTERPOLATED_PRICES_STORAGE]
+    assert provider.target_metadata is config.ProviderBase.metadata
 
 
-def test_source_cadence_does_not_fallback_to_model_constant() -> None:
-    source_meta_table = SimpleNamespace(
-        uid="source-uid",
-        physical_table_name="ms_markets__externalpricests",
-        time_indexed_profile=None,
-        cadence=None,
-    )
+def test_one_committed_revision_creates_the_table_in_each_catalog(
+    provider, tmp_path, sqlite_revisions
+) -> None:
+    table = config.INTERPOLATED_PRICES_STORAGE.__table__
+    for environment in ("development", "production"):
+        engine = sqlite_revisions.engine(tmp_path / f"{environment}.sqlite", "head")
+        with engine.connect() as connection:
+            before = _schema(connection)
+            settings = alembic_config_for_provider(provider, sqlalchemy_url=str(engine.url))
+            settings.attributes["connection"] = connection
 
-    with pytest.raises(RuntimeError, match="missing backend cadence metadata"):
-        config.source_cadence_from_meta_table(source_meta_table)
+            command.upgrade(settings, "head")
+            connection.commit()
+            # A second autogenerate of the example's provider is empty.
+            command.check(settings)
 
-
-def test_repair_source_cadence_metadata_patches_stale_table() -> None:
-    class StaleSource:
-        uid = "source-uid"
-        physical_table_name = "ms_markets__externalpricests"
-        time_indexed_profile = None
-        cadence = None
-
-        def patch(self, **kwargs):
-            assert kwargs == {"cadence": "1d"}
-            return SimpleNamespace(
-                uid=self.uid,
-                physical_table_name=self.physical_table_name,
-                time_indexed_profile=None,
-                cadence="1d",
+            after = _schema(connection)
+            tables = set(
+                connection.execute(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'")
+                ).scalars()
             )
+        engine.dispose()
 
-    repaired, cadence, changed = config.repair_source_cadence_metadata(
-        StaleSource(),
-        expected_cadence="1d",
+        assert {name: after.get(name) for name in before} == before
+        assert tables - set(before) == {table.name, provider.version_table}
+
+
+def test_the_example_binds_interpolation_to_that_table() -> None:
+    source = TimeIndexTableRef(
+        output_table=TimeIndexMetaTable.model_construct(
+            uid="d0000000-0000-4000-8000-000000000002",
+            data_source_uid=DATA_SOURCE_UID,
+            physical_table_name=ExternalPricesStorage.__table__.name,
+            time_indexed_profile=None,
+            cadence=ExternalPricesStorage.__cadence__,
+        )
     )
+    with _bound(
+        config.INTERPOLATED_PRICES_STORAGE,
+        PRICES_TABLE_UID,
+        cadence=config.INTERPOLATED_PRICES_STORAGE.__cadence__,
+    ):
+        prices = example.build_interpolated_prices_node(source)
 
-    assert cadence == "1d"
-    assert changed is True
-    assert repaired.cadence == "1d"
+    assert prices.output_table is config.INTERPOLATED_PRICES_STORAGE
+
+
+def test_the_example_names_its_migration_when_the_table_is_missing(monkeypatch) -> None:
+    monkeypatch.setattr(TimeIndexMetaTable, "filter_by_body", classmethod(lambda cls, **_: []))
+
+    with pytest.raises(RuntimeError, match=f"migrations upgrade --provider {MIGRATIONS}:migration"):
+        example.assert_interpolated_prices_storage_registered()
 
 
 def test_example_daily_bars_declares_no_dependencies() -> None:
     node = object.__new__(example.ExampleDailyBars)
 
     assert node.dependencies() == {}
-
-
-def test_dynamic_provider_storage_requires_explicit_source_env(monkeypatch) -> None:
-    monkeypatch.delenv(
-        config.DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV,
-        raising=False,
-    )
-    monkeypatch.delenv(config.DYNAMIC_SOURCE_CADENCE_ENV, raising=False)
-
-    with pytest.raises(RuntimeError, match="requires"):
-        config.dynamic_storage_from_env()
-
-    env = config.dynamic_provider_env(
-        source_time_index_meta_table_uid="source-storage-uid",
-        source_cadence="1d",
-    )
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-
-    storage = config.dynamic_storage_from_env()
-
-    assert storage.__table__.name == (
-        config.configured_equal_weight_interpolated_prices_storage(
-            source_time_index_meta_table_uid="source-storage-uid",
-            source_cadence="1d",
-        ).__table__.name
-    )
-
-
-def test_dynamic_migration_metadata_contains_only_configured_table(monkeypatch) -> None:
-    env = config.dynamic_provider_env(
-        source_time_index_meta_table_uid="source-storage-uid",
-        source_cadence="1d",
-    )
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-
-    storage = config.dynamic_storage_from_env()
-    metadata = metadata_for_models([storage])
-
-    assert list(metadata.tables) == [storage.__table__.name]
-
-
-def test_dynamic_revision_message_uses_configured_table_suffix() -> None:
-    table_name = _configured_dynamic_table_name()
-    table_suffix = table_name.rsplit("_", 1)[-1]
-
-    assert prep._dynamic_revision_message(table_name, revision_message=None) == (
-        f"portfolio_equal_weights_dynamic_interpolated_prices_{table_suffix}"
-    )
-    assert (
-        prep._dynamic_revision_message(
-            table_name,
-            revision_message="custom revision",
-        )
-        == "custom revision"
-    )
-
-
-def test_find_dynamic_revision_file_detects_existing_create_table(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    revisions_root = tmp_path / "versions" / "mainsequence_markets"
-    revisions_root.mkdir(parents=True)
-    table_name = _configured_dynamic_table_name()
-    revision_file = revisions_root / "0009_dynamic.py"
-    revision_file.write_text(
-        f"from alembic import op\ndef upgrade():\n    op.create_table('{table_name}')\n",
-        encoding="utf-8",
-    )
-    (revisions_root / "0010_other.py").write_text(
-        "from alembic import op\ndef upgrade():\n    op.create_table('other_table')\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(prep, "_active_version_directory", lambda: revisions_root)
-
-    assert prep._find_dynamic_revision_file(table_name) == revision_file
-    assert prep._find_dynamic_revision_file("missing_table") is None
-
-
-def test_prepare_schema_runs_upgrade_when_metadata_already_exists(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    source_meta_table = SimpleNamespace(
-        uid="source-storage-uid",
-        time_indexed_profile=SimpleNamespace(cadence="1d"),
-    )
-    existing_dynamic_table = SimpleNamespace(uid="dynamic-storage-uid")
-    runtime = SimpleNamespace(table=lambda _model: SimpleNamespace(meta_table=source_meta_table))
-    table_name = _configured_dynamic_table_name()
-    revision_file = tmp_path / "0009_dynamic.py"
-    commands = []
-
-    monkeypatch.setattr(
-        prep,
-        "start_portfolio_example_runtime",
-        lambda models: runtime,
-    )
-    monkeypatch.setattr(
-        prep,
-        "_find_dynamic_revision_file",
-        lambda requested_table_name: revision_file if requested_table_name == table_name else None,
-    )
-    monkeypatch.setattr(
-        prep,
-        "_find_time_index_meta_table",
-        lambda requested_table_name: (
-            existing_dynamic_table if requested_table_name == table_name else None
-        ),
-    )
-    monkeypatch.setattr(
-        prep,
-        "_run_metatables",
-        lambda args, *, env, allow_failure=False: commands.append((args, env)),
-    )
-
-    result = prep.prepare_equal_weight_portfolio_schema()
-
-    assert result["configured_output_table"] == table_name
-    assert result["configured_storage_uid"] == existing_dynamic_table.uid
-    assert len(commands) == 1
-    assert commands[0][0] == [
-        "migrations",
-        "upgrade",
-        "--provider",
-        config.DYNAMIC_MIGRATION_PROVIDER,
-        "head",
-    ]
