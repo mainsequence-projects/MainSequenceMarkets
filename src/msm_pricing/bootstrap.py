@@ -10,7 +10,6 @@ from msm.api.base import operation_result_rows
 from msm.base import MarketsBase
 from msm.repositories.base import MarketsRepositoryContext
 from msm.repositories.crud import create_model, search_model, upsert_model
-from msm.settings import markets_namespace
 
 from .config import (
     PricingMarketDataConfiguration,
@@ -46,7 +45,6 @@ class PricingRuntime:
 
     registration: PricingMetaTableRegistrationResult
     context: MarketsRepositoryContext
-    namespace: str | None = None
 
     @property
     def meta_tables(self) -> list[Any]:
@@ -60,7 +58,6 @@ class PricingRuntime:
 def attach_pricing_schemas(
     *,
     management_mode: PricingManagementMode = "platform_managed",
-    namespace: str | None = None,
     market_data_configuration: PricingMarketDataConfigurationInput | None = None,
     seed_default_market_data_bindings: bool = False,
     replace_default_market_data_bindings: bool = False,
@@ -73,11 +70,9 @@ def attach_pricing_schemas(
         models,
         seed_default_market_data_bindings=seed_default_market_data_bindings,
     )
-    namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
         management_mode=management_mode,
-        namespace=namespace,
         models=resolved_models,
         timeout=timeout,
     )
@@ -100,11 +95,7 @@ def attach_pricing_schemas(
         )
         runtime = PricingRuntime(
             registration=registration,
-            context=MarketsRepositoryContext(
-                timeout=timeout,
-                namespace=namespace,
-            ),
-            namespace=namespace,
+            context=MarketsRepositoryContext(timeout=timeout),
         )
         _PRICING_RUNTIME_BY_CONFIG[schema_config] = runtime
         _PRICING_RUNTIME = runtime

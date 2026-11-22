@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
 from apps.v1.schemas.holdings import (
     BaseHoldingRow,
     BaseHoldingsSnapshotResponse,
@@ -15,7 +14,6 @@ from apps.v1.schemas.holdings import (
 
 
 def _account_contracts():
-    prepare_apps_v1_import_namespace()
     import msm.api.accounts as contracts
 
     return contracts
@@ -273,7 +271,6 @@ class AccountDeletePreflightItem(BaseModel):
 
 
 def _bulk_delete_preflight_response() -> type[BaseModel]:
-    prepare_apps_v1_import_namespace()
     from msm.api.http import BulkDeletePreflightResponse
 
     return BulkDeletePreflightResponse

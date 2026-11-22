@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,12 +9,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+from examples.msm.platform.bootstrap import use_local_runtime
 
 import msm
 
@@ -33,6 +27,7 @@ EXAMPLE_BOND_UNIQUE_IDENTIFIER = "example-usd-bond-2031"
 def create_example_bond() -> dict[str, Any]:
     """Create an issuer, denomination currency, and bond asset."""
 
+    use_local_runtime()
     msm.start_engine(
         models=["AssetType", "Asset", "Issuer", "BondAssetDetails"],
     )

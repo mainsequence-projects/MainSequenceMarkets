@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,10 +10,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
+from examples.msm.platform.bootstrap import use_local_runtime
 from examples.msm.assets.utils import (
     EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX,
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
@@ -25,8 +21,6 @@ from examples.msm.assets.utils import (
     EXAMPLE_OPENFIGI_EQUITY_FIGI,
 )
 from msm.constants import ASSET_TYPE_CRYPTO, ASSET_TYPE_EQUITY
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm
 
@@ -45,6 +39,7 @@ def create_query_assets(
 ) -> dict[str, Any]:
     """Resolve FIGI data, register asset types, create assets, and list them."""
 
+    use_local_runtime()
     msm.start_engine(
         models=["AssetType", "Asset", "OpenFigiAssetDetails"],
     )

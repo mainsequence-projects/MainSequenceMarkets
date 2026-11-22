@@ -12,8 +12,10 @@ Breaking release 5.0.0. It finishes
 the pre-3.0 names that 4.0.0 was to remove, and the pre-3.0 UID columns, are gone
 ([#107](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/107)). It also
 stops copying Markets tables into producers' metadata
-([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)). Read
-"Upgrading" at the end of this entry.
+([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)), and
+Markets' namespace and table names can no longer be overridden: a sandbox is a separate
+database ([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)).
+Read "Upgrading" at the end of this entry.
 
 ### Changed
 
@@ -66,6 +68,15 @@ stops copying Markets tables into producers' metadata
   `account_with_portfolios_delete_statements` and
   `build_delete_account_with_portfolios_operation`, take `row_counts`, the counts
   `read_account_delete` answers.
+- **Breaking: the examples write only to MetaTables' local SQLite runtime**
+  ([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)). Each
+  one that writes, and each example migration provider, selects the local API
+  (`configure_local_client()`) before it imports client models. It refuses before its first
+  write unless the runtime reports `local_mode` and the SQLite dialect, or when the process
+  sends Markets row operations to the Markets API.
+- **Breaking: `GET /api/v1/settings/`** no longer answers `runtime.namespace_source` or
+  `runtime.auto_register_enabled`, which could only answer `default` and `false`. The
+  namespace assumption's `source` is `msm.settings`.
 
 ### Removed
 
@@ -97,6 +108,25 @@ stops copying Markets tables into producers' metadata
   `renamed_column_value`, `renamed_keyword`, `READ_PRE_3_0_COLUMNS` and each model's
   `__renamed_columns__` are gone.
 - `msm rename-preflight` and `msm_cli.rename_preflight`, the 3.0 upgrade scanner.
+- **Breaking: `MSM_AUTO_REGISTER_NAMESPACE`**
+  ([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)). It
+  renamed Markets' tables for a sandbox in a shared database, could not migrate the schema
+  it named, and overrode the namespace a producer declares. ms-markets reads no environment
+  for a namespace: `msm.settings.markets_namespace()` answers its argument or
+  `mainsequence.markets`. `MSM_AUTO_REGISTER_NAMESPACE_ENV`,
+  `markets_auto_register_namespace` and `markets_configured_namespace` are gone, also from
+  `msm.base`, with the table-name and version-table suffix and
+  `msm_migrations/versions/mainsequence_examples`.
+- **Breaking: the override of Markets' own namespace**
+  ([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)):
+  `msm.bootstrap.configure_metatable_namespace`, the `namespace=` argument of
+  `start_engine`, `attach_schemas` and `attach_pricing_schemas`, and the `namespace` of
+  `MarketsRuntime`, `PricingRuntime`, `MarketsRepositoryContext` and
+  `MarketsMetaTableHandle`. It kept the physical tables, so it isolated nothing: writes
+  went to Markets' own tables, a migration run with it moved those tables to the other
+  namespace in the catalog, and Markets row calls stopped reaching a selected Markets API.
+  The `namespace=` of the storage factories and `hash_namespace`, with its `namespace=`
+  alias on updaters, are unchanged.
 - **Breaking:** `msm.storage_instances.markets_reference_table`, which put a Markets table
   into a producer's metadata as a key-only stand-in
   ([#108](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/108)). A key
@@ -170,6 +200,22 @@ stops copying Markets tables into producers' metadata
   `target_metadata`; and the `base=` given to `build_metatable_model_registry`, which
   silently leaves out models of another base. `msm.start_engine` still accepts models that
   have not moved.
+- **Move every sandbox to a separate database before upgrading.** A process that set
+  `MSM_AUTO_REGISTER_NAMESPACE` now addresses Markets' real table names, so it reads and
+  writes the real tables of whichever database it selects. Use MetaTables' local SQLite
+  runtime or another separate database, and see
+  [Namespaces and sandboxes](https://mainsequence-projects.github.io/MainSequenceMarkets/concepts/#namespaces-and-sandboxes).
+  Suffixed tables and catalog rows an older release left are not touched.
+- **Declare a producer's namespace directly.** A module that imports
+  `markets_configured_namespace` or `markets_auto_register_namespace` fails to import, so
+  a migration provider that does fails its migration Job. Replace
+  `markets_configured_namespace("my-provider")` with `"my-provider"` and delete
+  `suffix=markets_auto_register_namespace()`. Where the variable was unset, table names,
+  identifiers, migration histories and update identities stay the same.
+- **Remove `namespace=` from engine startup** and from calls that build a
+  `MarketsRepositoryContext` or a `MarketsMetaTableHandle`; they refuse it as an unknown
+  argument. Code that read `runtime.namespace` or `context.namespace` uses
+  `msm.settings.markets_namespace()` where it needs Markets' namespace.
 - **Never apply a producer revision that changes an `ms_markets__` table Markets owns.**
   One autogenerated with an earlier release may hold such drops: delete it and generate it
   again.

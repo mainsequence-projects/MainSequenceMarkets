@@ -17,6 +17,11 @@ python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
+Both write only to the [local runtime](../concepts.md#namespaces-and-sandboxes). The
+first stage cannot create a new interpolation table yet: its provider shares Markets'
+history, so MetaTables refuses to autogenerate that table's first revision. See
+[#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95).
+
 Every asset the portfolio prices must be linked to a stored calendar with
 `AssetCalendar` before interpolation runs. The run script links the example
 assets to the `CRYPTO_24_7` calendar. An asset with no link fails the price
@@ -25,8 +30,8 @@ update, and the error names it; see
 
 The preparation script derives the configured interpolated price storage from
 the registered `ExternalPricesStorage` table and the example interpolation
-policy, finds or generates the real dynamic Alembic revision under the active
-migration namespace, and runs the dynamic provider upgrade before portfolio
+policy, finds or generates the real dynamic Alembic revision, and runs the dynamic
+provider upgrade before portfolio
 updaters write. If an older registered `ExternalPricesStorage` table is missing
 cadence metadata, the preparation step repairs that source metadata before
 deriving the dynamic interpolation table. The run script creates the

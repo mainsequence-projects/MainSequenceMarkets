@@ -516,7 +516,6 @@ def list_related_meta_tables(
                     limits=context.limits,
                     data_source_uid=context.data_source_uid,
                     timeout=context.timeout,
-                    namespace=context.namespace,
                 )
                 value = index.uid if provider.join_kind == "uid" else index.unique_identifier
                 count = _count(
@@ -772,7 +771,6 @@ def _dataset_model_and_handle(
         limits=context.limits,
         data_source_uid=context.data_source_uid,
         timeout=context.timeout,
-        namespace=context.namespace,
     )
     return model, handle
 

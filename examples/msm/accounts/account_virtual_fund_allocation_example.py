@@ -8,6 +8,11 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from examples.msm.accounts.account_portfolio_full_workflow import (  # noqa: E402
     run_account_portfolio_full_workflow,
 )

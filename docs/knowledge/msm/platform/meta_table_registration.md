@@ -16,15 +16,14 @@ Market models inherit `MarketsMetaTableMixin`, which itself inherits the
 `metatables` `PlatformManagedMetaTable` base. Time-indexed time-index-table output inherits
 `PlatformTimeIndexMetaTable` through `MarketsTimeIndexMetaTableMixin`.
 Do not set `__tablename__` on normal markets MetaTable models. The markets
-mixins assign physical SQLAlchemy table names from the storage app segment, the
-authored MetaTable identifier, and the optional namespace suffix. Built-in
+mixins assign physical SQLAlchemy table names from the storage app segment and
+the authored MetaTable identifier. Built-in
 library tables use the package-owned default app segment `ms_markets`, producing
 names such as `ms_markets__account`. Project-local extension tables may set
 `__markets_storage_app__` to a project-owned app segment, producing names such
-as `my_provider__provideraccountdetails`. When
-`MSM_AUTO_REGISTER_NAMESPACE` is set before model import, the namespace is
-appended as a suffix, for example
-`my_provider__provideraccountdetails__mainsequence_examples`.
+as `my_provider__provideraccountdetails`. The names are the same in every
+database; a sandbox is a
+[separate database](../../../concepts.md#namespaces-and-sandboxes).
 
 Every concrete markets MetaTable model must declare `__metatable_description__`.
 That description is the durable platform-level discovery text copied into the
@@ -68,9 +67,7 @@ the admin migration flow.
 
 Runtime lookup is keyed by the SQLAlchemy table name because the MetaTables
 migration flow uses that name as the stable MetaTable identity. For example,
-`AccountTable` resolves as `ms_markets__account`, or as
-`ms_markets__account__mainsequence_examples` when
-`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` is set before model import.
+`AccountTable` resolves as `ms_markets__account`.
 The registered platform `MetaTable.uid` is only known after migration
 finalization and runtime attachment. Compiled row operations do not carry
 MetaTable UIDs: each operation selects a DataSource, and the database enforces
@@ -231,9 +228,8 @@ bare concept identifier that ms-markets combines with that namespace to produce
 the globally unique MetaTable identifier:
 `com.my_company.markets.MyAssetDetails`.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace when it is set
-before model import. Use that for isolated tests and example environments, not
-as the primary project extension contract.
+The mixin namespace is final. Isolated tests and examples use a separate
+database, with the same namespaces and names.
 
 `__markets_storage_app__` is only the SQLAlchemy physical table-name app
 segment. It does not replace the logical MetaTable identifier, does not
@@ -248,8 +244,7 @@ mixin once and declare every table on both.
 
 Already-qualified `__metatable_identifier__` values are still accepted for
 existing models. Prefer `__markets_base_identifier__` on new project-local
-extension models so the project mixin namespace and test namespace override
-remain explicit.
+extension models so the project mixin namespace remains explicit.
 
 If a project wants a typed row API for that table, subclass
 `MarketsMetaTableRow` and keep it as a Pydantic row-operation wrapper:
@@ -284,14 +279,12 @@ extension shape in executable example form.
 
 `runtime.table("Asset")` returns a single registered MetaTable handle with the
 SQLAlchemy model, MetaTable UID, optional registered `MetaTable` object, limits,
-timeout, and namespace. It remains available for lower-level repository or
+and timeout. It remains available for lower-level repository or
 service internals. User-facing examples should operate through typed
 `msm.api.*` class methods and avoid passing table handles around.
 
-Production applications normally do not pass a runtime namespace override. They
-use the library's built-in MetaTable identity. They also normally leave
-`MSM_AUTO_REGISTER_NAMESPACE` unset, so a missing table remains a deployment
-error.
+Every process uses the library's built-in MetaTable identity: Markets' namespace
+and table names cannot be overridden. A missing table is a deployment error.
 
 When explicit runtime attachment is used, call it once during application
 initialization, before row operations, repositories, or services depend on the
@@ -301,8 +294,8 @@ second call with the same arguments returns the cached
 runtime; a second call with different arguments raises instead of silently
 rotating table names or execution context.
 
-Runtime attachment emits structured Main Sequence `info` logs for namespace
-selection, model resolution, direct backend attachment, repository context
+Runtime attachment emits structured Main Sequence `info` logs for model
+resolution, direct backend attachment, repository context
 creation, final runtime creation, and cached-runtime reuse. Missing backend
 `MetaTable` or `TimeIndexMetaTable` resources fail startup and must be
 corrected by the MetaTables migration upgrade flow or an explicit admin/platform
@@ -316,19 +309,17 @@ decide which concrete MetaTables need labels or other follow-up handling. When
 registered models. TimeIndexTableUpdater classes are imported from their owning package
 modules, not from the runtime attachment object.
 
-Examples and notebooks can use `MSM_AUTO_REGISTER_NAMESPACE` only as a startup
-namespace default. The explicit startup call is still required before row
-operations:
+Examples and notebooks that write select MetaTables' local SQLite runtime before
+importing client models, and check it before the first write. The explicit
+startup call is still required before row operations:
 
 ```python
-import os
+from metatables import configure_local_client, get_runtime_status
 
-from examples.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+configure_local_client()
+state = get_runtime_status()
+if state.get("local_mode") is not True or state.get("dialect") != "sqlite":
+    raise RuntimeError("Expected the local SQLite runtime.")
 
 import msm
 from msm.api.assets import Asset
@@ -337,30 +328,10 @@ msm.start_engine(models=["AssetType", "Asset"])
 Asset.upsert(unique_identifier="example-asset-btc", asset_type="crypto")
 ```
 
-With the environment variable set, `msm.start_engine(...)` uses the example
-namespace and resolves the selected backend tables by their namespaced
-SQLAlchemy table identifiers.
-The namespace cannot be changed safely after `msm.models` or
-another MetaTable-backed package is imported because the markets mixins assign
-the physical table name while SQLAlchemy maps each model class.
-
-Examples can still use explicit startup when the workflow is specifically
-demonstrating runtime attachment. When `namespace` is omitted,
-`MSM_AUTO_REGISTER_NAMESPACE` is used first, and the default markets namespace is
-used only when the environment variable is unset:
-
-```python
-import msm
-
-msm.start_engine(
-    models=["Asset"],
-)
-```
-
-Repository and service helpers receive table handles or context objects, not a
-namespace argument. Those lower-level objects already point at the MetaTable UID
-registered for the selected namespace. Normal examples should avoid exposing
-that plumbing and use the `msm.api` row API instead.
+Repository and service helpers receive table handles or context objects. Those
+lower-level objects already point at the registered MetaTable UID. Normal
+examples should avoid exposing that plumbing and use the `msm.api` row API
+instead.
 
 ## External Registered
 

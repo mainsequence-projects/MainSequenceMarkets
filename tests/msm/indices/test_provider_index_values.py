@@ -117,7 +117,7 @@ def test_the_catalog_discovers_and_reads_a_provider_table(monkeypatch) -> None:
     }
     provider_dataset = next(d for d in datasets if d.namespace == "my_provider")
     model, handle = catalog_service._dataset_model_and_handle(
-        SimpleNamespace(limits=None, data_source_uid=None, timeout=None, namespace=None),
+        SimpleNamespace(limits=None, data_source_uid=None, timeout=None),
         provider_dataset,
     )
     assert model.__table__.name == "my_provider__index_values__t_1d"

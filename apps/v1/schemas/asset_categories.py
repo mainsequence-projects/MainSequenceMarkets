@@ -5,11 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _asset_category_contract():
-    prepare_apps_v1_import_namespace()
     from msm.api.assets import AssetCategory
 
     return AssetCategory

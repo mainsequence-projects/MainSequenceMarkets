@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -10,12 +9,10 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
 
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
 
 import msm  # noqa: E402
 from metatables import sqlalchemy_naming_convention  # noqa: E402
@@ -84,6 +81,7 @@ class MyAssetDetails(MarketsMetaTableRow):
 def bootstrap_custom_asset_details():
     """Attach the migrated extension model through the shared runtime path."""
 
+    use_local_runtime()
     return msm.start_engine(models=[MyAssetDetailsTable])
 
 

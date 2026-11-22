@@ -4,18 +4,14 @@ import datetime as dt
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _portfolio_contracts():
-    prepare_apps_v1_import_namespace()
     import msm.api.portfolios as contracts
 
     return contracts
 
 
 def _portfolio_metadata_contract():
-    prepare_apps_v1_import_namespace()
     from msm_portfolios.api.portfolios import PortfolioMetadata
 
     return PortfolioMetadata
@@ -117,7 +113,6 @@ class PortfolioDeletePreflightItem(BaseModel):
 
 
 def _bulk_delete_preflight_response() -> type[BaseModel]:
-    prepare_apps_v1_import_namespace()
     from msm.api.http import BulkDeletePreflightResponse
 
     return BulkDeletePreflightResponse

@@ -226,6 +226,11 @@ python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
+Both write only to MetaTables' local SQLite runtime: a sandbox is a separate database,
+never another namespace. The preparation step cannot create a new table yet, because its
+provider shares Markets' history and MetaTables refuses to autogenerate that table's
+first revision (MainSequenceMarkets#95). Do not copy that provider into a project.
+
 The preparation step derives only the contributed interpolation output table,
 creates/applies its dynamic Alembic revision if needed, and verifies the
 `TimeIndexMetaTable`. Normal runtime code still builds the graph explicitly as

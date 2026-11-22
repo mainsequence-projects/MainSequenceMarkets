@@ -7,9 +7,7 @@ from fastapi.testclient import TestClient
 from apps.v1.main import app
 
 
-def test_get_api_settings_uses_auto_register_namespace(monkeypatch) -> None:
-    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
-
+def test_get_api_settings() -> None:
     client = TestClient(app)
     response = client.get("/api/v1/settings/")
 
@@ -19,10 +17,8 @@ def test_get_api_settings_uses_auto_register_namespace(monkeypatch) -> None:
     assert payload["app"]["scope"] == "apps/v1"
     assert payload["app"]["version"]
     assert payload["runtime"] == {
-        "namespace": "mainsequence.examples",
-        "namespace_source": "MSM_AUTO_REGISTER_NAMESPACE",
+        "namespace": "mainsequence.markets",
         "default_namespace": "mainsequence.markets",
-        "auto_register_enabled": True,
         "management_mode": "platform_managed",
         "schema_mutation_allowed": False,
         "requires_migrations": True,
@@ -36,31 +32,15 @@ def test_get_api_settings_uses_auto_register_namespace(monkeypatch) -> None:
     assert payload["assumptions"][0] == {
         "key": "namespace",
         "label": "Markets namespace",
-        "value": "mainsequence.examples",
-        "source": "MSM_AUTO_REGISTER_NAMESPACE",
+        "value": "mainsequence.markets",
+        "source": "msm.settings",
         "description": (
             "Runtime MetaTables and time-index table updaters resolve against this namespace."
         ),
     }
 
 
-def test_get_api_settings_uses_default_namespace_without_auto_register(monkeypatch) -> None:
-    monkeypatch.delenv("MSM_AUTO_REGISTER_NAMESPACE", raising=False)
-
-    client = TestClient(app)
-    response = client.get("/api/v1/settings/")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["runtime"]["namespace"] == "mainsequence.markets"
-    assert payload["runtime"]["namespace_source"] == "default"
-    assert payload["runtime"]["auto_register_enabled"] is False
-    assert payload["assumptions"][0]["value"] == "mainsequence.markets"
-    assert payload["assumptions"][0]["source"] == "default"
-
-
 def test_get_api_settings_does_not_expose_secret_or_identity_context(monkeypatch) -> None:
-    monkeypatch.setenv("MSM_AUTO_REGISTER_NAMESPACE", "mainsequence.examples")
     monkeypatch.setenv("MAINSEQUENCE_ACCESS_TOKEN", "secret-token-value")
     monkeypatch.setenv("MAINSEQUENCE_REFRESH_TOKEN", "refresh-token-value")
 

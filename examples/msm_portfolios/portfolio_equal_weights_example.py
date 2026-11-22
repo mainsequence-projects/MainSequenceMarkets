@@ -12,6 +12,11 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,
     EXAMPLE_CRYPTO_ASSET_TYPE,
@@ -139,6 +144,7 @@ def start_portfolio_example_runtime(
 ) -> Any:
     """Attach the already-registered tables/storage used by this portfolio example."""
 
+    use_local_runtime()
     return msm_portfolios.start_engine(
         models=list(models or PORTFOLIO_EXAMPLE_RUNTIME_MODELS),
     )

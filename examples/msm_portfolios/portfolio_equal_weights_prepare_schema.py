@@ -16,6 +16,11 @@ if __package__ in {None, ""}:
 else:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from metatables import TimeIndexMetaTable  # noqa: E402
 from metatables.migrations import namespace_version_location  # noqa: E402
 
@@ -32,7 +37,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E402
     start_portfolio_example_runtime,
 )
-from examples.msm.platform.bootstrap import EXAMPLE_METATABLE_NAMESPACE  # noqa: E402
+from msm.settings import markets_namespace  # noqa: E402
 from msm_portfolios.time_index.prices.storage import ExternalPricesStorage  # noqa: E402
 
 
@@ -235,7 +240,7 @@ def _migration_revision_files() -> set[Path]:
 
 def _active_version_directory() -> Path:
     version_location = namespace_version_location(
-        EXAMPLE_METATABLE_NAMESPACE,
+        markets_namespace(),
         prefix="msm_migrations:versions",
     )
     package_name, separator, resource_path = version_location.partition(":")

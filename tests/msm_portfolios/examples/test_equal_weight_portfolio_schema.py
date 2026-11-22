@@ -61,7 +61,7 @@ def test_source_cadence_reads_top_level_registered_metadata() -> None:
 def test_source_cadence_does_not_fallback_to_model_constant() -> None:
     source_meta_table = SimpleNamespace(
         uid="source-uid",
-        physical_table_name="ms_markets__externalpricests__mainsequence_examples",
+        physical_table_name="ms_markets__externalpricests",
         time_indexed_profile=None,
         cadence=None,
     )
@@ -73,7 +73,7 @@ def test_source_cadence_does_not_fallback_to_model_constant() -> None:
 def test_repair_source_cadence_metadata_patches_stale_table() -> None:
     class StaleSource:
         uid = "source-uid"
-        physical_table_name = "ms_markets__externalpricests__mainsequence_examples"
+        physical_table_name = "ms_markets__externalpricests"
         time_indexed_profile = None
         cadence = None
 
@@ -163,7 +163,7 @@ def test_find_dynamic_revision_file_detects_existing_create_table(
     monkeypatch,
     tmp_path,
 ) -> None:
-    revisions_root = tmp_path / "versions" / "mainsequence_examples"
+    revisions_root = tmp_path / "versions" / "mainsequence_markets"
     revisions_root.mkdir(parents=True)
     table_name = _configured_dynamic_table_name()
     revision_file = revisions_root / "0009_dynamic.py"

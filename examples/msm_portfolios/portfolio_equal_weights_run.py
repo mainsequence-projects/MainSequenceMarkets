@@ -8,6 +8,11 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
 from examples.msm_portfolios.portfolio_equal_weights_example import (  # noqa: E402
     build_equal_weight_portfolio,
 )

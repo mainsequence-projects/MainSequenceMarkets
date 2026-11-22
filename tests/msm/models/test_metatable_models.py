@@ -57,7 +57,6 @@ from msm.models import (
     VirtualFundTable,
     markets_sqlalchemy_models,
 )
-from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 
 
 class ProjectBase(DeclarativeBase):
@@ -170,23 +169,6 @@ def test_markets_table_name_truncates_long_suffix_deterministically() -> None:
     assert len(table_name) <= 63
 
 
-def test_markets_mixin_applies_environment_namespace_suffix(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
-
-    class EnvironmentScopedTable(MarketsMetaTableMixin, MarketsBase):
-        __metatable_identifier__ = "EnvironmentScoped"
-        __metatable_description__ = (
-            "Environment scoped table used to verify package-owned physical table names."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert (
-        EnvironmentScopedTable.__table__.name
-        == "ms_markets__environmentscoped__mainsequence_examples"
-    )
-
-
 def test_extension_metatable_can_override_storage_app() -> None:
     class ProviderMarketsMetaTableMixin(MarketsMetaTableMixin):
         __abstract__ = True
@@ -240,24 +222,6 @@ def test_extension_time_index_storage_can_override_storage_app() -> None:
     assert ProviderBarsStorage.__table__.name == markets_table_name(
         "my_provider",
         "test.ProviderBarsTS",
-    )
-
-
-def test_extension_storage_app_keeps_environment_namespace_suffix(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.examples")
-
-    class NamespacedProviderTable(MarketsMetaTableMixin, ProjectBase):
-        __markets_storage_app__ = "my_provider"
-        __metatable_identifier__ = "NamespacedProvider"
-        __metatable_description__ = (
-            "Environment scoped extension table used to verify custom app "
-            "physical table names with namespace suffixes."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert NamespacedProviderTable.__table__.name == (
-        "my_provider__namespacedprovider__mainsequence_examples"
     )
 
 
@@ -342,37 +306,6 @@ def test_project_mixin_namespace_applies_to_base_identifier() -> None:
     )
 
 
-def test_environment_namespace_overrides_project_mixin_default(monkeypatch) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
-
-    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-        __abstract__ = True
-        __metatable_namespace__ = "com.acme.markets"
-        __markets_storage_app__ = "acme_markets"
-
-    class ProjectNamespacedTestTable(ProjectMarketsMetaTableMixin, ProjectBase):
-        __markets_base_identifier__ = "ProjectNamespacedTest"
-        __metatable_description__ = (
-            "Project-local table used to verify environment namespace overrides "
-            "project mixin defaults."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert ProjectNamespacedTestTable.__metatable_identifier__ == (
-        "mainsequence.tests.ProjectNamespacedTest"
-    )
-    assert ProjectNamespacedTestTable.__table__.info["namespace"] == "mainsequence.tests"
-    assert ProjectNamespacedTestTable.__table__.info["identifier"] == (
-        "mainsequence.tests.ProjectNamespacedTest"
-    )
-    assert ProjectNamespacedTestTable.__table__.name == markets_table_name(
-        "acme_markets",
-        "ProjectNamespacedTest",
-        suffix="mainsequence.tests",
-    )
-
-
 def test_project_mixin_identifier_overrides_markets_table_args_info() -> None:
     class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
         __abstract__ = True
@@ -411,30 +344,6 @@ def test_final_identifier_with_project_namespace_is_not_double_prefixed() -> Non
 
     assert ProjectFinalIdentifierTable.__metatable_identifier__ == (
         "com.acme.markets.ProjectFinalIdentifier"
-    )
-
-
-def test_environment_namespace_replaces_project_namespace_for_qualified_identifier(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, "mainsequence.tests")
-
-    class ProjectMarketsMetaTableMixin(MarketsMetaTableMixin):
-        __abstract__ = True
-        __metatable_namespace__ = "com.acme.markets"
-        __markets_storage_app__ = "acme_markets"
-
-    class ProjectQualifiedOverrideTable(ProjectMarketsMetaTableMixin, ProjectBase):
-        __metatable_identifier__ = "com.acme.markets.ProjectQualifiedOverride"
-        __metatable_description__ = (
-            "Project-local table used to verify environment namespace replacement "
-            "for qualified identifiers."
-        )
-
-        uid: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-
-    assert ProjectQualifiedOverrideTable.__metatable_identifier__ == (
-        "mainsequence.tests.ProjectQualifiedOverride"
     )
 
 

@@ -4,11 +4,8 @@ import datetime as dt
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _contracts():
-    prepare_apps_v1_import_namespace()
     from msm.analytics.indices import IndexFormulaDefinition, IndexFormulaInput
     from msm.api.indices import Index, IndexCreate, IndexType, IndexUpdate
     from msm.services.indices.contracts import (

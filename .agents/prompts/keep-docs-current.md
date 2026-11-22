@@ -40,7 +40,7 @@ Home                 → what/why in one screen, links out (no deep content)
 Getting Started      → install + a first example that runs
 Core Concepts        → THE canonical runtime model: row objects vs *Table vs
                        TimeIndexTableUpdaters, start_engine() = attachment not schema,
-                       migrations-before-runtime, MSM_AUTO_REGISTER_NAMESPACE.
+                       migrations-before-runtime, namespaces and sandboxes.
                        Every other page links here instead of re-explaining it.
 Tutorial             → linear narrative with "Next →" links forming a chain:
                        assets → calendars → accounts → portfolios → pricing
@@ -72,7 +72,7 @@ build system.
    `docs/ADR/fast_api/v1/`. `docs/ADR/README.md` lists every ADR. No second
    ADR directory anywhere under `docs/`.
 4. **Core Concepts is the only place** the row-vs-`*Table`-vs-TimeIndexTableUpdater model,
-   `start_engine()` semantics, and `MSM_AUTO_REGISTER_NAMESPACE` are *explained*
+   `start_engine()` semantics, and namespaces and sandboxes are *explained*
    at length. Other pages state the one-line rule and link. (Code examples may
    still appear locally.)
 5. **Three package sections at parity.** `msm`, `msm_portfolios`, `msm_pricing`
@@ -158,7 +158,7 @@ Run these from the repo root and read the output before changing anything.
 
    ```bash
    grep -rln "do not register or attach MetaTables on first use" docs/
-   grep -rln "MSM_AUTO_REGISTER_NAMESPACE is" docs/
+   grep -rln "sandbox is a separate database" docs/
    grep -rln "start_engine" docs/ | wc -l   # expect many code uses, but only ONE prose explainer
    ```
 

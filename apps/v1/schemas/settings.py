@@ -15,9 +15,7 @@ class ApiSettingsRuntime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     namespace: str
-    namespace_source: str
     default_namespace: str
-    auto_register_enabled: bool
     management_mode: str
     schema_mutation_allowed: bool
     requires_migrations: bool

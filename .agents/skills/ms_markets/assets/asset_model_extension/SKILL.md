@@ -131,8 +131,9 @@ the project's default `__metatable_namespace__` and, when needed,
 mixin namespace and base identifier into the globally unique MetaTable identity
 used by runtime attachment.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace when it is set
-before model import. Use that for isolated tests and examples.
+The mixin namespace is final. Isolated tests and examples use a separate database,
+such as MetaTables' local SQLite runtime, selected with
+`metatables.configure_local_client()` before client models are imported.
 
 Changing `__metatable_namespace__` or `__markets_storage_app__` after the table
 has been migrated and registered is a logical or physical table rotation and

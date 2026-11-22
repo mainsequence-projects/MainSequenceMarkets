@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from msm.settings import MSM_AUTO_REGISTER_NAMESPACE_ENV
 from msm_pricing.config import (
     PricingMarketDataConfiguration,
     default_pricing_market_data_configuration,
@@ -19,9 +18,8 @@ from msm_pricing.settings import (
 
 
 @pytest.fixture(autouse=True)
-def reset_pricing_market_data(monkeypatch) -> None:
+def reset_pricing_market_data() -> None:
     reset_pricing_market_data_configuration()
-    monkeypatch.delenv(MSM_AUTO_REGISTER_NAMESPACE_ENV, raising=False)
     yield
     reset_pricing_market_data_configuration()
 

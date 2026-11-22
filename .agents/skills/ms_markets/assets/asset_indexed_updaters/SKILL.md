@@ -143,8 +143,8 @@ sets the project's default `__metatable_namespace__` and, when needed,
 `__markets_base_identifier__` as the bare storage concept. This is useful for
 extension storage such as provider bars or account facts. ms-markets combines
 the namespace and base identifier into the globally unique logical runtime
-identity. `MSM_AUTO_REGISTER_NAMESPACE` still overrides the mixin namespace for
-isolated tests and examples.
+identity. The declared namespace is final. Isolated tests and examples use a
+separate database, such as MetaTables' local SQLite runtime, with the same names.
 
 Project-local storage classes are declared on the project's own declarative base,
 never on `MarketsBase`, which is for built-in ms-markets models. The project's
@@ -284,16 +284,16 @@ canonical source-table foreign key target.
 
 Use one rule for markets MetaTables and markets TimeIndexTableUpdaters:
 
-- default namespace: keep bare identifiers such as `Asset` and
+- Markets' namespace: keep bare identifiers such as `Asset` and
   `asset_snapshots`
-- when `MSM_AUTO_REGISTER_NAMESPACE` is set to a non-default namespace, prefix
-  logical identifiers with that namespace
+- a project's own namespace: prefix the logical identifiers of its tables with
+  that namespace
 - use `markets_identifier(...)` for TimeIndexTableUpdater identifiers
 - let `AssetIndexedUpdater` apply the default markets `hash_namespace`
 - pass explicit `hash_namespace` only for tests, isolated experiments, or
   parallel runs that must not collide
 
-Do not hardcode `mainsequence.markets.*` or `mainsequence.examples.*` in a new
+Do not hardcode `mainsequence.markets.*` or another namespace's prefix in a new
 TimeIndexTableUpdater class.
 
 Do not add a class-owned `__data_node_identifier__`; default identifiers derive

@@ -84,6 +84,13 @@ not from a developer session; see
 [Hosted Deployments](knowledge/msm/migrations/index.md#hosted-deployments).
 
 ```python
+from metatables import configure_local_client, get_runtime_status
+
+configure_local_client()
+state = get_runtime_status()
+if state.get("local_mode") is not True or state.get("dialect") != "sqlite":
+    raise RuntimeError("Expected the local SQLite runtime.")
+
 import msm
 
 from msm.api.assets import Asset, AssetCategory, AssetType
@@ -122,11 +129,10 @@ That startup preflight resolves already-registered backend `MetaTable` and
 Missing backend tables fail startup and should be fixed through the
 MetaTables migration upgrade flow.
 
-For development examples that should use an example namespace, set
-`MSM_AUTO_REGISTER_NAMESPACE` before importing `msm.api`, then call
-`msm.start_engine(...)` during startup. That namespace also becomes the default
-namespace for markets TimeIndexTableUpdater identifiers and `hash_namespace` values created
-in the same process.
+A process uses the hosted runtime of its Environment unless it selects a local one. To
+try writes on a sandbox, select the local runtime first, as
+[Namespaces and sandboxes](concepts.md#namespaces-and-sandboxes) shows. Every example that
+writes does, and refuses any other runtime.
 
 Every markets MetaTable now has a user-facing row model under `msm.api.*`.
 Legacy imports such as `from msm.models import Asset` have been removed; use

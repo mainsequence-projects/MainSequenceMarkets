@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -15,6 +14,7 @@ from alembic.operations import ops
 from sqlalchemy import ForeignKey, MetaData, String, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from examples.msm.platform import bootstrap as example_runtime
 from metatables import sqlalchemy_naming_convention
 from metatables.migrations import (
     build_alembic_version_metatable,
@@ -167,10 +167,9 @@ def _run_as_project_module(code: str, path: str, monkeypatch) -> ModuleType:
     # The migrations template names a hook that each project writes itself.
     module.refresh_project_market_specs = lambda context: None
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    with monkeypatch.context() as patch:
-        # An example may set environment defaults when imported; they end with it.
-        patch.setattr(os, "environ", os.environ.copy())
-        exec(compile(code, module.__file__, "exec"), module.__dict__)
+    # An example provider selects the local runtime as it loads.
+    monkeypatch.setattr(example_runtime, "use_local_runtime", lambda: None)
+    exec(compile(code, module.__file__, "exec"), module.__dict__)
     return module
 
 

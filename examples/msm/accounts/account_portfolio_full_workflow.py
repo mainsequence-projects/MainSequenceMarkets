@@ -12,7 +12,12 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.accounts.utils import (
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
+from examples.msm.accounts.utils import (  # noqa: E402
     EXAMPLE_ACCOUNT_GROUP,
     EXAMPLE_ACCOUNT_ALLOCATION_MODEL,
     EXAMPLE_ACCOUNT_PORTFOLIO_GROUP,
@@ -23,7 +28,7 @@ from examples.msm.accounts.utils import (
     example_account_holdings_positions,
     example_account_target_positions,
 )
-from examples.msm.assets.utils import (
+from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_BTC_ASSET_UNIQUE_IDENTIFIER,
     EXAMPLE_BTC_TICKER,
     EXAMPLE_CRYPTO_ASSETS,
@@ -32,7 +37,7 @@ from examples.msm.assets.utils import (
     EXAMPLE_ETH_TICKER,
 )
 
-import msm_portfolios
+import msm_portfolios  # noqa: E402
 
 ACCOUNT_WORKFLOW_RUNTIME_MODELS = [
     "IndexType",
@@ -160,6 +165,7 @@ def run_account_portfolio_full_workflow(
 ) -> dict[str, Any]:
     """Create the account registry rows and publish account holdings."""
 
+    use_local_runtime()
     print_section("Account Portfolio Full Workflow")
 
     schema_preparation_result: dict[str, Any] | None = None

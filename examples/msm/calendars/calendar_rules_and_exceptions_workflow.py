@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,12 +9,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
+from examples.msm.platform.bootstrap import use_local_runtime
 
 import msm
 
@@ -40,6 +34,7 @@ def run_calendar_rules_and_exceptions_workflow() -> dict[str, Any]:
     """Create calendars as session rules and exceptions, and read computed sessions."""
 
     print("0. Starting the markets engine with the calendar schema.")
+    use_local_runtime()
     msm.start_engine(models=["Calendar", "CalendarSessionRule", "CalendarException"])
     print("   Markets engine ready.")
 

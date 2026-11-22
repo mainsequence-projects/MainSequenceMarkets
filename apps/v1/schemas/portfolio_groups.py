@@ -5,25 +5,20 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _portfolio_contract():
-    prepare_apps_v1_import_namespace()
     from msm.api.portfolios import Portfolio
 
     return Portfolio
 
 
 def _portfolio_group_contract():
-    prepare_apps_v1_import_namespace()
     from msm.api.portfolios import PortfolioGroup
 
     return PortfolioGroup
 
 
 def _portfolio_group_membership_contract():
-    prepare_apps_v1_import_namespace()
     from msm.api.portfolios import PortfolioGroupMembership
 
     return PortfolioGroupMembership

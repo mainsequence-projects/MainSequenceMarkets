@@ -617,13 +617,12 @@ table:
    `ms_markets`, producing `ms_markets__<lowercase-identity>`. Project-local
    extension tables may set `__markets_storage_app__`, for example
    `my_provider`, to produce project-owned names such as
-   `my_provider__provideraccountdetails`. The
-   `MSM_AUTO_REGISTER_NAMESPACE` suffix still applies when configured before
-   model import.
+   `my_provider__provideraccountdetails`. The names are the same in every
+   database.
 5. Add the model to `markets_sqlalchemy_models()` in foreign-key dependency
    order.
-6. Generate or update a normal Alembic revision under the active namespace
-   directory in `src/msm_migrations/versions/`.
+6. Generate or update a normal Alembic revision in
+   `src/msm_migrations/versions/mainsequence_markets/`.
 7. Use the MetaTables migration upgrade flow for schema mutation, then
    `msm.start_engine(...)` for runtime attachment. Do not call model
    `.register()` methods or local registration helpers from application code.
@@ -632,11 +631,10 @@ table:
 `model.__table__.name`; it does not import, register, or migrate missing
 tables.
 
-Examples that use example-scoped platform-managed MetaTables must set
-`MSM_AUTO_REGISTER_NAMESPACE=mainsequence.examples` before importing
-MetaTable-backed `msm.api` or `msm.models` modules, then run explicit startup
-attachment. Row operations never register or attach MetaTables on first use. A
-different namespace or registration configuration is rejected for the
+Examples that write select the [local runtime](../concepts.md#namespaces-and-sandboxes)
+before importing MetaTable-backed `msm.api` or `msm.models` modules, then run
+explicit startup attachment. Row operations never register or attach MetaTables
+on first use. Different startup arguments are rejected for the
 already-initialized process.
 
 Pass `models=[...]` to explicit preflight when a workflow only needs a subset of
@@ -646,7 +644,7 @@ application code should use typed row classes such as
 `runtime.context` only for lower-level repository or service internals.
 
 See `examples/msm/platform/inspect_markets_metatable_models.py` for a small offline
-inspection example that prints the configured table names. See
+inspection example that prints the table names. See
 [Markets Models](../knowledge/msm/models/index.md) for the model reference.
 
 ### Project-local MetaTable extensions
@@ -674,9 +672,8 @@ migrated and registered with the same path as built-in tables:
 6. Attach at runtime with `msm.start_engine(models=[MyModelTable])`.
 7. Put row operations in an optional `MarketsMetaTableRow` wrapper.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
-set before model import. Use that for isolated tests and example runs; do not
-make env-only namespace setup the main project extension contract.
+The project mixin namespace is final. Isolated tests and example runs use a
+[separate database](../concepts.md#namespaces-and-sandboxes) with the same names.
 
 The `models=[...]` selector is the public runtime attachment boundary. It
 expands foreign-key dependencies, verifies and attaches the selected SQLAlchemy

@@ -149,10 +149,10 @@ be deterministic: configuration hashes and signal/rebalance UIDs must be stable
 for equivalent configuration payloads.
 
 Canonical markets updaters derive their published identifiers from the same
-rule as MetaTables: the default markets namespace keeps bare logical
-identifiers, while a non-default `MSM_AUTO_REGISTER_NAMESPACE` prefixes them.
-That namespace also becomes the default TimeIndexTableUpdater `hash_namespace`. Pass an
-explicit namespace only for isolated tests or experiments.
+rule as MetaTables: the Markets namespace keeps bare logical identifiers, and a
+producer's namespace prefixes those of its own tables. The default TimeIndexTableUpdater
+`hash_namespace` is `mainsequence.markets`. An explicit one isolates update identities
+for tests or experiments; it isolates no data.
 
 Signal observation, rebalance decision, execution, valuation, and analytical
 time are separate concepts. Every canonical timestamp must come from a signal,
@@ -1011,11 +1011,16 @@ python examples/msm_portfolios/portfolio_equal_weights_prepare_schema.py
 python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
+Both run only on the local runtime; see
+[Namespaces and sandboxes](../../../concepts.md#namespaces-and-sandboxes).
 The preparation step attaches the static schema, reads the registered
 `ExternalPricesStorage` UID and cadence metadata, builds the
-configured `InterpolatedPricesStorage` class, and uses the active migration
-namespace from the MetaTables migration provider to find or generate the real dynamic
-Alembic revision. It then runs the dynamic provider upgrade before any portfolio
+configured `InterpolatedPricesStorage` class, and uses the dynamic provider to find or
+generate the real dynamic Alembic revision. That provider shares Markets' history, so
+MetaTables refuses to autogenerate a first revision for the new table and the step stops
+there until
+[#95](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/95) gives the
+example a provider of its own. Given a revision, the step runs the dynamic provider upgrade before any portfolio
 TimeIndexTableUpdater writes, even when a stale `TimeIndexMetaTable` metadata row already
 exists. Metadata alone is not considered schema preparation; the physical table
 must be created by the migration flow. If an older registered

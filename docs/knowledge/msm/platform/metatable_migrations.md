@@ -11,7 +11,7 @@ ships MetaTables or the `mainsequence migrations` commands.
 The provider is exported from `msm_migrations:migration` and contains:
 
 - package: `msm`;
-- migration namespace: the active markets namespace;
+- migration namespace: `mainsequence.markets`;
 - script location: `msm_migrations:`;
 - version location prefix: `msm_migrations:versions`;
 - target metadata: `MarketsBase.metadata`;

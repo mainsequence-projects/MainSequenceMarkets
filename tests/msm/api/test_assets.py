@@ -85,11 +85,11 @@ def test_asset_start_engine_delegates_to_required_table(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Asset.start_engine(namespace="mainsequence.examples") is runtime
+    assert Asset.start_engine(timeout=5) is runtime
     assert calls == [
         {
             "models": [AssetTable],
-            "namespace": "mainsequence.examples",
+            "timeout": 5,
         }
     ]
 

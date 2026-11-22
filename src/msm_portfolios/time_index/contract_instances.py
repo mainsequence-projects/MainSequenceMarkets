@@ -196,7 +196,7 @@ def configured_contract_instance_storage(
     """Build the storage class for one instance of one portfolio time-series contract.
 
     ``namespace`` is the MetaTables namespace that owns the instance; it defaults
-    to the active Markets namespace, which is right only for the Markets
+    to the Markets namespace, which is right only for the Markets
     deployment itself. ``storage_app`` is the physical-name app segment, for
     example ``my_app``. ``base`` is the application's own SQLAlchemy
     declarative base, whose metadata its Alembic provider targets. The instance

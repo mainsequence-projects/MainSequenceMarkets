@@ -17,7 +17,6 @@ from msm.api.remote import use_remote_backend, use_runtime_backend
 from msm.base import MarketsMetaTableMixin, markets_table_name
 from msm.models import AssetTable
 from msm.models.registration import resolve_markets_meta_table_models
-from msm.settings import markets_configured_namespace
 
 
 class ProviderBase(DeclarativeBase):
@@ -26,7 +25,7 @@ class ProviderBase(DeclarativeBase):
 
 class ProviderAssetNotesTable(MarketsMetaTableMixin, ProviderBase):
     __tablename__ = markets_table_name("my_provider", "asset_notes_remote_attach")
-    __metatable_namespace__: ClassVar[str] = markets_configured_namespace("my-provider")
+    __metatable_namespace__: ClassVar[str] = "my-provider"
     __metatable_identifier__ = "ProviderAssetNotes"
     __metatable_description__ = "Provider-owned notes keyed by a Markets asset."
 

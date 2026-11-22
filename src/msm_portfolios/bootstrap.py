@@ -16,7 +16,6 @@ from msm_portfolios.models import portfolio_sqlalchemy_models
 def start_engine(
     *,
     management_mode: str = "platform_managed",
-    namespace: str | None = None,
     models: Sequence[MarketsModelSelector] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
@@ -24,7 +23,6 @@ def start_engine(
 
     return _start_engine(
         management_mode=management_mode,  # type: ignore[arg-type]
-        namespace=namespace,
         models=resolve_portfolio_models(models),
         timeout=timeout,
     )
@@ -33,7 +31,6 @@ def start_engine(
 def attach_schemas(
     *,
     management_mode: str = "platform_managed",
-    namespace: str | None = None,
     models: Sequence[MarketsModelSelector] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
@@ -41,7 +38,6 @@ def attach_schemas(
 
     return _attach_schemas(
         management_mode=management_mode,  # type: ignore[arg-type]
-        namespace=namespace,
         models=resolve_portfolio_models(models),
         timeout=timeout,
     )

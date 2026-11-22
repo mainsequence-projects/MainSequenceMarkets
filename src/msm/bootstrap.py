@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from threading import Lock
@@ -9,10 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from mainsequence.logconf import logger as _mainsequence_logger
 
 from msm.base import markets_table_storage_name
-from msm.settings import (
-    markets_auto_register_namespace,
-    markets_namespace,
-)
 
 if TYPE_CHECKING:
     from msm.models.registration import MarketsMetaTableRegistrationResult, MarketsModelSelector
@@ -33,7 +28,6 @@ class MarketsRuntime:
 
     registration: "MarketsMetaTableRegistrationResult"
     context: "MarketsRepositoryContext"
-    namespace: str | None = None
 
     @property
     def meta_tables(self) -> list[Any]:
@@ -53,57 +47,16 @@ class MarketsRuntime:
         return replace(handle, meta_table=meta_table)
 
 
-def configure_metatable_namespace(namespace: str) -> None:
-    """Set the MetaTable namespace before markets SQLAlchemy models are mapped."""
-
-    loaded_model_modules = _loaded_metatable_modules()
-    if loaded_model_modules:
-        loaded_namespace = _loaded_metatable_namespace()
-        if loaded_namespace == namespace:
-            return
-        raise RuntimeError(
-            "Configure the MetaTable namespace before importing msm.models or "
-            f"msm.models.registration. Requested namespace {namespace!r}, but "
-            f"MetaTable models are already loaded with namespace "
-            f"{loaded_namespace!r}. Already loaded: {loaded_model_modules!r}."
-        )
-
-    from msm.base import MarketsMetaTableMixin, MarketsTimeIndexMetaTableMixin
-
-    MarketsMetaTableMixin.__metatable_namespace__ = namespace
-    MarketsTimeIndexMetaTableMixin.__metatable_namespace__ = namespace
-
-
-def _loaded_metatable_modules() -> list[str]:
-    return sorted(
-        module_name
-        for module_name in sys.modules
-        if module_name == "msm.models" or module_name.startswith("msm.models.")
-    )
-
-
-def _loaded_metatable_namespace() -> str | None:
-    base_module = sys.modules.get("msm.base")
-    mixin = getattr(base_module, "MarketsMetaTableMixin", None)
-    if mixin is None:
-        return None
-    return getattr(mixin, "__metatable_namespace__", None)
-
-
 def start_engine(
     *,
     management_mode: MarketsManagementMode = "platform_managed",
-    namespace: str | None = None,
     models: Sequence["MarketsModelSelector"] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
     """Bootstrap the markets runtime once and return a repository context."""
 
-    requested_namespace = namespace
-    namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         management_mode=management_mode,
-        namespace=namespace,
         models=models,
         timeout=timeout,
     )
@@ -115,7 +68,6 @@ def start_engine(
             logger.info(
                 "Reusing cached markets runtime; no schema mutation needed",
                 management_mode=management_mode,
-                namespace=namespace,
                 meta_table_count=len(cached_runtime.meta_tables),
             )
             return cached_runtime
@@ -127,21 +79,16 @@ def start_engine(
                 return _RUNTIME
             raise RuntimeError(
                 "msm.start_engine() has already initialized this process with "
-                "different schema arguments. Run it once at process startup before "
-                "importing MetaTable-backed models, repositories, or services."
+                "different schema arguments. Run it once at process startup, with every "
+                "table the process needs."
             )
 
         logger.info(
             "Starting markets runtime attachment",
             management_mode=management_mode,
-            namespace=namespace,
             requested_model_count=None if models is None else len(models),
             timeout=timeout,
         )
-        if _should_configure_metatable_namespace(requested_namespace):
-            logger.info("Configuring markets MetaTable namespace", namespace=namespace)
-            configure_metatable_namespace(namespace)
-
         from msm.models.registration import (
             resolve_markets_meta_table_models,
             resolve_registered_markets_meta_tables,
@@ -151,7 +98,6 @@ def start_engine(
         meta_table_models = resolve_markets_meta_table_models(models)
         logger.info(
             "Resolved markets MetaTable models",
-            namespace=namespace,
             model_count=len(meta_table_models),
             models=[_model_name(model) for model in meta_table_models],
         )
@@ -163,28 +109,18 @@ def start_engine(
         logger.info(
             "Resolved registered markets MetaTables",
             management_mode=management_mode,
-            namespace=namespace,
             meta_table_count=len(registration.meta_tables),
         )
-        context = MarketsRepositoryContext(
-            timeout=timeout,
-            namespace=namespace,
-        )
-        logger.info(
-            "Created markets repository context",
-            namespace=namespace,
-            timeout=timeout,
-        )
+        context = MarketsRepositoryContext(timeout=timeout)
+        logger.info("Created markets repository context", timeout=timeout)
         _RUNTIME = MarketsRuntime(
             registration=registration,
             context=context,
-            namespace=namespace,
         )
         _START_ENGINE_CONFIG = schema_config
         _RUNTIME_BY_CONFIG[schema_config] = _RUNTIME
         logger.info(
             "Created markets runtime",
-            namespace=namespace,
             meta_table_count=len(_RUNTIME.meta_tables),
         )
         return _RUNTIME
@@ -193,17 +129,14 @@ def start_engine(
 def attach_schemas(
     *,
     management_mode: MarketsManagementMode = "platform_managed",
-    namespace: str | None = None,
     models: Sequence["MarketsModelSelector"] | None = None,
     timeout: int | float | tuple[float, float] | None = None,
 ) -> MarketsRuntime:
     """Attach to already-registered markets MetaTables without creating schemas."""
 
-    namespace = markets_namespace(namespace)
     schema_config = _schema_config(
         action="attach",
         management_mode=management_mode,
-        namespace=namespace,
         models=models,
         timeout=timeout,
     )
@@ -215,7 +148,6 @@ def attach_schemas(
             logger.info(
                 "Reusing cached attached markets runtime",
                 management_mode=management_mode,
-                namespace=namespace,
                 meta_table_count=len(cached_runtime.meta_tables),
             )
             return cached_runtime
@@ -232,14 +164,10 @@ def attach_schemas(
             timeout=timeout,
             models=meta_table_models,
         )
-        context = MarketsRepositoryContext(
-            timeout=timeout,
-            namespace=namespace,
-        )
+        context = MarketsRepositoryContext(timeout=timeout)
         runtime = MarketsRuntime(
             registration=registration,
             context=context,
-            namespace=namespace,
         )
         _RUNTIME_BY_CONFIG[schema_config] = runtime
         if _RUNTIME is None:
@@ -247,7 +175,6 @@ def attach_schemas(
         logger.info(
             "Attached markets runtime",
             management_mode=management_mode,
-            namespace=namespace,
             meta_table_count=len(runtime.meta_tables),
         )
         return runtime
@@ -310,10 +237,6 @@ def _missing_models_from_runtime(
         if model not in runtime.meta_table_models
         or (isinstance(model, type) and _model_meta_table_uid(model) is None)
     ]
-
-
-def _should_configure_metatable_namespace(requested_namespace: str | None) -> bool:
-    return requested_namespace is not None or markets_auto_register_namespace() is not None
 
 
 def _runtime_not_initialized_error_message(

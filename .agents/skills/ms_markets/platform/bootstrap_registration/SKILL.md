@@ -149,10 +149,12 @@ mixin namespace and base identifier into the globally unique MetaTable
 identifier. This does not affect row API selection and does not remove the need
 for MetaTables migration/provider registration before runtime startup.
 
-`MSM_AUTO_REGISTER_NAMESPACE` still overrides the project mixin namespace when
-it is set before model import. Use that for isolated tests and examples. Do not
-use environment-only namespace setup as the primary extension contract for a
-real project.
+The project mixin namespace is final, and Markets' own namespace is always
+`mainsequence.markets`: neither the environment nor a runtime argument changes
+either. A sandbox is a separate database, such as MetaTables' local SQLite
+runtime, with the same names. Select it with `metatables.configure_local_client()`
+before importing client models, and check `local_mode` and the `sqlite` dialect
+with `metatables.get_runtime_status()` before the first write.
 
 Built-in ms-markets tables and storage classes use their built-in definitions as-is.
 Downstream projects must not set or override `__markets_storage_app__` on built-in
@@ -202,7 +204,7 @@ class MyAssetDetailsTable(MyProjectMarketsMetaTableMixin, Base):
 
 Already-qualified `__metatable_identifier__` values remain accepted for existing
 models. Prefer `__markets_base_identifier__` for new project-local models so the
-project namespace default and test namespace override are explicit.
+project namespace is explicit.
 
 Set `__metatable_namespace__` and `__markets_storage_app__` before SQLAlchemy
 maps the table. Changing either after migration finalization points the model at

@@ -145,7 +145,6 @@ def test_migration_version_packages_do_not_assume_generated_history() -> None:
 
     assert not versions_root.joinpath("0001_migration.py").is_file()
     assert versions_root.joinpath("mainsequence_markets").is_dir()
-    assert versions_root.joinpath("mainsequence_examples").is_dir()
 
 
 def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:

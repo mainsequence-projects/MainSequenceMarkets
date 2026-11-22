@@ -12,11 +12,6 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (  # noqa: E402
-    EXAMPLE_METATABLE_NAMESPACE,
-    EXAMPLE_NAMESPACE_ENV,
-)
-
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
@@ -151,7 +146,6 @@ def dynamic_provider_env(
     """Return the environment needed by the dynamic migration provider."""
 
     return {
-        EXAMPLE_NAMESPACE_ENV: EXAMPLE_METATABLE_NAMESPACE,
         DYNAMIC_SOURCE_TIME_INDEX_META_TABLE_UID_ENV: source_time_index_meta_table_uid,
         DYNAMIC_SOURCE_CADENCE_ENV: source_cadence,
         DYNAMIC_UPSAMPLE_FREQUENCY_ENV: PRICE_UPSAMPLE_FREQUENCY_ID,

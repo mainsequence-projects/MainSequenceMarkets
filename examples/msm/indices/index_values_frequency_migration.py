@@ -15,6 +15,13 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+# MetaTables registers a provider's tables before it runs a revision, so this example
+# selects the local runtime as it loads. A project's own provider has no such line: its
+# deployment's migration Job applies it to the hosted Environment.
+use_local_runtime()
+
 from metatables.migrations import (  # noqa: E402
     build_alembic_version_metatable,
     build_metatable_migration_provider,

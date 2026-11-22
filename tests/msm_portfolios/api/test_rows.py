@@ -76,7 +76,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Portfolio.start_engine(namespace="mainsequence.examples") is runtime
+    assert Portfolio.start_engine(timeout=5) is runtime
     assert calls == [
         {
             "models": [
@@ -86,7 +86,7 @@ def test_portfolio_create_schemas_includes_domain_required_tables(monkeypatch) -
                 SignalMetadataTable,
                 PortfolioTable,
             ],
-            "namespace": "mainsequence.examples",
+            "timeout": 5,
         }
     ]
 

@@ -14,12 +14,10 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
-import pytest
 
 from metatables import TimeIndexMetaTable, TimeIndexTableUpdater
 from msm.time_index.assets import AssetSnapshot
 from msm.time_index.assets.storage import AssetSnapshotsStorage
-from msm.settings import markets_auto_register_namespace
 from msm_portfolios.configuration import (
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
@@ -218,7 +216,3 @@ NESTED_PORTFOLIOS: dict[str, Callable[[dict[str, Any]], PortfolioConfiguration]]
         rebalance_strategy=STRATEGIES["trailing_average_daily_volume_on_asset_snapshot"](updaters),
     ),
 }
-namespace_is_default = pytest.mark.skipif(
-    markets_auto_register_namespace() is not None,
-    reason="Table names and identifiers are pinned for the default markets namespace.",
-)

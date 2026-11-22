@@ -19,6 +19,15 @@ provider package is now `msm_migrations` and the provider reference is
 `msm_migrations:migration`; the top-level `migrations` package is no longer
 shipped.
 
+Amended 2026-11-22
+([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)): the
+Markets provider has one namespace, `mainsequence.markets`, one version location,
+`versions/mainsequence_markets`, and one version table. `MSM_AUTO_REGISTER_NAMESPACE`,
+the per-namespace histories it selected and `versions/mainsequence_examples` are removed.
+A sandbox is a separate database that applies the same history. A producer's own
+provider keeps its own namespace and version location. What follows about switching
+Markets' namespace is historical, and its open tasks are void.
+
 ## Context
 
 ADR 0022 moved `ms-markets` to the SDK-managed Alembic migration workflow.

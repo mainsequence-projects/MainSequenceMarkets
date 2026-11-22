@@ -60,7 +60,6 @@ from tests.support.pinned_identities import (
     _interpolated_prices_storage,
     _portfolio_configuration,
     _signal,
-    namespace_is_default,
 )
 
 MARKETS_PACKAGES = ("msm", "msm_portfolios", "msm_pricing")
@@ -429,14 +428,12 @@ def _assert_paths_pinned(found: set[str], pinned: tuple[str, ...], kind: str) ->
     )
 
 
-@namespace_is_default
 def test_metatable_models_keep_their_physical_table_names() -> None:
     models = metatable_provider_models()
 
     assert {model.__name__: model.__table__.name for model in models} == PINNED_TABLE_NAMES
 
 
-@namespace_is_default
 def test_metatable_models_keep_their_metatable_identifiers() -> None:
     models = metatable_provider_models()
 
@@ -486,25 +483,21 @@ def test_portfolio_configuration_hash_is_pinned(signal_name: str) -> None:
     )
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_UPDATE_HASHES))
 def test_metatables_update_hash_is_pinned(updaters, name: str) -> None:
     assert updaters[name].update_hash == PINNED_UPDATE_HASHES[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_PRE_RENAME_UPDATE_HASHES))
 def test_pre_rename_update_hash_is_pinned(updaters, name: str) -> None:
     assert pre_rename_update_hash(updaters[name]) == PINNED_PRE_RENAME_UPDATE_HASHES[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_NESTED_SIGNAL_UIDS))
 def test_signal_uid_with_nested_updaters_is_pinned(updaters, name: str) -> None:
     assert compute_signal_uid(NESTED_SIGNALS[name](updaters)) == PINNED_NESTED_SIGNAL_UIDS[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES))
 def test_portfolio_configuration_hash_with_nested_updaters_is_pinned(updaters, name: str) -> None:
     configuration = NESTED_PORTFOLIOS[name](updaters)
@@ -515,13 +508,11 @@ def test_portfolio_configuration_hash_with_nested_updaters_is_pinned(updaters, n
     )
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_STRATEGY_REVISIONS))
 def test_rebalance_strategy_revision_is_pinned(updaters, name: str) -> None:
     assert compute_strategy_revision(STRATEGIES[name](updaters)) == PINNED_STRATEGY_REVISIONS[name]
 
 
-@namespace_is_default
 @pytest.mark.parametrize("name", sorted(PINNED_CONFIGURED_STORAGE))
 def test_configured_storage_keeps_its_table_name_and_identifier(name: str) -> None:
     storage = CONFIGURED_STORAGE[name]()
@@ -532,7 +523,6 @@ def test_configured_storage_keeps_its_table_name_and_identifier(name: str) -> No
     ) == PINNED_CONFIGURED_STORAGE[name]
 
 
-@namespace_is_default
 def test_simulated_class_moves_keep_ms_markets_identities(monkeypatch) -> None:
     """Move and rename pinned classes, as a package rename would, and re-derive every identity."""
 

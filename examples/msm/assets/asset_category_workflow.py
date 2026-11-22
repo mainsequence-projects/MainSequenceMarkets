@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,10 +9,7 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
+from examples.msm.platform.bootstrap import use_local_runtime
 from examples.msm.assets.utils import (
     EXAMPLE_ASSET_CATEGORY,
     EXAMPLE_ASSET_UNIQUE_IDENTIFIER_PREFIX,
@@ -27,14 +23,13 @@ from examples.msm.assets.utils import (
     EXAMPLE_USD_CURRENCY,
 )
 
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
-
 import msm
 
 
 def run_asset_category_workflow(*, delete_temporary_assets: bool = False) -> dict[str, Any]:
     """Create a category, add and remove assets, and print membership changes."""
 
+    use_local_runtime()
     msm.start_engine(
         models=["AssetType", "Asset", "AssetCategory", "AssetCategoryMembership"],
     )

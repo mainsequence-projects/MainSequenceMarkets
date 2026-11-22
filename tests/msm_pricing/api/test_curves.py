@@ -50,11 +50,11 @@ def test_curve_start_engine_uses_pricing_dependencies(monkeypatch) -> None:
         fake_attach_pricing_schemas,
     )
 
-    assert Curve.start_engine(namespace="pricing-test") is runtime
+    assert Curve.start_engine(timeout=5) is runtime
     assert calls == [
         {
             "models": [CurveTable],
-            "namespace": "pricing-test",
+            "timeout": 5,
         }
     ]
 

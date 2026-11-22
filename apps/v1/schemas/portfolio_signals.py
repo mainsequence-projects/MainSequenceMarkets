@@ -5,11 +5,8 @@ import datetime as dt
 
 from pydantic import BaseModel, ConfigDict
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _signal_metadata_contracts():
-    prepare_apps_v1_import_namespace()
     from msm_portfolios.api.market_metadata import (
         SignalMetadata,
         SignalMetadataCreate,

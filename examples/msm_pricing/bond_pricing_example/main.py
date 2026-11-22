@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,11 +10,12 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[3]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
-from examples.msm_pricing.utils import (
+from examples.msm.platform.bootstrap import use_local_runtime  # noqa: E402
+
+if __name__ == "__main__":
+    use_local_runtime()  # before any client model is imported
+
+from examples.msm_pricing.utils import (  # noqa: E402
     EXAMPLE_DISCOUNT_CURVE_UNIQUE_IDENTIFIER,
     EXAMPLE_INDEX_UNIQUE_IDENTIFIER,
     EXAMPLE_PROJECTION_CURVE_UNIQUE_IDENTIFIER,
@@ -24,9 +24,7 @@ from examples.msm_pricing.utils import (
     example_index_convention_dump,
 )
 
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
-
-import msm
+import msm  # noqa: E402
 
 
 def create_floating_bond_pricing_workflow() -> dict[str, Any]:
@@ -34,6 +32,7 @@ def create_floating_bond_pricing_workflow() -> dict[str, Any]:
 
     import QuantLib as ql
 
+    use_local_runtime()
     msm.start_engine(
         models=[
             "AssetType",

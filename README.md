@@ -86,6 +86,8 @@ Repository areas:
 - `examples/msm_portfolios/`: portfolio construction, rebalance simulation,
   lifecycle cash-flow, multi-currency valuation, and accounting examples
 - `examples/msm_pricing/`: optional pricing and QuantLib-backed examples
+  (every example that writes runs only on MetaTables' local SQLite runtime; see
+  [Namespaces and sandboxes](https://mainsequence-projects.github.io/MainSequenceMarkets/concepts/#namespaces-and-sandboxes))
 - `.agents/skills/ms_markets/`: source agent skills for market-domain workflows
 - `tests/`: automated tests
 

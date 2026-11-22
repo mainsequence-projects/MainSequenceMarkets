@@ -7,11 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
-from apps.v1.runtime_bootstrap import prepare_apps_v1_import_namespace
-
 
 def _curve_contract():
-    prepare_apps_v1_import_namespace()
     from msm_pricing.api import Curve
 
     return Curve

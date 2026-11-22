@@ -11,10 +11,13 @@ This example shows the complete pricing workflow for a bond asset:
 6. reload the instrument generically with `Instrument.load_from_asset(...)`
 7. price the bond and print analytics, expected coupons, and carry/roll-down output
 
-Run it from the project root after installing the pricing extra:
+It writes only to MetaTables' local SQLite runtime and refuses any other. Run it from the
+project root after installing the pricing extra, with `metatables serve --local` running
+in another terminal:
 
 ```bash
 uv sync --extra pricing
+metatables --local runtime initialize
 metatables --local migrations upgrade --provider msm_migrations:migration head
 uv run python examples/msm_pricing/bond_pricing_example/main.py
 ```

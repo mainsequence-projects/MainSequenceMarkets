@@ -73,7 +73,7 @@ def test_index_create_schemas_delegates_to_required_table(monkeypatch) -> None:
 
     monkeypatch.setattr("msm.bootstrap.start_engine", fake_start_engine)
 
-    assert Index.start_engine(namespace="mainsequence.examples") is runtime
+    assert Index.start_engine(timeout=5) is runtime
     assert calls == [
         {
             "models": [
@@ -83,7 +83,7 @@ def test_index_create_schemas_delegates_to_required_table(monkeypatch) -> None:
                 IndexFormulaDefinitionTable,
                 IndexFormulaInputTable,
             ],
-            "namespace": "mainsequence.examples",
+            "timeout": 5,
         }
     ]
 

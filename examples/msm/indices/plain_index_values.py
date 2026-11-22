@@ -47,6 +47,9 @@ FREQUENCY_STORAGE_MODELS = (ONE_MINUTE_VALUES_STORAGE, DAILY_VALUES_STORAGE)
 def reconcile_and_list_dataset_states(index_uid: str):
     """Backfill and inspect population after storage registration and persistence."""
 
+    from examples.msm.platform.bootstrap import use_local_runtime
+
+    use_local_runtime()
     reconciliation = Index.reconcile_dataset_availability(index_uids=(index_uid,))
     states = Index.list_datasets(index_uid, include_empty=True)
     return reconciliation, states

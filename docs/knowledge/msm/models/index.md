@@ -85,9 +85,7 @@ Platform-managed models inherit `MarketsMetaTableMixin`, which assigns the
 physical SQLAlchemy table name through the package naming convention. Model
 classes should declare a logical identifier, `__metatable_description__`, and
 SQLAlchemy `__table_args__`, but should not hand-write `__tablename__`.
-The physical name is `ms_markets__<lowercase-concept>` and gains an
-`MSM_AUTO_REGISTER_NAMESPACE` suffix when that environment variable is set
-before model import.
+The physical name is `ms_markets__<lowercase-concept>`, in every database.
 
 Project-local extension models can keep the markets mixins while using a
 project-owned physical table-name app segment. Set `__markets_storage_app__` in
@@ -141,9 +139,9 @@ The storage app changes only the SQLAlchemy physical table name, for example
 the globally unique logical catalog and row runtime identity:
 `com.my_project.ProviderAccountDetails`.
 
-`MSM_AUTO_REGISTER_NAMESPACE` overrides the mixin namespace when set before
-model import. That keeps tests and examples isolated without changing the
-project-local model source. Existing models may still declare an already
+The mixin namespace is final. Tests and examples are isolated by a
+[separate database](../../../concepts.md#namespaces-and-sandboxes), without changing
+the project-local model source. Existing models may still declare an already
 qualified `__metatable_identifier__`; new extension models should prefer
 `__markets_base_identifier__` so the default namespace rule is visible.
 
@@ -156,9 +154,9 @@ pricing tables are validated so every physical column has a non-empty
 description before registration-facing tests pass.
 
 Built-in ms-markets models author `__metatable_identifier__` as the bare logical
-name, such as `Asset`. At runtime the shared markets identifier rule keeps the
-bare name for the default markets namespace and prefixes non-default test or
-example namespaces, such as `mainsequence.examples.Asset`.
+name, such as `Asset`. The shared markets identifier rule keeps the bare name in
+the Markets namespace and prefixes a project's namespace to the identifiers of
+that project's tables, such as `com.my_project.ProviderAccountDetails`.
 
 ## Extension Notes
 

@@ -14,6 +14,12 @@ the admin commands are `metatables migrations ... --provider
 migrations:migration`. The `mainsequence migrations` commands quoted below are
 historical.
 
+Amended 2026-11-22
+([#109](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/109)):
+`markets_auto_register_namespace` is removed. The version table takes no suffix: it is
+always `ms_markets__alembic_version`, and the migration namespace is always
+`mainsequence.markets`. The provider code quoted below is historical where it differs.
+
 ## Context
 
 `ms-markets` originally explored a project-owned MetaTable migration runner.

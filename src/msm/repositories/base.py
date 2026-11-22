@@ -33,7 +33,6 @@ class MarketsMetaTableHandle:
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
-    namespace: str | None = None
 
     @property
     def meta_table_uid(self) -> str:
@@ -44,8 +43,6 @@ class MarketsMetaTableHandle:
 class MarketsRepositoryContext:
     """MetaTable execution context for markets repositories.
 
-    `namespace` records the runtime namespace override selected during
-    bootstrap. `None` means the library's normal MetaTable namespace was used.
     `data_source_uid` is normally `None`, which lets the compiler take the
     DataSource and dialect from the MetaTables API runtime. An explicit UID must
     match that runtime unless a dialect is also supplied.
@@ -54,19 +51,16 @@ class MarketsRepositoryContext:
     limits: MetaTableOperationLimits | Mapping[str, Any] | None = None
     data_source_uid: str | None = None
     timeout: int | float | tuple[float, float] | None = None
-    namespace: str | None = None
 
     def __init__(
         self,
         limits: MetaTableOperationLimits | Mapping[str, Any] | None = None,
         data_source_uid: str | None = None,
         timeout: int | float | tuple[float, float] | None = None,
-        namespace: str | None = None,
     ) -> None:
         object.__setattr__(self, "limits", limits)
         object.__setattr__(self, "data_source_uid", data_source_uid)
         object.__setattr__(self, "timeout", timeout)
-        object.__setattr__(self, "namespace", namespace)
 
     def meta_table_uid_for_model(self, model: type[MarketsBase]) -> str:
         return _bound_meta_table_uid(model)
@@ -81,7 +75,6 @@ class MarketsRepositoryContext:
             limits=self.limits,
             data_source_uid=self.data_source_uid,
             timeout=self.timeout,
-            namespace=self.namespace,
         )
 
 

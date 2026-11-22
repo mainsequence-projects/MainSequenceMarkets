@@ -49,7 +49,7 @@ def _load_job(monkeypatch, context) -> SimpleNamespace:
         with original(**kwargs):
             yield
 
-    def start_engine(*, namespace=None, models=None):
+    def start_engine(*, models=None):
         state["models"] = models
         return SimpleNamespace(context=context)
 

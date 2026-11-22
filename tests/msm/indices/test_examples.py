@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -12,9 +13,9 @@ from examples.msm.indices import (  # noqa: E402
     delta_hedged_option_index,
     extension_owned_index_storage,
     formula_index,
-    index_values_frequency_migration,
     plain_index_values,
 )
+from examples.msm.platform import bootstrap as example_runtime  # noqa: E402
 
 
 def test_formula_example_mixes_index_and_asset_sources() -> None:
@@ -52,9 +53,12 @@ def test_plain_index_values_share_identity_across_frequencies() -> None:
     )
 
 
-def test_frequency_example_migrates_its_tables_with_its_own_provider() -> None:
+def test_frequency_example_migrates_its_tables_with_its_own_provider(monkeypatch) -> None:
+    # Loading the provider selects the local runtime.
+    monkeypatch.setattr(example_runtime, "use_local_runtime", lambda: None)
+    provider = importlib.import_module("examples.msm.indices.index_values_frequency_migration")
     models = plain_index_values.FREQUENCY_STORAGE_MODELS
-    migration = index_values_frequency_migration.migration
+    migration = provider.migration
 
     assert list(migration.metatable_models) == list(models)
     assert [model.__cadence__ for model in models] == ["1m", "1d"]

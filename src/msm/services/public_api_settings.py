@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from msm.settings import (
-    DEFAULT_MARKETS_NAMESPACE,
-    MSM_AUTO_REGISTER_NAMESPACE_ENV,
-    markets_auto_register_namespace,
-    markets_namespace,
-)
+from msm.settings import DEFAULT_MARKETS_NAMESPACE, markets_namespace
 
 
 def get_public_api_settings(
@@ -19,9 +14,7 @@ def get_public_api_settings(
     swagger_url: str,
     redoc_url: str,
 ) -> dict[str, Any]:
-    auto_register_namespace = markets_auto_register_namespace()
     namespace = markets_namespace()
-    namespace_source = MSM_AUTO_REGISTER_NAMESPACE_ENV if auto_register_namespace else "default"
 
     return {
         "app": {
@@ -31,9 +24,7 @@ def get_public_api_settings(
         },
         "runtime": {
             "namespace": namespace,
-            "namespace_source": namespace_source,
             "default_namespace": DEFAULT_MARKETS_NAMESPACE,
-            "auto_register_enabled": auto_register_namespace is not None,
             "management_mode": "platform_managed",
             "schema_mutation_allowed": False,
             "requires_migrations": True,
@@ -48,7 +39,7 @@ def get_public_api_settings(
                 "key": "namespace",
                 "label": "Markets namespace",
                 "value": namespace,
-                "source": namespace_source,
+                "source": "msm.settings",
                 "description": (
                     "Runtime MetaTables and time-index table updaters resolve against this "
                     "namespace."
@@ -61,7 +52,7 @@ def get_public_api_settings(
                 "source": "apps/v1 runtime bootstrap",
                 "description": (
                     "The API attaches markets and pricing runtime tables during application "
-                    "startup when auto-registration namespace is configured."
+                    "startup."
                 ),
             },
             {

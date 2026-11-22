@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -11,18 +10,13 @@ if __package__ in {None, ""}:
     _PROJECT_ROOT = Path(__file__).resolve().parents[4]
     sys.path[:0] = [str(_PROJECT_ROOT / "src"), str(_PROJECT_ROOT)]
 
-from examples.msm.platform.bootstrap import (
-    EXAMPLE_NAMESPACE_ENV,
-    EXAMPLE_METATABLE_NAMESPACE,
-)
+from examples.msm.platform.bootstrap import use_local_runtime
 from msm.constants import (
     ASSET_TYPE_CURRENCY,
     ASSET_TYPE_CURRENCY_DEFINITION,
     INDEX_TYPE_EQUITY,
     INDEX_TYPE_EQUITY_DEFINITION,
 )
-
-os.environ.setdefault(EXAMPLE_NAMESPACE_ENV, EXAMPLE_METATABLE_NAMESPACE)
 
 import msm
 
@@ -39,6 +33,7 @@ EXAMPLE_FUTURE_SETTLES_AT = EXAMPLE_FUTURE_EXPIRES_AT
 def create_index_future_from_openfigi() -> dict[str, Any]:
     """Create an index-underlying future using OpenFIGI identities."""
 
+    use_local_runtime()
     msm.start_engine(
         models=["AssetType", "Asset", "IndexType", "Index", "FutureAssetDetails"],
     )
