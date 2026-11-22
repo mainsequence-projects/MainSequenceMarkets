@@ -193,6 +193,10 @@ direct account snapshots and virtual-fund-grouped views.
   - selects one `AccountHoldingsSetTable` source snapshot for the account
   - costs two MetaTables operations: the account with that holdings set and
     its rows; then the account's virtual funds with what each holds from it
+  - reads at most 500 allocation rows; quantities past that cap show as
+    unallocated in `residuals`. Funds that hold a set and no rows are read
+    beside them, not in their place; funds with nothing from the selected set
+    are not read
   - groups persisted `VirtualFundHoldingsStorage` allocation rows by
     `VirtualFundTable.uid` where each `VirtualFundHoldingsSetTable` references
     the selected source account holdings set

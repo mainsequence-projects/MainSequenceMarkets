@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from sqlalchemy import and_, asc, desc, func, select, true
+from sqlalchemy import and_, asc, desc, func, or_, select, true
 from sqlalchemy.orm import aliased
 
 from metatables import MetaTableCompiledSQLOperation
@@ -36,7 +36,12 @@ from msm.time_index.accounts.storage import AccountHoldingsStorage, TargetPositi
 from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 
-from .base import MarketsRepositoryContext, compile_markets_statement, execute_markets_operation
+from .base import (
+    MarketsRepositoryContext,
+    compile_markets_statement,
+    execute_markets_operation,
+    with_max_rows,
+)
 
 SnapshotOrder = Literal["asc", "desc"]
 
@@ -109,8 +114,6 @@ def build_account_target_snapshot_operation(
             PortfolioTable, PORTFOLIO, names=("uid", "unique_identifier", "published_index_uid")
         ),
     ]
-    if include_asset_detail:
-        columns.extend(_asset_reference_columns())
     statement = (
         select(*columns)
         .select_from(AccountTable)
@@ -123,12 +126,14 @@ def build_account_target_snapshot_operation(
             ),
         )
         .outerjoin(PortfolioTable, PortfolioTable.uid == TargetPositionsStorage.portfolio_uid)
+        .where(AccountTable.uid == account_uid)
+        .limit(limit)
     )
     if include_asset_detail:
-        statement = _join_asset_references(
+        statement = _with_asset_references(
             statement, AssetTable.uid == TargetPositionsStorage.asset_uid
         )
-    return _compile(statement.where(AccountTable.uid == account_uid).limit(limit), context)
+    return _compile(statement, context)
 
 
 def read_account_target_snapshot(
@@ -206,8 +211,6 @@ def build_account_holdings_snapshot_operation(
             .scalar_subquery()
         )
     columns = [AccountTable.uid.label("account_uid"), *_labelled(AccountHoldingsStorage, HOLDING)]
-    if include_asset_detail:
-        columns.extend(_asset_reference_columns())
     statement = (
         select(*columns)
         .select_from(AccountTable)
@@ -218,12 +221,14 @@ def build_account_holdings_snapshot_operation(
                 AccountHoldingsStorage.time_index == snapshot_time,
             ),
         )
+        .where(AccountTable.uid == account_uid)
+        .limit(limit)
     )
     if include_asset_detail:
-        statement = _join_asset_references(
+        statement = _with_asset_references(
             statement, AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier
         )
-    return _compile(statement.where(AccountTable.uid == account_uid).limit(limit), context)
+    return _compile(statement, context)
 
 
 def read_account_holdings_snapshot(
@@ -274,8 +279,6 @@ def build_account_holdings_set_operation(
         holdings_set.c.time_index.label("holdings_set_time"),
         *_labelled(AccountHoldingsStorage, HOLDING),
     ]
-    if include_asset_detail:
-        columns.extend(_asset_reference_columns())
     statement = (
         select(*columns)
         .select_from(AccountTable)
@@ -287,12 +290,14 @@ def build_account_holdings_set_operation(
                 AccountHoldingsStorage.holdings_set_uid == holdings_set.c.uid,
             ),
         )
+        .where(AccountTable.uid == account_uid)
+        .limit(limit)
     )
     if include_asset_detail:
-        statement = _join_asset_references(
+        statement = _with_asset_references(
             statement, AssetTable.unique_identifier == AccountHoldingsStorage.asset_identifier
         )
-    return _compile(statement.where(AccountTable.uid == account_uid).limit(limit), context)
+    return _compile(statement, context)
 
 
 def read_account_holdings_set(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
@@ -315,17 +320,32 @@ def build_account_fund_holdings_operation(
     Each fund comes with its ``fundset__`` holdings set funded by
     ``source_account_holdings_set_uid`` (at most one: the pair is unique) and its
     ``allocation__`` rows from that set, one row each, or one row with null
-    ``allocation__`` columns when it has none; with ``include_asset_detail``, each row's
-    asset reference. ``limit`` bounds the rows.
+    ``allocation__`` columns when it has the set alone; with ``include_asset_detail``,
+    each row's asset reference. A fund with neither answers no row. ``limit`` bounds the
+    allocation rows and, apart from them, leaves room for as many funds with a set
+    alone, so neither kind of row takes the other's place.
     """
 
+    allocations = (
+        select(*VirtualFundHoldingsStorage.__table__.columns)
+        .where(
+            VirtualFundHoldingsStorage.source_account_holdings_set_uid
+            == source_account_holdings_set_uid,
+            VirtualFundHoldingsStorage.virtual_fund_uid.in_(
+                select(VirtualFundTable.uid).where(VirtualFundTable.account_uid == account_uid)
+            ),
+        )
+        .limit(limit)
+        .cte("fund_allocations")
+        .prefix_with("MATERIALIZED")
+    )
     columns = [
         *_labelled(VirtualFundTable, FUND),
         *_labelled(VirtualFundHoldingsSetTable, FUND_SET),
-        *_labelled(VirtualFundHoldingsStorage, ALLOCATION),
+        *(column.label(f"{ALLOCATION}{column.name}") for column in allocations.c),
     ]
-    if include_asset_detail:
-        columns.extend(_asset_reference_columns())
+    # The allocation rows first, at most ``limit``; the rest is for funds with a set alone.
+    max_rows = 2 * limit
     statement = (
         select(*columns)
         .select_from(VirtualFundTable)
@@ -337,23 +357,22 @@ def build_account_fund_holdings_operation(
                 == source_account_holdings_set_uid,
             ),
         )
-        .outerjoin(
-            VirtualFundHoldingsStorage,
-            and_(
-                VirtualFundHoldingsStorage.virtual_fund_uid == VirtualFundTable.uid,
-                VirtualFundHoldingsStorage.source_account_holdings_set_uid
-                == source_account_holdings_set_uid,
+        .outerjoin(allocations, allocations.c.virtual_fund_uid == VirtualFundTable.uid)
+        .where(
+            VirtualFundTable.account_uid == account_uid,
+            or_(
+                VirtualFundHoldingsSetTable.uid.is_not(None),
+                allocations.c.time_index.is_not(None),
             ),
         )
+        .order_by(allocations.c.time_index.is_(None))
+        .limit(max_rows)
     )
     if include_asset_detail:
-        statement = _join_asset_references(
-            statement,
-            AssetTable.unique_identifier == VirtualFundHoldingsStorage.asset_identifier,
+        statement = _with_asset_references(
+            statement, AssetTable.unique_identifier == allocations.c.asset_identifier
         )
-    return _compile(
-        statement.where(VirtualFundTable.account_uid == account_uid).limit(limit), context
-    )
+    return _compile(statement, with_max_rows(context, max_rows))
 
 
 def read_account_fund_holdings(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
@@ -372,30 +391,56 @@ def _labelled(model: Any, prefix: str, *, names: tuple[str, ...] | None = None) 
     ]
 
 
-def _asset_reference_columns() -> list[Any]:
-    return [
-        AssetTable.uid.label(f"{ASSET_REFERENCE}uid"),
-        AssetTable.unique_identifier.label(f"{ASSET_REFERENCE}identifier"),
-        AssetSnapshotsStorage.name.label(f"{ASSET_REFERENCE}name"),
-        AssetSnapshotsStorage.ticker.label(f"{ASSET_REFERENCE}ticker"),
-    ]
+def _with_asset_references(statement: Any, asset_onclause: Any) -> Any:
+    """``statement``'s rows, each with its asset and that asset's latest snapshot.
 
+    The latest snapshot times are found in one pass over the snapshots, for all the rows'
+    assets, and that pass is skipped when no row names an asset. The names at those times
+    are then read by key or, as PostgreSQL chooses, in a second pass. No index of the
+    snapshots leads with the asset, so a lookup per asset reads a whole index, or every
+    chunk's, for each. PostgreSQL turns a join or a plain ``IN`` into that when it expects
+    few assets, as without statistics: ``IS true`` keeps the membership test a filter of
+    the one pass, and ``MATERIALIZED`` keeps the pass from running again for each row.
+    """
 
-def _join_asset_references(statement: Any, asset_onclause: Any) -> Any:
-    """Left-join each row's asset (``asset_onclause``) and the asset's latest snapshot."""
-
-    snapshots = aliased(AssetSnapshotsStorage, name="asset_snapshot_times")
-    latest_snapshot_time = (
-        select(func.max(snapshots.time_index))
-        .where(snapshots.asset_identifier == AssetTable.unique_identifier)
-        .scalar_subquery()
+    identifier_label = f"{ASSET_REFERENCE}identifier"
+    rows = (
+        statement.add_columns(
+            AssetTable.uid.label(f"{ASSET_REFERENCE}uid"),
+            AssetTable.unique_identifier.label(identifier_label),
+        )
+        .outerjoin(AssetTable, asset_onclause)
+        .cte("read_rows")
     )
-    return statement.outerjoin(AssetTable, asset_onclause).outerjoin(
-        AssetSnapshotsStorage,
-        and_(
-            AssetSnapshotsStorage.asset_identifier == AssetTable.unique_identifier,
-            AssetSnapshotsStorage.time_index == latest_snapshot_time,
-        ),
+    identifier = rows.c[identifier_label]
+    latest = (
+        select(
+            AssetSnapshotsStorage.asset_identifier.label("asset_identifier"),
+            func.max(AssetSnapshotsStorage.time_index).label("time_index"),
+        )
+        .where(
+            select(identifier).where(identifier.is_not(None)).exists(),
+            AssetSnapshotsStorage.asset_identifier.in_(select(identifier)).is_(true()),
+        )
+        .group_by(AssetSnapshotsStorage.asset_identifier)
+        .cte("latest_asset_snapshots")
+        .prefix_with("MATERIALIZED")
+    )
+    return (
+        select(
+            *rows.c,
+            AssetSnapshotsStorage.name.label(f"{ASSET_REFERENCE}name"),
+            AssetSnapshotsStorage.ticker.label(f"{ASSET_REFERENCE}ticker"),
+        )
+        .select_from(rows)
+        .outerjoin(latest, latest.c.asset_identifier == identifier)
+        .outerjoin(
+            AssetSnapshotsStorage,
+            and_(
+                AssetSnapshotsStorage.asset_identifier == latest.c.asset_identifier,
+                AssetSnapshotsStorage.time_index == latest.c.time_index,
+            ),
+        )
     )
 
 

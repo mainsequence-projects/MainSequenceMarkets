@@ -10,8 +10,10 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+import pytest
 import sqlalchemy as sa
 
+from metatables.api.backend.backends.restricted_sql import parameters_for
 from msm.repositories.accounts import (
     replace_account_holdings_snapshot,
     replace_account_target_positions_snapshot,
@@ -28,6 +30,7 @@ from msm.services.accounts.account_virtual_allocations import (
     allocate_account_virtual_funds_in_context,
 )
 from tests.support.account_registration import _record_operations
+from tests.support.account_snapshots import account_read_operations, seed_account_snapshots
 from tests.support.sqlite_markets import WHEN, _account, _asset, _insert, _portfolio, _rows
 
 EARLIER = WHEN - dt.timedelta(days=1)
@@ -398,3 +401,55 @@ def test_holdings_by_fund_find_the_latest_of_many_holdings_sets(sqlite_markets) 
     assert [(row["asset_identifier"], row["residual_signed_quantity"]) for row in by_fund["residuals"]] == [
         ("AAPL", "2.0")
     ]
+
+
+@pytest.mark.parametrize(
+    ("idle", "set_only", "holders", "held"),
+    [(30, 0, 1, 480), (0, 30, 1, 480), (100, 500, 1, 500), (0, 5, 3, 367)],
+    ids=["idle funds", "funds with a set alone", "both at their caps", "past the rows' cap"],
+)
+def test_holdings_by_fund_keep_a_place_for_allocations_and_for_funds(
+    sqlite_markets, idle, set_only, holders, held
+) -> None:
+    # Funds without rows once took their places among the 500 allocation rows, which
+    # then answered as unallocated.
+    account = seed_account_snapshots(
+        sqlite_markets.engine, held=held, holders=holders, idle=idle, set_only=set_only
+    )
+
+    by_fund = get_account_holdings_by_fund_response(
+        sqlite_markets.context, account_uid=str(account)
+    )
+
+    allocated = [len(group["holdings"]) for group in by_fund["funds"]]
+    # Every fund with a set, also one whose rows are past the cap; no fund with nothing.
+    assert len(allocated) == set_only + holders
+    assert sum(allocated) >= min(holders * held, 500)
+    if holders * held <= 500:
+        assert by_fund["residuals"] == []
+
+
+def test_the_asset_snapshots_are_not_read_once_per_asset(sqlite_markets, monkeypatch) -> None:
+    # 100 assets held and 5,000 snapshots: one lookup an asset reads 500,000 entries.
+    account = seed_account_snapshots(sqlite_markets.engine, held=100, other_snapshots=5_000)
+
+    for operation in account_read_operations(monkeypatch, sqlite_markets.context, account):
+        assert _instructions(sqlite_markets.engine, operation) < 500_000
+
+
+def _instructions(engine, operation) -> int:
+    """SQLite's virtual machine instructions for a compiled read, to the thousand."""
+
+    statement = operation.statement
+    values = parameters_for(statement.parameters, statement.parameter_types, "sqlite")
+    steps = []
+    connection = engine.raw_connection()
+    try:
+        connection.driver_connection.set_progress_handler(lambda: steps.append(1) and None, 1_000)
+        cursor = connection.cursor()
+        cursor.execute(statement.sql, tuple(values) if isinstance(values, list) else values)
+        cursor.fetchall()
+    finally:
+        connection.driver_connection.set_progress_handler(None, 0)
+        connection.close()
+    return 1_000 * len(steps)

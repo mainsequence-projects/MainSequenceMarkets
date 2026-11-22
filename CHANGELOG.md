@@ -58,7 +58,9 @@ Read "Upgrading" at the end of this entry.
 - **Fewer MetaTables round trips behind an account's target and holdings**
   ([#94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)). Each
   MetaTables request is a round trip, so these requests now join in one select what
-  they read one table at a time. Their answers are unchanged.
+  they read one table at a time. Within their 500-row caps their answers are the same,
+  apart from the two fixes to these reads under "Fixed". In holdings by fund, funds
+  with nothing from the selected holdings set no longer count toward the cap on funds.
   - `GET /api/v1/account/{account_uid}/target-positions/`: one request, was five (six
     when the target names assets): the account, its snapshot, the snapshot's rows and
     their portfolios and assets.
@@ -70,7 +72,12 @@ Read "Upgrading" at the end of this entry.
     with its holdings set and that set's rows, then its virtual funds with what each
     holds from the set.
 
-  The selects are in `msm.repositories.account_snapshot_reads`.
+  The selects are in `msm.repositories.account_snapshot_reads`. Holdings by fund still
+  caps allocation rows at 500 on their own, so funds without rows cannot push one out;
+  quantities past that cap still show as unallocated in `residuals`. Each select finds
+  its assets' latest snapshot times in one pass over the asset snapshots, not one per
+  asset, and reading the names at those times can take a second pass. No migration is
+  needed.
 - **An account delete no longer reads whole tables.** Its foreign keys and its
   per-account lookups had no index to use, so the time grew with every account's
   history. `tests/msm/repositories/test_postgresql_account_delete_volume.py` deletes one
