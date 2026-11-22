@@ -43,6 +43,7 @@ from apps.v1.services.accounts import (
     get_account,
     get_account_summary,
     get_account_target_positions,
+    get_account_target_positions_history,
     get_accounts_by_uids,
     get_virtual_fund_allocation_policy,
     list_accounts,
@@ -910,3 +911,61 @@ def get_account_target_positions_by_uid(
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
     return snapshot
+
+
+@router.get(
+    "/{account_uid}/target-positions/history/",
+    response_model=ResourceCollection[AccountTargetPositionsSnapshotResponse],
+    summary="List account target positions history",
+    description=(
+        "Page an account's target-position snapshots, latest first or, with `order=asc`, "
+        "earliest first; `limit` and `offset` count snapshots and `totalItems` is how many "
+        "the account has. Each item is a snapshot as GET /api/v1/account/{account_uid}/"
+        "target-positions/ answers one. History also has the snapshots of an inactive "
+        "target allocation, so a cleared target is an empty snapshot followed by what it "
+        "cleared."
+    ),
+    operation_id="listAccountTargetPositionsHistory",
+    openapi_extra={"x-ui-contract": RESOURCE_COLLECTION_CONTRACT},
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid paging request."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The requested account uid was not found.",
+        },
+    },
+)
+def get_account_target_positions_history_by_uid(
+    account_uid: str,
+    order: Annotated[
+        Literal["asc", "desc"],
+        Query(description="`desc` lists the latest snapshot first, `asc` the earliest."),
+    ] = "desc",
+    limit: Annotated[
+        int,
+        Query(ge=1, le=50, description="Maximum number of snapshots to return."),
+    ] = 10,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Zero-based starting offset into the account's snapshots."),
+    ] = 0,
+    include_asset_detail: Annotated[
+        bool,
+        Query(description="When true, include each asset's uid, identifier and latest labels."),
+    ] = True,
+) -> ResourceCollection[AccountTargetPositionsSnapshotResponse]:
+    history = get_account_target_positions_history(
+        account_uid=account_uid,
+        order=order,
+        limit=limit,
+        offset=offset,
+        include_asset_detail=include_asset_detail,
+    )
+    if history is None:
+        raise HTTPException(status_code=404, detail=f"Account {account_uid!r} was not found.")
+    return resource_collection_response(
+        items=history["results"],
+        total_items=history["count"],
+        limit=limit,
+        offset=offset,
+    )

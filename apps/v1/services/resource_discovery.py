@@ -459,6 +459,17 @@ RESOURCE_DISCOVERY_SPECS: dict[str, ResourceDiscoverySpec] = {
             _column("uid", "UID"),
         ),
     ),
+    "account-target-positions-history": _spec(
+        resource_id="account-target-positions-history",
+        label="Target positions history",
+        item_label="target snapshots",
+        identity_fields=("position_set_uid",),
+        columns=(
+            _column("target_positions_date", "Target time", "datetime", importance="primary"),
+            _column("position_set_uid", "Position set"),
+            _column("related_account_uid", "Account"),
+        ),
+    ),
     "portfolio-account-targets": _spec(
         resource_id="portfolio-account-targets",
         label="Accounts targeting the portfolio",

@@ -232,6 +232,34 @@ class MarketsClient:
         )
         return AccountTargetPositionsSnapshotResponse.model_validate(payload)
 
+    def account_target_positions_history(
+        self,
+        account_uid: Any,
+        *,
+        limit: int = 10,
+        offset: int = 0,
+        order: str = "desc",
+        include_asset_detail: bool = True,
+    ) -> ResourceCollection[AccountTargetPositionsSnapshotResponse]:
+        """One page of an account's target snapshots, in one call (``listAccountTargetPositionsHistory``).
+
+        Latest first, or earliest with ``order="asc"``; at most 50 snapshots a page.
+        Unlike ``account_target_positions`` it also has the snapshots of a cleared
+        target: the clear, with no positions, and what it cleared.
+        """
+
+        payload = self.request(
+            "GET",
+            f"{API_PREFIX}/account/{account_uid}/target-positions/history/",
+            params=[
+                ("order", order),
+                ("limit", limit),
+                ("offset", offset),
+                ("include_asset_detail", "true" if include_asset_detail else "false"),
+            ],
+        )
+        return ResourceCollection[AccountTargetPositionsSnapshotResponse].model_validate(payload)
+
     def add_account_target_positions(
         self,
         account_uid: Any,

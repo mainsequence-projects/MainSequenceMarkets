@@ -1,8 +1,8 @@
 """Register an account and write its holdings snapshot in one transaction (ADR 0051).
 
-The registration reads twice: the assets it names (``asset_reference_details``), and the
-account by ``unique_identifier`` with its holdings at ``holdings_date``
-(``build_account_registration_state_operation``). It then sends one ordered statement list
+The registration reads once (``build_account_registration_state_operation``): the assets
+it names with their latest snapshots, and the account by ``unique_identifier`` with its
+holdings at ``holdings_date``, in one select. It then sends one ordered statement list
 that MetaTables runs in one transaction on PostgreSQL and SQLite (MetaTables ADR 0026):
 
 1. the missing asset types and assets, with ``ON CONFLICT DO NOTHING``;
@@ -38,6 +38,8 @@ from sqlalchemy import (
     false,
     func,
     insert,
+    literal_column,
+    or_,
     select,
     values,
 )
@@ -59,17 +61,20 @@ from .asset_registration import (
     insert_missing_asset_types,
     insert_missing_assets,
 )
+from .assets import asset_reference_select
 from .base import (
     MarketsCompiledWrite,
     MarketsRepositoryContext,
-    compile_markets_statement,
     compile_markets_statements,
-    execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
     values_parameter,
     with_max_rows,
 )
+from .complete_reads import compile_page, page_select, read_every_row
+
+ASSET_STATE = "asset__"
+"""Prefix of the named assets' columns in the state read."""
 
 ACCOUNT_COLUMNS: tuple[str, ...] = tuple(column.name for column in AccountTable.__table__.columns)
 """The account row's columns, as the state read and the answer return them."""
@@ -198,16 +203,20 @@ def build_account_registration_state_operation(
     account_identifier: str,
     holdings_date: dt.datetime,
     max_rows: int,
+    asset_identifiers: Sequence[str] = (),
+    offset: int = 0,
 ) -> MetaTableCompiledSQLOperation:
-    """One read: the account by ``unique_identifier`` with its holdings at ``holdings_date``.
+    """One read: the named assets, and the account with its holdings at ``holdings_date``.
 
-    The account left-joins its holdings set at ``holdings_date`` and that set's rows, so it
-    answers one row per stored holding, or one row with null holding columns, or no row
-    when the account does not exist. ``max_rows`` bounds the rows returned.
+    An asset's row has its ``asset__`` columns (``asset_reference_select``'s) and null
+    account columns; the account's rows have null ``asset__`` columns. The account, found
+    by ``unique_identifier``, left-joins its holdings set at ``holdings_date`` and that
+    set's rows, so it answers one row per stored holding, at most ``max_rows`` of them, or
+    one row with null holding columns, or no row when the account does not exist.
     """
 
     params = _Params(account_identifier=account_identifier, holdings_date=holdings_date)
-    statement = (
+    account = (
         select(
             *AccountTable.__table__.columns,
             AccountHoldingsSetTable.uid.label("holdings_set_uid"),
@@ -231,12 +240,31 @@ def build_account_registration_state_operation(
         )
         .where(AccountTable.unique_identifier == params.account_identifier())
         .order_by(AccountHoldingsStorage.asset_identifier)
+        .limit(max_rows)
+        .cte("account_state")
+        .prefix_with("MATERIALIZED")
     )
-    return compile_markets_statement(
-        statement,
-        context=with_max_rows(context, max_rows),
-        operation="select",
+    assets = (
+        asset_reference_select(list(asset_identifiers), latest_snapshot=True)
+        .order_by(None)
+        .cte("named_assets")
+        .prefix_with("MATERIALIZED")
     )
+    # A part for the assets and one for the account: their rows never multiply, and no
+    # column needs a typed null as a union's would.
+    assets_part, account_part = literal_column("1"), literal_column("2")
+    parts = (
+        select(assets_part.label("part")).union_all(select(account_part)).cte("read_parts")
+    )
+    statement = (
+        select(*account.c, *(item.label(f"{ASSET_STATE}{item.name}") for item in assets.c))
+        .select_from(parts)
+        .outerjoin(assets, parts.c.part == assets_part)
+        .outerjoin(account, parts.c.part == account_part)
+        .where(or_(assets.c.asset_uid.is_not(None), account.c.uid.is_not(None)))
+    )
+    key = (f"{ASSET_STATE}asset_identifier", "holding_asset_identifier")
+    return compile_page(page_select(statement, key=key, offset=offset), context=context)
 
 
 def read_account_registration_state(
@@ -245,13 +273,16 @@ def read_account_registration_state(
     account_identifier: str,
     holdings_date: dt.datetime,
     max_rows: int,
+    asset_identifiers: Sequence[str] = (),
 ) -> dict[str, Any]:
-    return execute_markets_operation(
-        build_account_registration_state_operation(
+    return read_every_row(
+        lambda offset: build_account_registration_state_operation(
             context,
             account_identifier=account_identifier,
             holdings_date=holdings_date,
             max_rows=max_rows,
+            asset_identifiers=asset_identifiers,
+            offset=offset,
         ),
         context=context,
     )
@@ -519,6 +550,7 @@ def _answer(asset_identifiers: Sequence[str], *, params: _Params) -> Any:
 
 __all__ = [
     "ACCOUNT_COLUMNS",
+    "ASSET_STATE",
     "AccountRegistrationWrites",
     "AccountWrite",
     "HoldingPosition",

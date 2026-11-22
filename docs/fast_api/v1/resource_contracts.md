@@ -67,6 +67,7 @@ declare it in `extensions`:
 | --- | --- |
 | `/api/v1/account/` | `/api/v1/account/discovery/` |
 | `/api/v1/account/target-allocation/targets/` | `/api/v1/account/target-allocation/targets/discovery/` |
+| `/api/v1/account/{account_uid}/target-positions/history/` | `/api/v1/account/{account_uid}/target-positions/history/discovery/` |
 | `/api/v1/asset/` | `/api/v1/asset/discovery/` |
 | `/api/v1/asset/{uid}/related-meta-tables/` | `/api/v1/asset/{uid}/related-meta-tables/discovery/` |
 | `/api/v1/asset-category/` | `/api/v1/asset-category/discovery/` |

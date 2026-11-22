@@ -61,6 +61,7 @@ from .base import (
     execute_markets_write,
     resolve_markets_sql_target,
 )
+from .complete_reads import page_context, whole_page
 from .crud import (
     build_create_model_operation,
     build_get_model_by_uid_operation,
@@ -1057,6 +1058,8 @@ def build_replace_account_target_positions_snapshot_operation(
     positions: Sequence[Mapping[str, Any]],
     overwrite: bool = False,
     virtual_funds: Sequence[Mapping[str, Any]] = (),
+    read_back: bool = False,
+    include_asset_detail: bool = True,
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
     """Write one account target-position snapshot atomically.
@@ -1071,6 +1074,11 @@ def build_replace_account_target_positions_snapshot_operation(
     On PostgreSQL this is one statement. SQLite accepts only `SELECT` inside
     `WITH`, so there the same steps run as a statement list in one transaction
     (MetaTables ADR 0026), and a refused write changes nothing at all.
+
+    With ``read_back`` and positions, the transaction ends by reading the snapshot
+    as ``read_account_target_snapshot`` does, so the write answers it in the same
+    request (issue 94). On PostgreSQL the write is then a guarded statement of
+    that transaction, so there too a refused write changes nothing at all.
 
     With positions, the account's target allocation becomes active and the
     snapshot's rows replace any rows at ``target_positions_date``. With no
@@ -1096,19 +1104,37 @@ def build_replace_account_target_positions_snapshot_operation(
         field_name="target_positions_date",
     )
     data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
+    answer = []
+    if read_back and not clearing:
+        # Imported here: that module loads storage whose package imports the services,
+        # and they import this one.
+        from .account_snapshot_reads import account_target_snapshot_select
+
+        answer = [
+            account_target_snapshot_select(
+                account_uid=account_uid,
+                order="desc",
+                target_positions_date=normalized_target_positions_date,
+                include_asset_detail=include_asset_detail,
+            )
+        ]
+        context = page_context(context)
     if dialect == "sqlite":
         return compile_markets_statements(
-            _target_positions_snapshot_statement_list(
-                account_allocation_model_uid=account_allocation_model_uid,
-                account_target_allocation_uid=account_target_allocation_uid,
-                position_set_uid=position_set_uid,
-                account_uid=account_uid,
-                account_name=account_name,
-                target_positions_date=normalized_target_positions_date,
-                positions=positions,
-                overwrite=overwrite,
-                virtual_funds=virtual_funds,
-            ),
+            [
+                *_target_positions_snapshot_statement_list(
+                    account_allocation_model_uid=account_allocation_model_uid,
+                    account_target_allocation_uid=account_target_allocation_uid,
+                    position_set_uid=position_set_uid,
+                    account_uid=account_uid,
+                    account_name=account_name,
+                    target_positions_date=normalized_target_positions_date,
+                    positions=positions,
+                    overwrite=overwrite,
+                    virtual_funds=virtual_funds,
+                ),
+                *answer,
+            ],
             context=context,
             operation="upsert",
             data_source_uid=data_source_uid,
@@ -1552,6 +1578,19 @@ def build_replace_account_target_positions_snapshot_operation(
             .cte("created_virtual_funds")
         )
         statement = statement.add_cte(fund_inputs).add_cte(created_virtual_funds)
+    if answer:
+        # The select is a statement of its own: one statement never sees the rows its
+        # own data-modifying CTEs write.
+        return compile_markets_statements(
+            [
+                GuardedStatement(statement, expect_rows="at_least_one", label=POSITION_SET_GUARD),
+                *answer,
+            ],
+            context=context,
+            operation="upsert",
+            dialect=dialect,
+            data_source_uid=data_source_uid,
+        )
     return compile_markets_statement(
         statement,
         context=context,
@@ -1915,11 +1954,34 @@ def replace_account_target_positions_snapshot(
     context: MarketsRepositoryContext,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    return execute_markets_write(
+    """Run the target write; no rows when it was refused.
+
+    With ``read_back`` and positions the rows are the snapshot's, as
+    ``read_account_target_snapshot`` answers them, all of them: those over one answer
+    are read after the commit.
+    """
+
+    result = execute_markets_write(
         build_replace_account_target_positions_snapshot_operation(context, **kwargs),
         context=context,
         refused_by=(LIVE_PORTFOLIOS_GUARD, POSITION_SET_GUARD),
     )
+    if not (kwargs.get("read_back") and kwargs["positions"] and result.get("rows")):
+        return result
+    rows = whole_page(result["rows"])
+    if rows is None:
+        from .account_snapshot_reads import read_account_target_snapshot
+
+        return read_account_target_snapshot(
+            context,
+            account_uid=kwargs["account_uid"],
+            order="desc",
+            target_positions_date=_utc_timestamp(
+                kwargs["target_positions_date"], field_name="target_positions_date"
+            ),
+            include_asset_detail=kwargs.get("include_asset_detail", True),
+        )
+    return {**result, "rows": rows, "row_count": len(rows)}
 
 
 MappingOrDict = dict[str, Any]

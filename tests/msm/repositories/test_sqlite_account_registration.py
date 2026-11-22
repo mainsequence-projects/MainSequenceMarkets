@@ -51,7 +51,7 @@ def test_a_first_registration_creates_everything_in_one_transaction(sqlite_marke
 
     result = register_account(sqlite_markets.context, _request())
 
-    assert operations == ["read", "read", "transaction"]
+    assert operations == ["read", "transaction"]
     response = result.response
     (account,) = _rows(engine, "SELECT * FROM ms_markets__account")
     assert account["unique_identifier"] == "venue::account-1"
@@ -123,7 +123,7 @@ def test_a_first_registration_creates_everything_in_one_transaction(sqlite_marke
     assert result.writes[-1].details["row_count"] == 3
 
 
-def test_a_sync_of_known_assets_costs_two_reads_and_one_transaction(sqlite_markets, monkeypatch) -> None:
+def test_a_sync_of_known_assets_costs_one_read_and_one_transaction(sqlite_markets, monkeypatch) -> None:
     register_account(sqlite_markets.context, _request())
     operations = _record_operations(monkeypatch)
     sent: list[int] = []
@@ -146,7 +146,7 @@ def test_a_sync_of_known_assets_costs_two_reads_and_one_transaction(sqlite_marke
         ),
     )
 
-    assert operations == ["read", "read", "transaction"]
+    assert operations == ["read", "transaction"]
     # The holdings set, its rows and the answer: no asset, snapshot or account statement.
     assert sent == [3]
     assert result.response["written"] == {
@@ -179,7 +179,7 @@ def test_an_identical_repeat_succeeds_without_a_transaction(sqlite_markets, monk
 
     repeat = register_account(sqlite_markets.context, _request(overwrite=overwrite))
 
-    assert operations == ["read", "read"]
+    assert operations == ["read"]
     assert repeat.writes == ()
     assert repeat.response["holdings_set_uid"] == first.response["holdings_set_uid"]
     assert repeat.response["asset_uids"] == first.response["asset_uids"]
@@ -209,7 +209,7 @@ def test_different_holdings_without_overwrite_are_refused_and_nothing_is_written
     with pytest.raises(AccountHoldingsSnapshotExistsError, match="overwrite=true"):
         register_account(sqlite_markets.context, request)
 
-    assert operations == ["read", "read"]
+    assert operations == ["read"]
     assert _holdings(engine) == before
     assert _rows(engine, "SELECT unique_identifier FROM ms_markets__asset WHERE unique_identifier = 'venue::NVDA'") == []
     assert _rows(engine, "SELECT account_name FROM ms_markets__account") == [{"account_name": "Venue account"}]
@@ -258,7 +258,7 @@ def test_an_existing_asset_of_another_type_refuses_the_registration(sqlite_marke
 
     assert "'venue::AAPL' is 'equity', not 'venue_equity'" in str(refused.value)
     assert "'USD' is None, not 'currency'" in str(refused.value)
-    assert operations == ["read", "read"]
+    assert operations == ["read"]
     assert _count(engine, "ms_markets__account") == 0
     assert _count(engine, "ms_markets__assettype") == 0
     assert _count(engine, "ms_markets__asset") == 2
@@ -289,7 +289,7 @@ def test_unknown_and_repeated_position_assets_are_refused_before_any_write(sqlit
             ),
         )
 
-    assert operations == ["read", "read"]
+    assert operations == ["read"]
     assert _count(sqlite_markets.engine, "ms_markets__asset") == 0
 
 

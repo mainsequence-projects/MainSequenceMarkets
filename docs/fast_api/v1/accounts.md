@@ -35,8 +35,10 @@ direct account snapshots and virtual-fund-grouped views.
     `cash_currency`, `holdings_date`, `overwrite` and `positions`
     (`asset_identifier`, positive `quantity`, `direction`, `extra_details`).
     At most 1,000 distinct assets and 1,000 positions
-  - two reads whatever the size: the named assets with their latest snapshots,
-    and the account by `unique_identifier` with its holdings at `holdings_date`.
+  - one read whatever the size: the named assets with their latest snapshots,
+    and the account by `unique_identifier` with its holdings at `holdings_date`,
+    in one select. Assets that name a `calendar_identifier` add a read of those
+    calendars and, when any of those assets exists, a read of their links.
     Then one transaction creates the missing asset types, assets and cash
     currency asset (`currency` type), writes changed snapshots, creates the
     account or updates the fields that differ, and writes the holdings. When
@@ -308,9 +310,10 @@ direct account snapshots and virtual-fund-grouped views.
   - writes one account target-position snapshot and returns the same
     `AccountTargetPositionsSnapshotResponse` contract as the target-positions
     read endpoint
-  - costs three MetaTables operations whatever the number of positions: read
-    the account with its stored target allocation, write, and read the
-    snapshot back as the target-positions read answers it; a cleared target is
+  - costs two MetaTables operations up to 10,000 rows and 8 MiB: read the
+    account with its stored target allocation, then write and, in the same
+    transaction, read the snapshot back as the target-positions read answers
+    it. A larger snapshot is read back after the commit; a cleared target is
     answered from the write
   - request body contains only `target_positions_date`, `overwrite`, and
     `positions`; account and target-allocation parent identity are derived from
@@ -337,7 +340,7 @@ direct account snapshots and virtual-fund-grouped views.
     response is that empty snapshot; the read then answers no positions until a
     new target is written, which makes the allocation active again. A refused
     write (`overwrite=false` on an existing snapshot) changes neither the rows
-    nor the allocation's `is_active`
+    nor the allocation's `is_active`; with positions, it changes nothing at all
   - a snapshot that names a retired portfolio is refused with `409`, whatever
     its date, and writes nothing: the statement locks the named portfolio rows
     and writes only when every one is live
@@ -363,6 +366,21 @@ direct account snapshots and virtual-fund-grouped views.
   - portfolio details include `uid`, `unique_identifier`, and optional
     `published_index_uid`; portfolio targets are mandate exposure, not custody
     holdings
+- `GET /api/v1/account/{account_uid}/target-positions/history/`
+  - the account's target snapshots in one call, as a resource collection:
+    `items` are snapshots as the target-positions read answers one, and
+    `limit` (10, at most 50), `offset` and `pageInfo.totalItems` count
+    snapshots, not positions
+  - latest first; `order=asc` lists the earliest first. Takes
+    `include_asset_detail`
+  - history, so unlike the target-positions read it includes the snapshots of
+    an inactive target allocation: after a clear, the empty snapshot and the
+    ones before it
+  - costs one MetaTables operation up to 10,000 rows and 8 MiB
+  - `404` for an unknown account; an account with no target answers no items
+  - columns are described by
+    `GET /api/v1/account/{account_uid}/target-positions/history/discovery/`
+  - `MarketsClient.account_target_positions_history(...)` calls it
 
 ## Related Concepts
 

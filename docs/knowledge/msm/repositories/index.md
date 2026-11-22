@@ -123,6 +123,11 @@ A page holds 10,000 rows. An answer in one statement costs one request. One in s
 statements is read again until two reads agree, so a write between pages cannot mix two
 states, and `IncompleteReadError` is raised when none agree.
 
+A write can answer such a select in its own request: its transaction ends with
+`page_select(..., offset=0)`, compiled with `page_context(context)`, and
+`whole_page(rows)` gives the rows, or `None` when there are more to read. The target
+write does.
+
 `search_model` and its `limit` remain for lists a caller pages through.
 
 ## Extension Notes

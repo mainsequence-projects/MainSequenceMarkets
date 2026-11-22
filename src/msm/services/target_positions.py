@@ -26,6 +26,7 @@ from msm.repositories.account_snapshot_reads import (
     PORTFOLIO,
     TARGET,
     prefixed_columns,
+    read_account_target_history,
     read_account_target_snapshot,
     read_account_with_stored_target_allocation,
 )
@@ -262,25 +263,58 @@ def get_account_target_positions_snapshot_response(
     )
     if not rows:
         return None
+    return _snapshot_from_read(rows, include_asset_detail=include_asset_detail)
 
-    resolved_account_uid = str(rows[0]["account_uid"])
-    if _string_or_none(rows[0].get("position_set_uid")) is None:
-        return _empty_account_target_positions_snapshot(account_uid=resolved_account_uid)
 
-    position_rows = [
-        prefixed_columns(row, TARGET) for row in rows if row.get(f"{TARGET}position_set_uid")
-    ]
-    return _build_account_target_positions_snapshot(
-        account_uid=resolved_account_uid,
-        position_set_row={
-            "uid": rows[0]["position_set_uid"],
-            "position_set_time": rows[0].get("position_set_time"),
-        },
-        rows=position_rows,
-        asset_references=_asset_references_by_uid(rows) if include_asset_detail else {},
-        portfolio_references=_portfolio_references_by_uid(rows),
-        include_asset_detail=include_asset_detail,
+def get_account_target_positions_history_response(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: str,
+    order: str = "desc",
+    limit: int = 10,
+    offset: int = 0,
+    include_asset_detail: bool = True,
+) -> dict[str, Any] | None:
+    """A page of an account's target snapshots and their count; ``None`` without the account.
+
+    One read (issue 94): ``results`` holds ``limit`` snapshots after the first ``offset``,
+    latest first (or earliest, with ``order="asc"``), each as
+    `get_account_target_positions_snapshot_response` answers one. History includes what
+    the current target does not: the snapshots of an inactive allocation, so a cleared
+    target appears as an empty snapshot followed by what it cleared.
+    """
+
+    normalized_order = str(order).lower()
+    if normalized_order not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'.")
+    if limit < 1:
+        raise ValueError("limit must be greater than or equal to 1.")
+    if offset < 0:
+        raise ValueError("offset must be greater than or equal to 0.")
+
+    rows = operation_result_rows(
+        read_account_target_history(
+            context,
+            account_uid=account_uid,
+            order=normalized_order,
+            snapshots=limit,
+            skip=offset,
+            include_asset_detail=include_asset_detail,
+        )
     )
+    if not rows:
+        return None
+    by_position_set: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        if position_set_uid := _string_or_none(row.get("position_set_uid")):
+            by_position_set.setdefault(position_set_uid, []).append(row)
+    return {
+        "count": int(rows[0]["snapshot_count"]),
+        "results": [
+            _snapshot_from_read(snapshot_rows, include_asset_detail=include_asset_detail)
+            for snapshot_rows in by_position_set.values()
+        ],
+    }
 
 
 def add_account_target_positions_snapshot_response(
@@ -294,9 +328,10 @@ def add_account_target_positions_snapshot_response(
 ) -> dict[str, Any] | None:
     """Write one target snapshot and answer with it; ``None`` when the account does not exist.
 
-    Three MetaTables operations: read the account with its stored target allocation,
-    write, and read the snapshot back as `get_account_target_positions_snapshot_response`
-    answers it. A cleared target is answered from the write.
+    Two MetaTables operations: read the account with its stored target allocation, then
+    write and, in the same transaction, read the snapshot back as
+    `get_account_target_positions_snapshot_response` answers it. Only the rows over one
+    answer are read after the commit. A cleared target is answered from the write.
     """
 
     account_row = _first_operation_row(
@@ -355,6 +390,8 @@ def add_account_target_positions_snapshot_response(
             account_target_allocation_uid=account_target_allocation_uid,
             portfolio_uids=portfolio_uids,
         ),
+        read_back=True,
+        include_asset_detail=include_asset_detail,
     )
     written_rows = operation_result_rows(write_result)
     if not written_rows:
@@ -390,14 +427,7 @@ def add_account_target_positions_snapshot_response(
             "positions": [],
         }
 
-    return get_account_target_positions_snapshot_response(
-        context,
-        account_uid=resolved_account_uid,
-        order="desc",
-        limit=1,
-        include_asset_detail=include_asset_detail,
-        target_positions_date=normalized_target_positions_date,
-    )
+    return _snapshot_from_read(written_rows, include_asset_detail=include_asset_detail)
 
 
 def _requested_virtual_funds(
@@ -580,6 +610,27 @@ def _expanded_exposure_columns(
             float(exposure["constant_notional_exposure"]) * portfolio_weight
         )
     return exposure
+
+
+def _snapshot_from_read(
+    rows: Sequence[Mapping[str, Any]], *, include_asset_detail: bool
+) -> dict[str, Any]:
+    """One snapshot's response from its rows as ``read_account_target_snapshot`` answers them."""
+
+    account_uid = str(rows[0]["account_uid"])
+    if _string_or_none(rows[0].get("position_set_uid")) is None:
+        return _empty_account_target_positions_snapshot(account_uid=account_uid)
+    return _build_account_target_positions_snapshot(
+        account_uid=account_uid,
+        position_set_row={
+            "uid": rows[0]["position_set_uid"],
+            "position_set_time": rows[0].get("position_set_time"),
+        },
+        rows=[prefixed_columns(row, TARGET) for row in rows if row.get(f"{TARGET}position_set_uid")],
+        asset_references=_asset_references_by_uid(rows) if include_asset_detail else {},
+        portfolio_references=_portfolio_references_by_uid(rows),
+        include_asset_detail=include_asset_detail,
+    )
 
 
 def _build_account_target_positions_snapshot(
@@ -934,6 +985,7 @@ __all__ = [
     "build_target_positions_frame",
     "list_portfolio_account_targets_response",
     "expand_portfolio_target_positions",
+    "get_account_target_positions_history_response",
     "get_account_target_positions_snapshot_response",
     "search_account_target_allocation_candidates",
     "validate_target_position_payload",

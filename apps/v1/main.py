@@ -31,6 +31,7 @@ from apps.v1.routers.rows import router as rows_router
 from apps.v1.routers.settings import router as settings_router
 from apps.v1.routers.virtual_funds import router as virtual_funds_router
 from apps.v1.openapi_documentation import apply_metatable_documentation
+from apps.v1.request_log import OperationCountMiddleware
 from apps.v1.runtime_bootstrap import ensure_apps_v1_pricing_runtime, ensure_apps_v1_runtime
 from apps.v1.upstream_errors import install_upstream_error_handlers
 
@@ -278,6 +279,9 @@ def create_app() -> FastAPI:
     # A call to MetaTables that a route does not handle answers 500 (an invalid statement
     # the Markets API compiled), 502 or 503, with its reason.
     install_upstream_error_handlers(app)
+    # Logs how many MetaTables operations each request sent. Added before the identity
+    # middleware, so that one stays outside and runs first.
+    app.add_middleware(OperationCountMiddleware)
     # Authenticates every request before its handler: the gateway's signed caller
     # assertion when hosted, the caller's Bearer token locally. The platform
     # launcher refuses to serve an application without it.

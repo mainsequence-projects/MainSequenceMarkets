@@ -244,12 +244,17 @@ client.add_account_target_positions(
                 "weight_notional_exposure": 0.25}],
 )
 target = client.account_target_positions(account_uid)
+last_five = client.account_target_positions_history(account_uid, limit=5).items
 client.clear_account_target_positions(account_uid, target_positions_date=closed_at)
 ```
 
-The target methods return `AccountTargetPositionsSnapshotResponse`. A clear
-writes an empty snapshot, so the history records it, and sets the account's
-target allocation inactive.
+The target methods return `AccountTargetPositionsSnapshotResponse`, and the
+history a page of them. Read several snapshots with
+`account_target_positions_history`, which is one request, not with one
+`account_target_positions` call each. A clear writes an empty snapshot, so the
+history records it, and sets the account's target allocation inactive: the
+current target is then empty, and the history still has the clear and what came
+before it.
 
 [Sizing Targets And Allocating](../accounts/sizing_and_allocation.md) is the
 step-by-step guide for an application that sizes targets and allocates through

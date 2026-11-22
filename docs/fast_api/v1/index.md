@@ -123,6 +123,27 @@ themselves and keep answering `409` with the error text: creating and updating
 an index, saving, activating and retiring an index formula, and creating and
 updating an account.
 
+## MetaTables Operations Per Request
+
+A request's time is mostly its MetaTables operations, sent one after another, so
+each request records how many it sent
+([issue 94](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/94)):
+
+- one log line, for a request that sent any:
+
+  ```text
+  MetaTables operations=3 POST /account/registration/ status=200 duration_ms=4712
+  ```
+
+  It names the route's template, not the path's uids or the query.
+- `metatables_operations` in `platform_log_fields`, the fields the platform launcher
+  copies into the request's "HTTP request completed" line.
+
+Search the messages for `MetaTables operations=`: the hosted log API returns a line's
+message and not its other fields. An operation is one execute-operation or
+execute-transaction call, whatever its statements, counted when it is sent. Reads of
+the MetaTables catalog and calls to the platform are not counted.
+
 ## Design Decisions (ADRs)
 
 These FastAPI v1 decisions live in the single

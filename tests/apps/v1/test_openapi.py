@@ -138,6 +138,7 @@ def test_openapi_json_uses_one_contract_for_limit_offset_pagination() -> None:
     assert set(checked_paths) == {
         "/api/v1/account/",
         "/api/v1/account/target-allocation/targets/",
+        "/api/v1/account/{account_uid}/target-positions/history/",
         "/api/v1/asset/",
         "/api/v1/asset/{uid}/related-meta-tables/",
         "/api/v1/asset-category/",
@@ -175,7 +176,7 @@ def test_every_resource_collection_exposes_canonical_discovery() -> None:
         == "command-center.resource_collection@v1"
     }
 
-    assert len(collection_paths) == 27
+    assert len(collection_paths) == 28
     for collection_path in collection_paths:
         discovery_path = f"{collection_path.rstrip('/')}/discovery/"
         discovery = payload["paths"][discovery_path]["get"]
