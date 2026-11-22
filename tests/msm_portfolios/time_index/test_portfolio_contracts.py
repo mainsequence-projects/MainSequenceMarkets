@@ -429,6 +429,50 @@ def test_calendar_event_node_publishes_persisted_session_timestamps(
     assert set(result["event_type"]) == {"market_open", "market_close"}
 
 
+def test_calendar_event_node_starts_from_its_own_calendars_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One events table holds every calendar's events (#119)."""
+
+    class PersistedCalendar:
+        name = "XNYS"
+
+        def schedule(self, *, start_date, end_date):
+            del end_date
+            schedule = calendar_schedule()
+            return schedule[schedule["market_close"] >= start_date]
+
+    monkeypatch.setattr(
+        "msm_portfolios.time_index.portfolios.calendar_events.resolve_rebalance_calendar",
+        lambda _identifier: PersistedCalendar(),
+    )
+    schedule = calendar_schedule()
+    later = schedule["market_close"].max() + pd.Timedelta(days=30)
+
+    def publish(progress):
+        node = object.__new__(PortfolioCalendarEvents)
+        node.config = PortfolioCalendarEventsConfiguration(calendar_identifier="XNYS")
+        node.update_statistics = SimpleNamespace(
+            index_progress=progress, max_time_index_value=later
+        )
+        node._output_table = PortfolioCalendarEventsStorage
+        return set(node.update().reset_index()[["time_index", "event_type"]].itertuples(index=False))
+
+    every_event = {
+        (row[event], event) for _, row in schedule.iterrows() for event in ("market_open", "market_close")
+    }
+    # Another calendar's later events, and another session label's, start nothing here.
+    other = {"XLON": {"regular": {"market_close": later}}, "XNYS": {"extended": {"market_close": later}}}
+    assert publish(other) == every_event
+    # Its own events start where each type left off: the first day's close is still due.
+    first_open = schedule["market_open"].iloc[0]
+    own = {**other, "XNYS": {"regular": {"market_open": first_open}}}
+    assert publish(own) == every_event - {(first_open, "market_open")}
+    first_close = schedule["market_close"].iloc[0]
+    own["XNYS"]["regular"]["market_close"] = first_close
+    assert publish(own) == every_event - {(first_open, "market_open"), (first_close, "market_close")}
+
+
 def test_calendar_event_node_rejects_noncanonical_calendar_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

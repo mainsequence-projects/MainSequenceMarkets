@@ -9,6 +9,13 @@ and this project follows versioned releases.
 
 ### Fixed
 
+- **A calendar's events in a shared table start from its own events**
+  ([#119](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/119)).
+  One `PortfolioCalendarEventsTS` table holds every calendar's events. A calendar's
+  first run started after the table's latest event, another calendar's, so its earlier
+  sessions were never written, and nothing said so. `PortfolioCalendarEvents` now
+  continues each event type of its calendar and session label after that type's own
+  latest event, and starts at `OFFSET_START` when it has none.
 - **A new portfolio in a shared rebalance-state table starts at its own first rebalance**
   ([#118](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/118)).
   A producer keeps one rebalance-state table for all its portfolios. A portfolio with no
