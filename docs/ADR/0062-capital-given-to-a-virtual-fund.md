@@ -11,8 +11,9 @@ implemented.
     ([ADR 0061](0061-retire-constant-notional-exposure.md)).
   - On 2026-11-23 he decided that each fund owns its cash
     ([Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md),
-    decision 14). The same day he settled decisions 1, 3, 4, 5 and 8 and the rule in the
-    [Ontology](#ontology).
+    decision 14). The same day he settled decisions 1, 3, 4, 5, 8, 9 and 10 and the rule in
+    the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts and
+    portfolios that hold several currencies.
 - Everything not marked (owner) is a proposal. What is still open for the owner is under
   [Open Questions](#open-questions).
 - It would amend [ADR 0054](0054-account-exposure-and-sized-fund-targets.md) (what a portfolio
@@ -34,7 +35,8 @@ implemented.
 | Rule allocation | A capital allocation that the share rule makes: a share fund's resize, or units a sync gives it that no record explains |
 | Holdings allocation | What a sync assigns of the account's holdings to each owner (ADR 0053) |
 | Fund fill | One owner's part of a fill or of an internal trade (Execution Engine ADR 0001, "Fund Fills") |
-| Valuation currency | The currency a portfolio is valued in: `valuation_asset_identifier` of its build configuration (ADR 0059) |
+| Allowed currencies | The assets a portfolio may hold as cash, for example USD, EUR or BTC. Its build configuration declares them, and they are part of its identity |
+| Valuation currency | The one allowed currency a portfolio is valued in: `valuation_asset_identifier` of its build configuration (ADR 0059). A fund's capital and result are in it |
 | Available cash | The account itself's cash in one currency: the account's holding of it at its last sync, minus what its funds owned of it then, minus the cash allocated into funds since, plus the cash moved away from them since |
 | A fund's capital | What its capital allocations brought in minus what they took away, each valued when it moved |
 | A fund's result | Its value, holdings plus cash, minus its capital |
@@ -72,6 +74,13 @@ The owner wants two different things from an account's funds:
   currency, and an account can hold several.
 - A portfolio's valuation currency is on its build configuration (ADR 0059). No Markets table
   stores it: `PortfolioTable` has no currency column.
+- A portfolio may hold assets priced in other currencies, converted with its FX source
+  (ADR 0059). Its backtest book holds one cash figure in the valuation currency and converts
+  for free. Its ledger holds a balance per currency but models no exchange. Nothing records
+  which currencies a portfolio may hold, and its positions cannot tell in advance: that depends
+  on its strategy.
+- A trade records the currency it settled in (`TradesTS.settlement_asset_identifier`). A stock
+  records no currency in any Markets table.
 
 The portfolio backtest already keeps money in a portfolio. A portfolio starts with
 `initial_nav` in cash. Its `RebalanceBook` holds shares and cash, and its orders are sized from
@@ -155,13 +164,13 @@ At a sync, each fund first keeps what its own record explains:
 
 1. **Its units:** its holdings at the previous sync, plus its allocations in kind and its fund
    fills since then.
-2. **Its cash:** its cash at the previous sync, plus its cash allocations, plus what its fills
-   sold, minus what they bought and its share of the fees.
+2. **Its cash, in each currency:** its cash at the previous sync, plus its cash allocations,
+   plus what its fills sold, minus what they bought and its share of the fees.
 
 Then:
 
 - **A share fund is resized** to its share of the account. The provider sizes it, as today, and
-  records what the resize moves as a rule allocation (open question 4).
+  records what the resize moves as a rule allocation (open question 3).
 - **Units that no record explains** go only to share funds that still want more, through the
   allocation policy. Each such assignment is recorded as a rule allocation in kind (owner). A
   cash fund gets none, and what is left stays with the account itself (owner). For example,
@@ -169,7 +178,7 @@ Then:
   holds. Fund A gets 10, cash fund B gets none, and 190 stay with the account itself.
 - **When the account holds less** than the funds' records add up to, the funds keep what their
   records say, and the account's own line shows the shortfall as a negative (owner, Execution
-  Engine ADR 0001, "Fund Holdings At A Sync"). The same holds for cash.
+  Engine ADR 0001, "Fund Holdings At A Sync"). The same holds for cash, currency by currency.
 
 A fund's cash is stored at the sync like its other holdings: a `VirtualFundHoldingsStorage` row
 of the cash currency asset.
@@ -187,14 +196,39 @@ A fund's record must know which fills were its own. The fund fills of Execution 
 ("Fund Fills": one row per owner and fill, with the price and the owner's share of the fee)
 become a Markets record. Whoever trades for a fund writes them: the engine's recorder, or a
 provider that trades for its funds without the engine. A trade that no fund fill claims belongs
-to the account itself.
+to the account itself. A fund fill also records the currency it settled in, as `TradesTS` does,
+so it moves the fund's cash in that currency.
 
-### 8. Cash into a fund needs available cash in the portfolio's valuation currency (owner)
+### 8. Cash into a fund is in an allowed currency, and needs available cash in it (owner)
 
-Cash allocated into a fund must be in the valuation currency of the fund's portfolio, and the
-account must have that much available cash in it. The account's other currencies do not count:
-converting them is a trade of the account itself, made before the allocation. ms-markets checks
-quantities of one currency asset, so it needs no price (ADR 0054).
+Cash allocated into a fund must be in one of the allowed currencies of the fund's portfolio, and
+the account must have that much available cash in that currency. Each currency is checked on
+its own: available EUR does not cover USD. ms-markets compares quantities of one asset at a
+time, so it needs no price (ADR 0054).
+
+The owner first allowed the valuation currency only. After the currency analysis of the same
+day he widened it to the allowed currencies. Otherwise a portfolio that holds foreign assets
+would have to convert every time it is given money, even when the account already holds the
+currency.
+
+### 9. A portfolio declares its allowed currencies (owner)
+
+A portfolio's build configuration declares the assets it may hold as cash, next to its valuation
+currency. They cannot be read off its positions in advance, because they depend on its strategy.
+
+- **The list is part of the portfolio's identity.** Allowing another currency makes a new
+  portfolio, as changing the valuation currency does (ADR 0059).
+- **Registering the portfolio records the list in Markets**: a many-to-many link from the
+  portfolio to each asset, with a foreign key to `AssetTable`. A currency here is any asset held
+  as cash, for example USD, EUR or BTC.
+- **The valuation currency is one of them.** `PortfolioTable` records it too. Proposal: a column
+  whose key into the link table makes it one of the allowed currencies.
+
+### 10. Converting currencies is the rebalance strategy's (owner)
+
+Converting between a fund's currencies is part of the portfolio's rebalance strategy, and is
+designed later. So is whether the backtest holds cash per currency. Until then the backtest
+converts for free, as today, and differs from a live fund that holds several currencies.
 
 ## Operations
 
@@ -205,12 +239,12 @@ funds is one operation.
 
 | Operation | Who | What it records | Refused when |
 | --- | --- | --- | --- |
-| Allocate cash to a cash fund | A person | One manual allocation into the fund | The fund is not a cash fund of the account, or its portfolio is retired; the cash is not in the portfolio's valuation currency; the account's available cash in it is less (decision 8) |
-| Move cash away from a cash fund | A person | One manual allocation away from the fund | The fund's cash in that currency is less (open question 2) |
-| Move cash from one cash fund to another | A person | Two manual allocations at the same time | Fund A's cash is less; the cash is not the valuation currency of fund B's portfolio |
+| Allocate cash to a cash fund | A person | One manual allocation into the fund | The fund is not a cash fund of the account, or its portfolio is retired; the cash is not one of the portfolio's allowed currencies; the account's available cash in that currency is less (decision 8) |
+| Move cash away from a cash fund | A person | One manual allocation away from the fund | The fund's cash in that currency is less (open question 1) |
+| Move cash from one cash fund to another | A person | Two manual allocations at the same time | Fund A's cash is less; the cash is not one of the allowed currencies of fund B's portfolio |
 | Allocate units in kind to a cash fund | A person | One manual allocation in kind | The account itself holds fewer of those units |
 | Move units in kind away from a cash fund | A person | One manual allocation in kind | The fund holds fewer of those units |
-| Resize a share fund | The provider, at a sync | Rule allocations | Cash into the fund beyond the available cash in its valuation currency stays a shortfall (open question 4) |
+| Resize a share fund | The provider, at a sync | Rule allocations | Cash into the fund beyond the available cash in its allowed currencies stays a shortfall (open question 3) |
 | Give a share fund units no record explains | ms-markets, at a sync | Rule allocations in kind | Never refused (decision 5) |
 
 A quantity is positive in every operation, and the side says which way it moves. An account
@@ -221,16 +255,17 @@ delete (ADR 0050) deletes its capital allocations and fund fills with the rest o
 | Record | Change |
 | --- | --- |
 | Capital allocations | New, time-indexed (decision 3); its keys into the account and the fund cascade on delete |
-| Fund fills | New, as Execution Engine ADR 0001 proposes (decision 7) |
-| `VirtualFundHoldingsStorage` | Also holds each fund's cash, as a row of the cash currency asset |
+| Fund fills | New, as Execution Engine ADR 0001 proposes, with the currency each settled in (decision 7) |
+| `VirtualFundHoldingsStorage` | Also holds each fund's cash, as a row per currency asset |
 | `TargetPositionsStorage` | A portfolio row states a share, or nothing for a cash fund; an asset row is unchanged |
-| `PortfolioTable` | Records the portfolio's valuation currency (open question 1) |
+| A portfolio's allowed currencies | New: a many-to-many link from a portfolio to assets (decision 9) |
+| `PortfolioTable` | Records the portfolio's valuation currency, one of its allowed currencies (decision 9) |
 | `VirtualFund`, `OrdersTS`, `TradesTS` | Unchanged |
 
 ## Worked Example
 
 Fund A is a share fund at 40% of the account. Fund B is a cash fund. Both portfolios are valued
-in USD. TSLA is a direct row at 5%.
+in USD and allow only USD. TSLA is a direct row at 5%.
 
 **Day 0.** The account holds 1,000,000 in cash, USD. The first sync resizes fund A to 40%: a
 rule allocation of 400,000 into A. The owner allocates 300,000 to fund B: a manual allocation,
@@ -261,15 +296,16 @@ Its strategy invests the cash at its next rebalance, sized from its own value. T
 itself's value falls by 50,000, to 253,600.
 
 **Day 3.** The owner asks to allocate 250,000 more to fund B. The account has 200,000 USD
-available, or 203,600 if fund A's resize on day 1 moved cash (open question 4), so the
-allocation is refused. Had portfolio B been valued in EUR, the allocation of day 2 would have
-been refused too: the account holds no EUR.
+available, or 203,600 if fund A's resize on day 1 moved cash (open question 3), so the
+allocation is refused. Had portfolio B allowed only EUR, the allocation of day 2 would have been
+refused too: the account holds no EUR. Had it allowed EUR and USD, the USD of day 2 would have
+been accepted.
 
 | Date | Fund | Source | What moved |
 | --- | --- | --- | --- |
 | Day 0 | A | `rule` | 400,000 USD in |
 | Day 0 | B | `manual` | 300,000 USD in |
-| Day 1 | A | `rule` | 3,600 of value away, in cash or in kind (open question 4) |
+| Day 1 | A | `rule` | 3,600 of value away, in cash or in kind (open question 3) |
 | Day 2 | B | `manual` | 50,000 USD in |
 
 ## What It Changes
@@ -279,6 +315,8 @@ been refused too: the account holds no EUR.
 - **ADR 0053 and ADR 0029.** A sync starts from each owner's own record. The policy runs only on
   units that no record explains, and only for share funds.
 - **ADR 0050.** An account delete also deletes the account's capital allocations and fund fills.
+- **ADR 0059.** A build configuration also declares its allowed currencies, and the valuation
+  currency is one of them. Markets records both.
 - **ADR 0061.** It left open whether a share of the account stays a rule applied at every sync.
   It does, for share funds (owner).
 - **Execution Engine ADR 0001.** It answers question 15. The `owner_size` default depends on the
@@ -304,26 +342,20 @@ been refused too: the account holds no EUR.
 
 These are the owner's to decide. My recommendation comes first.
 
-1. **Where Markets reads a portfolio's valuation currency.** It is only on the build
-   configuration, which no Markets table stores.
-   - *Recommended:* `PortfolioTable` records it, a currency asset, written when the portfolio is
-     registered from its build configuration.
-   - *Alternative:* the allocation names its currency, and Markets checks only the available
-     cash, not that it is the portfolio's currency.
-2. **Moving more cash away from a cash fund than it holds.**
+1. **Moving more cash away from a cash fund than it holds.**
    - *Recommended:* refused. The fund's strategy sells first, on its own instruction.
    - *Alternative:* recorded, and the fund's cash is negative until its strategy sells.
-3. **A cash fund whose portfolio leaves the account's target, or is retired, while the fund
+2. **A cash fund whose portfolio leaves the account's target, or is retired, while the fund
    still holds something.**
    - *Recommended:* the fund keeps what it holds and stops rebalancing. Only a manual allocation
      empties it, as the rule in the Ontology says.
    - *Alternative:* the target change is refused until the fund is empty.
-4. **How a share fund's resize moves.**
+3. **How a share fund's resize moves.**
    - *Recommended:* as today, in kind: the units it has too many of go to the account itself,
      and what it lacks comes from units no record explains, then from available cash in its
-     valuation currency. What cash cannot cover stays a shortfall.
+     allowed currencies. What cash cannot cover stays a shortfall.
    - *Alternative:* in cash only. The fund's strategy then trades back to its weights.
-5. **A fund whose execution policy allows negative cash** (ADR 0059).
+4. **A fund whose execution policy allows negative cash** (ADR 0059).
    - *Recommended:* its cash below zero comes out of the account's available cash in that
      currency, so a buy is limited by the fund's policy and by the account's available cash.
    - *Alternative:* live, a fund's cash never goes below zero, whatever its policy allows.
@@ -331,6 +363,10 @@ These are the owner's to decide. My recommendation comes first.
 ## Not Decided Here
 
 - Whether a portfolio row names its kind explicitly, instead of by stating a share or not.
+- The account's reporting currency. The provider values the account in one currency to size a
+  share fund, and nothing records which one.
+- Whether cash that the account's own target keeps, a direct row on a currency (ADR 0053),
+  limits its available cash.
 - Moving a fund from one kind to the other.
 - Dividends and interest that the account receives for a fund's holdings, and how the account's
   fees are shared among its funds.
