@@ -159,6 +159,33 @@ Three things change in the base so that it fits both:
 "To the target at every sync" is a second account strategy on the same base. Whether the
 account strategies share a class of their own is decided when the second one is written.
 
+### 8. Accounts keep the boundary portfolios have (owner)
+
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) holds for accounts
+as it does for portfolios: Markets reads and writes only its own tables, and data crosses
+its boundary by publish or by keep. Nothing in this ADR makes Markets write in a provider's
+tables or run a provider's code.
+
+- **A strategy runs in the provider's process**, as `PortfolioRebalance` does. Markets
+  never imports a provider's class. The shipped `ManualAccount` and `AccountPolicy` are
+  Markets' own, so Markets is one more producer, as ADR 0060 says.
+- **What a strategy produces is published.** Capital allocations, fund fills and fund
+  holdings are sent to Markets operations and stored in Markets' tables (ADR 0062). They are
+  Markets' rows from then on.
+- **What a strategy needs to run is kept.** Its own state, its prices and its valuations
+  stay in the provider's namespace. Markets holds nothing about them.
+- **Markets checks only what its own rows can answer.** A publish operation applies the
+  settings of the shipped `AccountPolicy` that need Markets' rows only: the currencies a
+  portfolio allows, the account's available cash, a fund's cash. It applies them to every
+  provider alike. A rule a user adds in their own class runs on the provider's side, before
+  it publishes.
+- **A policy reaches Markets as data.** An account's policy is recorded as the import path
+  of its class and its settings. Markets reads the settings it knows and never loads the
+  class.
+
+Proposal: `AccountTable` gains `managed_by`, as `PortfolioTable` has, so that only the
+application that manages an account publishes to it (ADR 0060, decision 4).
+
 ## What It Changes
 
 - **ADR 0058.** `ExecutionPolicy` extends `ExecutionPolicyBase`. Its settings and defaults
@@ -169,6 +196,8 @@ account strategies share a class of their own is decided when the second one is 
   `fund_draws_on_account`. Its two kinds of fund (decision 1) and its rule that only a
   manual allocation changes a cash fund (decision 4) describe two strategies. Its records
   and its allowed currencies stand.
+- **ADR 0060.** Unchanged, and now applied to accounts: their strategies run with the
+  provider and publish to Markets.
 - **ADR 0053.** Unchanged. Its allocation policies still say who owns the units that no
   record explains; `fund_unexplained_units` only says whether a cash fund takes part.
 
@@ -188,7 +217,8 @@ account strategies share a class of their own is decided when the second one is 
 - The names `ExecutionPolicyBase`, `AccountPolicy`, `PortfolioRebalanceStrategy` and
   `ManualAccount`, the name of the second account strategy, and the names and values of the
   account's settings.
-- What runs an account's strategy, as `PortfolioRebalance` runs a portfolio's.
+- The class that runs an account's strategy in the provider's process, as
+  `PortfolioRebalance` runs a portfolio's.
 - Whether an account has one strategy, or each row of its target names its own. An account
   with one fund at a fixed share and one run by hand needs one or the other.
 - What a strategy other than the manual one records when it moves money.
@@ -198,8 +228,6 @@ account strategies share a class of their own is decided when the second one is 
 - Whether a fund may have a policy of its own, different from its account's.
 - Which policy applies to a live fund when both have a say: its portfolio's
   `ExecutionPolicy`, or its account's policy.
-- Where a user's own policy class runs. The hosted Markets API can apply settings; it cannot
-  import a provider's class.
 - The `calendar_gating` value `portfolio_calendar` for an account, which has no portfolio
   calendar.
 
