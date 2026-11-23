@@ -35,11 +35,14 @@ and this project follows versioned releases.
 ### Fixed
 
 - **A portfolio's first run no longer runs out of time reading its bars**
-  (alpaca-connectors#49). `InterpolatedPrices` read the source bars 500 rows a page, one
-  request after another, under the one 60-second deadline a read has. An asset new to the
-  interpolated table reads its bars from `OFFSET_START`, so ten such assets took thirteen
-  requests and the last did not fit: the run failed with `TransferDeadlineError`. It now
-  reads 10,000 rows a page, the most a MetaTables page holds.
+  ([#123](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/123)).
+  `InterpolatedPrices` read the source bars 500 rows a page, one request after another,
+  under the one 60-second deadline a read has. A page takes about the same time however
+  many rows it holds, so the deadline limits requests, not rows. An asset new to the
+  interpolated table reads all its bars from `OFFSET_START`, so a first run of ten new
+  assets needed more requests than the deadline allows and failed with
+  `TransferDeadlineError`. It now reads 10,000 rows a page, the most a MetaTables page
+  holds. A read of more than 100,000 rows still fails, on MetaTables' collection budget.
 
 ## [5.2.0] - 2026-11-23
 

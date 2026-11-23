@@ -731,9 +731,11 @@ def interpolate_intraday_bars(
 BARS_READ_PAGE_SIZE = 10_000
 """Rows per page of the source-bars read: the most a MetaTables page holds.
 
-An asset new to the table reads its bars from ``OFFSET_START``, and every page of one read
-shares the read's deadline (60 s). At the default 500 rows a first read of ten assets took
-thirteen requests and did not fit (alpaca-connectors#49).
+An asset new to the table reads its bars from ``OFFSET_START``. The pages of one read are
+requested one after another under the read's one deadline (60 s), and a page takes about the
+same time however many rows it holds, so the deadline limits requests, not rows. At the
+default 500 rows a first read of ten new assets ran out of time in Production (#123). A read
+still holds at most 100,000 rows, MetaTables' default collection budget.
 """
 
 
