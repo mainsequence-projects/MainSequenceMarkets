@@ -109,14 +109,27 @@ drifts past a band. No ADR is needed for it. A strategy is recorded as a portfol
 the import path of its class and its settings. It names its policy, as a portfolio's
 strategy names its `ExecutionPolicy`.
 
-The account strategy has its own base, here called `AccountRebalanceStrategyBase`. It does
-not extend `RebalanceStrategyBase`, which requires every fill to use an observed price: a
-move of money between an account and its fund is not a trade and has no price.
+### 7. `RebalanceStrategyBase` covers portfolios and accounts (owner)
+
+`RebalanceStrategyBase` is the base of both. Today it also holds what only a portfolio
+needs, so that part moves into a new class, `PortfolioRebalanceStrategy`:
+
+- **`RebalanceStrategyBase`**, in core `msm`: what every rebalance strategy has, for example
+  that it names its policy.
+- **`PortfolioRebalanceStrategy`**, in `msm_portfolios`, extends it with what a portfolio
+  needs, for example that a fill uses an observed price (ADR 0058). `ImmediateSignal` and
+  the bar strategies extend it.
+- **`AccountRebalanceStrategy`**, in `msm`, extends the base for accounts. The two account
+  strategies of decision 6 extend it.
+
+Which field and hook of today's `RebalanceStrategyBase` stays in the base, and which moves
+to `PortfolioRebalanceStrategy`, is settled when the class is read in full.
 
 ## What It Changes
 
 - **ADR 0058.** `ExecutionPolicy` extends `ExecutionPolicyBase`. Its settings and defaults
-  do not change.
+  do not change. `RebalanceStrategyBase` moves to core `msm` as the base of both kinds of
+  strategy, and the shipped portfolio strategies extend `PortfolioRebalanceStrategy`.
 - **ADR 0062.** Decisions 8, 11, 12 and 13 stop being fixed rules. They are the defaults of
   `fund_cash_currencies` and `fund_cash_in`, `fund_cash_out`, `fund_portfolio_removed` and
   `fund_draws_on_account`. Its two kinds of fund (decision 1) and its rule that only a
@@ -138,12 +151,12 @@ move of money between an account and its fund is not a trade and has no price.
 
 ## Not Decided Here
 
-- The names `ExecutionPolicyBase`, `AccountPolicy` and `AccountRebalanceStrategyBase`, the
-  names of the two strategies, and the names and values of the account's settings.
+- The names `ExecutionPolicyBase`, `AccountPolicy`, `PortfolioRebalanceStrategy` and
+  `AccountRebalanceStrategy`, the names of the two account strategies, and the names and
+  values of the account's settings.
 - Whether an account has one strategy, or each row of its target names its own. An account
   with one fund at a fixed share and one run by hand needs one or the other.
 - What a strategy other than the manual one records when it moves money.
-- Whether the two strategy bases share a base of their own.
 - Whether an account's strategy is registered as a portfolio's is
   (`RebalanceStrategyMetadata`).
 - Where an account names its policy, and whether the policy is part of an identity.
@@ -158,5 +171,7 @@ move of money between an account and its fund is not a trade and has no price.
 ## Not Verified
 
 - That moving the seven settings into a base leaves every portfolio's hash as it is.
-- What `RebalanceStrategyBase` holds beyond its fields and hooks. Only those were read, so
-  that the account's base cannot extend it is a reading, not a finding.
+- What of today's `RebalanceStrategyBase` every strategy needs and what only a portfolio
+  needs. Only its fields and hooks were read.
+- That moving `RebalanceStrategyBase` leaves every portfolio's hash as it is. A strategy is
+  hashed with the import path of its own class, which does not move.
