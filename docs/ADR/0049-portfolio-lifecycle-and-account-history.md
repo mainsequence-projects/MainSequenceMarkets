@@ -504,3 +504,28 @@ tables already reach portfolios through the Markets API (ADR 0047).
   client takes its models; the wire contract is unchanged.
 - `Portfolio.delete`'s refusal, and the `501` of `POST /api/v1/rows/portfolio/delete/`,
   name the two methods next to the routes.
+
+### 2026-11-23: unreleased, issue 127
+
+`POST /api/v1/portfolio/bulk-delete/` deleted each portfolio in its own transaction, one
+after another, and refused the whole selection with `409` when the preflight found a
+blocker in any portfolio. A refusal found while deleting answered `409` after the earlier
+portfolios were deleted. On a hosted Markets API, three portfolios took 50.5 s
+([issue 127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+Deleting a selection is one operation: what may go goes, and what may not is reported.
+
+- **One transaction.** `msm_portfolios.repositories.portfolio_deletion.portfolios_delete_statements`
+  deletes the rows of every allowed portfolio in each of the seven datasets with one
+  `IN (…)` statement per dataset, then the portfolio rows. The last statement is guarded to
+  delete exactly the portfolios read, each with its `unique_identifier`, while no account
+  history names any of them. One portfolio's delete is the same list for one portfolio.
+- **What may not go is reported, not refused.** A portfolio that is missing, that account
+  history names, or that the caller does not manage is left out of the transaction and
+  listed in `failed` with the reason. A MetaTables blocker on the portfolio table itself
+  puts every portfolio there. The route answers `200`; it no longer answers `409` for the
+  selection. Its preflight answers `allowed: true` when at least one portfolio can go.
+- **A refusal the read cannot see.** A reference written after the read, or a `RESTRICT`
+  key of an application's own table, refuses the selection's transaction, which deletes
+  nothing. The read cannot tell which portfolio caused it, so the portfolios are then
+  deleted one per transaction, as `DELETE /api/v1/portfolio/{uid}/` deletes one, and only
+  the refused ones are listed in `failed`.

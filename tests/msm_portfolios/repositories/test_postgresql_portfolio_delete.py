@@ -13,7 +13,11 @@ import pytest
 
 from msm.models import PortfolioTable
 from msm_portfolios.repositories import portfolio_deletion as repository
-from msm_portfolios.services import PortfolioDeleteConflictError, delete_portfolio_record
+from msm_portfolios.services import (
+    PortfolioDeleteConflictError,
+    bulk_delete_portfolio_records,
+    delete_portfolio_record,
+)
 from tests.support.postgresql_portfolios import (
     DATASETS,
     WHEN,
@@ -63,6 +67,28 @@ def test_the_portfolio_and_its_seven_datasets_go_in_one_transaction(markets, mon
     assert not _exists(engine, portfolio)
     assert set(_dataset_rows(engine, identifier).values()) == {0}
     assert _count(engine, "SELECT count(*) FROM ms_markets__portfoliogroupmembership") == 0
+    assert _exists(engine, other)
+    assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
+
+
+def test_a_selection_goes_in_one_transaction(markets) -> None:
+    """Issue 127: the selection's IN lists, bound by psycopg, delete every portfolio at once."""
+
+    engine, context, operations = markets
+    selected = [_portfolio(engine) for _ in range(3)]
+    for _uid, identifier in selected:
+        _datasets(engine, identifier)
+    other, other_identifier = _portfolio(engine)
+    _datasets(engine, other_identifier)
+    operations.clear()
+
+    result = bulk_delete_portfolio_records(context, uids=[uid for uid, _ in selected])
+
+    assert operations == ["read", "transaction"]
+    assert result["deleted_count"] == 3 and result["failed"] == []
+    for uid, identifier in selected:
+        assert not _exists(engine, uid)
+        assert set(_dataset_rows(engine, identifier).values()) == {0}
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
 

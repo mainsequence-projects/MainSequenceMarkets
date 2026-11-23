@@ -53,8 +53,8 @@ def test_the_bulk_delete_route_counts_the_selection_once(markets, monkeypatch) -
         str(first): {key: 1 for key in DATASETS},
         str(second): {key: int(key == "values") for key in DATASETS},
     }
-    # The preflight's read, then one transaction per portfolio.
+    # The preflight's read, then one transaction for the selection (issue 127).
     assert len(_reads(markets)) == 1
-    assert len(_deletes(markets)) == 2 * (len(DATASETS) + 1)
+    assert len(_deletes(markets)) == len(DATASETS) + 1
     assert not _exists(engine, first) and set(_dataset_rows(engine, first_identifier).values()) == {0}
     assert not _exists(engine, second) and set(_dataset_rows(engine, second_identifier).values()) == {0}

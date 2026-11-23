@@ -202,7 +202,8 @@ class PortfolioDeleteFailure(BaseModel):
 
 
 class PortfolioBulkDeleteResponse(BaseModel):
-    """Portfolios deleted with their datasets, each in its own transaction."""
+    """What a bulk delete did: the portfolios deleted with their datasets, in one
+    transaction, and each selected portfolio it did not delete, with the reason."""
 
     model_config = ConfigDict(extra="ignore")
 

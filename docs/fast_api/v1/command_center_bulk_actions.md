@@ -92,10 +92,14 @@ table's owner.
 Execution repeats preflight immediately before invoking domain deletion. A
 blocked selection returns HTTP `409` and does not call the delete service. The
 underlying delete operation still performs its own conflict checks, protecting
-against authorization or reference changes between preflight and execution. The
-portfolio bulk delete deletes by its preflight's counts instead of reading them
-again; each portfolio's guarded statement and the database's `RESTRICT` keys
-refuse a portfolio whose references changed in between.
+against authorization or reference changes between preflight and execution.
+
+The portfolio bulk delete does not refuse the selection: it deletes every portfolio
+that may go, together in one transaction, by its preflight's counts instead of
+reading them again, and answers `200` with each portfolio it did not delete, and the
+reason, in `failed`
+([issue 127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+Its preflight answers `allowed: true` when at least one portfolio can be deleted.
 
 Request validation errors return `422`. Unsupported modes or options return
 `400`. A preflight that discovers missing or protected rows returns `200` with

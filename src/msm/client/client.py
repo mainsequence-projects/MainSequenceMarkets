@@ -470,10 +470,9 @@ class MarketsClient:
     def bulk_delete_portfolios(self, portfolio_uids: Sequence[Any]) -> PortfolioBulkDeleteResponse:
         """Delete portfolios with their rows in their seven datasets (``bulkDeletePortfolios``).
 
-        The route checks the whole selection first and raises ``MarketsConflictError``
-        naming each portfolio that is missing or referenced; nothing is deleted then.
-        Each portfolio is then deleted in its own transaction. If one fails, the others
-        stay deleted and ``MarketsConflictError`` names each failure.
+        Every portfolio that may go is deleted, together in one transaction. A portfolio
+        that is missing or refused never stops the others: the answer lists it in
+        ``failed`` with the reason, and the deleted ones in ``deleted``.
         """
 
         selection = BulkActionExecutionRequest(

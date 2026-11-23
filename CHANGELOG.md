@@ -24,6 +24,15 @@ and this project follows versioned releases.
 
 ### Changed
 
+- **Breaking: the portfolio bulk delete deletes what may go and reports the rest**
+  ([#127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+  `POST /api/v1/portfolio/bulk-delete/` no longer refuses the selection with `409` when
+  one portfolio is missing or refused. It deletes every portfolio that may go, together in
+  one transaction instead of one per portfolio, and answers `200` with each deleted
+  portfolio in `deleted` and each other one, with the reason, in `failed`. Its preflight
+  answers `allowed: true` when at least one portfolio can be deleted.
+  `MarketsClient.bulk_delete_portfolios` no longer raises `MarketsConflictError` for a
+  refused portfolio.
 - **Breaking: in-process target writes refuse a field a row does not have**
   ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
   `build_target_positions_frame`, `validate_target_positions_frame` and the

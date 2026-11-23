@@ -344,11 +344,10 @@ for a missing portfolio, and `MarketsConflictError`, deleting nothing, while
 account history or another application's table references it. A portfolio that
 accounts referenced is retired instead.
 
-`bulk_delete_portfolios` checks the whole selection first and raises
-`MarketsConflictError`, deleting nothing, naming each portfolio that is missing
-or referenced. It then deletes each portfolio in its own transaction and returns
-a `PortfolioBulkDeleteResponse`. If one fails then, the others stay deleted and
-`MarketsConflictError` names each failure.
+`bulk_delete_portfolios` deletes every selected portfolio that may go, together in
+one transaction, and returns a `PortfolioBulkDeleteResponse`: the deleted ones in
+`deleted`, and each one that is missing or refused, with the reason, in `failed`. A
+refused portfolio never stops the others, and nothing is raised for it.
 
 ## Provider Time Series
 

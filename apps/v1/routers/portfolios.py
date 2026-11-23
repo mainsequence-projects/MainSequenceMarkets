@@ -45,7 +45,6 @@ from msm.api.http import (
     ErrorResponse,
     ResourceCollection,
     TabularFrameResponse,
-    blocked_preflight_detail,
     explicit_uuid_selection,
     resource_collection_response,
 )
@@ -268,20 +267,20 @@ def get_portfolios_weights_frame_route(
     response_model=PortfolioBulkDeleteResponse,
     summary="Bulk delete portfolios",
     description=(
-        "Delete the selected portfolios. " + _PORTFOLIO_DELETE_DESCRIPTION + " The route runs "
-        "the preflight first and answers 409 when it reports a blocker; then each portfolio "
-        "is deleted in its own transaction with the preflight's counts, so the selection is "
-        "counted once, and 409 lists any that could not be deleted."
+        "Delete every selected portfolio that may go, each with its rows in its seven "
+        "datasets (ADR 0049, issues 93 and 127); `deleted_rows` counts them per dataset. The "
+        "selection is counted once, and the portfolios that may go are deleted together in "
+        "one transaction. A portfolio that is missing, that virtual funds or account target "
+        "rows name, that the caller does not manage, or whose delete the database refuses "
+        "(an application's own table whose RESTRICT key references it still holds rows of "
+        "it, ADR 0060) never stops the others: the answer lists each deleted portfolio in "
+        "`deleted` and each one that was not deleted, with the reason, in `failed`."
     ),
     operation_id="bulkDeletePortfolios",
     responses={
         400: {
             "model": ErrorResponse,
             "description": "Invalid portfolio bulk-delete payload.",
-        },
-        409: {
-            "model": ErrorResponse,
-            "description": "One or more portfolios could not be deleted.",
         },
     },
 )
@@ -295,22 +294,17 @@ def bulk_delete_portfolio_rows(
         uids = explicit_uuid_selection(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # One counting read: the deletes reuse the preflight's plan (issue 96).
+    # One counting read: the delete uses the preflight's plan (issue 96).
     plan = plan_bulk_delete_portfolios(uids=uids)
-    preflight = PortfolioDeletePreflightResponse.model_validate(plan.preflight())
-    if not preflight.allowed:
-        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
     response = bulk_delete_portfolios(uids=uids, plan=plan)
     if response.failed:
-        detail = _portfolio_bulk_delete_error_detail(response)
-        logger.warning(
-            "Portfolio bulk delete failed.",
+        logger.info(
+            "Portfolio bulk delete kept some portfolios.",
             extra={
                 "failed": [failure.model_dump(mode="json") for failure in response.failed],
                 "deleted_count": response.deleted_count,
             },
         )
-        raise HTTPException(status_code=409, detail=detail)
     return response
 
 
@@ -342,13 +336,6 @@ def preflight_portfolio_bulk_delete(
     return PortfolioDeletePreflightResponse.model_validate(
         preflight_bulk_delete_portfolios(uids=uids)
     )
-
-
-def _portfolio_bulk_delete_error_detail(response: PortfolioBulkDeleteResponse) -> str:
-    failed_details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
-    if failed_details:
-        return f"{response.detail} Failed: {failed_details}"
-    return response.detail
 
 
 @router.get(

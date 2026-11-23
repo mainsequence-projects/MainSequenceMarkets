@@ -137,30 +137,8 @@ def test_bulk_delete_sends_an_explicit_selection(monkeypatch, client) -> None:
     assert response.failed == []
 
 
-def test_a_blocked_bulk_delete_raises_a_conflict_and_deletes_nothing(monkeypatch, client) -> None:
-    missing = uuid.uuid4()
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
-        lambda **kwargs: _Plan(
-            {
-                "allowed": False,
-                "matched_count": 0,
-                "blockers": [f"Portfolio {missing} was not found."],
-                "warnings": [],
-            }
-        ),
-    )
-    monkeypatch.setattr("apps.v1.routers.portfolios.bulk_delete_portfolios", _no_delete)
-
-    with pytest.raises(MarketsConflictError) as conflict:
-        client.bulk_delete_portfolios([missing])
-
-    assert str(conflict.value) == f"Portfolio {missing} was not found."
-
-
-def test_a_partly_failed_bulk_delete_raises_a_conflict_naming_each_failure(
-    monkeypatch, client
-) -> None:
+def test_a_partly_refused_bulk_delete_answers_what_it_did_not_delete(monkeypatch, client) -> None:
+    # Issue 127: a refused portfolio never stops the others, and nothing is raised.
     deleted_uid, failed_uid = str(uuid.uuid4()), str(uuid.uuid4())
     monkeypatch.setattr(
         "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
@@ -178,13 +156,10 @@ def test_a_partly_failed_bulk_delete_raises_a_conflict_naming_each_failure(
         ),
     )
 
-    with pytest.raises(MarketsConflictError) as conflict:
-        client.bulk_delete_portfolios([deleted_uid, failed_uid])
+    response = client.bulk_delete_portfolios([deleted_uid, failed_uid])
 
-    assert str(conflict.value) == (
-        "Deleted 1 portfolio with its datasets. 1 could not be deleted. "
-        f"Failed: {failed_uid}: {REFUSAL}"
-    )
+    assert [item.uid for item in response.deleted] == [deleted_uid]
+    assert [(item.uid, item.detail) for item in response.failed] == [(failed_uid, REFUSAL)]
 
 
 def test_bulk_delete_needs_a_portfolio_before_sending(monkeypatch, client) -> None:
