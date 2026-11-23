@@ -114,16 +114,50 @@ strategy names its `ExecutionPolicy`.
 `RebalanceStrategyBase` is the base of both. Today it also holds what only a portfolio
 needs, so that part moves into a new class, `PortfolioRebalanceStrategy`:
 
-- **`RebalanceStrategyBase`**, in core `msm`: what every rebalance strategy has, for example
-  that it names its policy.
+- **`RebalanceStrategyBase`**, in core `msm`: what every rebalance strategy has.
 - **`PortfolioRebalanceStrategy`**, in `msm_portfolios`, extends it with what a portfolio
-  needs, for example that a fill uses an observed price (ADR 0058). `ImmediateSignal` and
-  the bar strategies extend it.
-- **`AccountRebalanceStrategy`**, in `msm`, extends the base for accounts. The two account
-  strategies of decision 6 extend it.
+  needs. `ImmediateSignal` and the bar strategies extend it.
+- **`ManualAccount`**, in `msm`, extends the base directly.
 
-Which field and hook of today's `RebalanceStrategyBase` stays in the base, and which moves
-to `PortfolioRebalanceStrategy`, is settled when the class is read in full.
+The manual account strategy is the most basic rebalance strategy (owner): it has a target,
+it acts only when a person records a move, and it uses no price. So the base holds what
+`ManualAccount` needs, and everything else of today's class moves to
+`PortfolioRebalanceStrategy`. The rule: what is about the target, the events and the policy
+stays; what is about prices, fills, shares, bars, the ledger or the portfolio's calendar
+moves.
+
+| Today's `RebalanceStrategyBase` | Stays in the base | Moves to `PortfolioRebalanceStrategy` |
+| --- | --- | --- |
+| Fields | `timing_mode`, `target_succession`, `signal_lifetime`, `completion_tolerance` | `fill_rule`, `execution_model_instance`, `execution_cost_model_instances` |
+| What it reads | `declared_dependencies`, `required_input_contract`, `dependency_window`, `dependency_seed_coordinates` | `session_events`, `own_execution_prices` |
+| When it acts | `select_events`, `signal_expired`, `prepare_execution_context` | The earliest moment a calendar allows |
+| What it does | `build_transitions`, as the contract only: target, events and previous state in, rows out | Its two implementations, at the next observed price and at the strategy's own bars; `bar_slices`, `bar_state`, `book_unit_value`, `simulate_recorded_fills` |
+| Its policy | `fill_policy`, returning an `ExecutionPolicyBase` | |
+| Its types | `RebalanceTarget`, `RebalanceInputContract`, the statuses | `AssetExecution`, `BarSlice`, `PriceConversion`, the price helpers |
+
+Three things change in the base so that it fits both:
+
+1. **`fill_policy` returns the policy base.** A portfolio strategy returns an
+   `ExecutionPolicy`, `ManualAccount` an `AccountPolicy`.
+2. **`build_transitions` takes no price.** `PortfolioRebalanceStrategy` adds the prices, the
+   FX conversion and the book's unit to its own.
+3. **Each side builds its target from its own source.** A portfolio from its signal's
+   weights per asset, an account from its target's rows. `RebalanceTarget` stays: a key and
+   a weight.
+
+`ManualAccount` is then small:
+
+| | `ManualAccount` |
+| --- | --- |
+| `timing_mode` | `manual` |
+| Its target | The account target's rows: the portfolios the account follows |
+| What it reads | The capital allocations a person recorded (ADR 0062) |
+| When it acts | At each recorded allocation, and never by itself |
+| What it does | Accepts or refuses the recorded move under its policy. It sizes nothing and reads no price |
+| Its policy | `AccountPolicy` |
+
+"To the target at every sync" is a second account strategy on the same base. Whether the
+account strategies share a class of their own is decided when the second one is written.
 
 ## What It Changes
 
@@ -152,8 +186,9 @@ to `PortfolioRebalanceStrategy`, is settled when the class is read in full.
 ## Not Decided Here
 
 - The names `ExecutionPolicyBase`, `AccountPolicy`, `PortfolioRebalanceStrategy` and
-  `AccountRebalanceStrategy`, the names of the two account strategies, and the names and
-  values of the account's settings.
+  `ManualAccount`, the name of the second account strategy, and the names and values of the
+  account's settings.
+- What runs an account's strategy, as `PortfolioRebalance` runs a portfolio's.
 - Whether an account has one strategy, or each row of its target names its own. An account
   with one fund at a fixed share and one run by hand needs one or the other.
 - What a strategy other than the manual one records when it moves money.
@@ -171,7 +206,7 @@ to `PortfolioRebalanceStrategy`, is settled when the class is read in full.
 ## Not Verified
 
 - That moving the seven settings into a base leaves every portfolio's hash as it is.
-- What of today's `RebalanceStrategyBase` every strategy needs and what only a portfolio
-  needs. Only its fields and hooks were read.
+- That the split of decision 7 holds in code. The class and its callers were read in
+  full, and nothing was moved or run.
 - That moving `RebalanceStrategyBase` leaves every portfolio's hash as it is. A strategy is
   hashed with the import path of its own class, which does not move.
