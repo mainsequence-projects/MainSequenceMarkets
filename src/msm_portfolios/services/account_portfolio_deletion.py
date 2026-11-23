@@ -49,16 +49,22 @@ def preflight_account_delete_with_portfolios(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
+    together: Sequence[uuid.UUID | str] = (),
 ) -> dict[str, Any] | None:
     """What deleting one account with its portfolios removes, and what blocks it.
 
     One read. Returns `None` when the account does not exist. Core's plan
     (`row_counts`, `blockers`), with ``portfolios``, the portfolios the delete removes
     with their rows per dataset, and ``kept_portfolios``, the ones its history names that
-    stay, with the reason. The account is read as if it were deleted alone.
+    stay, with the reason. ``together`` are accounts deleted in the same transaction:
+    their rows and history keep nothing (issue 128).
     """
 
-    read = repository.read_account_with_portfolios(context, uid=account_deletion.canonical_uid(uid))
+    read = repository.read_account_with_portfolios(
+        context,
+        uid=account_deletion.canonical_uid(uid),
+        together=account_deletion.unique_uids(together),
+    )
     if read is None:
         return None
     portfolios: list[dict[str, Any]] = []
@@ -147,27 +153,60 @@ def bulk_delete_accounts_with_portfolios(
     context: MarketsRepositoryContext,
     *,
     uids: Sequence[uuid.UUID | str],
+    table_blockers: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Delete each account as `delete_account_with_portfolios` does, each in its own
-    transaction.
+    """Delete every selected account that may go, with the portfolios only the selection
+    used, together, and report the rest (issue 128).
 
-    An account that is missing or refused is reported in `failed` and the others are
-    still deleted. Accounts go in the order given, so a portfolio that only selected
-    accounts use goes with the last of them.
+    One read per account, each counting the other selected accounts as deleted with it,
+    so a portfolio only selected accounts use goes with them; then one transaction for
+    every account that may go and those portfolios. An account that is missing or
+    blocked is reported in ``failed``; ``table_blockers`` report every account. When the
+    database refuses the transaction, which then deletes nothing, each account is
+    deleted on its own with its portfolios, so only the refused ones stay.
     """
 
+    target = account_deletion.unique_uids(uids)
+    plans = {
+        uid: plan
+        for uid in target
+        if (plan := preflight_account_delete_with_portfolios(context, uid=uid, together=target))
+        is not None
+    }
+    allowed, failed = account_deletion.partition_account_deletes(target, plans, table_blockers)
+    # A portfolio several selected accounts name is reported with the first of them.
+    owned: dict[str, list[Mapping[str, Any]]] = {}
+    seen: set[str] = set()
+    for plan in allowed:
+        owned[plan["uid"]] = [item for item in plan["portfolios"] if item["uid"] not in seen]
+        seen.update(item["uid"] for item in plan["portfolios"])
+    portfolio_uids = [item["uid"] for plan in allowed for item in owned[plan["uid"]]]
+    write = (
+        repository.build_delete_accounts_with_portfolios_operation(
+            context,
+            accounts=[(plan["uid"], plan["unique_identifier"]) for plan in allowed],
+            row_counts=account_deletion.summed_row_counts(allowed),
+            portfolio_uids=portfolio_uids,
+        )
+        if allowed and portfolio_uids
+        else None
+    )
     deleted: list[dict[str, Any]] = []
-    failed: list[dict[str, str]] = []
-    for uid in account_deletion.unique_uids(uids):
-        try:
-            result = delete_account_with_portfolios(context, uid=uid)
-        except AccountDeleteConflictError as exc:
-            failed.append({"uid": uid, "detail": str(exc)})
-            continue
-        if result is None:
-            failed.append({"uid": uid, "detail": f"Account {uid} was not found."})
-            continue
-        deleted.append(result)
+    if allowed and account_deletion.run_accounts_delete(context, allowed, write) is not None:
+        deleted = [
+            _deleted_response(plan, owned[plan["uid"]], plan["kept_portfolios"]) for plan in allowed
+        ]
+    else:
+        for plan in allowed:
+            try:
+                result = delete_account_with_portfolios(context, uid=plan["uid"])
+            except AccountDeleteConflictError as exc:
+                failed[plan["uid"]] = str(exc)
+                continue
+            if result is None:
+                failed[plan["uid"]] = f"Account {plan['uid']} was not found."
+                continue
+            deleted.append(result)
     count = len(deleted)
     if count == 0:
         detail = "No accounts were deleted."
@@ -177,14 +216,7 @@ def bulk_delete_accounts_with_portfolios(
         if portfolio_count:
             detail += f" and {_count(portfolio_count, 'portfolio')}"
         detail += "."
-    if failed:
-        detail += f" {len(failed)} could not be deleted."
-    return {
-        "detail": detail,
-        "deleted_count": count,
-        "deleted": deleted,
-        "failed": failed,
-    }
+    return account_deletion.bulk_accounts_response(detail, deleted, failed, target)
 
 
 def preflight_bulk_delete_accounts_with_portfolios(
@@ -195,18 +227,28 @@ def preflight_bulk_delete_accounts_with_portfolios(
     """Report what deleting the accounts with their portfolios removes, without deleting.
 
     One read per account, and MetaTables' delete impact for the account table. Each
-    account is read as if it were deleted alone; a warning names each portfolio deleted
-    or kept.
+    account is read counting the other selected accounts as deleted with it; a warning
+    names each portfolio deleted or kept.
     """
 
     target_uids = account_deletion.unique_uids(uids)
     accounts = [
         plan
         for plan in (
-            preflight_account_delete_with_portfolios(context, uid=uid) for uid in target_uids
+            preflight_account_delete_with_portfolios(context, uid=uid, together=target_uids)
+            for uid in target_uids
         )
         if plan is not None
     ]
+    # As the delete reports it: a portfolio several accounts that may go name is listed
+    # with the first of them.
+    seen: set[str] = set()
+    for item in accounts:
+        if item["blockers"]:
+            continue
+        mine = [portfolio for portfolio in item["portfolios"] if portfolio["uid"] not in seen]
+        seen.update(portfolio["uid"] for portfolio in item["portfolios"])
+        item["portfolios"] = mine
     summary = account_deletion.summarize_account_delete_preflight(
         target_uids,
         accounts,

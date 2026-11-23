@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from msm.api.http import BulkDeletedRow, BulkDeleteFailure
+
 
 def _asset_category_contract():
     from msm.api.assets import AssetCategory
@@ -159,9 +161,12 @@ class AssetCategoryDetailResponse(BaseModel):
 
 
 class BulkDeleteAssetCategoriesResponse(BaseModel):
-    """Result of deleting an explicitly selected set of Asset categories."""
+    """What a bulk delete of asset categories did: the categories it deleted, in one
+    statement, and each selected category it did not delete, with the reason."""
 
     model_config = ConfigDict(extra="ignore")
 
     detail: str
     deleted_count: int
+    deleted: list[BulkDeletedRow] = Field(default_factory=list)
+    failed: list[BulkDeleteFailure] = Field(default_factory=list)

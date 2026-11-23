@@ -212,10 +212,10 @@ class Account(MarketsMetaTableRow):
 
     @classmethod
     def bulk_delete(cls, *, uids: Sequence[uuid.UUID | str]) -> dict[str, Any]:
-        """Delete each account as `delete` does, each in its own transaction.
+        """Delete every account that may go, as `delete` does, together in one transaction.
 
         Accounts that are missing or refused are listed in `failed`; the others are
-        deleted.
+        deleted (issue 128).
         """
 
         from msm.services import bulk_delete_accounts

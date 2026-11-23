@@ -434,3 +434,38 @@ account's orders.
   `CASCADE`. Skipping empty tables brings an account with holdings alone from 7 such
   tables to 2: holdings, and allocation lines through the account's `CASCADE`. Rebuilding
   only what a write changed is MetaTables' to do.
+
+### 2026-11-23: unreleased, issue 128
+
+The bulk deletes of accounts, asset categories and portfolio groups refused the whole
+selection with `409` when one row was missing or blocked, and the account bulk delete
+also answered `409` after deleting part of the selection. Deleting a selection is one
+operation: what may go goes, and what may not is reported, as the portfolio bulk delete
+does since issue 127
+([issue 128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+This replaces the 4.1.1 note's "Bulk" bullet.
+
+- **One envelope.** Every bulk delete answers `200` with `detail`, `deleted_count`,
+  `deleted` and `failed`; each item of `failed` names the `uid` and the reason. The
+  routes no longer refuse the selection, and `blocked_preflight_detail` is gone. A
+  preflight answers `allowed: true` when at least one selected row can be deleted.
+- **One transaction for the accounts.** `msm.repositories.account_deletion` builds its
+  statements for a set of accounts (`accounts_delete_statements`): each statement covers
+  every account with `IN (…)`, and the guarded account statement must delete exactly the
+  accounts read. One account's delete is the same list for one account. With
+  `delete_portfolios`, the portfolios' statements follow in the same list.
+- **Selected together.** Each account is still read on its own, but counting the other
+  selected accounts as deleted with it (`together`): their orders, virtual funds and
+  target rows block nothing, and a portfolio only selected accounts use is deleted with
+  them, reported with the first. Before, it went with the last account, and two
+  accounts whose rows referenced each other could not be deleted in one call.
+- **A refusal the reads cannot see.** A reference written after the reads, or a key of
+  an application's own table, refuses the selection's transaction, which deletes
+  nothing. Each account is then deleted on its own, as `DELETE /api/v1/account/{uid}/`
+  deletes one, so only the refused ones are reported.
+- **Asset categories and portfolio groups.** `msm.services.bulk_deletion.bulk_delete_rows`
+  deletes every selected row that exists in one statement, which returns the deleted
+  rows; the others are reported as not found. A database refusal is handled as above.
+- **The table itself.** MetaTables' impact blockers (the caller cannot write the table,
+  or the table accepts no writes) report every selected row, and nothing is sent. The
+  routes ask for the impact once and reuse it for five minutes, as the preflights do.

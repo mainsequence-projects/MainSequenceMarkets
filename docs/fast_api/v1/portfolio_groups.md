@@ -81,7 +81,10 @@ POST /api/v1/portfolio-group/bulk-delete/
 ```
 
 Bulk delete accepts the discovered `command-center.bulk_action_execution@v1`
-body with an explicit UUID selection and re-runs preflight before deletion.
+body with an explicit UUID selection. It deletes every selected group that exists,
+in one statement, and answers with each deleted group in `deleted` and each other
+one, with the reason, in `failed`; a missing or refused group never stops the others
+([issue 128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
 
 ## Add Portfolio To Group
 

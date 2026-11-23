@@ -409,13 +409,23 @@ def bulk_delete_accounts(
     uids: list[str],
     delete_portfolios: bool = False,
 ) -> AccountBulkDeleteResponse:
+    """Delete every selected account that may go and report the rest (issue 128).
+
+    MetaTables' impact blockers refuse the table itself, so every account is reported
+    with them then.
+    """
+
+    from msm.services import account_delete_impact
+
     if delete_portfolios:
         from msm_portfolios.services import bulk_delete_accounts_with_portfolios as bulk_delete
     else:
         from msm.services import bulk_delete_accounts as bulk_delete
 
     runtime = _get_delete_runtime()
-    return AccountBulkDeleteResponse.model_validate(bulk_delete(runtime.context, uids=uids))
+    return AccountBulkDeleteResponse.model_validate(
+        bulk_delete(runtime.context, uids=uids, table_blockers=account_delete_impact().blockers)
+    )
 
 
 def preflight_bulk_delete_accounts(

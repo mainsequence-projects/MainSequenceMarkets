@@ -185,22 +185,27 @@ def bulk_delete_portfolio_groups(
     *,
     uids: Sequence[str] | None = None,
     unique_identifiers: Sequence[str] | None = None,
+    table_blockers: Sequence[str] = (),
 ) -> dict[str, Any]:
+    """Delete every selected portfolio group that exists, in one statement, and report the
+    rest (issue 128). Their memberships go by ``CASCADE``."""
+
+    from msm.models import PortfolioGroupTable
+    from msm.services.bulk_deletion import bulk_delete_rows
+
     target_uids = _portfolio_group_target_uids(
         context,
         uids=uids,
         unique_identifiers=unique_identifiers,
     )
-    deleted_count = 0
-    for uid in dict.fromkeys(target_uids):
-        if _delete_existing_portfolio_group(context, uid=uid):
-            deleted_count += 1
-    detail = (
-        "No portfolio groups matched the deletion request."
-        if deleted_count == 0
-        else f"Deleted {deleted_count} portfolio group{'s' if deleted_count != 1 else ''}."
+    return bulk_delete_rows(
+        context,
+        model=PortfolioGroupTable,
+        uids=target_uids,
+        label="Portfolio group",
+        plural="portfolio groups",
+        table_blockers=table_blockers,
     )
-    return {"detail": detail, "deleted_count": deleted_count}
 
 
 def upsert_portfolio_group_membership(
@@ -378,17 +383,6 @@ def _membership_row_matches(
         return False
     if portfolio_uids and str(row.get("portfolio_uid")) not in portfolio_uids:
         return False
-    return True
-
-
-def _delete_existing_portfolio_group(
-    context: MarketsRepositoryContext,
-    *,
-    uid: str,
-) -> bool:
-    if _first_operation_row(get_portfolio_group_by_uid(context, uid=uid)) is None:
-        return False
-    delete_portfolio_group(context, uid=uid)
     return True
 
 

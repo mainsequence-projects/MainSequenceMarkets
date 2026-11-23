@@ -33,6 +33,17 @@ and this project follows versioned releases.
   answers `allowed: true` when at least one portfolio can be deleted.
   `MarketsClient.bulk_delete_portfolios` no longer raises `MarketsConflictError` for a
   refused portfolio.
+- **Breaking: every bulk delete deletes what may go and reports the rest**
+  ([#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+  `POST /api/v1/account/bulk-delete/`, `/asset-category/bulk-delete/` and
+  `/portfolio-group/bulk-delete/` no longer refuse the selection with `409` when one row
+  is missing or refused. They delete every selected row that may go, together in one
+  transaction, and answer `200` with the same envelope as the portfolio bulk delete:
+  `deleted`, and `failed` with each row's reason. The asset-category and portfolio-group
+  answers gain `deleted` and `failed`. Each selected account is read counting the other
+  selected accounts as deleted with it, so their rows block nothing and a portfolio only
+  they use goes with them. Preflights answer `allowed: true` when at least one row can be
+  deleted. `msm.api.http.blocked_preflight_detail` is removed.
 - **Breaking: in-process target writes refuse a field a row does not have**
   ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
   `build_target_positions_frame`, `validate_target_positions_frame` and the

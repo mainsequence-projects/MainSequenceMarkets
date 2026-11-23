@@ -431,7 +431,13 @@ def test_a_restrict_key_on_the_account_refuses_everything(sqlite_markets) -> Non
 # Bulk ------------------------------------------------------------------------------------
 
 
-def test_bulk_delete_deletes_a_shared_portfolio_with_the_last_account(sqlite_markets, monkeypatch) -> None:
+def test_a_portfolio_only_the_selection_uses_goes_with_it_in_one_transaction(
+    sqlite_markets, monkeypatch
+) -> None:
+    """Issue 128: each account is read counting the other selected accounts as deleted
+    with it, so a portfolio only they use goes with them, in one transaction, reported
+    with the first."""
+
     impact_calls = _impact_unavailable(monkeypatch)
     engine = sqlite_markets.engine
     first, second = _account(engine), _account(engine)
@@ -440,19 +446,27 @@ def test_bulk_delete_deletes_a_shared_portfolio_with_the_last_account(sqlite_mar
     _history(sqlite_markets, second, shared)
 
     preflight = preflight_bulk_delete_accounts_with_portfolios(sqlite_markets.context, uids=[first, second])
+    sqlite_markets.requests.clear()
     result = bulk_delete_accounts_with_portfolios(sqlite_markets.context, uids=[first, second])
 
-    # Each account is read as if deleted alone: each sees the other one's history.
     assert preflight["allowed"] is True
-    assert all(item["kept_portfolios"][0]["uid"] == str(shared) for item in preflight["accounts"])
-    assert sum("is kept" in warning for warning in preflight["warnings"]) == 2
+    first_plan, second_plan = preflight["accounts"]
+    assert [item["uid"] for item in first_plan["portfolios"]] == [str(shared)]
+    assert second_plan["portfolios"] == [] and second_plan["kept_portfolios"] == []
+    assert sum("is deleted with it" in warning for warning in preflight["warnings"]) == 1
     first_result, second_result = result["deleted"]
-    assert [item["uid"] for item in first_result["kept_portfolios"]] == [str(shared)]
-    assert [item["uid"] for item in second_result["deleted_portfolios"]] == [str(shared)]
+    assert [item["uid"] for item in first_result["deleted_portfolios"]] == [str(shared)]
+    assert second_result["deleted_portfolios"] == [] and second_result["kept_portfolios"] == []
     assert result["detail"] == "Deleted 2 accounts with their history and 1 portfolio."
+    assert result["failed"] == []
+    assert [request.split(":")[0] for request in sqlite_markets.requests] == [
+        "read",
+        "read",
+        "transaction",
+    ]
     assert not _exists(engine, shared)
     assert set(_dataset_rows(engine, shared_identifier).values()) == {0}
-    assert impact_calls == ["impact"]
+    assert impact_calls == ["impact"]  # the preflight's; the bulk delete asks for none
 
 
 def test_bulk_delete_reports_missing_and_refused_accounts(sqlite_markets) -> None:

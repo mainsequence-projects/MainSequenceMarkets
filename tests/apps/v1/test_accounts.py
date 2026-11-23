@@ -2352,23 +2352,23 @@ def _preflight(**values):
     )
 
 
-def test_bulk_delete_accounts_runs_after_an_allowed_preflight(monkeypatch) -> None:
+def test_bulk_delete_accounts_deletes_without_a_preflight(monkeypatch) -> None:
+    # Issue 128: the delete reports what it could not delete; the route runs no preflight.
     from apps.v1.schemas.accounts import AccountBulkDeleteResponse
 
     uid = str(uuid.uuid4())
-    calls: list[tuple[str, list[str], bool]] = []
-
-    def preflight(*, uids, delete_portfolios):
-        calls.append(("preflight", uids, delete_portfolios))
-        return _preflight()
+    calls: list[tuple[list[str], bool]] = []
 
     def bulk_delete(*, uids, delete_portfolios):
-        calls.append(("delete", uids, delete_portfolios))
+        calls.append((uids, delete_portfolios))
         return AccountBulkDeleteResponse.model_validate(
-            {"detail": "Deleted 1 account with their history.", "deleted_count": 1, "deleted": [_deleted(uid)]}
+            {"detail": "Deleted 1 account with its history.", "deleted_count": 1, "deleted": [_deleted(uid)]}
         )
 
-    monkeypatch.setattr("apps.v1.routers.accounts.preflight_bulk_delete_accounts", preflight)
+    monkeypatch.setattr(
+        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
+        lambda **kwargs: pytest.fail("the bulk delete runs no preflight"),
+    )
     monkeypatch.setattr("apps.v1.routers.accounts.bulk_delete_accounts", bulk_delete)
 
     client = TestClient(app)
@@ -2378,12 +2378,7 @@ def test_bulk_delete_accounts_runs_after_an_allowed_preflight(monkeypatch) -> No
     assert response.status_code == 200 and with_portfolios.status_code == 200
     assert response.json()["deleted"][0]["deleted_rows"] == {"orders": 2, "holdings": 3}
     assert "other_namespace_cascades" not in response.json()
-    assert calls == [
-        ("preflight", [uid], False),
-        ("delete", [uid], False),
-        ("preflight", [uid], True),
-        ("delete", [uid], True),
-    ]
+    assert calls == [([uid], False), ([uid], True)]
 
 
 @pytest.mark.parametrize(
@@ -2407,47 +2402,26 @@ def test_bulk_delete_accounts_refuses_an_undeclared_or_mistyped_option(monkeypat
         assert detail in response.json()["detail"]
 
 
-def test_bulk_delete_accounts_refuses_a_blocked_selection(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
-        lambda *, uids, delete_portfolios: _preflight(allowed=False, blockers=["Account 'a': 1 orders of other accounts name its order managers (ON DELETE RESTRICT)."]),
-    )
-    monkeypatch.setattr(
-        "apps.v1.routers.accounts.bulk_delete_accounts",
-        lambda *, uids, delete_portfolios: pytest.fail("a blocked selection must not be deleted"),
-    )
-
-    response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uuid.uuid4()))
-
-    assert response.status_code == 409
-    assert "orders of other accounts" in response.json()["detail"]
-
-
-def test_bulk_delete_accounts_answers_409_when_an_account_fails(monkeypatch) -> None:
+def test_bulk_delete_accounts_answers_what_it_did_not_delete(monkeypatch) -> None:
+    # Issue 128: a refused account never stops the others, and the route answers 200.
     from apps.v1.schemas.accounts import AccountBulkDeleteResponse
 
     uid = str(uuid.uuid4())
-    monkeypatch.setattr(
-        "apps.v1.routers.accounts.preflight_bulk_delete_accounts",
-        lambda *, uids, delete_portfolios: _preflight(),
-    )
+    refusal = "Account 'a' cannot be deleted: 1 orders of other accounts name its order managers."
     monkeypatch.setattr(
         "apps.v1.routers.accounts.bulk_delete_accounts",
         lambda *, uids, delete_portfolios: AccountBulkDeleteResponse.model_validate(
             {
                 "detail": "No accounts were deleted. 1 could not be deleted.",
-                "failed": [{"uid": uid, "detail": "Account 'a' cannot be deleted; nothing was deleted."}],
+                "failed": [{"uid": uid, "detail": refusal}],
             }
         ),
     )
 
     response = TestClient(app).post("/api/v1/account/bulk-delete/", json=_selection(uid))
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == (
-        "No accounts were deleted. 1 could not be deleted. Not deleted: "
-        f"{uid}: Account 'a' cannot be deleted; nothing was deleted."
-    )
+    assert response.status_code == 200
+    assert response.json()["failed"] == [{"uid": uid, "detail": refusal}]
 
 
 def test_bulk_delete_preflight_reports_counts_and_other_namespaces(monkeypatch) -> None:

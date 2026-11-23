@@ -88,7 +88,11 @@ provider-specific records. The API does not flatten those separate models into `
   - returns `null` on success
 - `POST /api/v1/asset-category/bulk-delete/`
   - accepts the discovered `command-center.bulk_action_execution@v1` request
-  - deletes an explicit UUID selection after re-running preflight
+  - deletes every category of the explicit UUID selection that exists, in one
+    statement, and answers with each deleted category in `deleted` and each other
+    one, with the reason, in `failed`; a missing or refused category never stops
+    the others
+    ([issue 128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128))
 
 ## Related Concepts
 

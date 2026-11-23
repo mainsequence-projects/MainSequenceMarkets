@@ -27,7 +27,10 @@ from msm.repositories.base import compile_markets_statement
 from msm.services import delete_account
 from msm.services.accounts import deletion
 from msm_portfolios.repositories import account_portfolio_deletion as portfolio_repository
-from msm_portfolios.services import delete_account_with_portfolios
+from msm_portfolios.services import (
+    bulk_delete_accounts_with_portfolios,
+    delete_account_with_portfolios,
+)
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 from tests.support.account_delete import EVERY_TABLE_COUNTS
 from tests.support.postgresql_portfolios import (
@@ -142,6 +145,29 @@ def test_the_account_and_its_portfolios_go_in_one_transaction(markets) -> None:
     assert set(_dataset_rows(engine, identifier).values()) == {0}
     assert _exists(engine, other)
     assert _dataset_rows(engine, other_identifier) == {key: 1 for key in DATASETS}
+
+
+def test_a_selection_and_the_portfolio_only_it_uses_go_in_one_transaction(markets) -> None:
+    """Issue 128: the accounts' IN lists and the subqueries that tell their rows from
+    other accounts', bound by psycopg; a portfolio only the selection uses goes too."""
+
+    engine, context, operations = markets
+    shared, shared_identifier = _portfolio(engine)
+    _datasets(engine, shared_identifier)
+    first = _account(engine, context, shared)
+    second = _account(engine, context, shared)
+    operations.clear()
+
+    result = bulk_delete_accounts_with_portfolios(context, uids=[first, second])
+
+    assert operations == ["read", "read", "transaction"]
+    assert result["failed"] == [] and result["deleted_count"] == 2
+    first_result, second_result = result["deleted"]
+    assert [item["uid"] for item in first_result["deleted_portfolios"]] == [str(shared)]
+    assert second_result["deleted_portfolios"] == []
+    assert _accounts(engine) == 0
+    assert not _exists(engine, shared)
+    assert set(_dataset_rows(engine, shared_identifier).values()) == {0}
 
 
 def test_a_restrict_key_of_another_application_keeps_the_portfolio_and_names_it(markets) -> None:

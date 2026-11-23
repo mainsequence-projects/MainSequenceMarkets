@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
@@ -278,21 +279,20 @@ def test_delete_asset_category_returns_404_when_missing(monkeypatch) -> None:
     assert "missing-category" in response.json()["detail"]
 
 
-def test_bulk_delete_asset_categories_returns_count(monkeypatch) -> None:
+def test_bulk_delete_asset_categories_answers_deleted_and_failed(monkeypatch) -> None:
+    # Issue 128: the route runs no preflight; the delete lists what it did not delete.
+    deleted_uid, missing_uid = str(uuid.uuid4()), str(uuid.uuid4())
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.preflight_bulk_delete_asset_categories",
-        lambda **kwargs: {
-            "allowed": True,
-            "matched_count": len(kwargs["uids"]),
-            "blockers": [],
-            "warnings": [],
-        },
+        lambda **kwargs: pytest.fail("the bulk delete runs no preflight"),
     )
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.bulk_delete_asset_categories",
         lambda payload: {
-            "detail": "Deleted 2 asset categories.",
-            "deleted_count": 2,
+            "detail": "Deleted 1 asset category. 1 could not be deleted.",
+            "deleted_count": 1,
+            "deleted": [{"uid": deleted_uid, "unique_identifier": "kept-out"}],
+            "failed": [{"uid": missing_uid, "detail": f"Asset category {missing_uid} was not found."}],
         },
     )
 
@@ -300,16 +300,15 @@ def test_bulk_delete_asset_categories_returns_count(monkeypatch) -> None:
     response = client.post(
         "/api/v1/asset-category/bulk-delete/",
         json={
-            "selection": {
-                "mode": "explicit",
-                "uids": [str(uuid.uuid4()), str(uuid.uuid4())],
-            },
+            "selection": {"mode": "explicit", "uids": [deleted_uid, missing_uid]},
             "options": {},
         },
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "detail": "Deleted 2 asset categories.",
-        "deleted_count": 2,
+        "detail": "Deleted 1 asset category. 1 could not be deleted.",
+        "deleted_count": 1,
+        "deleted": [{"uid": deleted_uid, "unique_identifier": "kept-out"}],
+        "failed": [{"uid": missing_uid, "detail": f"Asset category {missing_uid} was not found."}],
     }

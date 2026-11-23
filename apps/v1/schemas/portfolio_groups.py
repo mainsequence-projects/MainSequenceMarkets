@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from msm.api.http import BulkDeletedRow, BulkDeleteFailure
+
 
 def _portfolio_contract():
     from msm.api.portfolios import Portfolio
@@ -51,6 +53,18 @@ class PortfolioGroupDeleteResponse(BaseModel):
 
     detail: str
     deleted_count: int = 0
+
+
+class PortfolioGroupBulkDeleteResponse(BaseModel):
+    """What a bulk delete of portfolio groups did: the groups it deleted, in one
+    statement, and each selected group it did not delete, with the reason."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    deleted_count: int = 0
+    deleted: list[BulkDeletedRow] = Field(default_factory=list)
+    failed: list[BulkDeleteFailure] = Field(default_factory=list)
 
 
 class PortfolioGroupMembershipRequest(BaseModel):

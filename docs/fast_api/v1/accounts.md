@@ -140,19 +140,24 @@ direct account snapshots and virtual-fund-grouped views.
   - with `options: {"delete_portfolios": true}`, each account also lists the
     portfolios its delete would remove (`accounts[].portfolios`, with their
     `row_counts` per dataset) and keep (`accounts[].kept_portfolios`, with the
-    `reason`); a warning names each. Each account is read as if it were deleted
-    alone
+    `reason`); a warning names each. Each account is read counting the other
+    selected accounts as deleted with it, so their rows block nothing and a
+    portfolio only they use is listed, once, with the first of them
+  - `allowed` is true when at least one selected account can be deleted
   - one read per account; MetaTables' impact is asked for once and reused for
     five minutes
 - `POST /api/v1/account/bulk-delete/`
-  - runs the preflight, answers `409` when it reports a blocker, then deletes
-    each account as `DELETE /api/v1/account/{uid}/` does, each in its own
-    transaction, in the order selected; `409` lists any account that could not
-    be deleted
+  - deletes every selected account that may go, as `DELETE /api/v1/account/{uid}/`
+    deletes one, all of them together in one transaction
+    ([issue 128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+    An account that is missing or refused never stops the others: the answer,
+    `200`, lists each deleted account in `deleted` and each other one, with the
+    reason, in `failed`
   - `options: {"delete_portfolios": true}` applies the option to every account.
-    A portfolio that only selected accounts use goes with the last of them. Any
-    other option, or a value that is not a boolean, answers `400`
-  - asks MetaTables for the impact at most once, in its preflight
+    A portfolio that only selected accounts use goes with them, in the same
+    transaction. Any other option, or a value that is not a boolean, answers `400`
+  - asks MetaTables for the impact at most once; a blocker on the account table
+    itself reports every account
   - the same identities that may delete a portfolio may delete an account; both
     routes are registry writes that record the acting identity
 - `GET /api/v1/account/{uid}/summary/`

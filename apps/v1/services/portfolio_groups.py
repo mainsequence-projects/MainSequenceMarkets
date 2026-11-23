@@ -7,6 +7,7 @@ from apps.v1.identity import registry_write
 from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroup,
+    PortfolioGroupBulkDeleteResponse,
     PortfolioGroupDeleteResponse,
     PortfolioGroupMembership,
 )
@@ -74,14 +75,21 @@ def delete_portfolio_group(*, uid: str) -> PortfolioGroupDeleteResponse:
 
 
 @registry_write("portfolio-group", "bulk-delete")
-def bulk_delete_portfolio_groups(*, payload: Mapping[str, Any]) -> PortfolioGroupDeleteResponse:
+def bulk_delete_portfolio_groups(*, payload: Mapping[str, Any]) -> PortfolioGroupBulkDeleteResponse:
+    """Delete every selected group that may go and report the rest (issue 128).
+
+    MetaTables' impact blockers refuse the table itself, so every group is reported with
+    them then.
+    """
+
     runtime = _get_runtime()
     result = _bulk_delete_portfolio_groups(
         runtime.context,
         uids=[str(uid) for uid in payload.get("uids", [])],
         unique_identifiers=list(payload.get("unique_identifiers", [])),
+        table_blockers=_portfolio_group_delete_impact().blockers,
     )
-    return PortfolioGroupDeleteResponse.model_validate(result)
+    return PortfolioGroupBulkDeleteResponse.model_validate(result)
 
 
 def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkDeletePreflightResponse:
@@ -96,12 +104,20 @@ def preflight_bulk_delete_portfolio_groups(*, uids: list[str]) -> BulkDeletePref
     blockers = [f"Portfolio group {uid} was not found." for uid in missing_uids]
     impact = _portfolio_group_delete_impact()
     blockers.extend(impact.blockers)
-    allowed = bool(target_uids) and not blockers
-    detail = (
-        f"{matched_count} portfolio group{' is' if matched_count == 1 else 's are'} ready for deletion."
-        if allowed
-        else "The portfolio-group selection cannot be deleted as submitted."
-    )
+    # Allowed when at least one group can go; the others are reported (issue 128).
+    allowed = matched_count > 0 and not impact.blockers
+    if not allowed:
+        detail = "None of the selected portfolio groups can be deleted."
+    elif matched_count == len(target_uids):
+        detail = (
+            f"{matched_count} portfolio group{' is' if matched_count == 1 else 's are'} "
+            "ready for deletion."
+        )
+    else:
+        detail = (
+            f"{matched_count} of the {len(target_uids)} selected portfolio groups can be "
+            "deleted; the others are kept."
+        )
     return BulkDeletePreflightResponse(
         allowed=allowed,
         detail=detail,

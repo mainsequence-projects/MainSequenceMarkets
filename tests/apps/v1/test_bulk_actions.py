@@ -136,36 +136,33 @@ def test_bulk_action_preflight_preserves_blockers(
     }
 
 
-def test_bulk_action_execution_reauthorizes_before_delete(monkeypatch) -> None:
-    resource_uid = uuid.uuid4()
+def test_bulk_action_execution_deletes_without_a_blocking_preflight(monkeypatch) -> None:
+    # Issue 128: execution never refuses the selection; the delete reports each row it
+    # did not delete, and the route answers 200.
+    resource_uid = str(uuid.uuid4())
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.preflight_bulk_delete_asset_categories",
-        lambda **kwargs: {
-            "allowed": False,
-            "matched_count": 1,
-            "blockers": ["Protected reference exists."],
-            "warnings": [],
-        },
+        lambda **kwargs: pytest.fail("the bulk delete runs no preflight"),
     )
-
-    def unexpected_delete(*args, **kwargs):
-        raise AssertionError("Deletion must not run after a blocked preflight.")
-
     monkeypatch.setattr(
         "apps.v1.routers.asset_categories.bulk_delete_asset_categories",
-        unexpected_delete,
+        lambda payload: {
+            "detail": "No asset categories were deleted. 1 could not be deleted.",
+            "deleted_count": 0,
+            "failed": [{"uid": resource_uid, "detail": "Protected reference exists."}],
+        },
     )
 
     response = TestClient(app).post(
         "/api/v1/asset-category/bulk-delete/",
         json={
-            "selection": {"mode": "explicit", "uids": [str(resource_uid)]},
+            "selection": {"mode": "explicit", "uids": [resource_uid]},
             "options": {},
         },
     )
 
-    assert response.status_code == 409
-    assert response.json() == {"detail": "Protected reference exists."}
+    assert response.status_code == 200
+    assert response.json()["failed"] == [{"uid": resource_uid, "detail": "Protected reference exists."}]
 
 
 def test_bulk_action_execution_rejects_unadvertised_selection_mode() -> None:
@@ -255,9 +252,10 @@ def test_asset_category_preflight_is_owned_by_apps_v1(monkeypatch) -> None:
         uids=[existing_uid, missing_uid, existing_uid]
     )
 
+    # Issue 128: the missing category keeps itself, never the selection.
     assert result.model_dump() == {
-        "allowed": False,
-        "detail": "The asset-category selection cannot be deleted as submitted.",
+        "allowed": True,
+        "detail": "1 of the 2 selected asset categories can be deleted; the others are kept.",
         "matched_count": 1,
         "blockers": [f"Asset category {missing_uid} was not found."],
         "warnings": [],
@@ -367,22 +365,34 @@ def test_portfolio_group_preflight_reports_cascades(monkeypatch) -> None:
     }
 
 
-def test_impact_blockers_stop_bulk_delete(monkeypatch) -> None:
+def test_impact_blockers_keep_every_portfolio_group(monkeypatch) -> None:
+    # Issue 128: MetaTables' blockers refuse the table itself, so every group is reported
+    # with them and nothing is deleted.
+    from msm.models import PortfolioGroupTable
+    from msm.services.bulk_deletion import bulk_delete_rows
+
     blocker = "PortfolioGroup: You cannot write this table."
+    group_uid = str(uuid.uuid4())
     _stub_portfolio_group_preflight(monkeypatch, DeleteRowsImpact(impact=None, blockers=[blocker]))
 
-    def unexpected_delete(*args, **kwargs):
-        raise AssertionError("Deletion must not run after a blocked preflight.")
+    def bulk_delete(context, *, uids, unique_identifiers, table_blockers):
+        return bulk_delete_rows(
+            context,
+            model=PortfolioGroupTable,
+            uids=uids,
+            label="Portfolio group",
+            plural="portfolio groups",
+            table_blockers=table_blockers,
+        )
 
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolio_groups.bulk_delete_portfolio_groups",
-        unexpected_delete,
-    )
+    monkeypatch.setattr(portfolio_groups, "_bulk_delete_portfolio_groups", bulk_delete)
 
     response = TestClient(app).post(
         "/api/v1/portfolio-group/bulk-delete/",
-        json={"selection": {"mode": "explicit", "uids": [str(uuid.uuid4())]}, "options": {}},
+        json={"selection": {"mode": "explicit", "uids": [group_uid]}, "options": {}},
     )
 
-    assert response.status_code == 409
-    assert response.json() == {"detail": blocker}
+    assert response.status_code == 200
+    assert response.json()["deleted_count"] == 0
+    (failure,) = response.json()["failed"]
+    assert failure["uid"] == group_uid and blocker in failure["detail"]

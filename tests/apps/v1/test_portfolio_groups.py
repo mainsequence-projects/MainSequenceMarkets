@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.v1.main import app
 from apps.v1.schemas.portfolio_groups import (
     Portfolio,
     PortfolioGroup,
-    PortfolioGroupDeleteResponse,
+    PortfolioGroupBulkDeleteResponse,
     PortfolioGroupMembership,
 )
 
@@ -204,29 +205,26 @@ def test_list_groups_for_portfolio_returns_paginated_groups(monkeypatch) -> None
     assert captured["portfolio_uid"] == str(portfolio_uid)
 
 
-def test_bulk_delete_portfolio_groups_returns_deleted_count(monkeypatch) -> None:
+def test_bulk_delete_portfolio_groups_answers_deleted_and_failed(monkeypatch) -> None:
     group_uid = uuid.uuid4()
     captured: dict[str, object] = {}
 
     def fake_bulk_delete_portfolio_groups(*, payload):
         captured["payload"] = payload
-        return PortfolioGroupDeleteResponse(
+        return PortfolioGroupBulkDeleteResponse(
             detail="Deleted 1 portfolio group.",
             deleted_count=1,
+            deleted=[{"uid": str(group_uid), "unique_identifier": "growth"}],
         )
 
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_groups.bulk_delete_portfolio_groups",
         fake_bulk_delete_portfolio_groups,
     )
+    # Issue 128: the route runs no preflight; the delete reports what it did not delete.
     monkeypatch.setattr(
         "apps.v1.routers.portfolio_groups.preflight_bulk_delete_portfolio_groups",
-        lambda **kwargs: {
-            "allowed": True,
-            "matched_count": len(kwargs["uids"]),
-            "blockers": [],
-            "warnings": [],
-        },
+        lambda **kwargs: pytest.fail("the bulk delete runs no preflight"),
     )
 
     client = TestClient(app)
@@ -242,5 +240,7 @@ def test_bulk_delete_portfolio_groups_returns_deleted_count(monkeypatch) -> None
     assert response.json() == {
         "detail": "Deleted 1 portfolio group.",
         "deleted_count": 1,
+        "deleted": [{"uid": str(group_uid), "unique_identifier": "growth"}],
+        "failed": [],
     }
     assert captured["payload"]["uids"] == [str(group_uid)]
