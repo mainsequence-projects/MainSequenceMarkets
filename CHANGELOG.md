@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-11-23
+
+Minor release 5.2.0, with breaking changes to rebalance strategies. Strategies with
+their own bars size each order at the decision and pay for it with cash
+([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)), and
+the sized strategies require `total_notional`
+([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)).
+The identities of these strategies, and of the portfolios that use them, change. It
+adds a strategy's `signal_lifetime`, and fixes large PostgreSQL position writes,
+intraday upsampling, the start of a calendar or portfolio in a shared table, incomplete
+reads and asset-category reads. No migration.
+
 ### Added
 
 - **A signal older than the strategy's lifetime is disregarded**
