@@ -25,8 +25,8 @@ including tables added later (ADR 0024). A table is in at most one namespace, th
 one nullable column, `meta_table.namespace_uid`.
 
 An application therefore cannot give access to part of its tables without naming them.
-The Alpaca connectors application wants a Team to read its market-data tables but not
-its account tables. Today it can:
+A market-data connectors application wants a Team to read its market-data tables but
+not its account tables. Today it can:
 
 - grant the Team a role on the whole namespace, which covers the account tables too;
 - grant the Team a role on each market-data table, one request per table and per
@@ -51,10 +51,10 @@ the strongest among their direct bindings, their Teams' bindings and the binding
 **every** namespace the table is in.
 
 ```text
-namespace alpaca-connectors          namespace alpaca-market-data
+namespace my-provider                namespace my-provider-market-data
   bars  quotes  orders  positions      bars  quotes
 
-Team alpaca-development: editor       Team research: data_viewer
+Team my-provider-development: editor  Team research: data_viewer
 ```
 
 Team research reads `bars` and `quotes` and nothing else. A market-data table added
@@ -83,14 +83,14 @@ runs.
 A table declares its namespaces in code:
 
 ```python
-class AlpacaBase(PlatformManagedMetaTable):
-    __metatable_namespace__ = "alpaca-connectors"
+class ProviderBase(PlatformManagedMetaTable):
+    __metatable_namespace__ = "my-provider"
 
 class MarketData:
-    __metatable_namespaces__ = ("alpaca-market-data",)
+    __metatable_namespaces__ = ("my-provider-market-data",)
 
-class Bars(MarketData, AlpacaBase): ...      # in both
-class Orders(AlpacaBase): ...                # only alpaca-connectors
+class Bars(MarketData, ProviderBase): ...    # in both
+class Orders(ProviderBase): ...              # only my-provider
 ```
 
 - `__metatable_namespace__` keeps its meaning: one name, and a class that sets it
@@ -141,7 +141,7 @@ Nothing in a migration follows a table's namespaces, and that stays so:
 - A namespace is not a schema change. Declaring or removing one needs no revision and
   no new folder: the next `upgrade head` applies it at finalization.
 
-So an application that adds `alpaca-market-data` edits its models and deploys. It does
+So an application that adds `my-provider-market-data` edits its models and deploys. It does
 not scaffold a second provider. A table belongs to one provider; a model returned by
 two registries is refused at reservation as belonging to another provider.
 
@@ -225,8 +225,8 @@ those tables through the Job; what they gain is deciding who else has access. Th
 accepted for the same reason.
 
 **A subset cannot restrict.** Roles are the strongest of all sources. If Team research
-also holds `data_viewer` on `alpaca-connectors`, it reads the account tables whatever
-`alpaca-market-data` says. A subset works only for principals with no role on the
+also holds `data_viewer` on `my-provider`, it reads the account tables whatever
+`my-provider-market-data` says. A subset works only for principals with no role on the
 larger namespace.
 
 **Narrowing in code.** Removing a name from a table's declaration removes that
@@ -331,7 +331,7 @@ table in a namespace. Access checks read memberships through an index on
 
 - A caller with a role on only one of a table's namespaces gets that role, in the API
   and in the database; removing the membership removes it.
-- The Alpaca layout end to end as a non-admin: one Job registers tables in two
+- The two-namespace layout end to end as a non-admin: one Job registers tables in two
   namespaces, a Team granted on the second reads only its tables, and a table added
   later is covered.
 - A registration adds and removes `declared` memberships and leaves `manual` ones.

@@ -223,10 +223,10 @@ a caller's role on the table is the strongest it gets from any of them. Use a se
 namespace to share part of an application's tables without naming them one by one.
 
 ```text
-namespace alpaca-connectors          namespace alpaca-market-data
+namespace my-provider                namespace my-provider-market-data
   bars  quotes  orders  positions      bars  quotes
 
-Team alpaca-development: editor       Team research: data_viewer
+Team my-provider-development: editor  Team research: data_viewer
 ```
 
 Team research reads `bars` and `quotes` and nothing else. A market-data table added
@@ -238,15 +238,15 @@ further ones and only adds: a table is in every name that it or any of its base 
 lists there, so a table joins a subset by having the base that declares it.
 
 ```python
-class AlpacaBase(PlatformManagedMetaTable):
+class ProviderBase(PlatformManagedMetaTable):
     __abstract__ = True
-    __metatable_namespace__ = "alpaca-connectors"
+    __metatable_namespace__ = "my-provider"
 
 class MarketData:
-    __metatable_namespaces__ = ("alpaca-market-data",)
+    __metatable_namespaces__ = ("my-provider-market-data",)
 
-class Bars(MarketData, AlpacaBase, Base): ...      # in both
-class Orders(AlpacaBase, Base): ...                # only alpaca-connectors
+class Bars(MarketData, ProviderBase, Base): ...    # in both
+class Orders(ProviderBase, Base): ...              # only my-provider
 ```
 
 The application's migration applies the declaration: `metatables migrations upgrade
@@ -262,7 +262,7 @@ on the namespace. No migration removes a membership added this way.
 What to know:
 
 - **A second namespace only adds access.** There is no deny. Someone with a role on
-  `alpaca-connectors` reaches every table whatever `alpaca-market-data` says. A subset
+  `my-provider` reaches every table whatever `my-provider-market-data` says. A subset
   works for principals that hold no role on the larger namespace.
 - **Its owners are owners of the table.** Adding a table to a namespace gives that
   namespace's roles on the table, `owner` included.

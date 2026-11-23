@@ -52,12 +52,15 @@ Portfolios can be retired, and signals ended, several in one call
 
 ### Changed
 
-- **Requires `mainsequence-metatable` 0.1.77.** It answers a table's delete impact in a
+- **Requires `mainsequence-metatable` 0.1.78.** It answers a table's delete impact in a
   fixed number of statements however many tables the delete reaches
   ([MetaTables#136](https://github.com/mainsequence-projects/MetaTables/issues/136)),
   reports a client timeout as one instead of naming `Retry-After`
-  ([MetaTables#147](https://github.com/mainsequence-projects/MetaTables/issues/147)), and
-  keeps values, indexes and checks through a SQLite table rebuild.
+  ([MetaTables#147](https://github.com/mainsequence-projects/MetaTables/issues/147)),
+  keeps values, indexes and checks through a SQLite table rebuild, and ships client
+  skills whose examples use neutral placeholders
+  ([MetaTables#151](https://github.com/mainsequence-projects/MetaTables/issues/151)). The
+  copies in `.agents/skills/metatables` are refreshed from it.
 - **Breaking: the portfolio bulk delete deletes what may go and reports the rest**
   ([#127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
   `POST /api/v1/portfolio/bulk-delete/` no longer refuses the selection with `409` when
