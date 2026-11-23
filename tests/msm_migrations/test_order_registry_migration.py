@@ -21,6 +21,7 @@ from sqlalchemy.pool import NullPool
 
 from msm.base import MarketsBase
 from msm.models import OrderTable
+from msm.time_index.execution import upgrade
 from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
 from msm_migrations import migration
 from msm_migrations.registry import metatable_provider_models
@@ -125,6 +126,16 @@ def test_0037_gives_each_order_one_row_and_keys_its_rows_to_it(tmp_path, sqlite_
         ("transfer", None),
     ]
     assert {uuid.UUID(row["order_uid"]) for row in events} == {legacy, order_uid}
+
+
+def test_applications_map_their_orders_as_0037_maps_markets_own() -> None:
+    """An application's instances reference Markets' Order rows, so its identifiers must
+    become the same uids, and its orders take the same terms."""
+
+    assert upgrade.ORDER_UID_NAMESPACE == REVISION.ORDER_UID_NAMESPACE
+    assert upgrade.ORDER_TERMS == REVISION.ORDER_TERMS
+    for identifier in ("broker-123", str(uuid.uuid4()), "B3C37335-98DE-5460-92FA-55D1C01048DE"):
+        assert upgrade.order_uid_for_identifier(identifier) == REVISION.order_uid(identifier)
 
 
 def test_0037_leaves_the_tables_as_the_models_declare_them(tmp_path, sqlite_revisions) -> None:

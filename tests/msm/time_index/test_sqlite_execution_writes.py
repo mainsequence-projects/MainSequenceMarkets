@@ -16,6 +16,7 @@ from metatables import MetaTable
 
 from msm.api import Order, OrderManager
 from msm.time_index.execution import OrderExecution, write_execution
+from msm.time_index.execution.upgrade import order_uid_for_identifier, orders_from_legacy_states
 from msm.time_index.execution.writes import MAX_TRANSACTION_STATEMENTS
 from tests.support.sqlite_markets import _account, _asset, _count, _rows, serve_row_operations
 
@@ -273,3 +274,27 @@ def test_a_call_too_large_for_one_transaction_writes_nothing(markets, monkeypatc
 
     assert markets.transactions == []
     assert _count(markets.engine, "ms_markets__ordersts") == 0
+
+
+# Upgrading an application's orders ------------------------------------------------------
+
+
+def test_an_applications_legacy_orders_become_order_rows(markets) -> None:
+    """Before an application re-keys its own instances, its orders get Order rows under the
+    uids revision 0037 gives identifiers (ADR 0064)."""
+
+    legacy = [
+        {"order_time": WHEN + dt.timedelta(minutes=1), "order_identifier": "broker-1",
+         "account_identifier": markets.account_identifier, "asset_identifier": "AAPL",
+         "order_manager_identifier": "", "limit_price": 101.0, "client_order_id": ""},
+        {"order_time": WHEN, "order_identifier": "broker-1",
+         "account_identifier": markets.account_identifier, "asset_identifier": "AAPL",
+         "order_manager_identifier": "", "limit_price": 100.0, "client_order_id": "c-1"},
+    ]
+
+    (row,) = Order.upsert_many(orders_from_legacy_states(legacy))
+
+    assert row.uid == order_uid_for_identifier("broker-1")
+    assert (row.limit_price, row.client_order_id, row.order_manager_identifier) == (100.0, "c-1", None)
+    with pytest.raises(ValueError, match="broker-1"):
+        orders_from_legacy_states([*legacy, {**legacy[0], "asset_identifier": "MSFT"}])

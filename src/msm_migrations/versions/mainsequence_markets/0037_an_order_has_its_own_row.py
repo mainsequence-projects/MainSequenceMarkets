@@ -20,7 +20,8 @@ that names an order with no state row, or two trades with the same time and iden
 Those rows are to be corrected first.
 
 Only the Markets-owned tables are migrated here. An application's instances of these
-tables are migrated by the application's own migrations.
+tables are migrated by the application's own migrations, after its orders get ``Order``
+rows; ``msm.time_index.execution.upgrade`` maps them as this revision does.
 
 SQLite rebuilds the three execution tables to drop columns that hold foreign keys. No
 key points into them, so the rebuild does not change how SQLite orders the actions of

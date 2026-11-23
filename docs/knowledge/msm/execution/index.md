@@ -96,6 +96,15 @@ written = write_execution(
 The `Orders`, `OrderEvents` and `Trades` updaters still write a frame set with
 `set_frame`, through an update execution.
 
+## Upgrading to 6.0.0
+
+Revision `0037` migrates Markets' own execution tables. An application's instances
+reference Markets' `Order`, so its orders need `Order` rows before its own revision adds
+that key: `msm.time_index.execution.upgrade.orders_from_legacy_states(old_rows)` builds
+them from the instance's pre-6.0.0 `OrdersTS` rows for `Order.upsert_many`, and
+`order_uid_for_identifier` gives each identifier the uid revision `0037` gives it. The
+skill `.agents/skills/ms_markets/accounts/execution_workflow/SKILL.md` has the steps.
+
 ## Extension Notes
 
 Add new execution storage shapes in `msm.time_index.execution`. Add new

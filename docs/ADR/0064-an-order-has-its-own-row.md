@@ -215,6 +215,12 @@ limit.
   changes anything, an identifier with state rows of two accounts or assets, a trade or
   event that names an order with no state row, and two trades with one time and
   identifier. An application's instances are migrated by the application.
+- **Applications' orders.** An application's instances reference Markets' `Order`, so its
+  orders need `Order` rows before its own revision adds that key; revision `0037` fills
+  `Order` only from Markets' own `OrdersTS`. `msm.time_index.execution.upgrade` maps an
+  application's orders as `0037` maps Markets' own (`order_uid_for_identifier`,
+  `orders_from_legacy_states`, for `Order.upsert_many`); a test holds the two to the same
+  namespace and terms. The skill `accounts/execution_workflow` has the steps.
 - **Model ordering.** `msm.models.registration` no longer counts a key into a model's own
   table as a dependency.
 

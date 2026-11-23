@@ -31,6 +31,12 @@ and trades are written in two requests, with no updater run
   earlier call go in `trades=[...]`.
 - Both calls write every row they may and list the others in `failed`, as the bulk
   deletes do ([#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+- **`msm.time_index.execution.upgrade`**: `order_uid_for_identifier` and
+  `orders_from_legacy_states` map an application's pre-6.0.0 orders exactly as revision
+  `0037` maps Markets' own, so it can give them `Order` rows (`Order.upsert_many`) before
+  re-keying its own instances.
+- **Skill `accounts/execution_workflow`**: recording batches, orders, events and trades,
+  declaring the application's instances, reading `failed`, and the 6.0.0 upgrade.
 
 ### Changed (breaking)
 
