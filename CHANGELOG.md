@@ -7,6 +7,11 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-11-23
+
+Patch release 5.3.1: ms-markets requires MetaTables 0.1.78, whose client skills use
+neutral placeholders, and its copies of those skills are refreshed. No code changes.
+
 ### Changed
 
 - **Requires `mainsequence-metatable` 0.1.78.** Its client skills use neutral placeholders
