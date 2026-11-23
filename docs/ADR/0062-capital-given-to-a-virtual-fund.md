@@ -11,16 +11,18 @@ implemented.
     ([ADR 0061](0061-retire-constant-notional-exposure.md)).
   - On 2026-11-23 he decided that each fund owns its cash
     ([Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md),
-    decision 14). The same day he settled decisions 1, 3, 4, 5, 8, 9 and 10 and the rule in
-    the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts and
-    portfolios that hold several currencies.
+    decision 14). The same day he settled decisions 1, 3, 4, 5, 8, 9, 10, 11 and 12 and the
+    rule in the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts
+    and portfolios that hold several currencies.
+- This ADR is about cash funds only. A fund that is always a share of the account works exactly
+  as today, and nothing here changes it.
 - Everything not marked (owner) is a proposal. What is still open for the owner is under
   [Open Questions](#open-questions).
 - It would amend [ADR 0054](0054-account-exposure-and-sized-fund-targets.md) (what a portfolio
-  row states and how a fund is sized),
+  row states, and how a cash fund is sized),
   [ADR 0053](0053-virtual-fund-allocation-routes-and-described-policies.md) and
-  [ADR 0029](0029-account-holdings-virtual-fund-allocation-policy.md) (what a sync assigns),
-  and answer open question 15 of Execution Engine ADR 0001.
+  [ADR 0029](0029-account-holdings-virtual-fund-allocation-policy.md) (what a sync assigns to a
+  cash fund), and answer open question 15 of Execution Engine ADR 0001.
 
 ## Ontology
 
@@ -28,22 +30,20 @@ implemented.
 | --- | --- |
 | Owner | A fund, or the account itself, as in `AccountAllocationLinesStorage` |
 | The account itself | What no fund owns: the account's own line |
-| Share fund | A fund that is always a share of the account: its portfolio row states `weight_notional_exposure`. Every sync resizes it to that share |
+| Share fund | A fund that is always a share of the account: its portfolio row states `weight_notional_exposure`. It works as today |
 | Cash fund | A fund given cash. It grows or shrinks with its own result, and the account never rebalances it |
-| Capital allocation | A dated record of cash, or of units in kind, allocated to a fund or moved away from it |
-| Manual allocation | A capital allocation that a person makes |
-| Rule allocation | A capital allocation that the share rule makes: a share fund's resize, or units a sync gives it that no record explains |
+| Capital allocation | A dated record, made by a person, of cash or of units in kind allocated to a cash fund or moved away from it. Also called a manual allocation |
 | Holdings allocation | What a sync assigns of the account's holdings to each owner (ADR 0053) |
 | Fund fill | One owner's part of a fill or of an internal trade (Execution Engine ADR 0001, "Fund Fills") |
 | Allowed currencies | The assets a portfolio may hold as cash, for example USD, EUR or BTC. Its build configuration declares them, and they are part of its identity |
-| Valuation currency | The one allowed currency a portfolio is valued in: `valuation_asset_identifier` of its build configuration (ADR 0059). A fund's capital and result are in it |
-| Available cash | The account itself's cash in one currency: the account's holding of it at its last sync, minus what its funds owned of it then, minus the cash allocated into funds since, plus the cash moved away from them since |
-| A fund's capital | What its capital allocations brought in minus what they took away, each valued when it moved |
-| A fund's result | Its value, holdings plus cash, minus its capital |
+| Valuation currency | The one allowed currency a portfolio is valued in: `valuation_asset_identifier` of its build configuration (ADR 0059). A cash fund's capital and result are in it |
+| Available cash | The account itself's cash in one currency: the account's holding of it at its last sync, minus what its cash funds owned of it then, minus the cash allocated into them since, plus the cash moved away from them since |
+| A cash fund's capital | What its capital allocations brought in minus what they took away, each valued when it moved |
+| A cash fund's result | Its value, holdings plus cash, minus its capital |
 
 **Only a manual allocation changes a cash fund (owner).** Once a fund is given cash, only a
 manual allocation changes what it was given. Its own trades change what it holds, never what it
-was given. No rule and no sync writes a capital allocation for a cash fund.
+was given. No rule and no sync writes a capital allocation.
 
 ## Context
 
@@ -52,16 +52,16 @@ was given. No rule and no sync writes a capital allocation for a cash fund.
 The owner wants two different things from an account's funds:
 
 - **Always a share of the account**, for example 50% in a portfolio, rebalanced to that share.
-  This is today's mechanism, and automatic rebalancing runs on it.
+  This is today's mechanism, and automatic rebalancing runs on it. It stays as it is.
 - **Money given to a fund**, for example 10,000 given to a portfolio today. That money belongs
   to the fund: it grows or shrinks with the portfolio, and the account is not forced to
-  rebalance the fund when the portfolio goes up or down.
+  rebalance the fund when the portfolio goes up or down. This ADR is about this second kind.
 
 ### What happens today
 
 - The account target states a share of the account's NAV per portfolio
-  (`weight_notional_exposure`, ADR 0054). ADR 0061 retired the amount. So every fund is a share
-  fund, and there is no way to give a fund money.
+  (`weight_notional_exposure`, ADR 0054). ADR 0061 retired the amount. So there is no way to
+  give a fund money.
 - At every sync the provider sizes each share into units, with that sync's prices and the
   account's NAV (ADR 0054, decision 3). `proportional_attribution` then gives each fund the
   account's units up to its sized target and never more. What no fund takes stays with the
@@ -101,24 +101,20 @@ The account is worth 1,000,000. Prices are AAPL 200, MSFT 400, JNJ 150 and TSLA 
 The account holds exactly these units, and also TSLA, which is in no fund, and cash.
 
 AAPL rises 10%, to 220. Fund A's units are worth 424,000, and the account is worth 1,024,000.
-At the next sync:
+At the next sync, fund B is sized at 30% of 1,024,000, which is 307,200: 384 MSFT and 1,024 JNJ
+instead of 375 and 1,000. Its portfolio did not move, yet its target grew by 7,200, out of fund
+A's gain.
 
-- Fund A is sized at 40% of 1,024,000, which is 409,600: 1,117 AAPL and 410 MSFT. The sync
-  assigns it 1,117 of its 1,200 AAPL. The other 83, about 18,260, go to the account itself
-  without any trade.
-- Fund B is sized at 30% of 1,024,000, which is 307,200: 384 MSFT and 1,024 JNJ instead of 375
-  and 1,000. Its portfolio did not move, yet its target grew by 7,200, out of fund A's gain.
-
-That is right for a fund that must always be 40% or 30% of the account. It is wrong for a fund
-that was given money to grow on its own.
+That is right for a fund that must always be 30% of the account. It is wrong for a fund that
+was given money to grow on its own.
 
 ## Decision
 
 ### 1. Two kinds of fund (owner)
 
-- **A share fund** is always a share of the account: "always 50% in this portfolio". Every sync
-  sizes it from the account's value, and it is rebalanced to that share. This is today's
-  mechanism, and it stays.
+- **A share fund** is always a share of the account: "always 50% in this portfolio". It is
+  sized, allocated and rebalanced exactly as today (ADR 0054, ADR 0053). This ADR does not
+  change it.
 - **A cash fund** is given cash: "give this fund 10,000 and let it grow". Its value is its
   holdings plus its cash, and it grows or shrinks with its own result.
 
@@ -130,11 +126,11 @@ not change.
 
 As Execution Engine ADR 0001 decided (decision 14): a fill, an internal trade and the fund's
 share of a fee move the fund's cash, and the cash obeys the strategy's execution policy
-(ADR 0058). This holds for both kinds of fund.
+(ADR 0058).
 
 ### 3. Capital moves as dated allocations (owner)
 
-Every change in what a fund was given is a capital allocation: its date, and how much was
+Every change in what a cash fund was given is a capital allocation: its date, and how much was
 allocated to the fund or moved away from it. A capital allocation is not a trade. Nothing is
 bought or sold, and it has no price.
 
@@ -145,22 +141,21 @@ bought or sold, and it has no price.
 | `account_uid`, `virtual_fund_uid` | The account and the fund |
 | `asset_identifier` | The cash currency asset, or the asset of units moved in kind |
 | `quantity`, `direction` | How much, and the side: into the fund, or away from it |
-| `source` | `manual`, or `rule` |
 | `metadata_json` | Anything else the writer keeps |
 
 - **An allocation is a fact.** It is never changed or deleted; a correction is a new allocation.
-- **A move between funds** is two allocations at the same time: one away from fund A, one into
-  fund B.
-- **A fund's capital and result** need prices, so the provider computes them (ADR 0054).
+- **A move between cash funds** is two allocations at the same time: one away from one fund,
+  one into the other.
+- **A cash fund's capital and result** need prices, so the provider computes them (ADR 0054).
 
 ### 4. Only a manual allocation changes a cash fund (owner)
 
-See the rule in the [Ontology](#ontology). A cash fund's capital allocations are all manual. A
-sync never resizes it, and never gives it units that no record explains (decision 5).
+See the rule in the [Ontology](#ontology). A sync never resizes a cash fund, and never gives it
+units that no record explains (decision 5).
 
-### 5. A sync starts from each owner's own record
+### 5. A sync starts from each cash fund's own record
 
-At a sync, each fund first keeps what its own record explains:
+At a sync, each cash fund first keeps what its own record explains:
 
 1. **Its units:** its holdings at the previous sync, plus its allocations in kind and its fund
    fills since then.
@@ -169,19 +164,17 @@ At a sync, each fund first keeps what its own record explains:
 
 Then:
 
-- **A share fund is resized** to its share of the account. The provider sizes it, as today, and
-  records what the resize moves as a rule allocation (open question 3).
-- **Units that no record explains** go only to share funds that still want more, through the
-  allocation policy. Each such assignment is recorded as a rule allocation in kind (owner). A
-  cash fund gets none, and what is left stays with the account itself (owner). For example,
-  200 MSFT come into the account from outside, and share fund A asks for 10 more MSFT than it
-  holds. Fund A gets 10, cash fund B gets none, and 190 stay with the account itself.
-- **When the account holds less** than the funds' records add up to, the funds keep what their
+- **Share funds** are sized and allocated as today.
+- **Units that no record explains** go through the allocation policy among share funds only,
+  as today. A cash fund gets none, and what is left stays with the account itself (owner). For
+  example, 200 MSFT come into the account from outside, and share fund A asks for 10 more MSFT
+  than it holds. Fund A gets 10, cash fund B gets none, and 190 stay with the account itself.
+- **When the account holds less** than the cash funds' records add up to, they keep what their
   records say, and the account's own line shows the shortfall as a negative (owner, Execution
   Engine ADR 0001, "Fund Holdings At A Sync"). The same holds for cash, currency by currency.
 
-A fund's cash is stored at the sync like its other holdings: a `VirtualFundHoldingsStorage` row
-of the cash currency asset.
+A cash fund's cash is stored at the sync like its other holdings: a `VirtualFundHoldingsStorage`
+row per currency asset.
 
 ### 6. A cash fund is sized from its own value
 
@@ -190,14 +183,14 @@ provider's prices plus its cash, the way the backtest sizes from its book. A sha
 from its share of the account, as today. The `owner_size` hook of Execution Engine ADR 0001
 defaults to the one or the other. `sized_targets` keeps its shape (ADR 0054).
 
-### 7. Whoever trades for a fund writes its fund fills
+### 7. Whoever trades for a cash fund writes its fund fills
 
-A fund's record must know which fills were its own. The fund fills of Execution Engine ADR 0001
-("Fund Fills": one row per owner and fill, with the price and the owner's share of the fee)
-become a Markets record. Whoever trades for a fund writes them: the engine's recorder, or a
-provider that trades for its funds without the engine. A trade that no fund fill claims belongs
-to the account itself. A fund fill also records the currency it settled in, as `TradesTS` does,
-so it moves the fund's cash in that currency.
+A cash fund's record must know which fills were its own. The fund fills of Execution Engine ADR
+0001 ("Fund Fills": one row per owner and fill, with the price and the owner's share of the fee)
+become a Markets record. Whoever trades for the fund writes them: the engine's recorder, or a
+provider that trades for its funds without the engine. A trade that no fund fill claims is not
+the cash fund's. A fund fill also records the currency it settled in, as `TradesTS` does, so it
+moves the fund's cash in that currency.
 
 ### 8. Cash into a fund is in an allowed currency, and needs available cash in it (owner)
 
@@ -230,6 +223,18 @@ Converting between a fund's currencies is part of the portfolio's rebalance stra
 designed later. So is whether the backtest holds cash per currency. Until then the backtest
 converts for free, as today, and differs from a live fund that holds several currencies.
 
+### 11. Cash moved away from a cash fund is limited to its cash (owner)
+
+Moving more cash away from a cash fund than it holds in that currency is refused. Its strategy
+sells first, and the cash is moved once the fund holds it. To avoid a sale, units move away in
+kind instead.
+
+### 12. A cash fund keeps its holdings when its portfolio leaves the target (owner)
+
+When the account's target no longer names a cash fund's portfolio, or the portfolio is retired,
+the target change is accepted. The fund keeps what it holds, units and cash, and stops
+rebalancing. Only a manual allocation empties it.
+
 ## Operations
 
 Every operation is one transaction through the Markets API: the checks and the write together,
@@ -237,18 +242,17 @@ so two requests can never spend the same cash. A request with several operations
 one that passes and lists the others with the reason, like every bulk call. A move between
 funds is one operation.
 
-| Operation | Who | What it records | Refused when |
-| --- | --- | --- | --- |
-| Allocate cash to a cash fund | A person | One manual allocation into the fund | The fund is not a cash fund of the account, or its portfolio is retired; the cash is not one of the portfolio's allowed currencies; the account's available cash in that currency is less (decision 8) |
-| Move cash away from a cash fund | A person | One manual allocation away from the fund | The fund's cash in that currency is less (open question 1) |
-| Move cash from one cash fund to another | A person | Two manual allocations at the same time | Fund A's cash is less; the cash is not one of the allowed currencies of fund B's portfolio |
-| Allocate units in kind to a cash fund | A person | One manual allocation in kind | The account itself holds fewer of those units |
-| Move units in kind away from a cash fund | A person | One manual allocation in kind | The fund holds fewer of those units |
-| Resize a share fund | The provider, at a sync | Rule allocations | Cash into the fund beyond the available cash in its allowed currencies stays a shortfall (open question 3) |
-| Give a share fund units no record explains | ms-markets, at a sync | Rule allocations in kind | Never refused (decision 5) |
+| Operation | What it records | Refused when |
+| --- | --- | --- |
+| Allocate cash to a cash fund | One allocation into the fund | The fund is not a cash fund of the account, or its portfolio is retired; the cash is not one of the portfolio's allowed currencies; the account's available cash in that currency is less (decision 8) |
+| Move cash away from a cash fund | One allocation away from the fund | The fund's cash in that currency is less (decision 11) |
+| Move cash from one cash fund to another | Two allocations at the same time | The first fund's cash is less; the cash is not one of the allowed currencies of the second fund's portfolio |
+| Allocate units in kind to a cash fund | One allocation in kind | The account itself holds fewer of those units |
+| Move units in kind away from a cash fund | One allocation in kind | The fund holds fewer of those units |
 
-A quantity is positive in every operation, and the side says which way it moves. An account
-delete (ADR 0050) deletes its capital allocations and fund fills with the rest of its history.
+A person makes every operation. A quantity is positive in every operation, and the side says
+which way it moves. An account delete (ADR 0050) deletes its capital allocations and fund fills
+with the rest of its history.
 
 ### Records
 
@@ -256,7 +260,7 @@ delete (ADR 0050) deletes its capital allocations and fund fills with the rest o
 | --- | --- |
 | Capital allocations | New, time-indexed (decision 3); its keys into the account and the fund cascade on delete |
 | Fund fills | New, as Execution Engine ADR 0001 proposes, with the currency each settled in (decision 7) |
-| `VirtualFundHoldingsStorage` | Also holds each fund's cash, as a row per currency asset |
+| `VirtualFundHoldingsStorage` | Also holds a cash fund's cash, as a row per currency asset |
 | `TargetPositionsStorage` | A portfolio row states a share, or nothing for a cash fund; an asset row is unchanged |
 | A portfolio's allowed currencies | New: a many-to-many link from a portfolio to assets (decision 9) |
 | `PortfolioTable` | Records the portfolio's valuation currency, one of its allowed currencies (decision 9) |
@@ -264,74 +268,64 @@ delete (ADR 0050) deletes its capital allocations and fund fills with the rest o
 
 ## Worked Example
 
-Fund A is a share fund at 40% of the account. Fund B is a cash fund. Both portfolios are valued
-in USD and allow only USD. TSLA is a direct row at 5%.
+Fund A is a share fund at 40% of the account, as today. Fund B is a cash fund; its portfolio is
+valued in USD and allows only USD. TSLA is a direct row at 5%.
 
-**Day 0.** The account holds 1,000,000 in cash, USD. The first sync resizes fund A to 40%: a
-rule allocation of 400,000 into A. The owner allocates 300,000 to fund B: a manual allocation,
-accepted because the account has 600,000 USD available after fund A's. The funds buy their
-portfolios, and the account buys 200 TSLA for its own row. Fees are left out.
+**Day 0.** The account holds fund A's units (1,200 AAPL and 400 MSFT), 200 TSLA and 550,000
+USD. The owner allocates 300,000 to fund B, accepted because the account has 550,000 USD
+available. Fund B buys its portfolio. Fees are left out.
 
 | Owner | AAPL | MSFT | JNJ | TSLA | Cash | Value |
 | --- | --- | --- | --- | --- | --- | --- |
-| Fund A | 1,200 | 400 | | | 0 | 400,000 |
+| Fund A | 1,200 | 400 | | | | 400,000 |
 | Fund B | | 375 | 1,000 | | 0 | 300,000 |
 | The account itself | | | | 200 | 250,000 | 300,000 |
 | Account | 1,200 | 775 | 1,000 | 200 | 250,000 | 1,000,000 |
 
-**Day 1.** MSFT rises 10%, to 440. Both funds hold it. The account is worth 1,031,000.
+**Day 1.** MSFT rises 10%, to 440. Fund B is worth 315,000: its capital is 300,000 and its
+result +15,000. It keeps all of it, and nothing is recorded for it. Fund A is resized as today.
 
-| Owner | Value before the sync | Resize | Value after | Capital | Result |
-| --- | --- | --- | --- | --- | --- |
-| Fund A, share | 416,000 | 3,600 away | 412,400 | 396,400 | +16,000 |
-| Fund B, cash | 315,000 | None | 315,000 | 300,000 | +15,000 |
-| The account itself | 300,000 | 3,600 in | 303,600 | | |
-
-The sync resizes fund A to 40% of 1,031,000. Fund B keeps all of its gain, and nothing is
-recorded for it. Both funds keep their result: a resize moves capital, not result.
-
-**Day 2.** The owner allocates 50,000 more to fund B: a manual allocation, accepted because the
-account has at least 250,000 USD available. Fund B's cash is 50,000 and its capital 350,000.
-Its strategy invests the cash at its next rebalance, sized from its own value. The account
-itself's value falls by 50,000, to 253,600.
+**Day 2.** The owner allocates 50,000 more to fund B, accepted because the account has 250,000
+USD available. Fund B's cash is 50,000 and its capital 350,000. Its strategy invests the cash at
+its next rebalance, sized from its own value.
 
 **Day 3.** The owner asks to allocate 250,000 more to fund B. The account has 200,000 USD
-available, or 203,600 if fund A's resize on day 1 moved cash (open question 3), so the
-allocation is refused. Had portfolio B allowed only EUR, the allocation of day 2 would have been
-refused too: the account holds no EUR. Had it allowed EUR and USD, the USD of day 2 would have
-been accepted.
+available, so the allocation is refused. Had portfolio B allowed only EUR, the allocation of
+day 2 would have been refused too: the account holds no EUR. Had it allowed EUR and USD, the USD
+of day 2 would have been accepted.
 
-| Date | Fund | Source | What moved |
-| --- | --- | --- | --- |
-| Day 0 | A | `rule` | 400,000 USD in |
-| Day 0 | B | `manual` | 300,000 USD in |
-| Day 1 | A | `rule` | 3,600 of value away, in cash or in kind (open question 3) |
-| Day 2 | B | `manual` | 50,000 USD in |
+**Day 4.** The owner asks to move 60,000 away from fund B, which has invested its cash and holds
+none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepted.
+
+| Date | What moved |
+| --- | --- |
+| Day 0 | 300,000 USD into fund B |
+| Day 2 | 50,000 USD into fund B |
+| Day 4 | 100 MSFT away from fund B |
 
 ## What It Changes
 
 - **ADR 0054.** Decision 1: a portfolio row states a share for a share fund, or nothing for a
   cash fund. Decision 3: a cash fund is sized from its own value.
-- **ADR 0053 and ADR 0029.** A sync starts from each owner's own record. The policy runs only on
-  units that no record explains, and only for share funds.
+- **ADR 0053 and ADR 0029.** A sync starts from each cash fund's own record. A cash fund gets
+  none of the units that no record explains. Share funds are allocated as today.
 - **ADR 0050.** An account delete also deletes the account's capital allocations and fund fills.
 - **ADR 0059.** A build configuration also declares its allowed currencies, and the valuation
   currency is one of them. Markets records both.
 - **ADR 0061.** It left open whether a share of the account stays a rule applied at every sync.
-  It does, for share funds (owner).
+  It does, for share funds, unchanged (owner).
 - **Execution Engine ADR 0001.** It answers question 15. The `owner_size` default depends on the
   kind of fund. Fund fills become a Markets record that any trader writes. Its rule for units
-  that no fill explains now applies to share funds only (owner).
+  that no fill explains applies to share funds only (owner).
 
 ## Consequences
 
 - A cash fund's value and result are its own. Only a manual allocation changes what it was
   given.
-- A share fund behaves as today, and every resize is now a recorded rule allocation.
+- A share fund behaves exactly as today.
 - Target writers do not break: a share fund's row is today's row. A cash fund is a portfolio
   row with no share, plus manual allocations.
-- Trading for a fund means writing its fund fills. A trade with no fund fill stays the
-  account's own, and no fund's cash changes.
+- Trading for a cash fund means writing its fund fills.
 - Available cash is as fresh as the account's last sync. A trade of the account itself after
   it is not seen until the next holdings snapshot, so a provider that trades outside the funds
   syncs before it allocates.
@@ -340,39 +334,24 @@ been accepted.
 
 ## Open Questions
 
-These are the owner's to decide. My recommendation comes first.
+This one is the owner's to decide. My recommendation comes first.
 
-1. **Moving more cash away from a cash fund than it holds.**
-   - *Recommended:* refused. The fund's strategy sells first, on its own instruction.
-   - *Alternative:* recorded, and the fund's cash is negative until its strategy sells.
-2. **A cash fund whose portfolio leaves the account's target, or is retired, while the fund
-   still holds something.**
-   - *Recommended:* the fund keeps what it holds and stops rebalancing. Only a manual allocation
-     empties it, as the rule in the Ontology says.
-   - *Alternative:* the target change is refused until the fund is empty.
-3. **How a share fund's resize moves.**
-   - *Recommended:* as today, in kind: the units it has too many of go to the account itself,
-     and what it lacks comes from units no record explains, then from available cash in its
-     allowed currencies. What cash cannot cover stays a shortfall.
-   - *Alternative:* in cash only. The fund's strategy then trades back to its weights.
-4. **A fund whose execution policy allows negative cash** (ADR 0059).
+1. **A cash fund whose execution policy allows negative cash** (ADR 0059).
    - *Recommended:* its cash below zero comes out of the account's available cash in that
      currency, so a buy is limited by the fund's policy and by the account's available cash.
-   - *Alternative:* live, a fund's cash never goes below zero, whatever its policy allows.
+   - *Alternative:* live, a cash fund's cash never goes below zero, whatever its policy allows.
 
 ## Not Decided Here
 
 - Whether a portfolio row names its kind explicitly, instead of by stating a share or not.
-- The account's reporting currency. The provider values the account in one currency to size a
-  share fund, and nothing records which one.
 - Whether cash that the account's own target keeps, a direct row on a currency (ADR 0053),
   limits its available cash.
 - Moving a fund from one kind to the other.
-- Dividends and interest that the account receives for a fund's holdings, and how the account's
-  fees are shared among its funds.
-- Whether ms-markets stores a fund's value or result series, which need prices (ADR 0054).
+- Dividends and interest that the account receives for a cash fund's holdings, and how the
+  account's fees are shared among its funds.
+- Whether ms-markets stores a cash fund's value or result series, which need prices (ADR 0054).
 - Whether the cash currency asset gets an allocation line with a target.
-- How Command Center shows a fund's kind, capital, cash and result.
+- How Command Center shows a cash fund's capital, cash and result.
 
 ## Not Verified
 
