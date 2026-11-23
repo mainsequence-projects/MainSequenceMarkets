@@ -13,6 +13,7 @@ from msm.repositories.base import (
     MarketsRepositoryContext,
     compile_markets_statement,
     execute_markets_operation,
+    with_max_rows,
 )
 from msm.models import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from msm.repositories.crud import (
@@ -189,6 +190,79 @@ def build_retire_portfolio_operation(
         .returning(PortfolioTable)
     )
     return compile_markets_statement(statement, context=context, operation="update")
+
+
+def build_retire_portfolios_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str],
+    retired_at: dt.datetime,
+) -> MetaTableCompiledSQLOperation:
+    """Set ``retired_at`` on every live portfolio of ``uids`` that no current target names.
+
+    One statement; each portfolio's current targets are checked in it, as one
+    portfolio's retirement checks them (ADR 0049 decision 3). Returns the updated rows;
+    a portfolio that is missing, already retired, or named by an account's current
+    target is left out (issue 124).
+    """
+
+    from msm.repositories.accounts import current_portfolio_target_rows_select
+
+    statement = (
+        update(PortfolioTable)
+        .where(PortfolioTable.uid.in_([uuid.UUID(str(uid)) for uid in uids]))
+        .where(PortfolioTable.retired_at.is_(None))
+        .where(~current_portfolio_target_rows_select(portfolio_uid=PortfolioTable.uid).exists())
+        .values(
+            retired_at=bindparam(
+                "retired_at",
+                value=retired_at,
+                type_=DateTime(timezone=True),
+            )
+        )
+        .returning(PortfolioTable)
+    )
+    return compile_markets_statement(
+        statement, context=with_max_rows(context, max(len(uids), 1)), operation="update"
+    )
+
+
+def retire_portfolios(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_retire_portfolios_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def build_clear_portfolio_retirements_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str],
+    retired_at: dt.datetime,
+) -> MetaTableCompiledSQLOperation:
+    """Clear ``retired_at`` on ``uids`` where it still holds ``retired_at``, the value this
+    call set: a bulk retirement that a target write overtook is undone (issue 124)."""
+
+    statement = (
+        update(PortfolioTable)
+        .where(PortfolioTable.uid.in_([uuid.UUID(str(uid)) for uid in uids]))
+        .where(
+            PortfolioTable.retired_at
+            == bindparam("expected_retired_at", value=retired_at, type_=DateTime(timezone=True))
+        )
+        .values(retired_at=None)
+        .returning(PortfolioTable)
+    )
+    return compile_markets_statement(
+        statement, context=with_max_rows(context, max(len(uids), 1)), operation="update"
+    )
+
+
+def clear_portfolio_retirements(context: MarketsRepositoryContext, **kwargs: Any) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_clear_portfolio_retirements_operation(context, **kwargs),
+        context=context,
+    )
 
 
 def build_clear_portfolio_retirement_operation(

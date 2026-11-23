@@ -326,6 +326,9 @@ client.reinstate_portfolio(portfolio_uid)
 of the accounts whose current target names the portfolio. `retire_portfolio`
 returns the `Portfolio` with `retired_at` and raises `MarketsConflictError`
 while that list is not empty; `reinstate_portfolio` clears it.
+`bulk_retire_portfolios` retires several in one call and returns a
+`PortfolioBulkRetireResponse`: the retired portfolios in `retired`, and each one a
+current target names, or that does not exist, with the reason, in `failed`.
 
 ## Portfolio Deletion
 

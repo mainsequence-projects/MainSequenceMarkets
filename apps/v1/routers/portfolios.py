@@ -9,6 +9,8 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 from apps.v1.schemas.common import FrontEndDetailSummary
 from apps.v1.schemas.portfolios import (
     PortfolioBulkDeleteResponse,
+    PortfolioBulkRetireRequest,
+    PortfolioBulkRetireResponse,
     PortfolioDeletePreflightResponse,
     PortfolioDeleteResponse,
     PortfolioDetailResponse,
@@ -19,6 +21,7 @@ from apps.v1.schemas.portfolios import (
 from apps.v1.services.portfolios import (
     PortfolioDataIntegrityError,
     bulk_delete_portfolios,
+    bulk_retire_portfolios,
     delete_portfolio,
     delete_portfolio_weights,
     get_portfolio_detail,
@@ -619,6 +622,30 @@ def get_portfolio_account_targets(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/bulk-retire/",
+    response_model=PortfolioBulkRetireResponse,
+    summary="Retire several portfolios",
+    description=(
+        "Retire every selected portfolio that may be retired, as POST "
+        "/api/v1/portfolio/{uid}/retire/ retires one (ADR 0049), in one update that checks "
+        "each portfolio's current targets in the same statement. A portfolio that an "
+        "account's current target names, or that does not exist, never stops the others: "
+        "the answer lists the portfolios retired, and those already retired, unchanged, in "
+        "`retired`, and each other one, with the reason, in `failed` (issue 124)."
+    ),
+    operation_id="bulkRetirePortfolios",
+    responses={400: {"model": ErrorResponse, "description": "Invalid portfolio uid."}},
+)
+def bulk_retire_portfolio_rows(
+    payload: Annotated[PortfolioBulkRetireRequest, Body(description="The portfolio uids.")],
+) -> PortfolioBulkRetireResponse:
+    try:
+        return bulk_retire_portfolios(uids=payload.uids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post(

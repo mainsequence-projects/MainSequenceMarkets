@@ -117,6 +117,17 @@ def test_retire_route_answers_409_while_a_current_target_names_the_portfolio(mon
     assert "2 accounts' current target names it" in response.json()["detail"]
 
 
+def test_bulk_retire_route_answers_400_for_an_invalid_uid(monkeypatch) -> None:
+    def invalid(*, uids):
+        raise ValueError("badly formed hexadecimal UUID string")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.bulk_retire_portfolios", invalid)
+    client = TestClient(app)
+
+    assert client.post("/api/v1/portfolio/bulk-retire/", json={"uids": ["x"]}).status_code == 400
+    assert client.post("/api/v1/portfolio/bulk-retire/", json={"uids": []}).status_code == 422
+
+
 def test_reinstate_route_returns_the_live_portfolio(monkeypatch) -> None:
     portfolio_uid = str(uuid.uuid4())
     monkeypatch.setattr(

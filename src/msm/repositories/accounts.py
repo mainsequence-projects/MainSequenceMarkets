@@ -60,6 +60,7 @@ from .base import (
     execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
+    with_max_rows,
 )
 from .complete_reads import answering_a_write, page_context, whole_page
 from .write_inputs import input_rows as write_input_rows
@@ -685,6 +686,40 @@ def build_count_portfolio_account_targets_operation(
     ).subquery("current_portfolio_targets")
     statement = select(func.count().label("count")).select_from(current)
     return compile_markets_statement(statement, context=context, operation="select")
+
+
+def build_read_portfolios_current_targets_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uids: Sequence[uuid.UUID | str],
+) -> MetaTableCompiledSQLOperation:
+    """Each of ``portfolio_uids``' rows, with ``current_target_count``: the accounts whose
+    current target names it, counted as `build_count_portfolio_account_targets_operation`
+    counts them for one portfolio. A portfolio that does not exist has no row."""
+
+    count = (
+        current_portfolio_target_rows_select(portfolio_uid=PortfolioTable.uid)
+        .with_only_columns(func.count())
+        .scalar_subquery()
+    )
+    statement = select(PortfolioTable, count.label("current_target_count")).where(
+        PortfolioTable.uid.in_([uuid.UUID(str(uid)) for uid in portfolio_uids])
+    )
+    return compile_markets_statement(
+        statement,
+        context=with_max_rows(context, max(len(portfolio_uids), 1)),
+        operation="select",
+    )
+
+
+def read_portfolios_current_targets(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_read_portfolios_current_targets_operation(context, **kwargs),
+        context=context,
+    )
 
 
 def search_portfolio_account_targets(

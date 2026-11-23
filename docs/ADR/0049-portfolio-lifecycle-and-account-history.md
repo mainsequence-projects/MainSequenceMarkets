@@ -529,3 +529,23 @@ Deleting a selection is one operation: what may go goes, and what may not is rep
   nothing. The read cannot tell which portfolio caused it, so the portfolios are then
   deleted one per transaction, as `DELETE /api/v1/portfolio/{uid}/` deletes one, and only
   the refused ones are listed in `failed`.
+
+### 2026-11-23: unreleased, issue 124
+
+Retiring several portfolios took one call each, three MetaTables operations per
+portfolio ([issue 124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)).
+`POST /api/v1/portfolio/bulk-retire/` (`MarketsClient.bulk_retire_portfolios`,
+`msm.services.bulk_retire_portfolio_records`) retires a selection in two operations.
+
+- **One update.** `msm.repositories.portfolios.build_retire_portfolios_operation` sets
+  `retired_at` on every selected live portfolio whose current targets are empty, with
+  `current_portfolio_target_rows_select` correlated to the updated row: the check stays in
+  the same statement, as decision 3 requires.
+- **One read.** `msm.repositories.accounts.build_read_portfolios_current_targets_operation`
+  then reads each selected portfolio with its number of current targets. A portfolio the
+  update retired that now has a current target, because a target write committed while
+  the update ran, is undone by `build_clear_portfolio_retirements_operation`, which clears
+  only the value this call set, as one portfolio's retirement is undone.
+- **What is not retired is reported.** A portfolio a current target names, or that does
+  not exist, is listed in `failed` with the reason and never stops the others; one
+  already retired comes back unchanged in `retired`.

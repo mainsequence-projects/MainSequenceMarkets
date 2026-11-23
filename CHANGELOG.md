@@ -7,6 +7,16 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **Retire several portfolios in one call**
+  ([#124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)).
+  `POST /api/v1/portfolio/bulk-retire/` and `MarketsClient.bulk_retire_portfolios`
+  retire every selected portfolio that may be retired in one update, which checks each
+  portfolio's current targets in the same statement, and one read after it. A portfolio
+  an account's current target names, or that does not exist, is listed in `failed` with
+  the reason and never stops the others.
+
 ### Removed
 
 - **Breaking: an account target no longer states an amount**

@@ -433,6 +433,40 @@ Both routes are registry writes, and their acting-identity records are the only
 record of when a portfolio was retired. `MarketsClient.retire_portfolio(...)`
 and `reinstate_portfolio(...)` call them.
 
+### Retire Several Portfolios
+
+```text
+POST /api/v1/portfolio/bulk-retire/
+```
+
+```json
+{"uids": ["portfolio-uid-1", "portfolio-uid-2"]}
+```
+
+Retires every selected portfolio that may be retired, as `retirePortfolio` retires
+one, in one call
+([issue 124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)):
+one update retires each live portfolio that no account's current target names,
+checking the targets in the same statement, and one read then counts each
+portfolio's current targets, undoing a retirement a target write overtook. A
+portfolio that a current target names, or that does not exist, never stops the
+others. The answer lists the portfolios retired, and those already retired,
+unchanged, in `retired`, and each other one, with the reason, in `failed`:
+
+```json
+{
+  "retired": [{"uid": "portfolio-uid-1", "unique_identifier": "example-sleeve", "retired_at": "2026-11-23T10:37:55Z"}],
+  "failed": [
+    {
+      "uid": "portfolio-uid-2",
+      "detail": "Portfolio portfolio-uid-2 cannot be retired: 1 account's current target names it. GET /api/v1/portfolio/{uid}/account-targets/ lists them; write their targets without it first."
+    }
+  ]
+}
+```
+
+The route is a registry write. `MarketsClient.bulk_retire_portfolios(...)` calls it.
+
 ## Delete Portfolio
 
 ```text

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from msm.api.base import operation_result_rows
@@ -159,6 +159,63 @@ def retire_portfolio_record(
     return retired
 
 
+def bulk_retire_portfolio_records(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str],
+) -> dict[str, Any]:
+    """Retire every selected portfolio that may be retired, and report the rest (issue 124).
+
+    One update retires every live portfolio no account's current target names, checking
+    the targets in the same statement (ADR 0049 decision 3); one read then counts each
+    selected portfolio's current targets. A portfolio a target write named while the
+    update ran is undone, as one portfolio's retirement is. Answers ``retired``, the rows
+    retired by this call and those already retired (unchanged), and ``failed``, each other
+    portfolio with the reason: an account's current target names it, or it was not found.
+    A refused portfolio never stops the others.
+    """
+
+    from msm.repositories.accounts import read_portfolios_current_targets
+    from msm.repositories.portfolios import clear_portfolio_retirements, retire_portfolios
+
+    target = list(dict.fromkeys(str(uuid.UUID(str(uid))) for uid in uids))
+    if not target:
+        return {"retired": [], "failed": []}
+    retired_at = dt.datetime.now(dt.UTC)
+    updated = {
+        str(uuid.UUID(str(row["uid"])))
+        for row in operation_result_rows(retire_portfolios(context, uids=target, retired_at=retired_at))
+    }
+    rows = {
+        str(uuid.UUID(str(row["uid"]))): dict(row)
+        for row in operation_result_rows(read_portfolios_current_targets(context, portfolio_uids=target))
+    }
+    retired: dict[str, dict[str, Any]] = {}
+    failed: dict[str, str] = {}
+    overtaken: list[str] = []
+    for uid in target:
+        row = rows.get(uid)
+        count = int((row or {}).get("current_target_count") or 0)
+        if row is None:
+            failed[uid] = f"Portfolio {uid} was not found."
+        elif count:
+            failed[uid] = str(PortfolioRetirementConflictError(portfolio_uid=uid, account_count=count))
+            if uid in updated:
+                overtaken.append(uid)
+        elif uid in updated or row.get("retired_at") is not None:
+            retired[uid] = row
+        else:
+            failed[uid] = f"Portfolio {uid} changed while it was being retired; retry."
+    if overtaken:
+        clear_portfolio_retirements(context, uids=overtaken, retired_at=retired_at)
+    for row in retired.values():
+        row.pop("current_target_count", None)
+    return {
+        "retired": [retired[uid] for uid in target if uid in retired],
+        "failed": [{"uid": uid, "detail": failed[uid]} for uid in target if uid in failed],
+    }
+
+
 def reinstate_portfolio_record(
     context: MarketsRepositoryContext,
     *,
@@ -196,6 +253,7 @@ def _utc(value: Any) -> dt.datetime:
 __all__ = [
     "PortfolioRetiredError",
     "PortfolioRetirementConflictError",
+    "bulk_retire_portfolio_records",
     "count_current_portfolio_targets",
     "reinstate_portfolio_record",
     "retire_portfolio_record",

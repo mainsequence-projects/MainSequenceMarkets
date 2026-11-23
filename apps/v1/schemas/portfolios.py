@@ -22,6 +22,8 @@ Portfolio = _contracts.Portfolio
 PortfolioDeletedRows = _contracts.PortfolioDeletedRows
 PortfolioDeleteResponse = _contracts.PortfolioDeleteResponse
 PortfolioBulkDeleteResponse = _contracts.PortfolioBulkDeleteResponse
+PortfolioBulkRetireRequest = _contracts.PortfolioBulkRetireRequest
+PortfolioBulkRetireResponse = _contracts.PortfolioBulkRetireResponse
 PortfolioMetadata = _portfolio_metadata_contract()
 
 

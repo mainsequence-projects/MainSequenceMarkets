@@ -28,7 +28,12 @@ from msm.api.http import (
     BulkActionExplicitSelection,
     ResourceCollection,
 )
-from msm.api.portfolios import Portfolio, PortfolioBulkDeleteResponse, PortfolioDeleteResponse
+from msm.api.portfolios import (
+    Portfolio,
+    PortfolioBulkDeleteResponse,
+    PortfolioBulkRetireResponse,
+    PortfolioDeleteResponse,
+)
 from msm.api.remote import MarketsApiError, raise_for_error
 from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoint
 
@@ -449,6 +454,21 @@ class MarketsClient:
 
         payload = self.request("POST", f"{API_PREFIX}/portfolio/{portfolio_uid}/retire/")
         return Portfolio.model_validate(payload)
+
+    def bulk_retire_portfolios(self, portfolio_uids: Sequence[Any]) -> PortfolioBulkRetireResponse:
+        """Retire several portfolios in one call (``bulkRetirePortfolios``, issue 124).
+
+        Every portfolio that may be retired is retired; one that an account's current
+        target names, or that does not exist, is listed in ``failed`` with the reason and
+        never stops the others. Retired ones come back unchanged in ``retired``.
+        """
+
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/portfolio/bulk-retire/",
+            json={"uids": [str(uid) for uid in portfolio_uids]},
+        )
+        return PortfolioBulkRetireResponse.model_validate(payload)
 
     def reinstate_portfolio(self, portfolio_uid: Any) -> Portfolio:
         """Clear a portfolio's retirement (``reinstatePortfolio``, ADR 0049)."""
