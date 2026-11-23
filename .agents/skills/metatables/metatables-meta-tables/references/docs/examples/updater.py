@@ -32,7 +32,9 @@ class BalanceUpdater(TimeIndexTableUpdater):
         return {}
 
     def update(self):
-        latest = self.update_statistics.get_max_time_in_update_statistics()
+        # Balance holds every account's rows: continue after this account's own last row,
+        # not the table's newest one, which may belong to another account.
+        latest = self.update_statistics.get_last_update_for_identity(self.config.account_uid)
         return sample_balances(self.config, after=latest)
 
 

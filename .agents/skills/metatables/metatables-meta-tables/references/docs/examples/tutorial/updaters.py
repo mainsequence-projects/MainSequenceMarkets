@@ -39,6 +39,16 @@ class PriceConfig(TimeIndexTableUpdateConfig):
     )
 
 
+def own_progress(update_statistics, symbols) -> datetime | None:
+    """Return the time every one of these symbols has reached, or None while one has no row.
+
+    An output table can hold other producers' symbols, so its newest row is not this
+    producer's progress. The runner drops the rows a symbol already has.
+    """
+    progress = [update_statistics.get_last_update_for_identity(symbol) for symbol in symbols]
+    return None if any(value is None for value in progress) else min(progress)
+
+
 class RecordedPrices(TimeIndexTableUpdater):
     def dependencies(self):
         return {}
@@ -47,7 +57,7 @@ class RecordedPrices(TimeIndexTableUpdater):
         return recorded_prices(
             symbols=self.config.symbols,
             start=self.config.offset_start,
-            after=self.update_statistics.get_max_time_in_update_statistics(),
+            after=own_progress(self.update_statistics, self.config.symbols),
         )
 
 
@@ -92,7 +102,7 @@ class DailyReturns(TimeIndexTableUpdater):
         )
         return daily_returns(
             prices,
-            after=self.update_statistics.get_max_time_in_update_statistics(),
+            after=own_progress(self.update_statistics, self.config.symbols),
         )
 
 
@@ -140,7 +150,7 @@ class RollingVolatility(TimeIndexTableUpdater):
         return rolling_volatility(
             returns,
             window_sessions=self.config.window_sessions,
-            after=self.update_statistics.get_max_time_in_update_statistics(),
+            after=own_progress(self.update_statistics, self.config.symbols),
         )
 
 

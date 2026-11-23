@@ -9,7 +9,9 @@ skips without the disposable cluster of `scripts/test_postgresql.py`. MySQL and 
 Server refuse statement lists. The amendment on time-index statistics (2026-11-19) is
 implemented for 0.1.69 and tested the same way: SQLite in process, PostgreSQL not run.
 The amendment on SQLite parameters (2026-11-19) is implemented for 0.1.71 and tested in
-process and through the local API.
+process and through the local API. The amendment on MySQL and SQL Server statistics
+(2026-11-23) is implemented for 0.1.76 and tested in process with stand-ins for both
+engines; neither engine has been run.
 
 Owner: MetaTables API, with the Python client.
 
@@ -146,6 +148,8 @@ before the commit, what the transaction wrote; it never reads the SQL:
   the table it changes. One query per write.
 - **SQLite:** the engine authorizer, which SQLite asks about every table a statement
   writes as it compiles it, foreign-key actions included.
+- **MySQL and SQL Server** cannot tell; the API counts every table the caller may
+  write (amended 2026-11-23, below).
 
 Both report the tables a write could change, so a table can be rebuilt when no row
 of it changed. The API keeps those that are active time-index tables of the DataSource
@@ -210,6 +214,26 @@ paramstyle with `compiled_sql_dialect_mismatch`.
   differ only when a local API runs from another one. The client then says to install
   the API's version; an older client gets `compiled_sql_dialect_mismatch`.
 
+### MySQL and SQL Server rebuild what the caller may write (amended 2026-11-23)
+
+Issue: [MetaTables#141](https://github.com/mainsequence-projects/MetaTables/issues/141).
+
+MySQL and SQL Server cannot report what a transaction wrote, so a compiled write there
+left every table's statistics as they were: #117 on those engines. When an engine cannot
+tell, the API now counts every time-index table the caller's database identity may
+write. It rebuilds each one that keeps statistics after the commit, as on PostgreSQL:
+as the caller, in a read-only transaction, with the table built from the catalog's
+column types.
+
+- It needs no privilege beyond the caller's own. Each engine's lock view would name
+  exactly the tables written, but SQL Server's, `sys.dm_tran_locks`, needs a
+  server-level permission that callers' logins do not hold.
+- Each compiled write rebuilds those tables whether or not it changed them. An
+  organization admin may write every table, so an admin's write rebuilds every
+  time-index table of the DataSource that keeps statistics.
+- A table changed only through a foreign key's action that the caller cannot write
+  keeps its statistics until its next rebuild.
+
 ## Alternatives
 
 - **Several statements in one SQL string.** The API would have to split the text,
@@ -240,4 +264,4 @@ paramstyle with `compiled_sql_dialect_mismatch`.
   on with stale statistics checks `index_statistics` for an outcome other than
   `rebuilt`.
 - MySQL and SQL Server cannot report what a write changed: a compiled write there
-  leaves statistics as before.
+  rebuilds every time-index table the caller may write that keeps statistics.

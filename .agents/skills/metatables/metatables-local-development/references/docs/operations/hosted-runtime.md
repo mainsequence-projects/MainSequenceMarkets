@@ -253,8 +253,9 @@ deployment replaces them.
 
 ### Read the signals before changing T
 
-Each request's "HTTP request completed" log line carries, next to `duration_ms` and
-`active_requests_at_start`, where the API spent the time, in milliseconds:
+Each request's "HTTP request completed" log line carries, in its `data` field next to
+`duration_ms`, where the API spent the time, in milliseconds. The platform's log API
+returns `data` but no other field it does not know, so read them there:
 
 | Field | Time spent |
 | --- | --- |
