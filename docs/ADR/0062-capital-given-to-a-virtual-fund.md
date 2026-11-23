@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by [ADR 0063](0063-a-policy-base-for-portfolios-and-accounts.md), proposed on
+2026-11-23: decisions 8, 11, 12 and 13 are the defaults of the account policy's settings, not
+fixed rules.
+
 Proposed (2026-11-23). Drafted at the owner's request on 2026-11-23. Nothing in it is
 implemented.
 
