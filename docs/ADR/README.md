@@ -60,6 +60,7 @@ Recommended sections:
 - [0059. Portfolio Currency, FX, Cash Limits And Drifting Weights](0059-portfolio-currency-fx-and-drifting-weights.md)
 - [0060. Producers Publish, Markets Reads Only Its Own Tables](0060-producers-publish-markets-reads-only-its-own-tables.md)
 - [0061. Retire The Constant Notional Exposure](0061-retire-constant-notional-exposure.md)
+- [0062. Capital Given To A Virtual Fund](0062-capital-given-to-a-virtual-fund.md)
 
 ## Command Center Decisions
 
