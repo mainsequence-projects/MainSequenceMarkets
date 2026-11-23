@@ -41,35 +41,41 @@ measured a sync with fills at 147.1 s, of which about 86 s were the two runs.
 
 ### 1. An order has its own row (owner)
 
-A Markets `Order` table holds one row per order: its identifier, account, asset and order
-manager. `OrdersTS` keeps the order's state over time; `OrderEventsTS` and `TradesTS` keep
-its events and fills.
+A Markets `Order` table holds one row per order. `OrdersTS` keeps the order's state over
+time; `OrderEventsTS` and `TradesTS` keep its events and fills. Decision 10 says which
+columns are on the order's row.
 
 ### 2. An order's identifier is an internal UUID, unique across accounts (owner)
 
-`order_identifier` is the order's own UUID, minted by the application that creates the
-order. It is unique across every account, not per account. A venue's ids stay in
+The order's identifier is its own UUID, minted by the application that creates the order.
+It is unique across every account, not per account. A venue's ids stay in
 `order_remote_id` and `client_order_id`.
 
-### 3. `OrdersTS` is unique on `(order_time, order_identifier)` (owner)
+### 3. `OrdersTS` is unique on `(order_time, order_uid)` (owner)
 
 The account, the asset and the order manager are properties of the order, so they leave
 `OrdersTS` and live on the `Order` row. `OrderEventsTS` already has this shape:
-`(event_time, order_identifier)`.
+`(event_time, order_identifier)`, which becomes `(event_time, order_uid)`. The column's
+name is decision 9's.
 
 ### 4. Trades are written inline with their orders (owner)
 
 One call writes an order's state rows, its events and its trades in one MetaTables statement
 transaction (MetaTables ADR 0026), without an updater run. A trade written under its order
-takes the order's identifier. This is the write of issue #131.
+takes the order's `order_uid`. This is the write of issue #131.
 
 ### 5. The execution tables reference the order
 
-- `OrdersTS.order_identifier` and `OrderEventsTS.order_identifier` reference `Order`, not
-  null.
-- `TradesTS.order_identifier` references `Order` and stays nullable: a trade without an order
-  is still recorded.
+- `OrdersTS.order_uid` and `OrderEventsTS.order_uid` reference `Order.uid`, not null.
+- `TradesTS.order_uid` stays nullable: a trade without an order is still recorded.
+- A trade's `(order_uid, account_identifier, asset_identifier)` references the same three
+  columns of `Order`, which has a unique index on them. The database then refuses a trade
+  whose account or asset is not its order's, and no code checks it. A trade without an
+  order passes: PostgreSQL and SQLite do not check a key with a null column (`MATCH
+  SIMPLE`, the default of both).
 - The keys are `RESTRICT`, as the execution tables' keys to accounts and assets are today.
+- An application's instances of these tables get the same keys: `storage_instances`
+  already copies keys of several columns.
 
 ### 6. `TradesTS` is unique on `(trade_time, trade_identifier)`
 
@@ -97,48 +103,92 @@ Both calls write every row they may and answer what they did not, with the reaso
 order refuses the state rows, events and trades written under it. A refused trade does not
 refuse its order.
 
+### 9. The column is `order_uid`, a UUID
+
+The value is a UUID, so it is stored as one; a string column would not refuse a value that
+is not one. ADR 0048 names a column after the identity it holds, `*_uid` for a uid, as
+`OrderManager.target_account_uid` does. A UUID in a time-index key has a precedent:
+`VirtualFundHoldingsStorage` is keyed on `virtual_fund_uid`.
+
+- `Order.uid` is the order's UUID, minted by the application. `Order` has no separate
+  `unique_identifier`; it is upserted on `uid`.
+- `order_identifier` is renamed `order_uid` in `OrdersTS`, `OrderEventsTS` and `TradesTS`.
+  The keys change anyway, so nothing keeps the old name.
+
+### 10. What is known when the order is created is on `Order`
+
+- **`Order`:** `uid`, `account_identifier`, `asset_identifier`, `order_manager_identifier`,
+  `order_side`, `order_type`, `quantity`, `limit_price`, `time_in_force`, `expires_time` and
+  `client_order_id`. `create_batch` knows all of them when it writes the order, and none of
+  them changes.
+- **`OrdersTS`:** `order_time`, `order_uid`, `status`, `filled_quantity`, `filled_price`,
+  `order_remote_id`, `venue_metadata` and `comments`: what the venue reports. The remote id
+  arrives with the venue's answer, in the same write as the state, so a sync makes no
+  Markets call to update the `Order` row.
+- **A replaced order is a new order.** It has its own `Order` row, which names the order it
+  replaces (`replaces_order_uid`). Many venues already give a replacement a new id. An
+  `Order` row therefore never changes after it is written.
+
+### 11. One call takes what one transaction holds
+
+ms-markets sets no row limit of its own: a cap would be a business rule made of a MetaTables
+limit.
+
+- Inside the transaction, each table's rows are split into statements by the limits
+  `bulk_upsert_model` keeps today (#84): 32,766 bound values, 10,000 rows and 1,000,000 SQL
+  characters per statement. A trade row has about 15 columns, so a statement holds about
+  2,000 trades, and a transaction of 32 statements tens of thousands of rows.
+- A call is never split into several transactions: an order is written with its trades or
+  not at all.
+- A call that does not fit one transaction (more than 32 statements, or a request larger
+  than the 12,100,000 bytes MetaTables accepts) is refused before anything is sent, with the
+  limit it exceeded.
+- If real batches come near that, it is a MetaTables issue, not a limit to add here.
+
 ## What It Changes
 
 - **ADR 0050.** Orders are unique across accounts. Order events have a key to their order,
   so the account delete removes an account's events through its orders, and
-  `ordered_by_another_account` goes. The delete removes, in order: order events, trades,
-  order state rows, orders, order managers.
+  `ordered_by_another_account` goes. The delete finds an account's orders on `Order`, which
+  has an index on `account_identifier`, in place of the `(account_identifier, order_time)`
+  index of `OrdersTS`. It removes, in order: order events, trades, order state rows, orders,
+  order managers.
 - **Execution Engine ADR 0001.** Its recorder writes a round as decision 7 says: the
   `OrderManager` and `Order` rows in one Markets call, then the `OrdersTS`, `OrderEventsTS`
   and `TradesTS` rows in one transaction. Its fund fills can hold a key to their trade,
   `(trade_time, trade_identifier)`.
 - **`msm.time_index.execution`.** `validate_execution_frame` reads the key columns from each
-  table, so it follows the new keys. `OrderEvents` already runs without `asset_identifier` in
-  its key, so `Orders` and `Trades` can too. Their time-index statistics are kept per order
-  and per trade.
-- **Migrations.** A Markets revision creates `Order` and changes the keys of the three Markets
-  execution tables. Every application's instances of those tables need a revision in the
-  application's own migrations. This is a major release.
+  table, so it follows the new keys. `_normalize_execution_values` raises on the `UUID`
+  dtype today and needs a branch for it. `OrderEvents` already runs without
+  `asset_identifier` in its key, so `Orders` and `Trades` can too. Their time-index
+  statistics are kept per order and per trade.
+- **Migrations.** A Markets revision creates `Order` and changes the keys and columns of the
+  three Markets execution tables. Every application's instances of those tables need a
+  revision in the application's own migrations. This is a major release.
 - **SQLite.** Dropping a column that holds a foreign key rebuilds the table. No key points
   into `OrdersTS` or `TradesTS`, so the rebuild does not change how the database refuses a
   delete.
 
 ## Consequences
 
-- A trade and an event can only name an order that exists.
-- An order's account, asset and order manager are stored once.
+- A trade and an event can only name an order that exists, and a trade under an order has
+  the order's account and asset.
+- An order's account, asset, manager and terms are stored once, and never change.
 - Writing a batch takes two requests, whatever its size, instead of a run per table.
-- Reading an order with its trades is one lookup by key. `TradesTS.order_identifier` needs
-  an index for it.
+- Reading an order with its trades is one lookup by key. `TradesTS.order_uid` needs an index
+  for it.
 
 ## Not Decided Here
 
-- The names: `Order`, and whether the columns become `order_uid` of type UUID (the naming of
-  ADR 0048) or keep `order_identifier`.
-- Whether the order's terms (side, type, quantity, limit price, time in force, expiry) move
-  to `Order` or stay on `OrdersTS`, where a replaced order can change them.
-- Whether a trade under an order must have the order's account and asset, enforced by a key
-  to `(uid, account, asset)` of `Order`.
-- The size limit of one call: one transaction holds at most 32 statements.
+- The names `Order` and `replaces_order_uid`.
 - A read of orders with their trades.
 
 ## Not Verified
 
 - That existing `OrdersTS` rows have UUID identifiers, and that no two accounts share one.
   The hosted data was not read. A backfill of `Order` from `OrdersTS` fails on either.
+- That the order terms of existing `OrdersTS` rows never change between rows of one order;
+  the backfill takes them from one row.
+- That a call of a few thousand rows finishes within MetaTables' write deadline on the hosted
+  API.
 - The time of the two requests on the hosted API.
