@@ -28,10 +28,11 @@ from msm.time_index.execution import (
 )
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.time_index.execution.storage import (
+    OrderEventsStorage,
     OrdersStorage,
     TradesStorage,
 )
-from msm.models import AccountTable, AssetTable, OrderManagerTable
+from msm.models import AccountTable, AssetTable, OrderManagerTable, OrderTable
 from msm.settings import (
     ASSET_IDENTIFIER_DIMENSION as SETTINGS_ASSET_DIMENSION,
 )
@@ -102,28 +103,20 @@ def test_execution_error_data_node_is_removed() -> None:
     assert not hasattr(importlib.import_module("msm.time_index"), "ExecutionErrors")
 
 
-def test_execution_storage_has_account_and_asset_foreign_keys() -> None:
+def test_execution_storage_keys_to_the_order_account_and_asset() -> None:
+    """ADR 0064: an order is its Order row; its state rows, events and trades reference it."""
+
     expected_foreign_keys = [
+        (OrderTable.__table__.c.account_identifier, AccountTable.__table__.c.unique_identifier),
+        (OrderTable.__table__.c.asset_identifier, AssetTable.__table__.c.unique_identifier),
         (
-            OrdersStorage.__table__.c.account_identifier,
-            AccountTable.__table__.c.unique_identifier,
-        ),
-        (
-            OrdersStorage.__table__.c.order_manager_identifier,
+            OrderTable.__table__.c.order_manager_identifier,
             OrderManagerTable.__table__.c.unique_identifier,
         ),
-        (
-            OrdersStorage.__table__.c.asset_identifier,
-            AssetTable.__table__.c.unique_identifier,
-        ),
-        (
-            TradesStorage.__table__.c.account_identifier,
-            AccountTable.__table__.c.unique_identifier,
-        ),
-        (
-            TradesStorage.__table__.c.asset_identifier,
-            AssetTable.__table__.c.unique_identifier,
-        ),
+        (OrdersStorage.__table__.c.order_uid, OrderTable.__table__.c.uid),
+        (OrderEventsStorage.__table__.c.order_uid, OrderTable.__table__.c.uid),
+        (TradesStorage.__table__.c.account_identifier, AccountTable.__table__.c.unique_identifier),
+        (TradesStorage.__table__.c.asset_identifier, AssetTable.__table__.c.unique_identifier),
         (
             TradesStorage.__table__.c.commission_asset_identifier,
             AssetTable.__table__.c.unique_identifier,
@@ -139,6 +132,21 @@ def test_execution_storage_has_account_and_asset_foreign_keys() -> None:
             foreign_key.column is target_column and foreign_key.ondelete == "RESTRICT"
             for foreign_key in storage_column.foreign_keys
         )
+    (trade_order_key,) = [
+        key
+        for key in TradesStorage.__table__.foreign_key_constraints
+        if "order_uid" in key.column_keys
+    ]
+    assert trade_order_key.column_keys == ["order_uid", "account_identifier", "asset_identifier"]
+    assert [element.column for element in trade_order_key.elements] == [
+        OrderTable.__table__.c.uid,
+        OrderTable.__table__.c.account_identifier,
+        OrderTable.__table__.c.asset_identifier,
+    ]
+    assert trade_order_key.ondelete == "RESTRICT"
+    assert OrdersStorage.__index_names__ == ["order_time", "order_uid"]
+    assert OrderEventsStorage.__index_names__ == ["event_time", "order_uid"]
+    assert TradesStorage.__index_names__ == ["trade_time", "trade_identifier"]
 
 
 def test_core_execution_storage_does_not_carry_fund_identifier() -> None:

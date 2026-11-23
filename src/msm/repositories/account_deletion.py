@@ -28,6 +28,7 @@ from msm.models import (
     AccountTable,
     AccountTargetAllocationTable,
     OrderManagerTable,
+    OrderTable,
     PortfolioTable,
     PositionSetTable,
     VirtualFundHoldingsSetTable,
@@ -71,7 +72,8 @@ class AccountDeleteTable:
 ACCOUNT_DELETE_TABLES: tuple[AccountDeleteTable, ...] = (
     AccountDeleteTable("order_events", OrderEventsStorage),
     AccountDeleteTable("trades", TradesStorage),
-    AccountDeleteTable("orders", OrdersStorage),
+    AccountDeleteTable("order_states", OrdersStorage),
+    AccountDeleteTable("orders", OrderTable),
     AccountDeleteTable("order_managers", OrderManagerTable),
     AccountDeleteTable("allocation_lines", AccountAllocationLinesStorage),
     AccountDeleteTable("virtual_fund_holdings", VirtualFundHoldingsStorage),
@@ -158,22 +160,8 @@ class _AccountScope:
             return ~column.in_(deleted)
         return ~self.identifier_in(column)
 
-    def order_identifiers(self) -> Any:
-        return select(OrdersStorage.order_identifier).where(
-            self.identifier_in(OrdersStorage.account_identifier)
-        )
-
-    def ordered_by_another_account(self, order_identifier: Any) -> Any:
-        """Whether an order of another account has ``order_identifier``: one index probe."""
-
-        other = aliased(OrdersStorage, name="other_account_order")
-        return (
-            select(literal(1))
-            .select_from(other)
-            .where(other.order_identifier == order_identifier)
-            .where(self.of_another_account_identifier(other.account_identifier))
-            .exists()
-        )
+    def order_uids(self) -> Any:
+        return select(OrderTable.uid).where(self.identifier_in(OrderTable.account_identifier))
 
     def order_manager_identifiers(self) -> Any:
         return select(OrderManagerTable.unique_identifier).where(
@@ -221,12 +209,12 @@ def _row_filters(scope: _AccountScope) -> dict[str, Callable[[], Any]]:
     """The ``WHERE`` clause that selects the accounts' rows in each table."""
 
     return {
-        # Order events have no foreign key: they name an order only by its identifier.
-        # Events whose identifier another account's order also uses stay.
-        "order_events": lambda: OrderEventsStorage.order_identifier.in_(scope.order_identifiers())
-        & ~scope.ordered_by_another_account(OrderEventsStorage.order_identifier),
+        # An order's state rows and events name it by its uid, unique across accounts
+        # (ADR 0064); its trades carry its account.
+        "order_events": lambda: OrderEventsStorage.order_uid.in_(scope.order_uids()),
         "trades": lambda: scope.identifier_in(TradesStorage.account_identifier),
-        "orders": lambda: scope.identifier_in(OrdersStorage.account_identifier),
+        "order_states": lambda: OrdersStorage.order_uid.in_(scope.order_uids()),
+        "orders": lambda: scope.identifier_in(OrderTable.account_identifier),
         "order_managers": lambda: scope.uid_in(OrderManagerTable.target_account_uid),
         "allocation_lines": lambda: scope.uid_in(AccountAllocationLinesStorage.account_uid),
         "virtual_fund_holdings": lambda: VirtualFundHoldingsStorage.virtual_fund_uid.in_(
@@ -258,9 +246,9 @@ def _blocker_filters(scope: _AccountScope) -> dict[str, tuple[type[Any], Callabl
     )
     return {
         "other_account_orders": (
-            OrdersStorage,
-            lambda: OrdersStorage.order_manager_identifier.in_(scope.order_manager_identifiers())
-            & scope.of_another_account_identifier(OrdersStorage.account_identifier),
+            OrderTable,
+            lambda: OrderTable.order_manager_identifier.in_(scope.order_manager_identifiers())
+            & scope.of_another_account_identifier(OrderTable.account_identifier),
         ),
         "other_account_virtual_fund_holdings_sets": (
             VirtualFundHoldingsSetTable,
@@ -301,8 +289,8 @@ def accounts_delete_statements(
 ) -> list[GuardedStatement | Any]:
     """The delete of ``accounts``, ``(uid, unique_identifier)`` pairs, for one transaction.
 
-    Children go before the rows their ``RESTRICT`` keys reference: orders, trades and
-    the events of those orders; order managers; virtual funds with their holdings;
+    Children go before the rows their ``RESTRICT`` keys reference: the events, trades and
+    state rows of the accounts' orders, then the orders; order managers; virtual funds with their holdings;
     target allocations with their position sets and target rows; holdings sets with
     their rows; the accounts. Each statement covers every account. The accounts'
     statement is guarded: it must delete exactly the accounts read before, each with its
@@ -313,8 +301,7 @@ def accounts_delete_statements(
     over the accounts. A table the reads found empty gets no statement, so the
     transaction neither reads nor locks it. A row written there after the read is still
     handled by its foreign key: a ``CASCADE`` key deletes it with its parent, and a
-    ``RESTRICT`` key refuses the transaction, which then deletes nothing. Order events
-    have no key, so their statement runs whenever the accounts have orders.
+    ``RESTRICT`` key refuses the transaction, which then deletes nothing.
     """
 
     scope = _scope(accounts)
@@ -348,8 +335,6 @@ def account_delete_statements(
 
 
 def _has_rows(key: str, row_counts: Mapping[str, int]) -> bool:
-    if key == "order_events":
-        return row_counts["order_events"] > 0 or row_counts["orders"] > 0
     return row_counts[key] > 0
 
 

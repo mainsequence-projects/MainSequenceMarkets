@@ -41,21 +41,11 @@ def test_execution_time_columns_are_datetime64_ns_utc() -> None:
             [
                 {
                     "order_time": MICROSECOND_TIME,
-                    "order_identifier": "order-1",
-                    "account_identifier": "account-1",
-                    "order_manager_identifier": "",
-                    "asset_identifier": "asset-1",
+                    "order_uid": str(uuid.uuid4()),
                     "order_remote_id": "",
-                    "client_order_id": "",
-                    "order_type": "market",
-                    "order_side": 1,
-                    "quantity": 1.0,
                     "status": "open",
                     "filled_quantity": 0.0,
                     "filled_price": 0.0,
-                    "expires_time": MICROSECOND_TIME,
-                    "limit_price": 0.0,
-                    "time_in_force": "",
                     "comments": "",
                     "venue_metadata": {},
                 }
@@ -64,7 +54,7 @@ def test_execution_time_columns_are_datetime64_ns_utc() -> None:
     )
 
     assert _dtype(frame, "order_time") == EXPECTED_DTYPE
-    assert _dtype(frame, "expires_time") == EXPECTED_DTYPE
+    assert isinstance(frame.index.get_level_values("order_uid")[0], uuid.UUID)
 
 
 def test_holdings_time_columns_are_datetime64_ns_utc() -> None:

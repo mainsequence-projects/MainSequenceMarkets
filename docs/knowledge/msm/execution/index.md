@@ -1,68 +1,100 @@
 # Execution
 
-The execution concept owns order-manager intent rows and timestamped execution
-facts for orders, order status events, and trades.
+The execution concept owns batches of orders (`OrderManager`), the orders themselves
+(`Order`), and what happens to them over time: their state, status events and trades
+([ADR 0064](../../../ADR/0064-an-order-has-its-own-row.md)).
 
 ## Scope
 
 Execution answers these questions:
 
-- Which manager or strategy emitted an order?
-- Which account or asset is targeted?
-- Which order events and trades were observed?
+- Which batch created an order, for which account and asset, on which terms?
+- What did the venue report about the order over time?
+- Which order events and trades were observed, and for which order?
 
 ## Primary Modules
 
-- `msm.time_index.execution`: updaters for orders, order events, and trades.
-- `msm.models.execution`: SQLAlchemy models for `OrderManagerTable`.
-- `msm.api.execution`: typed row API for `OrderManager`.
-- `msm.repositories.execution` and `msm.services.execution`: MetaTable operation
-  builders and service helpers for order-manager intent records.
+- `msm.models.execution`: SQLAlchemy models for `OrderManagerTable` and `OrderTable`.
+- `msm.api.execution`: typed rows `OrderManager` and `Order`; `OrderManager.create_batch`.
+- `msm.time_index.execution`: the storages `OrdersTS`, `OrderEventsTS` and `TradesTS`,
+  their updaters, and `write_execution`.
+- `msm.repositories.execution`: the statements both writes compile.
 
 ## Key Contracts
 
-Execution updaters use explicit time indexes for each event family:
+An order has one `Order` row, keyed by `uid`: the order's own UUID, minted by the
+application that creates it and unique across accounts. The row holds the account,
+asset, order manager and the terms the order was created with (side, type, quantity,
+limit price, time in force, expiry, `client_order_id`). It never changes once written;
+a replaced order is a new order that names the one it replaces (`replaces_order_uid`,
+same account and asset).
 
-- `order_time` for orders.
-- `event_time` for order status events.
-- `trade_time` for trades.
+The execution storages reference it:
 
-Their storage MetaTable identifiers use the same `CamelCase` style as domain
-MetaTables plus a `TS` suffix: `OrdersTS`, `OrderEventsTS`, and `TradesTS`.
-There are no separate row-oriented `Order`, `OrderStatusEvent`, `Trade`, or
-`OrderTargetQuantity` MetaTables; those facts are storage-first, matching the
-account-holdings pattern.
+| Storage | Key | References |
+|---|---|---|
+| `OrdersTS` | `(order_time, order_uid)` | `Order.uid`; holds status, fills, `order_remote_id`, venue metadata |
+| `OrderEventsTS` | `(event_time, order_uid)` | `Order.uid` |
+| `TradesTS` | `(trade_time, trade_identifier)` | `(order_uid, account_identifier, asset_identifier)` of its `Order`, when it has one |
 
-Execution records should preserve enough raw platform or broker payload in JSON
-fields for audit, but normalized identifiers should still be present for joins.
-`OrdersTS.account_identifier` and `TradesTS.account_identifier` reference
-`AccountTable.unique_identifier`; `OrdersTS.order_manager_identifier` references
-`OrderManagerTable.unique_identifier`; `OrdersTS.asset_identifier`,
-`TradesTS.asset_identifier`, `TradesTS.commission_asset_identifier`, and
-`TradesTS.settlement_asset_identifier` reference `AssetTable.unique_identifier`.
-Broker order identifiers, venue order ids, and trade identifiers stay plain
-external ids because execution event streams may carry those before a
-row-oriented order or trade registry exists. Core execution does not carry fund
-or `VirtualFundTable` references. Virtual-fund execution workflows should be
-added in `msm_portfolios` as extensions when needed.
+A trade of an order therefore has the order's account and asset; a trade without an
+order has a null `order_uid`. Every key is `RESTRICT`. Core execution does not carry
+fund or `VirtualFundTable` references.
 
-Use class-owned lifecycle methods only for order-manager intent:
+## Writing a batch
+
+A batch is two requests, whatever its size, and no updater run (issue #131):
 
 ```python
 import datetime as dt
+import uuid
 
 from msm.api.execution import OrderManager
+from msm.time_index.execution import write_execution
 
-manager = OrderManager.create_batch(
+batch = OrderManager.create_batch(
     unique_identifier="rebalance-2026-05-26",
     target_account_uid="00000000-0000-0000-0000-000000000000",
     target_time=dt.datetime.now(dt.UTC),
-    status="created",
+    status="submitted",
+    orders=[
+        {"uid": uuid.uuid4(), "account_identifier": "account-1", "asset_identifier": "AAPL",
+         "order_side": 1, "order_type": "market", "quantity": 10.0},
+    ],
+)
+
+now = dt.datetime.now(dt.UTC)
+written = write_execution(
+    [
+        {
+            "order": batch.orders[0],
+            "states": [{"order_time": now, "status": "filled", "filled_quantity": 10.0}],
+            "events": [{"event_time": now, "order_status": "filled"}],
+            "trades": [{"trade_time": now, "trade_identifier": "fill-1", "quantity": 10.0}],
+        }
+    ],
+    orders_table=MyOrders,           # the application's instances (msm.storage_instances)
+    order_events_table=MyOrderEvents,
+    trades_table=MyTrades,
 )
 ```
 
-Publish observed orders, order events, and trades through their updaters:
-`Orders`, `OrderEvents`, and `Trades`.
+- `create_batch` upserts the `OrderManager` row and inserts its orders in one
+  transaction. An order that exists already is left as it is, so a batch sent again
+  writes no order twice. It answers `OrderBatch`: the batch, the orders written, and
+  `failed`.
+- `write_execution` upserts the state rows, events and trades on each table's key in one
+  transaction, on the application's own runtime. A row written under an order takes its
+  `order_uid` (a trade also its account and asset); one that states another value is
+  refused. Trades of an order written by an earlier call go in `trades=[...]` with their
+  `order_uid`. A call that does not fit one MetaTables transaction (32 statements,
+  12,100,000 bytes) is refused before anything is sent.
+- Both write every row they may (issue #128): a row that fails validation or repeats a
+  key is listed in `failed`; when the database refuses the transaction, each order is
+  written on its own, so only the refused ones stay out.
+
+The `Orders`, `OrderEvents` and `Trades` updaters still write a frame set with
+`set_frame`, through an update execution.
 
 ## Extension Notes
 

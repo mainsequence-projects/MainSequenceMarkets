@@ -7,6 +7,52 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Major release 6.0.0. An order has its own row, and a batch's orders, their states, events
+and trades are written in two requests, with no updater run
+([ADR 0064](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0064-an-order-has-its-own-row/),
+[#131](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/131)).
+
+### Added
+
+- **`Order`: one row per order** (`msm.api.Order`, `msm.models.OrderTable`,
+  `ms_markets__order`). Its `uid` is the order's own UUID, minted by the application and
+  unique across accounts; the row holds the account, asset, order manager and the terms
+  the order was created with, and never changes. A replaced order is a new order that
+  names the one it replaces (`replaces_order_uid`, same account and asset).
+- **`OrderManager.create_batch(..., orders=[...])`** writes the batch and its orders in
+  one transaction and answers `OrderBatch` (`order_manager`, `orders`, `failed`). An order
+  sent again is left as it is.
+- **`msm.time_index.execution.write_execution`** writes orders' state rows, events and
+  trades, the trades and events inline under their order, in one transaction on the
+  application's own runtime, without an update execution. It answers `ExecutionWrite`
+  (`order_states`, `order_events`, `trades`, `failed`). Trades of an order written by an
+  earlier call go in `trades=[...]`.
+- Both calls write every row they may and list the others in `failed`, as the bulk
+  deletes do ([#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+
+### Changed (breaking)
+
+- **Execution keys.** `OrdersTS` is keyed by `(order_time, order_uid)`, `OrderEventsTS` by
+  `(event_time, order_uid)`, `TradesTS` by `(trade_time, trade_identifier)`.
+  `order_identifier` is replaced by `order_uid`, a UUID referencing `Order.uid`; on
+  `TradesTS` it is nullable and its key is `(order_uid, account_identifier,
+  asset_identifier)`, so a trade of an order has the order's account and asset.
+  `OrdersTS` loses `account_identifier`, `asset_identifier`, `order_manager_identifier`,
+  `client_order_id`, `order_type`, `order_side`, `quantity`, `limit_price`,
+  `time_in_force` and `expires_time`, which are on `Order`.
+- **Migration `0037`** creates `Order` and re-keys the Markets execution tables. An
+  identifier that is a UUID is kept; any other becomes
+  `uuid5(ORDER_UID_NAMESPACE, identifier)`. It refuses, before changing anything, an
+  identifier with state rows of two accounts or assets, a trade or event naming an order
+  with no state row, and two trades with one time and identifier. **An application's
+  instances of `OrdersTS`, `OrderEventsTS` and `TradesTS` need a revision in the
+  application's own migrations.**
+- **Account delete** finds an account's orders on `Order`; order events are deleted
+  through their key, and the per-account order-identifier workaround is gone.
+  `deleted_rows` gains `order_states` (the `OrdersTS` rows); `orders` now counts `Order`
+  rows. A provider's order events now block the delete, as its orders do.
+- `OrderManager.create_batch` answers `OrderBatch` instead of `OrderManager`.
+
 ## [5.3.1] - 2026-11-23
 
 Patch release 5.3.1: ms-markets requires MetaTables 0.1.78, whose client skills use

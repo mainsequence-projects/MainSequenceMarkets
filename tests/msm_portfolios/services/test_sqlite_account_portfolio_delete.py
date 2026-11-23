@@ -396,7 +396,7 @@ def test_another_accounts_order_blocks_the_delete_before_anything_is_sent(sqlite
     account, other = _account(engine), _account(engine)
     portfolio, identifier = _portfolio_with_data(engine)
     history = _history(sqlite_markets, account, portfolio)
-    _order(engine, _identifier(engine, other), order_identifier="foreign", manager=history["manager"])
+    _order(engine, _identifier(engine, other), manager=history["manager"])
     sqlite_markets.requests.clear()
 
     with pytest.raises(AccountDeleteConflictError, match="orders of other accounts"):
@@ -415,7 +415,8 @@ def test_a_restrict_key_on_the_account_refuses_everything(sqlite_markets) -> Non
     _create_provider_tables(engine)
     with engine.begin() as connection:
         connection.exec_driver_sql(
-            "INSERT INTO provider_ns__ordersts__copy VALUES ('provider-order', ?)", (history["identifier"],)
+            "INSERT INTO provider_ns__ordersts__copy VALUES (?, ?)",
+            ("2026-01-01 00:00:00", history["order"].hex),
         )
     before = _account_rows(engine, account, history["identifier"])
 
@@ -474,7 +475,7 @@ def test_bulk_delete_reports_missing_and_refused_accounts(sqlite_markets) -> Non
     first, blocked, other = _account(engine), _account(engine), _account(engine)
     _history(sqlite_markets, first)
     blocked_history = _history(sqlite_markets, blocked)
-    _order(engine, _identifier(engine, other), order_identifier="foreign", manager=blocked_history["manager"])
+    _order(engine, _identifier(engine, other), manager=blocked_history["manager"])
     missing = uuid.uuid4()
 
     result = bulk_delete_accounts_with_portfolios(sqlite_markets.context, uids=[first, blocked, missing])

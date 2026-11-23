@@ -152,18 +152,21 @@ SEED = [
     "INSERT INTO ms_markets__ordermanager (uid, unique_identifier, target_account_uid, target_time) "
     "SELECT gen_random_uuid(), 'manager-' || a.unique_identifier, a.uid, timestamptz '2026-10-01' "
     "FROM ms_markets__account AS a",
-    "INSERT INTO ms_markets__ordersts "
-    "(order_time, order_identifier, account_identifier, asset_identifier, order_manager_identifier) "
-    "SELECT timestamptz '2026-10-01' + o * interval '1 minute', a.unique_identifier || '-order-' || o, "
-    "a.unique_identifier, 'ASSET-' || (1 + o % :positions), 'manager-' || a.unique_identifier "
+    "INSERT INTO ms_markets__order (uid, account_identifier, asset_identifier, order_manager_identifier) "
+    "SELECT gen_random_uuid(), a.unique_identifier, 'ASSET-' || (1 + o % :positions), "
+    "'manager-' || a.unique_identifier "
     "FROM ms_markets__account AS a, generate_series(1, :orders) AS o",
+    "INSERT INTO ms_markets__ordersts (order_time, order_uid) "
+    "SELECT timestamptz '2026-10-01' + row_number() OVER (PARTITION BY account_identifier "
+    "ORDER BY uid) * interval '1 minute', uid FROM ms_markets__order",
     "INSERT INTO ms_markets__tradests "
-    "(trade_time, trade_identifier, account_identifier, asset_identifier, order_identifier) "
-    "SELECT o.order_time + interval '1 second', o.order_identifier || '-trade', o.account_identifier, "
-    "o.asset_identifier, o.order_identifier FROM ms_markets__ordersts AS o",
-    "INSERT INTO ms_markets__ordereventsts (event_time, order_identifier) "
-    "SELECT o.order_time + e * interval '1 second', o.order_identifier "
-    "FROM ms_markets__ordersts AS o, generate_series(1, 3) AS e",
+    "(trade_time, trade_identifier, account_identifier, asset_identifier, order_uid) "
+    "SELECT s.order_time + interval '1 second', o.uid::text || '-trade', o.account_identifier, "
+    "o.asset_identifier, o.uid "
+    "FROM ms_markets__ordersts AS s JOIN ms_markets__order AS o ON o.uid = s.order_uid",
+    "INSERT INTO ms_markets__ordereventsts (event_time, order_uid) "
+    "SELECT s.order_time + e * interval '1 second', s.order_uid "
+    "FROM ms_markets__ordersts AS s, generate_series(1, 3) AS e",
 ]
 
 

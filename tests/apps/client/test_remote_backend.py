@@ -97,11 +97,11 @@ def test_write_values_reach_the_runtime_typed_by_the_row_fields(
 
     seen: dict[str, Any] = {}
 
-    def upsert_model(context, *, model, values, conflict_columns):
-        seen.update(values)
-        return _row(**values)
+    def write_order_batch(context, *, order_manager, orders):
+        seen.update(order_manager)
+        return _row(**order_manager)
 
-    monkeypatch.setattr("msm.repositories.crud.upsert_model", upsert_model)
+    monkeypatch.setattr("msm.repositories.execution.write_order_batch", write_order_batch)
     now = dt.datetime(2026, 11, 15, 14, 30, tzinfo=dt.UTC)
     account_uid = uuid.uuid4()
     values = {
@@ -118,7 +118,7 @@ def test_write_values_reach_the_runtime_typed_by_the_row_fields(
     assert seen == values
     assert isinstance(seen["target_time"], dt.datetime)
     assert isinstance(seen["target_account_uid"], uuid.UUID)
-    assert batch.target_time == now
+    assert batch.order_manager.target_time == now
 
 
 def test_get_by_uid_returns_the_row_or_none(monkeypatch, remote) -> None:

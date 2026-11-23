@@ -193,7 +193,7 @@ class AccountDeleteResponse(BaseModel):
     deleted_rows: AccountDeletedRows = Field(
         default_factory=dict,
         description=(
-            "Markets rows deleted with the account, per table: order_events, trades, "
+            "Markets rows deleted with the account, per table: order_events, trades, order_states, "
             "orders, order_managers, allocation_lines, virtual_fund_holdings, "
             "virtual_fund_holdings_sets, virtual_funds, target_positions, position_sets, "
             "target_allocations, holdings and holdings_sets. Counted just before the "

@@ -715,7 +715,7 @@ Written by the recorder, never on the hot path.
 | From the journal | ms-markets record | Exists today |
 | --- | --- | --- |
 | One round of routing | `OrderManager` | Yes |
-| Order requests | `OrdersTS`, linked by `order_manager_identifier` | Yes |
+| Order requests | `Order` rows of the round's `OrderManager` ([ADR 0064](../0064-an-order-has-its-own-row.md)), their state in `OrdersTS` | Yes |
 | Accepted, rejected, cancelled, expired | `OrderEventsTS` | Yes |
 | Fills | `TradesTS` | Yes |
 | Fill splits and internal trades | Fund fills | No |

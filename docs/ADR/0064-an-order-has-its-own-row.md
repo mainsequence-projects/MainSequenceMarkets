@@ -2,11 +2,12 @@
 
 ## Status
 
-Proposed (2026-11-23). Drafted at the owner's request on 2026-11-23, from the analysis of
-issue #131. Nothing in it is implemented.
+Accepted (2026-11-23), implemented on `development` for 6.0.0 through
+[issue #131](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/131).
+Drafted at the owner's request on 2026-11-23, from the analysis of issue #131.
 
-- The decisions marked (owner) were made by the owner on 2026-11-23. Everything else is a
-  proposal, the names included.
+- The decisions marked (owner) were made by the owner on 2026-11-23. The others were
+  proposed the same day and executed at the owner's request; see the implementation notes.
 - It would amend [ADR 0050](0050-account-deletion.md): orders are unique across accounts,
   and order events get a key.
 - It changes the records [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md)
@@ -180,15 +181,49 @@ limit.
 
 ## Not Decided Here
 
-- The names `Order` and `replaces_order_uid`.
 - A read of orders with their trades.
+
+## Implementation Notes
+
+### 2026-11-23: 6.0.0
+
+- **Names.** The table is `Order` (`ms_markets__order`), the replaced order
+  `replaces_order_uid`. Its key is `(replaces_order_uid, account_identifier,
+  asset_identifier)` into the table's own unique index, with no `ON DELETE` action, so it is
+  checked at the end of each statement and an account's orders go in one statement. It is
+  created after that index (`use_alter`), which PostgreSQL needs.
+- **The batch.** `OrderManager.create_batch(..., orders=[OrderCreate, ...])` answers
+  `OrderBatch` (`order_manager`, `orders`, `failed`). One transaction upserts the batch,
+  inserts its orders with `ON CONFLICT (uid) DO NOTHING`, and upserts the batch again to
+  answer its row: a transaction answers only its last statement's rows. An order's
+  `order_manager_identifier` is the batch's; another value is refused.
+- **The execution rows.** `msm.time_index.execution.write_execution(orders, *, trades,
+  orders_table, order_events_table, trades_table)` answers `ExecutionWrite`
+  (`order_states`, `order_events`, `trades`, `failed`). Each order is an
+  `OrderExecution`: its `order` (an `Order` row, or its uid, account and asset) with its
+  `states`, `events` and `trades`. Rows are upserted on each table's key, every column
+  written; unknown columns, naive timestamps and repeated keys are refused per row. The
+  tables default to the Markets storages; an application passes its instances.
+- **Refusals the database finds.** A refused transaction wrote nothing; each order (and
+  each trade given on its own) is then written in its own transaction, as the bulk deletes
+  of issues 127 and 128 do.
+- **Revision `0037`.** Creates `Order` and re-keys the three Markets execution tables. An
+  `order_identifier` that is a UUID becomes the order's uid; any other becomes
+  `uuid5(ORDER_UID_NAMESPACE, identifier)`, so its state rows, events and trades keep
+  naming one order. Its `Order` row takes the account, asset, manager and terms of its
+  earliest state row; an empty string becomes null. The revision refuses, before it
+  changes anything, an identifier with state rows of two accounts or assets, a trade or
+  event that names an order with no state row, and two trades with one time and
+  identifier. An application's instances are migrated by the application.
+- **Model ordering.** `msm.models.registration` no longer counts a key into a model's own
+  table as a dependency.
 
 ## Not Verified
 
-- That existing `OrdersTS` rows have UUID identifiers, and that no two accounts share one.
-  The hosted data was not read. A backfill of `Order` from `OrdersTS` fails on either.
+- The hosted Markets tables were not read. Revision `0037` refuses, with a message, the
+  rows it cannot key; whether any exist there is not known.
 - That the order terms of existing `OrdersTS` rows never change between rows of one order;
-  the backfill takes them from one row.
+  the revision takes them from the earliest row.
 - That a call of a few thousand rows finishes within MetaTables' write deadline on the hosted
   API.
 - The time of the two requests on the hosted API.

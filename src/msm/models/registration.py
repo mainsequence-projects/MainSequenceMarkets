@@ -139,6 +139,8 @@ def _dependency_ordered_markets_meta_table_models(
     resolved_models = list(discovery_order)
     _validate_unique_markets_meta_table_identifiers(resolved_models)
 
+    # A key into the model's own table (an order naming the order it replaces) orders
+    # nothing.
     dependencies = {
         model: {
             dependency
@@ -146,7 +148,7 @@ def _dependency_ordered_markets_meta_table_models(
                 model,
                 candidate_models=candidate_models,
             )
-            if dependency in discovery_order
+            if dependency in discovery_order and dependency is not model
         }
         for model in resolved_models
     }

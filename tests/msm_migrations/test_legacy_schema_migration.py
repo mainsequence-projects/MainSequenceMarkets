@@ -58,19 +58,19 @@ def test_fresh_and_development_paths_keep_data_and_one_head(tmp_path, sqlite_rev
         if start:
             _seed_asset(connection)
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0036"
+        assert ScriptDirectory.from_config(config).get_heads() == ["0037"]
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0037"
         # Revision 0027 drops three calendar tables and adds two; 0028 adds AssetCalendar.
         # Revision 0029 adds a column to the portfolio values table; 0030 two to the
         # portfolio weights table; 0031 indexes to six portfolio dataset tables; 0032 a
         # manager column to Portfolio and SignalMetadata; 0033 drops the portfolio dataset
-        # catalog table.
-        assert len(sa.inspect(connection).get_table_names()) == 64
+        # catalog table; 0037 adds Order.
+        assert len(sa.inspect(connection).get_table_names()) == 65
         if start:
             assert connection.exec_driver_sql("SELECT unique_identifier FROM ms_markets__asset").scalar_one() == "migration-preservation-asset"
         connection.rollback()
         command.upgrade(config, "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0036"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0037"
     engine.dispose()
 
 
@@ -144,7 +144,7 @@ def test_original_0017_postgresql_upgrade_preserves_every_row():
         assert {name: BRIDGE._fingerprint(connection, name) for name in tables} == before
         connection.rollback()
         command.upgrade(_config(connection), "head")
-        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0036"
+        assert connection.exec_driver_sql("SELECT version_num FROM ms_markets__alembic_version").scalar_one() == "0037"
         # Revision 0024 deletes the account targets, as its docstring says. Revision 0027
         # converts the stored calendar rows and drops their three tables.
         kept = [
