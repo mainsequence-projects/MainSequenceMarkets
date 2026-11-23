@@ -7,6 +7,18 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-11-23
+
+Minor release 5.3.0, with breaking changes. An account target no longer states an amount
+([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)),
+and every bulk delete deletes what may go, in one transaction, and reports the rest
+instead of refusing the selection with `409`
+([#127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127),
+[#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+Portfolios can be retired, and signals ended, several in one call
+([#124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124),
+[#126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)).
+
 ### Added
 
 - **End several signals in one call**
