@@ -286,7 +286,8 @@ recorder has not written those fills yet. A person asks to move 50,000 away from
 Markets' rows still show the cash. Checked against them, the move is accepted and fund B's
 cash goes to -50,000, which decision 13 forbids.
 
-So an operation on a locked account passes the lock. How it passes is a proposal:
+So an operation on a locked account passes the lock. By default it waits for the engine
+(owner):
 
 1. Markets checks what the engine's book cannot change: the fund is a cash fund of the
    account, its portfolio is not retired, and the cash is one of the portfolio's allowed
@@ -299,7 +300,7 @@ So an operation on a locked account passes the lock. How it passes is a proposal
 - **A capital allocation is still a fact.** An operation becomes one only when the engine
   accepts it. A waiting operation is a separate row.
 - **Waiting or refusing is a setting of the account's policy** (ADR 0063, decision 4). The
-  proposed default is to wait for the engine.
+  default is to wait for the engine (owner).
 - **A sync of a locked account** is written by the engine's recorder only.
 - **With no engine running** nothing changes: the table above holds as written.
 

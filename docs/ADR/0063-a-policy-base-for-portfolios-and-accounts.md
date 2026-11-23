@@ -86,14 +86,14 @@ names and their other values are a proposal. Each default is what ADR 0062 decid
 | `fund_unexplained_units` | Whether a cash fund gets units that no record explains | `none` | `through_allocation_policy` |
 
 For the account's own trading, the seven settings of the base rule the account's cash at the
-venue: the total of what its funds and its direct rows send (Execution Engine ADR 0001,
+venue (owner): the total of what its funds and its direct rows send (Execution Engine ADR 0001,
 "Routing What Is Left"). `sizing` has no use there, because the orders arrive already sized.
 `calendar_gating` defaults to `none` for an account: it has no portfolio calendar, and each
 fund's orders are already gated by its own.
 
 An account run by an engine has more choices (Execution Engine ADR 0001, "Choices Are
-Settings"). Their names, values and defaults are a proposal. That an operation must pass the
-engine's lock is the owner's decision.
+Settings"). The choices and their defaults are the owner's decisions of 2026-11-23. Their
+names are a proposal.
 
 | Setting | What it chooses | Default | Other values |
 | --- | --- | --- | --- |
@@ -168,8 +168,8 @@ Three things change in the base so that it fits both:
    weights per asset, an account from its target's rows. `RebalanceTarget` stays: a key and
    a weight.
 
-`PortfolioRebalanceStrategy` keeps two things apart, so that the execution engine can
-replace the second (Execution Engine ADR 0001, "A Runner Decides"):
+`PortfolioRebalanceStrategy` keeps two things apart (owner), so that the execution engine
+can replace the second (Execution Engine ADR 0001, "A Runner Decides"):
 
 | | What it is | Backtest | Live |
 | --- | --- | --- | --- |
@@ -223,23 +223,24 @@ tables or run a provider's code.
 
 Proposal: `AccountTable` gains `managed_by`, as `PortfolioTable` has, so that only the
 application that manages an account publishes to it (ADR 0060, decision 4). The engine's lock
-on an account belongs to that application.
+on an account belongs to that application. After a crash, that application or an
+Organization admin releases it (owner).
 
-### 9. A live fund trades under its portfolio's policy
+### 9. A live fund trades under its portfolio's policy (owner)
 
 A live fund trades by its portfolio strategy's `ExecutionPolicy`, the one its backtest ran.
 Its account's policy can only restrict it, through the `fund_` settings: a live cash fund's
 cash stays at or above zero even when its own policy allows less (ADR 0062, decision 13). A
 fund has no policy of its own.
 
-### 10. In a live account, the engine runs the account's strategy
+### 10. In a live account, the engine runs the account's strategy (owner)
 
 The execution engine runs the account's rebalance strategy for the account it trades
 (Execution Engine ADR 0001, "The Account's Strategy Moves Money"). It is in the provider's
 process, with the book and the prices. An account with no engine needs nothing new: a manual
 move is a Markets operation, and a fund at a share is sized by the provider's sync, as today.
 
-### 11. A row may name its strategy, and the account's is the fallback
+### 11. A row may name its strategy, and the account's is the fallback (owner)
 
 Each row of the account's target may name its own account strategy. A row that names none
 uses the account's. An account that names none keeps today's behaviour: to the target at

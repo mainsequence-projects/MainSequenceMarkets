@@ -145,16 +145,17 @@ Considerations (owner):
     2026-11-23). Trading is faster than any call to Markets, so Markets' rows about those
     funds are behind the engine's book. An operation on the funds of a locked account must
     pass the lock: it is checked against the book, not against Markets' rows. The lock is the
-    engine's lease on the account. How an operation passes is a proposal; see "13. An
-    Operation Arrives While The Account Is Locked".
-16. **The engine runs the account's rebalance strategy** (ADR 0063, decisions 6 and 10), in
-    an account runner above the fund runners. It gives each fund its size and moves money
-    between the account itself and its funds. It replaces the `owner_size` hook.
+    engine's lease on the account. By default the operation waits for the engine (owner); see
+    "13. An Operation Arrives While The Account Is Locked".
+16. **The engine runs the account's rebalance strategy** (owner, 2026-11-23; ADR 0063,
+    decisions 6 and 10), in an account runner above the fund runners. It gives each fund its
+    size and moves money between the account itself and its funds. It replaces the
+    `owner_size` hook.
 17. **A live fund trades under its portfolio's execution policy, and its account's policy can
-    only restrict it** (ADR 0063, decision 9). A fund trades live by the rules its backtest
-    used, and the account decides what it allows its funds.
+    only restrict it** (owner, 2026-11-23; ADR 0063, decision 9). A fund trades live by the
+    rules its backtest used, and the account decides what it allows its funds.
 18. **The engine's own choices are settings of the account's policy**, each with a default
-    (ADR 0063, decisions 1 and 4). They are not questions settled once for every user.
+    (owner, 2026-11-23; ADR 0063, decisions 1 and 4). They are not questions settled once for every user.
 
 ## Vocabulary
 
@@ -395,7 +396,7 @@ execution policy on the fund's shares and cash (ADR 0058).
 The runner decides and the venue fills. In the backtest the same step also books the fill, at
 the next observed price or at the bar. Live, the fill is the venue's: its price and its
 quantity change the fund's shares and cash, and the runner is asked again with what happened
-(ADR 0063, decision 7).
+(owner; ADR 0063, decision 7).
 
 The decision runs off the book's task. Strategies work on frames and can take milliseconds;
 the book must not wait for them.
@@ -429,8 +430,8 @@ match it internally is left for later; see "Open Questions".
    - the total is on the other side: reduce or cancel the open request first, then request
      what remains.
 3. Record the split: how much of the request is for each owner.
-4. Apply the account's own cash settings to the account's cash at the venue (ADR 0063,
-   decision 4). Sells are sent before buys. When the account's cash cannot pay for every buy,
+4. Apply the account's own cash settings to the account's cash at the venue (owner; ADR
+   0063, decision 4). Sells are sent before buys. When the account's cash cannot pay for every buy,
    the buys share it pro rata and the rest is cut. Each fund is already limited to its own
    cash, so this matters only when the account itself is short, for example after a
    shortfall on its own line.
@@ -517,8 +518,8 @@ each owner's holdings from the fund fills the recorder wrote. What was never rec
 a difference on the account line.
 
 A crash does not release the lock. Markets' rows are still behind the book then, so the
-account stays locked until the engine has restarted and stopped cleanly, or a person releases
-the lock.
+account stays locked until the engine has restarted and stopped cleanly. Otherwise the
+application that manages the account, or an Organization admin, releases it (owner).
 
 ### 13. An Operation Arrives While The Account Is Locked
 
@@ -546,7 +547,7 @@ ADR 0062 forbids (decision 13). With the lock the engine answers from its book a
 
 - **Waiting or refusing is a setting of the account's policy.** An engine that runs all day
   needs operations to wait for it. A user who stops the engine to move money can have them
-  refused instead. The proposed default is to wait (ADR 0063, decision 4).
+  refused instead. The default is to wait (owner; ADR 0063, decision 4).
 - **A sync of a locked account** is written by the engine's recorder only, from its
   checkpoints.
 - **With no engine running,** ADR 0062 works as written: Markets checks its own rows and
@@ -566,7 +567,7 @@ does.
 
 - **A row may name its strategy.** A row that names none uses the account's. An account that
   names none keeps today's behaviour: to the target at every sync for a row that states a
-  share, manual for a row that states none (ADR 0063, decision 11).
+  share, manual for a row that states none (owner; ADR 0063, decision 11).
 - **A user's strategy** is another class on the same base, for example back to the target
   every month. The engine runs it the same way.
 - **A move is journaled** before it is applied, and the fund's runner is asked again with its
@@ -1037,11 +1038,12 @@ Proposals in this ADR that the owner has not decided:
 1. The module's name, `msm_execution`. `msm.time_index.execution` and `msm.models.execution`
    already hold the execution records.
 2. One open order request for each asset, changed by replace, instead of several at once.
-3. A setting of the account's policy, not a question (decision 18): how a fill is split
-   between owners. Default: in proportion, so they get the same average price.
-4. A setting: a request the venue rejects or cancels. Default: held back until a runner posts
-   again.
-5. A setting: a runner whose strategy raises. Default: it stops alone, and the others go on.
+3. Decided on 2026-11-23, as a setting of the account's policy (decision 18): a fill is
+   split between owners in proportion by default, so they get the same average price.
+4. Decided, as a setting: a request the venue rejects or cancels is held back until a runner
+   posts again, by default.
+5. Decided, as a setting: a runner whose strategy raises stops alone by default, and the
+   others go on.
 6. What the records say about the holdings of a fund whose row was removed from the target,
    or whose portfolio was retired ([ADR 0049](../0049-portfolio-lifecycle-and-account-history.md)).
    Answered for a cash fund: it keeps what it holds and stops rebalancing (owner; ADR 0062,
@@ -1049,10 +1051,11 @@ Proposals in this ADR that the owner has not decided:
 7. The journal's default, an SQLite file, and its default safety.
 8. `OrderManager` as one round of routing.
 9. Where the new tables are declared. Their migrations belong to ms-markets either way.
-10. A setting: pulling back a working order to match it internally. Default: no.
+10. Decided, as a setting: a working order is not pulled back to match it internally, by
+    default.
 11. Decided on 2026-11-23: each fund owns its cash in the book. See decision 14.
-12. A setting: whether the recorder's lag stops new targets, and at what limit. Default: no
-    limit, and trading continues.
+12. Decided, as a setting: the recorder's lag stops no new target by default, and trading
+    continues.
 13. A direct asset row has no signal. Whether the lifetime of its strategy applies to the time
     of its `PositionSet`.
 14. An internal trade moves its quantities at the match and gets its price at the next
@@ -1060,14 +1063,16 @@ Proposals in this ADR that the owner has not decided:
 15. Answered by ADR 0062 and ADR 0063: the account's rebalance strategy moves the money. A
     share fund goes to its share at every sync, as today. A cash fund changes only by a
     capital allocation a person records.
-16. How an operation passes the lock (decision 15): it waits for the engine, by default, and
-    Markets keeps it as waiting until the engine's answer is published.
-17. Who may release the lock after a crash. Proposal: the application that manages the
-    account, or an Organization admin, as for `managed_by` (ADR 0060, decision 4).
-18. The account runner, and the account's strategy in place of the `owner_size` hook
-    (decision 16).
-19. A live fund under its portfolio's policy, restricted by its account's (decision 17).
-20. The account's seven settings applied to the account's cash at the venue (process 5).
+16. Decided on 2026-11-23: an operation waits for the engine by default, and Markets keeps it
+    as waiting until the engine's answer is published (decision 15).
+17. Decided on 2026-11-23: after a crash the lock is released by the application that manages
+    the account, or by an Organization admin, as for `managed_by` (ADR 0060, decision 4).
+18. Decided on 2026-11-23: the account runner, and the account's strategy in place of the
+    `owner_size` hook (decision 16).
+19. Decided on 2026-11-23: a live fund trades under its portfolio's policy, restricted by its
+    account's (decision 17).
+20. Decided on 2026-11-23: the account's seven settings rule the account's cash at the venue
+    (process 5).
 
 ## Not Verified
 
