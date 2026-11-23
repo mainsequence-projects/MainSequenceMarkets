@@ -728,6 +728,15 @@ def interpolate_intraday_bars(
     return interpolated_data
 
 
+BARS_READ_PAGE_SIZE = 10_000
+"""Rows per page of the source-bars read: the most a MetaTables page holds.
+
+An asset new to the table reads its bars from ``OFFSET_START``, and every page of one read
+shares the read's deadline (60 s). At the default 500 rows a first read of ten assets took
+thirteen requests and did not fit (alpaca-connectors#49).
+"""
+
+
 class InterpolatedPrices(AssetIndexedUpdater):
     """
     Handles interpolated prices for assets.
@@ -929,7 +938,10 @@ class InterpolatedPrices(AssetIndexedUpdater):
         """
         dimension_range_map = self.get_asset_dimension_range_map_great_or_equal()
 
-        raw_data_df = self.bars_ts.get_df_between_dates(dimension_range_map=dimension_range_map)
+        raw_data_df = self.bars_ts.get_df_between_dates(
+            dimension_range_map=dimension_range_map,
+            page_size=BARS_READ_PAGE_SIZE,
+        )
         if raw_data_df.empty:
             self.logger.info("No new data to interpolate")
             return pd.DataFrame()

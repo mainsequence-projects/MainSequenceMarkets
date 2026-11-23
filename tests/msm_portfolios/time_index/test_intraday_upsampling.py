@@ -147,8 +147,13 @@ def test_update_writes_the_target_bars(source, target, later_run) -> None:
         logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
 
         def __init__(self):
-            self.bars_ts = SimpleNamespace(get_df_between_dates=lambda **k: raw)
+            self.bars_ts = SimpleNamespace(get_df_between_dates=self.read_bars)
             self.interpolator = updaters.UpsampleAndInterpolation(f"{source}m", f"{target}m", "ffill")
+
+        def read_bars(self, **kwargs):
+            # One read shares one deadline: the bars come in the largest page there is.
+            assert kwargs["page_size"] == 10_000
+            return raw
 
         def get_update_asset_list(self):
             return ["A"]
