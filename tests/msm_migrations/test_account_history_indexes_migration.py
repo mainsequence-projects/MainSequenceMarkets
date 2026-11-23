@@ -38,15 +38,20 @@ def _indexes(connection: sa.Connection, table_name: str) -> dict[str, tuple[list
     }
 
 
+REKEYED_TABLES = {"ms_markets__ordersts", "ms_markets__ordereventsts", "ms_markets__tradests"}
+"""Revision 0037 re-keys the execution tables on their order (ADR 0064)."""
+
+
 def test_the_revision_creates_the_models_non_unique_indexes() -> None:
     declared = {
         (table.name, index.name, tuple(column.name for column in index.columns))
         for table in HISTORY_TABLES
+        if table.name not in REKEYED_TABLES
         for index in table.indexes
         if not index.unique
     }
 
-    assert set(MIGRATION.INDEXES) == declared
+    assert {index for index in MIGRATION.INDEXES if index[0] not in REKEYED_TABLES} == declared
 
 
 def test_0034_matches_the_storage_models(tmp_path, sqlite_revisions) -> None:

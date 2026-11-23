@@ -116,7 +116,8 @@ Rules:
   backends and delete nothing; a test double for them should refuse the same way. The only
   delete is the whole account: `Account.delete(uid)` / `Account.bulk_delete(uids=...)`
   or `DELETE /api/v1/account/{uid}/` remove the account with its orders, trades and
-  their order events, order managers, virtual funds, targets and holdings in one
+  their order events (`accounts/execution_workflow` records them), order managers,
+  virtual funds, targets and holdings in one
   transaction (ADR 0050). Preflight a selection with
   `POST /api/v1/account/bulk-delete/preflight/`. Markets sends deletes only to its own
   tables; another application's table loses rows only through its own `CASCADE` key,

@@ -12,7 +12,9 @@ answered in their wire form. Portfolio dataset rows and plans are in
 
 from __future__ import annotations
 
+import datetime as dt
 import os
+import uuid
 
 import pytest
 import sqlalchemy as sa
@@ -32,6 +34,8 @@ from tests.support.migrations import _config
 from tests.support.postgresql_databases import worker_database
 
 URL_VARIABLE = "MS_MARKETS_REGISTRATION_TEST_POSTGRES_URL"
+WHEN = dt.datetime(2026, 11, 10, 15, 30, tzinfo=dt.UTC)
+"""The time `_insert` gives a required time column the test leaves out."""
 
 
 def postgresql_markets(monkeypatch):
@@ -111,3 +115,32 @@ def _scalar_rows(engine, sql):
         return [tuple(row) for row in connection.exec_driver_sql(sql)]
 
 
+def _insert(engine, table_name: str, **values) -> dict:
+    """Insert one row, filling required columns the test does not care about."""
+
+    table = sa.Table(table_name, sa.MetaData(), autoload_with=engine)
+    row = dict(values)
+    for column in table.columns:
+        if column.name in row or column.nullable or column.server_default is not None:
+            continue
+        kind = column.type
+        if isinstance(kind, sa.Uuid):
+            row[column.name] = uuid.uuid4()
+        elif isinstance(kind, sa.Boolean):
+            row[column.name] = True
+        elif isinstance(kind, sa.DateTime):
+            row[column.name] = WHEN
+        elif isinstance(kind, sa.Date):
+            row[column.name] = WHEN.date()
+        elif isinstance(kind, sa.Integer):
+            row[column.name] = 1
+        elif isinstance(kind, (sa.Float, sa.Numeric)):
+            row[column.name] = 1.0
+        elif isinstance(kind, sa.JSON):
+            row[column.name] = {}
+        else:
+            length = getattr(kind, "length", None) or 255
+            row[column.name] = f"{uuid.uuid4().hex[:8]}-{column.name}"[:length]
+    with engine.begin() as connection:
+        connection.execute(table.insert(), row)
+    return row

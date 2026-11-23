@@ -463,6 +463,8 @@ def _get_delete_runtime():
             "VirtualFundHoldingsStorage",
             "AccountAllocationLinesStorage",
             "OrderManager",
+            "Order",
+    "Order",
             "OrdersStorage",
             "TradesStorage",
             "OrderEventsStorage",

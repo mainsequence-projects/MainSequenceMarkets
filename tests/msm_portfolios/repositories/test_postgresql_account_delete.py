@@ -50,7 +50,7 @@ WHEN = dt.datetime(2026, 11, 10, 15, 30, tzinfo=dt.UTC)
 DATASETS = {table.key: table.table_name for table in PORTFOLIO_DATASET_TABLES}
 PROVIDER_TABLE = "provider_ns__portfolioeventledgerts__copy"
 PROVIDER_CONSTRAINT = "fk_provider_ns_portfolioeventledgerts_copy_portfolio"
-ACCOUNT_STATEMENTS = 14
+ACCOUNT_STATEMENTS = 15
 HISTORY_TABLES = {
     "ms_markets__accountholdingsts",
     "ms_markets__accountallocationlinests",
@@ -208,34 +208,38 @@ def test_the_account_alone_goes_with_its_orders_trades_and_events(markets) -> No
         account_identifier = connection.execute(
             sa.text("SELECT unique_identifier FROM ms_markets__account WHERE uid = :uid"), {"uid": account}
         ).scalar_one()
+    order = uuid.uuid4()
     _insert(
         engine,
-        "ms_markets__ordersts",
-        order_time=WHEN,
-        order_identifier="order-1",
+        "ms_markets__order",
+        uid=order,
         account_identifier=account_identifier,
         order_manager_identifier=None,
         asset_identifier="AAA",
     )
+    _insert(engine, "ms_markets__ordersts", order_time=WHEN, order_uid=order)
     _insert(
         engine,
         "ms_markets__tradests",
         trade_time=WHEN,
         trade_identifier="trade-1",
         account_identifier=account_identifier,
-        order_identifier="order-1",
+        order_uid=order,
         asset_identifier="AAA",
         commission_asset_identifier=None,
         settlement_asset_identifier=None,
     )
-    _insert(engine, "ms_markets__ordereventsts", event_time=WHEN, order_identifier="order-1")
+    _insert(engine, "ms_markets__ordereventsts", event_time=WHEN, order_uid=order)
     operations.clear()
 
     deleted = delete_account(context, uid=account)
 
     assert operations == ["read", "transaction"]
-    assert {key: deleted["deleted_rows"][key] for key in ("orders", "trades", "order_events")} == {
+    assert {
+        key: deleted["deleted_rows"][key] for key in ("orders", "order_states", "trades", "order_events")
+    } == {
         "orders": 1,
+        "order_states": 1,
         "trades": 1,
         "order_events": 1,
     }

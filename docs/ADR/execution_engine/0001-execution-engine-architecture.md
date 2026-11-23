@@ -22,8 +22,15 @@ in this ADR is implemented.
 - When implemented it amends
   [ADR 0053](../0053-virtual-fund-allocation-routes-and-described-policies.md): see "Fund
   Holdings At A Sync".
+- It is implemented together with
+  [ADR 0062](../0062-capital-given-to-a-virtual-fund.md), the capital given to a cash fund,
+  and [ADR 0063](../0063-a-policy-base-for-portfolios-and-accounts.md), the policies and
+  rebalance strategies of portfolios and accounts, as one coordinated implementation (owner,
+  2026-11-23). The three are kept in agreement: a change to one is checked against the other
+  two.
 
-The facts about existing code were checked on `development` at commit `9ce4b7c2`.
+The facts about existing code were checked on `development` at commit `9ce4b7c2`. The
+strategy contract was read again on 2026-11-23, after issues 89 and 90 changed it (ADR 0058).
 
 ## Context
 
@@ -36,10 +43,13 @@ decision is the same code in the backtest and in live trading.
 
 ### What Exists
 
-- **The strategy is an event-driven state machine.** `RebalanceStrategyBase.apply_event` in
-  `src/msm_portfolios/rebalance_strategy/base.py` takes the target, the current weights and
-  the stored state of each asset, and answers the weight of each asset after the event. It
-  declares its inputs, selects its own events and resumes from stored state (ADR 0040).
+- **The strategy says when, and its policy says how much.** A `RebalanceStrategyBase` in
+  `src/msm_portfolios/rebalance_strategy/base.py` declares its inputs, selects its own events
+  and resumes from stored state (ADR 0040). At each target's earliest moment its execution
+  policy fixes one order for each asset, on a book of shares and cash, and decides how much of
+  each order may trade under its cash rules
+  ([ADR 0058](../0058-trade-at-the-next-observed-price.md)). A strategy with its own bars gives
+  the slice of each order that a bar allows.
 - **The account side has the exposure and the funds.** An account target states exposure to
   portfolios and to assets. Writing an exposure to a portfolio creates the `VirtualFund` of
   that account and portfolio. A sync allocates the account's holdings to the funds and stores
@@ -92,8 +102,8 @@ Considerations (owner):
 ## Decision
 
 1. **One engine, one account** (owner). An account has at most one running engine.
-2. **The engine is its own module** (owner), separate from `msm` and `msm_portfolios`. The
-   proposed name is `msm_execution`.
+2. **The engine is its own module** (owner), separate from `msm` and `msm_portfolios`. Its
+   name is `msm_execution` (owner, 2026-11-23).
 3. **The provider imports and extends the engine** (owner). Without a provider the engine
    cannot trade. The provider owns the exchange connection, the prices and the quantization of
    orders (owner). ms-markets still takes no price in its own records, so ADR 0054 stands.
@@ -107,10 +117,12 @@ Considerations (owner):
 7. **The engine keeps the account book in local memory** (owner): what each owner holds, what
    each strategy wants, and what is working at the exchange.
 8. **Internal trades come first** (owner), at the first price observed at or after the match
-   (owner). By default only what each strategy asked to trade now is matched. Offering the
-   whole intent is a setting of the strategy, for strategies that must trade faster (owner).
-9. **What is left goes to the exchange as one order request for each asset**, and every fill
-   is split back to the owners it was for.
+   (owner). The match reserves the quantity, and the trade is booked when that price is
+   observed (owner, 2026-11-23). By default only what each strategy asked to trade now is
+   matched. Offering the whole intent is a setting of the strategy, for strategies that must
+   trade faster (owner).
+9. **What is left goes to the exchange as one order request for each asset** (owner,
+   2026-11-23), and every fill is split back to the owners it was for.
 10. **ms-markets is written afterwards** (owner), from the engine's local journal, by a
     recorder that is outside the trading path.
 11. **The engine always acts on the last signal** (owner). It never goes back to an earlier one.
@@ -118,6 +130,35 @@ Considerations (owner):
     and read from `SignalWeightsTS`, which stays the record.
 13. **The same engine runs backtest, paper and live** (owner). Only the venue and the source of
     the inputs change.
+14. **Each fund owns its cash in the book** (owner, 2026-11-23), as a portfolio does in the
+    backtest. This replaces open question 11. What follows from it is a proposal:
+
+    - A fill, an internal trade and the fund's share of a fee move the fund's cash.
+    - A cash fund's size is its holdings plus its cash. A share fund is sized from its share of
+      the account, as today (ADR 0062, decisions 1 and 6).
+    - The cash obeys the strategy's execution policy, the one `PortfolioRebalance` runs on its
+      book ([ADR 0058](../0058-trade-at-the-next-observed-price.md)): sells before buys, a buy
+      limited to the cash on hand plus the negative cash the policy allows, too little cash
+      shared pro rata, and a buy that cash cannot cover cut and cancelled once the
+      rebalance's sells have filled.
+    - A live cash fund's cash never goes below zero, whatever that policy allows, unless the
+      account's policy says otherwise (ADR 0062, decision 13; ADR 0063, decision 4).
+15. **While an engine runs for an account, the account's funds are locked** (owner,
+    2026-11-23). Trading is faster than any call to Markets, so Markets' rows about those
+    funds are behind the engine's book. An operation on the funds of a locked account must
+    pass the lock: it is checked against the book, not against Markets' rows. The lock is the
+    engine's lease on the account. By default the operation waits for the engine (owner); see
+    "13. An Operation Arrives While The Account Is Locked".
+16. **The engine runs the account's rebalance strategy** (owner, 2026-11-23; ADR 0063,
+    decisions 6 and 10), in an account runner above the fund runners. It gives each fund its
+    size and moves money between the account itself and its funds. It replaces the
+    `owner_size` hook.
+17. **A live fund trades under its portfolio's execution policy, and its account's policy can
+    only restrict it** (owner, 2026-11-23; ADR 0063, decision 9). A fund trades live by the
+    rules its backtest used, and the account decides what it allows its funds.
+18. **The engine's own choices are settings of the account's policy**, each with a default
+    (owner, 2026-11-23; ADR 0063, decisions 1 and 4). They are not questions settled once
+    for every user.
 
 ## Vocabulary
 
@@ -131,13 +172,16 @@ Considerations (owner):
 | Runner | One rebalance strategy instance bound to one owner: a fund, or one asset of the account line for a direct asset row |
 | Target | One signal observation as a `RebalanceTarget`: `intent_id`, signal time and weights |
 | Intent | One target being executed by one runner |
-| Wanted now | The position a runner wants to reach at this event. It is the strategy's `weight_after`, in units |
-| Wanted at the end | The position at the end of the intent. It is the strategy's `target_weight`, in units |
+| Account runner | The account's own rebalance strategy, run by the engine. It moves money between the account itself and its funds (ADR 0063) |
+| Fund order | What one fund's strategy wants to trade in one asset for one target, in units. It is fixed once, at the decision (ADR 0058) |
+| Wanted now | The position after what may trade now: the whole fund order, or the slice a strategy's bar allows, after the cash rules |
+| Wanted at the end | The position once the fund order is filled |
 | Working | Units in order requests sent to the venue and not yet filled or cancelled |
 | Internal trade | Units that move between two owners of the same account. No order is sent |
 | Order request | What the engine asks the venue to trade: one asset and a signed quantity |
 | Book unit | The smallest quantity step of an asset, given by the provider. The book stores whole numbers of it |
 | Journal | The engine's local, append-only log of everything that changed the book |
+| Lock | The engine's lease on its account. While it is held, only the engine changes what the account's funds hold or were given |
 | Recorder | The part that copies the journal into ms-markets records |
 
 ## Architecture
@@ -146,12 +190,15 @@ Considerations (owner):
 signal producer --push--+      SignalWeightsTS --read--+       bars / calendar feeds
                         v                              v               |
      +------------------ ExecutionEngine (one account) ----------------+-------+
-     |  runner: fund A      runner: fund B      runner: direct asset row       |  strategy speed
+     |  account runner: the account's strategy moves money between the         |  strategy speed
+     |  account itself and its funds, and gives each fund its size             |
+     |                                                                         |
+     |  runner: fund A      runner: fund B      runner: direct asset row       |
      |  (portfolio A's      (portfolio B's      (the row's strategy, or        |
      |   strategy)           strategy)           the engine's)                 |
      |        +------- wanted positions in units, per intent -------+          |
      |                             v                                           |
-     |   ACCOUNT BOOK (memory): held / wanted / working for each owner         |  book speed
+     |   ACCOUNT BOOK (memory): held / cash / wanted / working for each owner  |  book speed
      |     1. internal trades between owners                                   |
      |     2. what is left: one order request for each asset                   |
      |     3. fills split back to the owners                                   |
@@ -167,7 +214,7 @@ signal producer --push--+      SignalWeightsTS --read--+       bars / calendar f
 
 | Speed | What happens | Where |
 | --- | --- | --- |
-| Strategy | A strategy is asked only at its own events: a new target, one of its declared inputs, a change of size, a progress report, an expiry | Worker threads; the existing `apply_event` |
+| Strategy | A strategy is asked only at its own events: a new target, one of its declared inputs, a change of size, a progress report, an expiry | Worker threads; the strategy and its policy, as the backtest runs them |
 | Book | Every answer and fill from the venue, every posted position, every match | One task in local memory |
 | Record | The journal is copied to ms-markets | The recorder, a separate task or process |
 
@@ -205,9 +252,16 @@ For each owner and asset:
 | `wanted_now` | The position the runner wants to reach at this event |
 | `wanted_end` | The position at the end of the intent |
 | `working` | Signed units of the open order request that are for this owner |
+| `reserved` | Signed units matched in an internal trade that is waiting for its price |
 | Intent | `intent_id`, status, and the strategy's stored state for the asset |
 
 An owner whose runner has no opinion on an asset has no wanted values for it.
+
+For each owner and currency:
+
+| Field | Meaning |
+| --- | --- |
+| `cash` | The owner's cash in that currency (decision 14; ADR 0062, decisions 8 to 10) |
 
 For each asset:
 
@@ -219,14 +273,15 @@ For each asset:
 ### What The Book Derives
 
 ```text
-left_end = wanted_end - held - working
-left_now = wanted_now - held - working, limited to the side and the size of left_end
+left_end = wanted_end - held - working - reserved
+left_now = wanted_now - held - working - reserved, limited to the side and size of left_end
 ```
 
 - `left_now` is what the runner wants traded now. It is what goes to the market.
 - `left_end` is what the runner wants traded before the intent ends.
 - The limit matters after an internal trade that put an owner ahead of its schedule. The owner
   then holds more than `wanted_now`. That is not a reason to sell: `left_now` is zero.
+- A fund's value is its holdings at the provider's prices plus its cash.
 
 ### Why Positions And Not Orders
 
@@ -243,9 +298,9 @@ This table of held, wanted, working and left is the constantly active book of re
 
 ### Units Are Fixed At The Decision
 
-A runner sizes its weights into units once, when it decides. A price move alone never changes
-a wanted position and never creates an order. Only an event of the strategy sizes again. This
-is the same rule as the backtest, where `apply_event` runs only at the strategy's events.
+A fund order's units are fixed once, at the decision, as in the backtest (ADR 0058, decision
+6a). A price move alone never changes a wanted position and never creates an order. Only a new
+target, or a new size given by the account's strategy, sizes again.
 
 ### Invariants
 
@@ -256,6 +311,9 @@ Checked for the touched asset on every change:
    filled quantity.
 3. An owner's `working` is the unfilled part of its split.
 4. The legs of an internal trade add up to zero.
+5. The `cash` of all owners adds up to the account's cash, in each currency. The account
+   itself can be below zero, which is how a shortfall shows. A cash fund cannot, by default
+   (ADR 0062, decision 13).
 
 A failed invariant stops routing for that asset and raises an alert. The engine never repairs
 the book silently.
@@ -268,12 +326,13 @@ Every change of the book is first appended to the journal, then applied.
 | --- | --- |
 | Target received | A new target arrives from a feed |
 | Position posted | A runner posts wanted positions and its stored state |
-| Internal trade matched | Owners are matched; the quantities move |
-| Internal trade priced | The first price at or after the match is observed |
+| Internal trade matched | Owners are matched; the quantities are reserved |
+| Internal trade priced | The first price at or after the match is observed; units and cash move |
 | Order requested, replaced, cancel requested | Before the request leaves for the venue |
 | Venue event | Accepted, rejected, fill, cancelled, expired |
 | Fill split | A fill is divided between owners |
 | Adjustment | A difference with the venue goes to the account line |
+| Money moved | The account's strategy moves cash or units between the account itself and a fund, or refuses an operation |
 | Intent expired, runner stopped | A signal passes its lifetime; a runner is halted |
 | Checkpoint | The whole book is saved |
 
@@ -285,9 +344,9 @@ Rules:
   from the venue. A split between owners cannot: only the engine knows it.
 - **Other events can be written in groups.** If the last group is lost in a crash, those
   events did not happen, and the runners decide again.
-- **The journal is local.** The proposed default is an SQLite file in write-ahead mode: it is
-  in the standard library, safe on a crash, and the recorder can read it with a cursor. A
-  provider can replace it.
+- **The journal is local, and it is the provider's choice** (owner, 2026-11-23). The default
+  is an SQLite file in write-ahead mode: it is in the standard library, safe on a crash, and
+  the recorder can read it with a cursor. A provider can replace it.
 
 A checkpoint saves the book, the open order request of each asset and each runner's stored
 state. A restart loads the last checkpoint and applies the journal after it.
@@ -296,16 +355,17 @@ state. A restart loads the last checkpoint and applies the journal after it.
 
 ### 1. Start
 
-1. Take the account's lease in ms-markets. Refuse to start when another engine holds it.
+1. Take the account's lock in ms-markets. Refuse to start when another application holds
+   it. An engine restarted by the application that holds the lock keeps it.
 2. Read the configuration: the account's active `AccountTargetAllocation`, its latest
-   `PositionSet` and rows, the virtual funds, each strategy from the registry, and the
-   engine's strategy for direct rows.
+   `PositionSet` and rows, the virtual funds, each strategy from the registry, the engine's
+   strategy for direct rows, and the account's own strategy and policy (ADR 0063).
 3. Build the owners and the assets. Ask the provider for the instrument facts of each asset.
 4. Restore the book from the last checkpoint and the journal. See "12. Restart After A Crash".
 5. Connect the venue and the market data. Read the fills since the last one known, then the
    positions and the open orders, and reconcile.
-6. Start the runners. Each takes the last signal of its portfolio and its stored state, and
-   decides.
+6. Start the account runner, then the fund runners. Each fund runner takes the last signal
+   of its portfolio and its stored state, and decides.
 7. Accept events.
 
 ### 2. A Signal Arrives
@@ -318,17 +378,29 @@ state. A restart loads the last checkpoint and applies the journal after it.
 
 ### 3. A Runner Decides
 
-A runner is asked at these events: a new target, an observation of one of the strategy's
-declared inputs, a change of the owner's size, a progress report from the book, an expiry.
+A fund runner is asked at these events: a new target, an observation of one of the
+strategy's declared inputs, a new size for the fund, a progress report from the book, an
+expiry. It runs what `PortfolioRebalance` runs in the backtest: the strategy, and its
+execution policy on the fund's shares and cash (ADR 0058).
 
-1. Take the last target. Never an earlier one (owner).
-2. Build the strategy's view: the owner's holdings as weights, with the provider's prices and
-   the owner's size; and the stored state of each asset.
-3. Call the strategy. It answers, for each asset, the weight now and the weight at the end.
-4. Size each asset: size times weight, divided by price times contract multiplier, then the
-   provider's quantization. An asset with no fresh price is not sized and waits. The other
-   assets go ahead.
-5. Post `wanted_now`, `wanted_end` and the stored state to the book, as one event.
+1. Take the last target. Never an earlier one (owner). A target past the strategy's lifetime
+   is not acted on.
+2. Find the target's earliest moment, as the strategy and its calendar say.
+3. At the decision, fix one fund order for each asset: the target weight times the fund's
+   size, divided by the price times the contract multiplier, less the units held, then the
+   provider's quantization. The size comes from the account's strategy (process 14). An asset
+   with no fresh price is not sized and waits. The other assets go ahead.
+4. Work out how much of each fund order may trade now: all of it, or the slice the
+   strategy's bar allows. Then apply the policy's cash rules to the fund's cash: sells before
+   buys, a buy limited to the cash on hand, too little cash shared pro rata, and a buy that
+   cash cannot cover cut and cancelled once the sells have filled.
+5. Post `wanted_end`, the position once the fund orders are filled, and `wanted_now`, the
+   position after what may trade now, with the stored state, as one event.
+
+The runner decides and the venue fills. In the backtest the same step also books the fill, at
+the next observed price or at the bar. Live, the fill is the venue's: its price and its
+quantity change the fund's shares and cash, and the runner is asked again with what happened
+(owner; ADR 0063, decision 7).
 
 The decision runs off the book's task. Strategies work on frames and can take milliseconds;
 the book must not wait for them.
@@ -344,26 +416,33 @@ Run for an asset whenever its row of the book changes:
 3. The smaller side is matched in full. The larger side is matched in proportion to each
    owner's quantity. Remainders of a unit go to the largest remainders first; ties go by a
    fixed order of the owners. The result is always the same for the same input.
-4. The quantities move at once: `held` changes for each matched owner, so what is left goes
-   to routing without waiting.
-5. The price is the first one observed at or after the match (owner). It is stamped on the
-   internal trade when it arrives.
-6. Each matched owner gets a fund fill marked internal.
+4. The match reserves the matched quantity: it is taken out of what goes to the market, so
+   what is left goes to routing without waiting. Nothing is booked yet.
+5. The price is the first one observed at or after the match (owner). When it arrives, the
+   internal trade is booked at that price's time: units and cash move between the owners
+   together, and each matched owner gets a fund fill marked internal (owner, 2026-11-23). An
+   owner never holds units it has not paid for.
 
 Only quantity that has not been sent to the venue is matched. Pulling back a working order to
-match it internally is left for later; see "Open Questions".
+match it internally is a setting of the account's policy, off by default.
 
 ### 5. Routing What Is Left
 
 1. Add up `left_now` over the owners. After the internal trades it has one side.
 2. Compare it with the asset's open order request:
    - none open: request the total;
-   - one open on the same side: replace it with the new total;
+   - one open on the same side: replace it with the new total. A replaced request is a new
+     order row (ADR 0064, decision 10);
    - the total is on the other side: reduce or cancel the open request first, then request
      what remains.
 3. Record the split: how much of the request is for each owner.
-4. Call the provider's check. It can refuse or reduce the request.
-5. Write the request to the journal, make it safe on disk, then send it.
+4. Apply the account's own cash settings to the account's cash at the venue (owner; ADR
+   0063, decision 4). Sells are sent before buys. When the account's cash cannot pay for every buy,
+   the buys share it pro rata and the rest is cut. Each fund is already limited to its own
+   cash, so this matters only when the account itself is short, for example after a
+   shortfall on its own line.
+5. Call the provider's check. It can refuse or reduce the request.
+6. Write the request to the journal, make it safe on disk, then send it.
 
 The request says which asset and how much. How it is worked at the exchange, market or limit,
 in one order or several, is the provider's. The request can carry two hints from the strategy:
@@ -380,6 +459,10 @@ a reference price and a time after which it should not trade.
   back: the engine does not send the same request again by itself. The runners are told, and
   routing resumes when one of them posts again. What to do with unfilled volume is the
   strategy's rule, never the engine's (owner).
+- **Income.** A dividend, a coupon or interest that an asset pays. It is split between the
+  owners that hold the asset, in proportion to their units, and moves their cash. Each gets a
+  fund fill marked income (owner; ADR 0062, decision 15). A fee or interest that belongs to
+  no asset stays with the account itself.
 
 After a fill the book sends each affected runner one progress report: what was filled against
 what it wanted. Reports are merged, so a runner never has more than one waiting.
@@ -391,13 +474,18 @@ what it wanted. Reports are merged, so a runner never has more than one waiting.
 3. Its share of the open order request is cancelled.
 4. The intent ends as `expired`. The owner keeps what it holds (owner).
 
+For a direct asset row the lifetime counts from the time of the row's target snapshot, as it
+counts from a signal's time for a fund (owner, 2026-11-23). A match still reserved when the
+lifetime passes is dropped.
+
 ### 8. The Target Changes
 
 A new `PositionSet` is read off the hot path.
 
 - **A new portfolio row:** a runner starts for its fund. The fund already exists, because
   writing the exposure created it (ADR 0054).
-- **A changed size:** the runner is asked again, and sizes again.
+- **A changed share:** the account's strategy gives the fund its new size (process 14), and
+  its runner is asked again.
 - **A removed row:** the runner stops, its wanted positions are withdrawn and its share of
   open requests is cancelled. Its holdings are not sold. What the records say about them is an
   open question.
@@ -425,7 +513,9 @@ is measured. The provider can set a lag above which the engine takes no new targ
 ### 11. Stop And Kill Switch
 
 - **Stop:** take no new target, cancel or leave the open requests as the provider chooses,
-  wait for the venue's answers, write a checkpoint, let the recorder finish, release the lease.
+  wait for the venue's answers, write a checkpoint, let the recorder finish, release the lock.
+  The lock is released only after the recorder has caught up, so Markets' rows are current
+  when operations go back to Markets.
 - **Kill switch:** stop routing now and cancel every open request. The book stays as it is.
   Trading resumes only when a person says so.
 
@@ -441,6 +531,64 @@ When there is no local state, for example on a new machine, the book is built fr
 each owner's holdings from the fund fills the recorder wrote. What was never recorded shows as
 a difference on the account line.
 
+A crash does not release the lock. Markets' rows are still behind the book then, so the
+account stays locked until the engine has restarted and stopped cleanly. Otherwise the
+application that manages the account, or an Organization admin, releases it (owner).
+
+### 13. An Operation Arrives While The Account Is Locked
+
+The lock covers every write that changes what a fund of the account holds or was given: the
+capital allocations of ADR 0062, and the fund holdings a sync writes. Markets never calls a
+provider's code ([ADR 0060](../0060-producers-publish-markets-reads-only-its-own-tables.md)),
+so the operation reaches the engine through Markets' own rows:
+
+1. A person sends the operation to Markets, as ADR 0062 says.
+2. Markets sees that the account is locked. It checks only what the book cannot change: the
+   fund is a cash fund of the account, and the currency is one its portfolio allows. It keeps
+   the operation as waiting. It does not check cash or units.
+3. The account runner reads the waiting operations off the hot path, as the engine reads a
+   new target. It checks each one against the book, under the account's policy (ADR 0063):
+   the fund's cash or units now, and the account's available cash now.
+4. An accepted operation is journaled and applied to the book: cash or units move between the
+   account line and the fund. A refused one is journaled with its reason.
+5. The recorder publishes the result in journal order, after the fills that came before it.
+   Markets turns the waiting operation into the capital allocation, or marks it refused.
+
+Fund B has 50,000 in cash and the engine spends it. A person then asks to move 50,000 away
+from fund B. Markets' rows still show the cash, because the recorder has not written those
+fills. Without the lock Markets would accept, and fund B's cash would go to -50,000, which
+ADR 0062 forbids (decision 13). With the lock the engine answers from its book and refuses.
+
+- **Waiting or refusing is a setting of the account's policy.** An engine that runs all day
+  needs operations to wait for it. A user who stops the engine to move money can have them
+  refused instead. The default is to wait (owner; ADR 0063, decision 4).
+- **A sync of a locked account** is written by the engine's recorder only, from its
+  checkpoints.
+- **With no engine running,** ADR 0062 works as written: Markets checks its own rows and
+  writes in one transaction.
+
+### 14. The Account's Strategy Moves Money
+
+The account has a rebalance strategy of its own (ADR 0063, decision 6). The engine runs it in
+the account runner. It decides how big each fund is and when money moves between the account
+itself and a fund. It sends no order: a move changes owners in the book, as an internal trade
+does.
+
+| The row's strategy | A fund's size | When money moves |
+| --- | --- | --- |
+| To the target at every sync | Its share of the account's value, as today | At a sync, to bring the fund back to its share |
+| Manual | Its own value: its holdings plus its cash | Only when a person's operation passes the lock (process 13) |
+
+- **A row may name its strategy.** A row that names none uses the account's. An account that
+  names none keeps today's behaviour: to the target at every sync for a row that states a
+  share, manual for a row that states none (owner; ADR 0063, decision 11).
+- **A user's strategy** is another class on the same base, for example back to the target
+  every month. The engine runs it the same way.
+- **A move is journaled** before it is applied, and the fund's runner is asked again with its
+  new size.
+- **With no engine** nothing runs an account's strategy. A manual move is a Markets
+  operation, and a fund at a share is sized by the provider's sync, as today.
+
 ### Where Each Part Runs
 
 | Part | Runs as | Why |
@@ -450,7 +598,7 @@ a difference on the account line.
 | Runners | Worker threads, one decision at a time for each runner | Strategies work on frames |
 | Journal | The book's task | It is written before the change is applied |
 | Recorder | Its own task or process, reading the journal | A slow or missing database does not touch trading |
-| Reconciliation, lease, checkpoints | Timers | They are not on the hot path |
+| Reconciliation, the lock, waiting operations, checkpoints | Timers | They are not on the hot path |
 
 ## What A Provider Implements
 
@@ -535,16 +683,33 @@ what a runner subscribes to.
 | Hook | Default | Owner of the rule |
 | --- | --- | --- |
 | `quantize` | Round toward zero to the book unit, as the backtest does | The provider (owner) |
-| `owner_size` | The exposure row: a share of the account's value | The provider |
 | `check_order` | Accept | The provider: buying power, limits, price bands |
 | Strategy for direct rows | None. A direct row that names no strategy is refused when none is set | The provider (owner) |
 | Journal safety | Order requests are safe on disk before they leave | The provider |
+
+A fund's size is not a hook. The account's rebalance strategy gives it (process 14).
+
+### Choices Are Settings
+
+A rule that different users may reasonably want differently is a setting with a default, not a
+fixed behaviour of the engine (ADR 0063, decision 1). The engine reads them in three places:
+
+| Where | What it chooses |
+| --- | --- |
+| The fund's portfolio strategy and its `ExecutionPolicy` | How the fund trades: the seven settings of ADR 0058, the signal's lifetime, and whether its whole intent is offered to internal trades |
+| The account's policy, for its funds | What the account allows a fund: cash in, cash out, cash below zero, a removed portfolio, units that no record explains |
+| The account's policy, for the engine | An operation while the account is locked, how a fill is split between owners, a request the venue rejects, a strategy that raises, pulling back a working order for an internal trade, and the recorder's lag |
+
+- **A fund trades under its portfolio's policy.** The account's policy can only restrict it
+  (decision 17).
+- **The account's own seven settings** rule the account's cash at the venue, in routing
+  (process 5).
 
 ### Who Builds What
 
 | ms-markets ships | The provider implements |
 | --- | --- |
-| The strategies and the single decision entry the engine calls | The venue: orders, the event stream, the four reads |
+| The strategies, their policies and the account runner | The venue: orders, the event stream, the four reads |
 | The account book: internal trades, routing, fill split, invariants | Market data: prices and instrument facts |
 | The journal, the checkpoint and the restart | A signal transport, when the producer is not in the same process |
 | A simulated venue, and the backtest and paper wirings | The hooks it wants to change |
@@ -563,14 +728,19 @@ Written by the recorder, never on the hot path.
 
 | From the journal | ms-markets record | Exists today |
 | --- | --- | --- |
-| One round of routing | `OrderManager` | Yes |
-| Order requests | `OrdersTS`, linked by `order_manager_identifier` | Yes |
+| One round of routing | One batch: the `OrderManager` row and its `Order` rows, in one call (owner; ADR 0064, decision 7). The engine mints each order's id | Yes |
+| Order requests | `Order` rows of the round's `OrderManager` ([ADR 0064](../0064-an-order-has-its-own-row.md)), their state in `OrdersTS` | Yes |
 | Accepted, rejected, cancelled, expired | `OrderEventsTS` | Yes |
 | Fills | `TradesTS` | Yes |
 | Fill splits and internal trades | Fund fills | No |
-| Wanted positions and status of each owner | Rebalance state for each owner | No |
+| Wanted positions and status of each owner | Rebalance state for each owner, in the provider's own namespace | No |
 | Checkpoint positions | `AccountHoldingsSet` and `AccountHoldingsStorage` | Yes |
-| Start, stop and heartbeat of the engine | Engine session and lease | No |
+| Start, stop and heartbeat of the engine | Engine session and lock | No |
+| The answer to an operation that waited for the engine | The capital allocation of ADR 0062, or its refusal | No |
+
+The new records that are published are Markets' own tables, declared in core `msm`: capital
+allocations, waiting operations, fund fills, fund holdings and the lock (owner, 2026-11-23;
+ADR 0060). The rebalance state for each owner is the provider's.
 
 ### Fund Fills
 
@@ -590,13 +760,17 @@ A fund fill is one row for each owner and fill:
 | `asset_identifier` | The asset |
 | `quantity`, `direction` | Units and side |
 | `price` | The fill's price, or the internal trade's price |
-| `source` | `market` or `internal` |
+| `source` | `market`, `internal`, or `income` for a dividend, a coupon or interest (ADR 0062, decision 15) |
 | `trade_identifier` | The `TradesTS` row, for a market fill |
 | `internal_trade_identifier` | Shared by both sides of an internal trade |
 | `rebalance_intent_id` | The intent the fill served |
 | `fee`, `fee_asset_identifier` | The owner's share of the fee |
+| `settlement_asset_identifier` | The currency the fill settled in, as in `TradesTS`, so it moves the owner's cash in that currency (ADR 0062, decision 7) |
 
 An owner's holdings are the sum of its fund fills.
+
+ADR 0062 makes fund fills a Markets record that whoever trades for a fund writes: the engine's
+recorder, or a provider that trades for its funds without the engine (decision 7).
 
 ### Rebalance State For Each Owner
 
@@ -606,6 +780,10 @@ thing in weights for a backtest portfolio. It cannot be reused: a portfolio neve
 real fills (ADR 0042), and one portfolio is followed by many accounts, each with its own
 progress.
 
+It is the provider's private state, kept in its own namespace in a table built from a Markets
+factory, as a portfolio's rebalance state is (owner, 2026-11-23; ADR 0060, decisions 2 and
+7). Markets holds nothing about it.
+
 ### Fund Holdings At A Sync
 
 Today a sync splits the account's holdings between the funds with a rule, in proportion to
@@ -614,13 +792,14 @@ precedence (owner):
 
 1. Each fund first keeps the units its own fills gave it.
 2. The units of the account that no fill explains go through the existing rule, among the
-   funds that still want more.
+   share funds that still want more. A cash fund gets none (owner; ADR 0062, decision 5).
 3. What no fund takes stays with the account.
 4. When the account holds fewer units than the fills add up to, the funds keep what their
    fills say and the account's own line shows the shortfall as a negative (owner).
 
-Fund A has a target of 500 MSFT and bought all of it through the engine. Fund B has a target
-of 375 and has bought 100. The account holds 800, because 200 were transferred in:
+Funds A and B are share funds. Fund A has a target of 500 MSFT and bought all of it through
+the engine. Fund B has a target of 375 and has bought 100. The account holds 800, because 200
+were transferred in:
 
 | MSFT | From its own fills | From the rule, on the 200 left | Stored holding |
 | --- | --- | --- | --- |
@@ -630,8 +809,9 @@ of 375 and has bought 100. The account holds 800, because 200 were transferred i
 | Total | 600 | 200 | 800 |
 
 The rule itself does not change. `proportional_attribution` is given the units left after the
-fills, and each fund's target minus what it already owns. An account with no engine has no
-fills, so everything goes to the rule, as today.
+fills, and each share fund's target minus what it already owns. An account with no engine
+has no fills, so everything goes to the rule, as today. While an engine runs, only its
+recorder writes the fund holdings of its account (decision 15).
 
 ## Backtest, Paper And Live
 
@@ -659,10 +839,11 @@ fills, so everything goes to the rule, as today.
 | ms-markets cannot be reached | Trading continues. The journal grows. Above the provider's lag limit, no new target is taken |
 | The venue disconnects | Routing stops. On reconnection: fills since the last known, then reconciliation, then routing resumes |
 | No fresh price for an asset | That asset is not sized and its internal trades are not priced. The others go on |
-| The engine crashes | Restart from the checkpoint and the journal, then the venue's answers |
+| The engine crashes | Restart from the checkpoint and the journal, then the venue's answers. The account stays locked |
+| A person changes a fund while the engine trades | The operation waits for the engine, which answers from its book (decision 15) |
 | A venue event arrives twice | Dropped by its trade id or by the state of its request |
 | The venue's position differs from the book | The difference goes to the account line, with an alert. Funds are not changed |
-| A second engine starts for the account | It finds the lease taken and refuses |
+| A second engine starts for the account | It finds the lock taken by another application and refuses |
 | A strategy raises | That runner stops: its wanted positions are withdrawn and its share of requests cancelled. The others go on |
 | An invariant fails | Routing stops for that asset, with an alert |
 | A push feed misses a target | The table feed delivers it |
@@ -711,8 +892,11 @@ Internal trades, then routing:
 | JNJ | | sell 200 | fund B 200 |
 | TSLA | | sell 50 | the account itself 50 |
 
-The next MSFT price observed is 400.10, so the internal trade is stamped 400.10. The four
-requests fill. The book afterwards:
+Cash is left out of these tables. Each fund's sells pay for its buys, and with the default
+policy a buy leaves only as its fund's cash arrives.
+
+The next MSFT price observed is 400.10, so the internal trade is booked at 400.10, at that
+price's time. The four requests fill. The book afterwards:
 
 | Owner | AAPL | MSFT | JNJ | TSLA |
 | --- | --- | --- | --- | --- |
@@ -753,12 +937,14 @@ the split 60 and 40. It fills in two parts:
 - Trading does not depend on ms-markets being reachable. The price is a local journal that
   must be kept safe, and a recorder whose lag must be watched.
 - A provider has a small, fixed list to implement, and tests that say when it is right.
-- Two engines on one account would double every order. The lease is therefore part of
+- Two engines on one account would double every order. The lock is therefore part of
   starting, and an engine that cannot check it does not start.
+- While an engine runs, a person's operation on a fund is answered by the engine, not by
+  Markets at once. Operations on an account with no engine are unchanged.
 - The book's task is the only writer. A slow strategy, a slow database or a slow connection
   cannot block it, and none of them can change the book directly.
-- New records are needed in ms-markets: fund fills, the rebalance state for each owner, and the
-  engine session.
+- New records are needed in ms-markets: fund fills, capital allocations, waiting operations
+  and the lock. The rebalance state for each owner is the provider's own table.
 - The allocation at a sync changes for accounts run by an engine (ADR 0053).
 - The wheel gains a package. `pyproject.toml` lists the packages it ships, and the new one has
   to be added there.
@@ -770,7 +956,7 @@ the split 60 and 40. It fills in two parts:
    and check the invariants, and that a restart gives the same book.
 2. **The provider contracts and the tests a venue must pass.**
 3. **The runner,** calling the strategies as they are today, `ImmediateSignal` first.
-4. **The recorder, the new records and the lease.**
+4. **The recorder, the new records and the lock.**
 5. **The feeds:** the table feed, then the push feed.
 6. **A paper account, end to end.**
 7. **A first provider, live,** with one fund, then with two funds that share an asset.
@@ -832,6 +1018,9 @@ The owner said not to worry about these for now.
   (`bar_slices`).
 - The weights-only loop treats `weight_after` as executed. In the engine it is only what the
   strategy wants.
+- Deciding and filling are one step in the backtest: the policy works out how much may trade
+  and books the fill together. The engine needs the first without the second (ADR 0063,
+  decision 7).
 - `TrailingAverageDailyVolumeParticipation` adds the notional it intends to trade to its
   consumed capacity. Live it must add what was traded. Since #90 the backtest adds what
   filled in the book, after the cash rules; live, it is still what the venue fills.
@@ -866,28 +1055,49 @@ The owner said not to worry about these for now.
 
 ## Open Questions
 
-Proposals in this ADR that the owner has not decided:
+Every question below is settled. They are kept with their answers:
 
-1. The module's name, `msm_execution`. `msm.time_index.execution` and `msm.models.execution`
-   already hold the execution records.
-2. One open order request for each asset, changed by replace, instead of several at once.
-3. A fill is split between owners in proportion, so they get the same average price. The
-   alternative is first come, first served.
-4. A request the venue rejects or cancels is held back until a runner posts again.
-5. A runner whose strategy raises stops alone; the others go on.
+1. Decided on 2026-11-23: the module is `msm_execution`. The execution records stay in `msm`.
+2. Decided on 2026-11-23: one open order request for each asset, changed by replace. A
+   replaced request is a new order row (ADR 0064).
+3. Decided on 2026-11-23, as a setting of the account's policy (decision 18): a fill is
+   split between owners in proportion by default, so they get the same average price.
+4. Decided, as a setting: a request the venue rejects or cancels is held back until a runner
+   posts again, by default.
+5. Decided, as a setting: a runner whose strategy raises stops alone by default, and the
+   others go on.
 6. What the records say about the holdings of a fund whose row was removed from the target,
    or whose portfolio was retired ([ADR 0049](../0049-portfolio-lifecycle-and-account-history.md)).
-7. The journal's default, an SQLite file, and its default safety.
-8. `OrderManager` as one round of routing.
-9. Where the new tables are declared. Their migrations belong to ms-markets either way.
-10. Pulling back a working order to match it internally.
-11. Cash is not kept for each fund in the book. A fund fill carries its price, so cash can be
-    derived afterwards.
-12. Whether the recorder's lag may stop new targets, and at what limit.
-13. A direct asset row has no signal. Whether the lifetime of its strategy applies to the time
-    of its `PositionSet`.
-14. An internal trade moves its quantities at the match and gets its price at the next
-    observed one. Between the two, the fund fills have no price.
+   Answered for a cash fund: it keeps what it holds and stops rebalancing (owner; ADR 0062,
+   decision 12). A share fund is as today.
+7. Decided on 2026-11-23: the journal is the provider's choice. The default is an SQLite
+   file, and an order request is safe on disk before it leaves.
+8. Decided on 2026-11-23: one round of routing is one batch, the `OrderManager` row and its
+   `Order` rows (ADR 0064).
+9. Decided on 2026-11-23: the published records are Markets' tables. The rebalance state for
+   each owner is the provider's private table (ADR 0060).
+10. Decided, as a setting: a working order is not pulled back to match it internally, by
+    default.
+11. Decided on 2026-11-23: each fund owns its cash in the book. See decision 14.
+12. Decided, as a setting: the recorder's lag stops no new target by default, and trading
+    continues.
+13. Decided on 2026-11-23: for a direct asset row the lifetime counts from the time of its
+    target snapshot.
+14. Decided on 2026-11-23: the match reserves the quantity, and the internal trade is booked
+    at its price's time, units and cash together.
+15. Answered by ADR 0062 and ADR 0063: the account's rebalance strategy moves the money. A
+    share fund goes to its share at every sync, as today. A cash fund changes only by a
+    capital allocation a person records.
+16. Decided on 2026-11-23: an operation waits for the engine by default, and Markets keeps it
+    as waiting until the engine's answer is published (decision 15).
+17. Decided on 2026-11-23: after a crash the lock is released by the application that manages
+    the account, or by an Organization admin, as for `managed_by` (ADR 0060, decision 4).
+18. Decided on 2026-11-23: the account runner, and the account's strategy in place of the
+    `owner_size` hook (decision 16).
+19. Decided on 2026-11-23: a live fund trades under its portfolio's policy, restricted by its
+    account's (decision 17).
+20. Decided on 2026-11-23: the account's seven settings rule the account's cash at the venue
+    (process 5).
 
 ## Not Verified
 

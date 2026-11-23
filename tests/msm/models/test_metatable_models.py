@@ -241,19 +241,26 @@ def test_markets_models_declare_metatable_descriptions() -> None:
             assert "keyed by" in description.lower(), model.__name__
 
 
-def test_timestamped_execution_fact_tables_are_not_domain_metatables() -> None:
+def test_an_order_has_a_row_and_its_execution_facts_stay_timestamped() -> None:
+    """ADR 0064: an order is a registry row; its events and trades stay time-index facts."""
+
+    assert models.OrderTable.__metatable_identifier__ == "Order"
     assert not hasattr(models, "ExecutionErrorTable")
-    assert not hasattr(models, "OrderTable")
     assert not hasattr(models, "OrderStatusEventTable")
     assert not hasattr(models, "TradeTable")
-    identifiers = {
+    identifiers = [
         getattr(model, "__metatable_identifier__", model.__name__)
         for model in markets_sqlalchemy_models()
-    }
+    ]
     assert "ExecutionError" not in identifiers
-    assert "Order" not in identifiers
     assert "OrderStatusEvent" not in identifiers
     assert "Trade" not in identifiers
+    # The order comes after its batch and before the facts that reference it.
+    assert (
+        identifiers.index("OrderManager")
+        < identifiers.index("Order")
+        < identifiers.index("OrdersTS")
+    )
 
 
 def test_markets_metatable_row_keeps_legacy_alias() -> None:

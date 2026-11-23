@@ -98,9 +98,9 @@ def test_a_table_the_read_found_empty_gets_no_statement() -> None:
     ]
 
 
-def test_order_events_keep_their_statement_while_the_account_has_orders() -> None:
-    # Order events have no foreign key: an event written after the read is deleted only
-    # by the statement.
+def test_order_events_get_a_statement_only_when_the_read_counted_them() -> None:
+    # Order events have a key into their order (ADR 0064): one written after the read
+    # refuses the transaction, as every other RESTRICT key does.
     counts = {**dict.fromkeys(EVERY_TABLE_COUNTS, 0), "orders": 1}
 
     statements = account_delete_statements(
@@ -108,8 +108,7 @@ def test_order_events_keep_their_statement_while_the_account_has_orders() -> Non
     )
 
     assert [getattr(item, "statement", item).table.name for item in statements] == [
-        "ms_markets__ordereventsts",
-        "ms_markets__ordersts",
+        "ms_markets__order",
         "ms_markets__account",
     ]
 
@@ -129,8 +128,6 @@ def test_the_account_is_deleted_with_its_whole_history(sqlite_markets) -> None:
     account, other = _account(engine), _account(engine)
     history = _history(sqlite_markets, account)
     other_history = _history(sqlite_markets, other)
-    # Another account's order that reuses the identifier keeps its events.
-    _order(engine, other_history["identifier"], order_identifier=history["order"])
     assets, portfolios = _count(engine, "ms_markets__asset"), _count(engine, "ms_markets__portfolio")
 
     before = read_account_delete(sqlite_markets.context, uid=account)["counts"]
@@ -143,18 +140,15 @@ def test_the_account_is_deleted_with_its_whole_history(sqlite_markets) -> None:
         "deleted_count": 1,
         "deleted_rows": {key: before[key] for key in deleted["deleted_rows"]},
     }
-    assert deleted["deleted_rows"]["order_events"] == 0  # its only order's identifier is shared
-    assert all(
-        deleted["deleted_rows"][key] >= 1 for key in deleted["deleted_rows"] if key != "order_events"
-    )
+    assert all(deleted["deleted_rows"][key] >= 1 for key in deleted["deleted_rows"])
     assert set(_account_rows(engine, account, history["identifier"]).values()) == {0}
     assert _count(engine, "ms_markets__positionset") == 1
     assert _count(engine, "ms_markets__targetpositionsts") == 1
     assert _count(engine, "ms_markets__virtualfundholdingsset") == 1
     assert _count(engine, "ms_markets__virtualfundholdingsts") == 1
-    assert _count(engine, "ms_markets__ordereventsts") == 2
+    assert _count(engine, "ms_markets__ordereventsts") == 1
     other_rows = _account_rows(engine, other, other_history["identifier"])
-    assert other_rows["orders"] == 2 and 0 not in other_rows.values()
+    assert other_rows["orders"] == 1 and 0 not in other_rows.values()
     assert _count(engine, "ms_markets__asset") == assets
     assert _count(engine, "ms_markets__portfolio") == portfolios
 
@@ -270,15 +264,16 @@ def test_the_deleted_accounts_orders_trades_and_events_leave_the_stored_statisti
     history = _history(sqlite_markets, account)
     other_history = _history(sqlite_markets, other)
     sqlite_markets.keep_statistics(OrdersStorage, TradesStorage, OrderEventsStorage)
+    orders = history["order"], other_history["order"]
     for model in (OrdersStorage, OrderEventsStorage):
-        assert {history["order"], other_history["order"]} <= set(_progress(sqlite_markets, model))
+        assert set(orders) <= {uuid.UUID(key) for key in _progress(sqlite_markets, model)}
     trades_before = set(_progress(sqlite_markets, TradesStorage))
 
     delete_account(sqlite_markets.context, uid=account)
 
     for model in (OrdersStorage, OrderEventsStorage):
-        progress = _progress(sqlite_markets, model)
-        assert history["order"] not in progress and other_history["order"] in progress
+        progress = {uuid.UUID(key) for key in _progress(sqlite_markets, model)}
+        assert orders[0] not in progress and orders[1] in progress
     remaining = {row["trade_identifier"] for row in _rows(engine, "SELECT trade_identifier FROM ms_markets__tradests")}
     assert set(_progress(sqlite_markets, TradesStorage)) == remaining < trades_before
 
@@ -290,7 +285,7 @@ def test_another_accounts_order_on_its_order_manager_blocks_the_delete(sqlite_ma
     engine = sqlite_markets.engine
     account, other = _account(engine), _account(engine)
     history = _history(sqlite_markets, account)
-    _order(engine, _identifier(engine, other), order_identifier="foreign", manager=history["manager"])
+    _order(engine, _identifier(engine, other), manager=history["manager"])
     sqlite_markets.requests.clear()
 
     preflight = preflight_account_delete(sqlite_markets.context, uid=account)
@@ -315,7 +310,7 @@ def test_other_namespace_tables_change_only_through_their_own_keys(sqlite_market
     markets = sqlite_markets
     engine = markets.engine
     account = _account(engine)
-    history = _history(markets, account)
+    _history(markets, account)
     _create_provider_tables(engine)
     (holdings_set,) = _rows(
         engine,
@@ -329,9 +324,6 @@ def test_other_namespace_tables_change_only_through_their_own_keys(sqlite_market
         connection.exec_driver_sql(
             "INSERT INTO provider_ns__accountholdingsts__copy VALUES (?, 2.0)", (holdings_set["uid"],)
         )
-        connection.exec_driver_sql(
-            "INSERT INTO provider_ns__ordereventsts__copy VALUES (?, 'filled')", (history["order"],)
-        )
 
     deleted = delete_account(markets.context, uid=account)
 
@@ -339,7 +331,6 @@ def test_other_namespace_tables_change_only_through_their_own_keys(sqlite_market
     assert _provider_statements(markets) == []
     assert _count(engine, "provider_ns__account_sidecar") == 0  # its own CASCADE key
     assert _count(engine, "provider_ns__accountholdingsts__copy") == 0  # its own CASCADE key
-    assert _count(engine, "provider_ns__ordereventsts__copy") == 1  # no key: it stays
 
 
 def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(sqlite_markets) -> None:
@@ -350,7 +341,8 @@ def test_a_restrict_key_in_another_namespace_refuses_the_whole_delete(sqlite_mar
     _create_provider_tables(engine)
     with engine.begin() as connection:
         connection.exec_driver_sql(
-            "INSERT INTO provider_ns__ordersts__copy VALUES ('provider-order', ?)", (history["identifier"],)
+            "INSERT INTO provider_ns__ordersts__copy VALUES (?, ?)",
+            ("2026-01-01 00:00:00", history["order"].hex),
         )
     before = _account_rows(engine, account, history["identifier"])
 
@@ -372,7 +364,7 @@ def test_bulk_delete_deletes_each_account_and_reports_the_rest(sqlite_markets, m
     first, blocked, other = _account(engine), _account(engine), _account(engine)
     _history(sqlite_markets, first)
     blocked_history = _history(sqlite_markets, blocked)
-    _order(engine, _identifier(engine, other), order_identifier="foreign", manager=blocked_history["manager"])
+    _order(engine, _identifier(engine, other), manager=blocked_history["manager"])
     missing = uuid.uuid4()
 
     preflight = preflight_bulk_delete_accounts(sqlite_markets.context, uids=[first, blocked, missing])
@@ -405,7 +397,7 @@ def test_bulk_delete_deletes_the_selection_in_one_transaction(sqlite_markets, mo
     _history(sqlite_markets, second)
     # The second account's order uses the first account's order manager: alone, the first
     # account could not be deleted.
-    _order(engine, _identifier(engine, second), order_identifier="shared", manager=first_history["manager"])
+    _order(engine, _identifier(engine, second), manager=first_history["manager"])
     alone = preflight_bulk_delete_accounts(sqlite_markets.context, uids=[first])
     sqlite_markets.requests.clear()
 

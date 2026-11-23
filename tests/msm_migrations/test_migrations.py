@@ -168,6 +168,7 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0034_account_history_indexes.py",
         "0035_drop_pre_3_0_uid_columns.py",
         "0036_retire_constant_notional_exposure.py",
+        "0037_an_order_has_its_own_row.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -266,6 +267,11 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert retired_amount.revision == "0036"
     assert retired_amount.down_revision == "0035"
+    order_registry = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0037_an_order_has_its_own_row"
+    )
+    assert order_registry.revision == "0037"
+    assert order_registry.down_revision == "0036"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

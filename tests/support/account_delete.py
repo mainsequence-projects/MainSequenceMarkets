@@ -88,34 +88,38 @@ def _order_manager(engine, account: uuid.UUID) -> str:
     return identifier
 
 
-def _order(engine, account_identifier: str, *, order_identifier: str, manager: str | None = None) -> None:
+def _order(engine, account_identifier: str, *, manager: str | None = None) -> uuid.UUID:
+    """One order of the account, with one state row; answers its uid (ADR 0064)."""
+
+    order = uuid.uuid4()
     _insert(
         engine,
-        "ms_markets__ordersts",
-        order_time=WHEN,
-        order_identifier=order_identifier,
+        "ms_markets__order",
+        uid=order.hex,
         account_identifier=account_identifier,
         order_manager_identifier=manager,
         asset_identifier="AAA",
     )
+    _insert(engine, "ms_markets__ordersts", order_time=WHEN, order_uid=order.hex)
+    return order
 
 
-def _trade(engine, account_identifier: str, *, order_identifier: str) -> None:
+def _trade(engine, account_identifier: str, *, order: uuid.UUID) -> None:
     _insert(
         engine,
         "ms_markets__tradests",
         trade_time=WHEN,
         trade_identifier=f"trade-{uuid.uuid4().hex[:8]}",
         account_identifier=account_identifier,
-        order_identifier=order_identifier,
+        order_uid=order.hex,
         asset_identifier="AAA",
         commission_asset_identifier=None,
         settlement_asset_identifier=None,
     )
 
 
-def _order_event(engine, order_identifier: str, *, event_time: dt.datetime = WHEN) -> None:
-    _insert(engine, "ms_markets__ordereventsts", event_time=event_time, order_identifier=order_identifier)
+def _order_event(engine, order: uuid.UUID, *, event_time: dt.datetime = WHEN) -> None:
+    _insert(engine, "ms_markets__ordereventsts", event_time=event_time, order_uid=order.hex)
 
 
 def _virtual_fund(engine, account, source, portfolio, unique_identifier: str) -> None:
@@ -196,9 +200,8 @@ def _history(
     source = uuid.UUID(str(written["rows"][0]["holdings_set_uid"]))
     _virtual_fund(engine, account, source, portfolio, f"fund-{identifier}")
     manager = _order_manager(engine, account)
-    order = f"order-{uuid.uuid4().hex[:8]}"
-    _order(engine, identifier, order_identifier=order, manager=manager)
-    _trade(engine, identifier, order_identifier=order)
+    order = _order(engine, identifier, manager=manager)
+    _trade(engine, identifier, order=order)
     _order_event(engine, order)
     return {"identifier": identifier, "order": order, "manager": manager, "portfolio": portfolio}
 
@@ -219,7 +222,12 @@ def _account_rows(engine, account: uuid.UUID, identifier: str) -> dict[str, int]
             {"uid": uid},
         ),
         "orders": (
-            "SELECT count(*) FROM ms_markets__ordersts WHERE account_identifier = :identifier",
+            "SELECT count(*) FROM ms_markets__order WHERE account_identifier = :identifier",
+            {"identifier": identifier},
+        ),
+        "order_states": (
+            "SELECT count(*) FROM ms_markets__ordersts WHERE order_uid IN "
+            "(SELECT uid FROM ms_markets__order WHERE account_identifier = :identifier)",
             {"identifier": identifier},
         ),
         "trades": (
@@ -250,12 +258,10 @@ PROVIDER_TABLES = (
     # A storage instance of the holdings rows, which copies the core CASCADE key.
     "CREATE TABLE provider_ns__accountholdingsts__copy (holdings_set_uid CHAR(32) NOT NULL "
     "REFERENCES ms_markets__accountholdingsset (uid) ON DELETE CASCADE, quantity FLOAT)",
-    # A storage instance of the order events, which has no key.
-    "CREATE TABLE provider_ns__ordereventsts__copy (order_identifier VARCHAR(255) NOT NULL, status TEXT)",
-    # A storage instance of the orders, which copies the core RESTRICT key.
-    "CREATE TABLE provider_ns__ordersts__copy (order_identifier VARCHAR(255) PRIMARY KEY, "
-    "account_identifier VARCHAR(255) NOT NULL REFERENCES ms_markets__account (unique_identifier) "
-    "ON DELETE RESTRICT)",
+    # A storage instance of the order states, which copies the core RESTRICT key into the
+    # order (ADR 0064).
+    "CREATE TABLE provider_ns__ordersts__copy (order_time DATETIME NOT NULL, "
+    "order_uid CHAR(32) NOT NULL REFERENCES ms_markets__order (uid) ON DELETE RESTRICT)",
     # An uncatalogued instance of a portfolio's event ledger, which copies the contract's
     # RESTRICT key (`_copy_contract_table`).
     "CREATE TABLE provider_ns__portfolioeventledgerts__copy (time_index DATETIME NOT NULL, "

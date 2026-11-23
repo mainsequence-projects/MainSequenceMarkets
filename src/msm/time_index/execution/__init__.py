@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import uuid
 from typing import Any
 
 import pandas as pd
@@ -13,6 +15,13 @@ from msm.time_index.execution.storage import (
     OrderEventsStorage,
     OrdersStorage,
     TradesStorage,
+)
+from msm.time_index.execution.writes import (
+    ExecutionOrder,
+    ExecutionRefusal,
+    ExecutionWrite,
+    OrderExecution,
+    write_execution,
 )
 from msm.time_index.utils.storage_schema import storage_column_dtypes_map, storage_index_names
 from msm.time_index.utils.time import normalize_datetime64_ns_utc
@@ -101,7 +110,7 @@ class ExecutionUpdater(AssetIndexedUpdater):
 
 
 class Orders(ExecutionUpdater):
-    """Timestamped order records replacing Django Order, MarketOrder, and LimitOrder."""
+    """An order's state over time (``OrdersTS``); the order itself is its ``Order`` row."""
 
     @classmethod
     def _required_output_table(cls) -> type[OrdersStorage]:
@@ -181,9 +190,20 @@ def _normalize_execution_values(
             normalized[column_name] = values.map(bool)
         elif dtype == dc.JSONB:
             normalized[column_name] = values.map(_normalize_jsonb)
+        elif dtype == dc.UUID_TOKEN:
+            normalized[column_name] = values.map(_normalize_uuid)
         else:
             raise ValueError(f"Unsupported execution dtype {dtype!r}.")
     return normalized
+
+
+def _normalize_uuid(value: Any) -> uuid.UUID | None:
+    if value is None or (not isinstance(value, uuid.UUID) and pd.isna(value)):
+        return None
+    try:
+        return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+    except ValueError:
+        raise ValueError(f"Invalid uuid execution value {value!r}.") from None
 
 
 def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
@@ -195,9 +215,14 @@ def _normalize_jsonb(value: Any) -> dict[str, Any] | list[Any]:
 
 
 __all__ = [
+    "ExecutionOrder",
+    "ExecutionRefusal",
     "ExecutionUpdater",
     "ExecutionUpdaterConfiguration",
+    "ExecutionWrite",
     "OrderEvents",
+    "OrderExecution",
     "Orders",
     "Trades",
+    "write_execution",
 ]

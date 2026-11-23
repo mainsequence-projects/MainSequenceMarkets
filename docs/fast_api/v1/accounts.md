@@ -91,14 +91,16 @@ direct account snapshots and virtual-fund-grouped views.
   - `404` when the uid is unknown
 - `DELETE /api/v1/account/{uid}/`
   - deletes the account with its whole history in one transaction
-    ([ADR 0050](../../ADR/0050-account-deletion.md)): its orders, trades and the
-    order events of those orders, its order managers, virtual funds with their
+    ([ADR 0050](../../ADR/0050-account-deletion.md)): the events, trades and
+    state rows of its orders, then its orders
+    ([ADR 0064](../../ADR/0064-an-order-has-its-own-row.md)), its order managers,
+    virtual funds with their
     holdings sets and rows, target allocations with their position sets and
     target rows, holdings sets with their rows, then the account
   - only Markets tables receive statements. A table in another namespace loses
     rows only through its own foreign key: a `CASCADE` key deletes them with
     their parent, and a `RESTRICT` key refuses the whole delete. Rows with no
-    key, such as order events in a provider's copy of the events storage, stay
+    key stay
   - `delete_portfolios=true` (query parameter, `false` by default) also deletes,
     in the same transaction and with all their data, the portfolios that the
     account's virtual funds or target rows name and that nothing else uses: their
@@ -118,8 +120,8 @@ direct account snapshots and virtual-fund-grouped views.
     and `kept_portfolios` (each with its `reason`)
   - one delete sends MetaTables one read and one transaction, and asks for no
     impact; both run with MetaTables' longest deadline, 60 seconds
-  - the transaction has a statement only for the tables the read found rows in
-    (order events whenever the account has orders); a row written there after the
+  - the transaction has a statement only for the tables the read found rows in;
+    a row written there after the
     read is deleted by its `CASCADE` key or refuses the delete through its
     `RESTRICT` key. Every key and per-account lookup reads through an index
     (revision `0034`)

@@ -13,8 +13,11 @@ _EXPORTS = {
     "AssetSnapshotInput": ".assets",
     "AssetTimestampedUpdater": ".assets",
     "AssetTimestampedFrameMixin": ".assets",
+    "ExecutionOrder": ".execution",
+    "ExecutionRefusal": ".execution",
     "ExecutionUpdater": ".execution",
     "ExecutionUpdaterConfiguration": ".execution",
+    "ExecutionWrite": ".execution",
     "HoldingsUpdater": ".accounts",
     "HoldingsUpdaterConfiguration": ".accounts",
     "IndexUpdaterConfiguration": ".indices",
@@ -29,6 +32,7 @@ _EXPORTS = {
     "index_values_output_table_name": ".indices",
     "normalize_index_values_frame": ".indices",
     "OrderEvents": ".execution",
+    "OrderExecution": ".execution",
     "Orders": ".execution",
     "StampedUpdater": ".utils",
     "StampedUpdaterConfiguration": ".utils",
@@ -37,6 +41,7 @@ _EXPORTS = {
     "TargetPositionsConfiguration": ".accounts",
     "Trades": ".execution",
     "VirtualFundHoldings": ".accounts",
+    "write_execution": ".execution",
 }
 
 

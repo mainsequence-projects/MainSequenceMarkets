@@ -14,6 +14,11 @@ Builds on [ADR 0049](0049-portfolio-lifecycle-and-account-history.md) decision 1
 [ADR 0047](0047-markets-api-application-boundary.md): the account gets delete
 routes, and the row router runs `Account`'s own `delete`.
 
+Amended 2026-11-23 by [ADR 0064](0064-an-order-has-its-own-row.md): an order has its own
+row and an order's identifier is unique across accounts, so order events have a key and
+the delete finds an account's orders on `Order`. The keys table and the order-events
+notes below describe the schema before it; see the last implementation note.
+
 Amended 2026-11-19 by
 [issue 91](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/91):
 a delete sends one read and one transaction and asks MetaTables for no impact
@@ -469,3 +474,25 @@ This replaces the 4.1.1 note's "Bulk" bullet.
 - **The table itself.** MetaTables' impact blockers (the caller cannot write the table,
   or the table accepts no writes) report every selected row, and nothing is sent. The
   routes ask for the impact once and reuse it for five minutes, as the preflights do.
+
+### 2026-11-23: 6.0.0, ADR 0064
+
+An order has its own row, `Order`, keyed by its uid, unique across accounts
+([ADR 0064](0064-an-order-has-its-own-row.md)). This replaces every note above about
+order events having no key and orders being unique per account.
+
+- **Keys.** `Order.account_identifier` references `Account.unique_identifier` and
+  `Order.order_manager_identifier` references `OrderManager.unique_identifier`, both
+  `RESTRICT`. `OrdersTS` and `OrderEventsTS` reference `Order.uid`; `TradesTS` keeps its
+  key to the account and references `(uid, account_identifier, asset_identifier)` of its
+  order. Every one is `RESTRICT`.
+- **Statements.** The delete removes, in order, the events, trades and state rows of the
+  account's orders, then the orders (`deleted_rows` keys `order_events`, `trades`,
+  `order_states`, `orders`), then the order managers: fifteen tables. An account's orders
+  are the `Order` rows that name it; their events and state rows are found by their
+  uid. `ordered_by_another_account` is gone, and order events get a statement only
+  when the read counted them, as every other table.
+- **Blockers.** "Orders of other accounts on its order managers" are `Order` rows of
+  other accounts.
+- **Other applications.** A provider's instance of `OrderEventsTS` copies the key into
+  `Order`, so its events now block the delete, as its orders do.

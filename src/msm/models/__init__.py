@@ -26,7 +26,7 @@ from .calendars import (
     CalendarTable,
 )
 from .derivatives import FutureAssetDetailsTable
-from .execution import OrderManagerTable
+from .execution import OrderManagerTable, OrderTable
 from .issuers import IssuerTable
 from .indices import IndexTable, IndexTypeTable
 from .index_dataset_availability import IndexDatasetAvailabilityTable
@@ -78,6 +78,7 @@ def markets_sqlalchemy_models() -> list[type]:
         AccountTargetAllocationTable,
         PositionSetTable,
         OrderManagerTable,
+        OrderTable,
         *_markets_time_index_storage_models(),
     ]
 
@@ -141,6 +142,7 @@ __all__ = [
     "IssuerTable",
     "OpenFigiAssetDetailsTable",
     "OrderManagerTable",
+    "OrderTable",
     "PositionSetTable",
     "PortfolioGroupMembershipTable",
     "PortfolioGroupTable",

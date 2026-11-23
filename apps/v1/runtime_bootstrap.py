@@ -30,6 +30,7 @@ V1_RUNTIME_MODELS = [
     "AccountTargetAllocation",
     "PositionSet",
     "OrderManager",
+    "Order",
     "OrdersStorage",
     "TradesStorage",
     "OrderEventsStorage",
