@@ -386,16 +386,15 @@ is a `404`:
       "account_target_allocation_uid": "allocation-uid",
       "position_set_uid": "position-set-uid",
       "target_positions_date": "2026-11-09T15:00:00Z",
-      "weight_notional_exposure": null,
-      "constant_notional_exposure": "250000"
+      "weight_notional_exposure": "0.3"
     }
   ],
   "pageInfo": {"pageIndex": 0, "pageSize": 100, "totalItems": 1, "hasNextPage": false, "hasPreviousPage": false}
 }
 ```
 
-The exposure is the portfolio row's `weight_notional_exposure` or
-`constant_notional_exposure`; portfolio rows never use `single_asset_quantity`.
+The exposure is the portfolio row's `weight_notional_exposure`; portfolio rows never use
+`single_asset_quantity`.
 `position_set_uid` identifies the snapshot read, so a caller that rewrites the
 account's target afterwards can tell whether it changed in between. The route
 returns the same accounts as the other account routes: per-account scoping
@@ -433,6 +432,40 @@ portfolio again, and the updaters fill the retired period on their next run.
 Both routes are registry writes, and their acting-identity records are the only
 record of when a portfolio was retired. `MarketsClient.retire_portfolio(...)`
 and `reinstate_portfolio(...)` call them.
+
+### Retire Several Portfolios
+
+```text
+POST /api/v1/portfolio/bulk-retire/
+```
+
+```json
+{"uids": ["portfolio-uid-1", "portfolio-uid-2"]}
+```
+
+Retires every selected portfolio that may be retired, as `retirePortfolio` retires
+one, in one call
+([issue 124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)):
+one update retires each live portfolio that no account's current target names,
+checking the targets in the same statement, and one read then counts each
+portfolio's current targets, undoing a retirement a target write overtook. A
+portfolio that a current target names, or that does not exist, never stops the
+others. The answer lists the portfolios retired, and those already retired,
+unchanged, in `retired`, and each other one, with the reason, in `failed`:
+
+```json
+{
+  "retired": [{"uid": "portfolio-uid-1", "unique_identifier": "example-sleeve", "retired_at": "2026-11-23T10:37:55Z"}],
+  "failed": [
+    {
+      "uid": "portfolio-uid-2",
+      "detail": "Portfolio portfolio-uid-2 cannot be retired: 1 account's current target names it. GET /api/v1/portfolio/{uid}/account-targets/ lists them; write their targets without it first."
+    }
+  ]
+}
+```
+
+The route is a registry write. `MarketsClient.bulk_retire_portfolios(...)` calls it.
 
 ## Delete Portfolio
 
@@ -583,10 +616,12 @@ rows, through its dataset's index on `(portfolio_identifier, time_index)`
 It returns the MetaTables impact, the blockers, and per portfolio the rows the
 delete removes:
 
+`allowed` is true when at least one selected portfolio can be deleted:
+
 ```json
 {
-  "allowed": false,
-  "detail": "The portfolio selection cannot be deleted as submitted.",
+  "allowed": true,
+  "detail": "1 of the 2 selected portfolios can be deleted with its datasets; the others are kept.",
   "matched_count": 2,
   "blockers": [
     "Portfolio 'protected-sleeve': 1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT)."
@@ -612,15 +647,18 @@ delete removes:
 }
 ```
 
-The bulk delete runs the preflight and answers `409` when it reports a blocker.
-Otherwise it deletes each portfolio as `DELETE /api/v1/portfolio/{uid}/` does,
-each in its own transaction, with the preflight's checks: the request counts the
-selection once, and each portfolio's `deleted_rows` are its preflight
-`row_counts`. It returns every deleted portfolio:
+The bulk delete deletes every selected portfolio that may go, as
+`DELETE /api/v1/portfolio/{uid}/` deletes one, and all of them together in one
+transaction
+([issue 127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+It runs the preflight's checks once: the request counts the selection once, and
+each portfolio's `deleted_rows` are its preflight `row_counts`. A portfolio that is
+missing or refused never stops the others. The answer, `200`, lists every deleted
+portfolio in `deleted` and every other one, with the reason, in `failed`:
 
 ```json
 {
-  "detail": "Deleted 1 portfolio with its datasets.",
+  "detail": "Deleted 1 portfolio with its datasets. 1 could not be deleted.",
   "deleted_count": 1,
   "deleted": [
     {
@@ -631,10 +669,17 @@ selection once, and each portfolio's `deleted_rows` are its preflight
       "deleted_rows": {"weights": 4, "values": 4, "rebalance_state": 0, "analytics": 0, "event_ledger": 0, "state": 0, "cash_flows": 0}
     }
   ],
-  "failed": []
+  "failed": [
+    {
+      "uid": "portfolio-uid-2",
+      "detail": "Portfolio 'protected-sleeve' cannot be deleted; nothing was deleted. 1 virtual fund target it (VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT). Account history is kept for as long as the account exists (ADR 0049); retire the portfolio instead."
+    }
+  ]
 }
 ```
 
-A portfolio refused after the preflight, for example by a reference written in
-between, is listed in `failed` with its `detail`, and the route answers `409`
-naming it. The other portfolios are still deleted.
+A refusal the checks cannot see, such as a reference written after them or a
+`RESTRICT` key of an application's own table, refuses the selection's transaction,
+which then deletes nothing. The portfolios are then deleted one per transaction, so
+only the refused one is listed in `failed` and the others are still deleted. A
+MetaTables blocker on the portfolio table itself keeps every portfolio.

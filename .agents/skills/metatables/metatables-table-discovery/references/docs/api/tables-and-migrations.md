@@ -137,7 +137,10 @@ Both routes use the same permission-filtered implementation and return:
 
 Each field is an object or `null` when no statistics have been stored; explicitly
 stored empty objects remain `{}`. Additional stored statistics keys and nested
-index coordinates are preserved. Reads return catalog statistics without querying
+index coordinates are preserved. `index_progress` and `index_min` nest one level per
+identity dimension, keyed by each value's JSON form whatever the engine stores: a
+UUID's canonical text, `true` or `false`, `null`, a number, an ISO 8601 date, or a
+timestamp in UTC as ISO 8601 with `Z`. Reads return catalog statistics without querying
 the physical table, recalculating bounds, or changing stored progress.
 Missing, hidden, and relational tables return the same 404 response. `tables.get_data`
 (`data_viewer`) is sufficient; writes are not required. The `/stats/` spelling is also accepted
@@ -203,16 +206,17 @@ the whole list. Its errors:
 
 See [ADR 0026](../adr/api/0026-atomic-statement-lists.md).
 
-On PostgreSQL and SQLite, a write through either route answers with
-`index_statistics`: the UID of each time-index table the engine reports the write
-changed, and that table's stored statistics as of the response. `rebuilt` means they
+A write through either route answers with `index_statistics`: the UID of each
+time-index table the engine reports the write changed, and that table's stored
+statistics as of the response. MySQL and SQL Server cannot tell, so there it lists
+every time-index table the caller may write. `rebuilt` means they
 were rebuilt from the table's rows, as after a chunk insert. Otherwise they stayed as
 they were, and the value says why: `too_many_index_coordinates` (more than 10,000),
 `not_readable` (the caller cannot read the table; only a foreign key's action wrote
 it) or `reconciliation_required` (the rebuild or catalog write failed after the
 commit). The write stands in every case, and a table without stored statistics is
-not listed. On the local runtime the statistics commit with the write; on PostgreSQL
-the API rebuilds them after the commit, under the table's catalog lock.
+not listed. On the local runtime the statistics commit with the write; elsewhere the
+API rebuilds them after the commit, under the table's catalog lock.
 
 `POST /meta-tables/run-query/` accepts `{"data_source_uid": "…", "sql": "…"}` and
 optional `limits`. It uses the same restricted execution path in read mode and

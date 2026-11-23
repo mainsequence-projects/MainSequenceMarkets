@@ -535,7 +535,7 @@ what a runner subscribes to.
 | Hook | Default | Owner of the rule |
 | --- | --- | --- |
 | `quantize` | Round toward zero to the book unit, as the backtest does | The provider (owner) |
-| `owner_size` | The exposure row: a share of the account's value, or its amount | The provider |
+| `owner_size` | The exposure row: a share of the account's value | The provider |
 | `check_order` | Accept | The provider: buying power, limits, price bands |
 | Strategy for direct rows | None. A direct row that names no strategy is refused when none is set | The provider (owner) |
 | Journal safety | Order requests are safe on disk before they leave | The provider |
@@ -677,10 +677,11 @@ The account target:
 | Row | Exposure | Strategy |
 | --- | --- | --- |
 | Portfolio A | 40% of the account's value | Portfolio A's, `ImmediateSignal` |
-| Portfolio B | 300,000 | Portfolio B's, `ImmediateSignal` |
+| Portfolio B | 30% of the account's value | Portfolio B's, `ImmediateSignal` |
 | TSLA, a direct asset row | 5% of the account's value | Named on the row: a participation strategy |
 
-The book at the start. The account is worth 1,000,000, so fund A's size is 400,000:
+The book at the start. The account is worth 1,000,000, so fund A's size is 400,000 and fund
+B's is 300,000:
 
 | Owner | AAPL | MSFT | JNJ | TSLA |
 | --- | --- | --- | --- | --- |

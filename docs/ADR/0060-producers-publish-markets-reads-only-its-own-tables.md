@@ -512,3 +512,21 @@ Both default to a dry run.
 - Still not verified: the cost of a run through the API and of publishing a long history
   (no measurement), and whether any consumer outside this repository uses `include=` or the
   catalog routes.
+
+### 2026-11-23: unreleased, issue 126
+
+Ending several signals took one Markets call each, three MetaTables operations per
+signal ([issue 126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)).
+The recipe `end_signals(signal_uids) -> dict` and `SignalMetadata.end_many`, one row
+operation recorded by `registry_write` as `end` is, end a selection in two:
+
+- **One read** (`msm_portfolios.services.public_api.end_signal_metadata_records`) finds each
+  signal's row, its manager, its weights and the portfolios that name it.
+- **One transaction** deletes every allowed signal's weights with one `IN (…)` statement,
+  then the metadata rows, guarded to delete exactly the rows read.
+- **What may not go is reported.** A signal that is missing, that the caller does not manage
+  (decision 4) or that a `Portfolio` names is listed in `failed` with the reason and never
+  stops the others. A refusal only the database finds, such as a portfolio written after
+  the read or a key from an application's own table, refuses the transaction, which deletes
+  nothing; each signal is then ended on its own, as `end` ends one, so only the refused ones
+  stay.

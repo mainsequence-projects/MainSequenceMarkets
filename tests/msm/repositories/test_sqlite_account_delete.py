@@ -376,7 +376,11 @@ def test_bulk_delete_deletes_each_account_and_reports_the_rest(sqlite_markets, m
     missing = uuid.uuid4()
 
     preflight = preflight_bulk_delete_accounts(sqlite_markets.context, uids=[first, blocked, missing])
-    assert preflight["allowed"] is False
+    # Issue 128: a blocked or missing account keeps itself, never the selection.
+    assert preflight["allowed"] is True
+    assert preflight["detail"] == (
+        "1 of the 3 selected accounts can be deleted with its history; the others are kept."
+    )
     assert preflight["matched_count"] == 2
     assert [item["uid"] for item in preflight["accounts"]] == [str(first), str(blocked)]
     assert preflight["blockers"][1] == f"Account {missing} was not found."
@@ -388,6 +392,30 @@ def test_bulk_delete_deletes_each_account_and_reports_the_rest(sqlite_markets, m
     assert [item["uid"] for item in result["failed"]] == [str(blocked), str(missing)]
     assert _count(engine, "ms_markets__account") == 2
     assert impact_calls == ["impact"]  # the preflight's; the bulk delete asks for none
+
+
+def test_bulk_delete_deletes_the_selection_in_one_transaction(sqlite_markets, monkeypatch) -> None:
+    """Issue 128: the accounts that may go are deleted together, and rows one selected
+    account holds of another block neither."""
+
+    _impact_unavailable(monkeypatch)
+    engine = sqlite_markets.engine
+    first, second = _account(engine), _account(engine)
+    first_history = _history(sqlite_markets, first)
+    _history(sqlite_markets, second)
+    # The second account's order uses the first account's order manager: alone, the first
+    # account could not be deleted.
+    _order(engine, _identifier(engine, second), order_identifier="shared", manager=first_history["manager"])
+    alone = preflight_bulk_delete_accounts(sqlite_markets.context, uids=[first])
+    sqlite_markets.requests.clear()
+
+    result = bulk_delete_accounts(sqlite_markets.context, uids=[first, second])
+
+    assert alone["allowed"] is False
+    assert [item["uid"] for item in result["deleted"]] == [str(first), str(second)]
+    assert result["failed"] == []
+    assert sqlite_markets.requests == ["read", "read", f"transaction:{len(ACCOUNT_DELETE_TABLES)}"]
+    assert _count(engine, "ms_markets__account") == 0
 
 
 def test_bulk_preflight_allows_a_clean_selection(sqlite_markets, monkeypatch) -> None:

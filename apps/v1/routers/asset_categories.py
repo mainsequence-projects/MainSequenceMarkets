@@ -27,7 +27,6 @@ from msm.api.http import (
     BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
-    blocked_preflight_detail,
     explicit_uuid_selection,
     resource_collection_response,
 )
@@ -103,7 +102,12 @@ def post_asset_category(
     "/bulk-delete/",
     response_model=BulkDeleteAssetCategoriesResponse,
     summary="Bulk delete asset categories",
-    description="Execute the discovered explicit-selection asset-category delete action.",
+    description=(
+        "Delete every explicitly selected asset category that exists, in one statement. A "
+        "category that is missing or refused never stops the others: the answer lists each "
+        "deleted category in `deleted` and each one that was not deleted, with the reason, "
+        "in `failed`."
+    ),
     operation_id="bulkDeleteAssetCategories",
 )
 def post_asset_category_bulk_delete(
@@ -116,11 +120,8 @@ def post_asset_category_bulk_delete(
         uids = explicit_uuid_selection(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkDeletePreflightResponse.model_validate(
-        preflight_bulk_delete_asset_categories(uids=uids)
-    )
-    if not preflight.allowed:
-        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    # What may go is deleted and the rest is reported; nothing refuses the selection
+    # (issue 128).
     return bulk_delete_asset_categories(payload={"uids": uids})
 
 

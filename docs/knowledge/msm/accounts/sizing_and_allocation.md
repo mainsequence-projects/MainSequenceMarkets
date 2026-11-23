@@ -29,7 +29,7 @@ assigns units. It never prices anything. Every number that depends on a price is
 
 | Step | Who | Needs prices |
 | --- | --- | --- |
-| State the exposure: a share of NAV or an amount per portfolio | The user, through you | No |
+| State the exposure: a share of NAV per portfolio | The user, through you | No |
 | Record the exposure and create the fund | ms-markets | No |
 | Publish the account's holdings | You | No |
 | Size each exposure into units | You | Yes |
@@ -44,7 +44,7 @@ AAPL 1,000, MSFT 600, JNJ 1,000 and TSLA 1,640; TSLA is in no fund.
 ## Step 1: Write The Exposure
 
 The account target says how much of each portfolio the account should hold. It is a share
-of the account's NAV or an amount, never units: a portfolio has weights, not units.
+of the account's NAV, never units: a portfolio has weights, not units.
 
 ```python
 from msm.client import MarketsClient
@@ -56,20 +56,20 @@ target = client.add_account_target_positions(
     positions=[
         # 40% of the account's NAV in portfolio A.
         {"target_type": "portfolio", "portfolio_uid": portfolio_a_uid, "weight_notional_exposure": 0.40},
-        # 300,000 in portfolio B.
-        {"target_type": "portfolio", "portfolio_uid": portfolio_b_uid, "constant_notional_exposure": 300_000},
+        # 30% in portfolio B.
+        {"target_type": "portfolio", "portfolio_uid": portfolio_b_uid, "weight_notional_exposure": 0.30},
     ],
 )
 ```
 
-- **One row per portfolio**, with exactly one of `weight_notional_exposure` and
-  `constant_notional_exposure`.
+- **One row per portfolio**, stating `weight_notional_exposure`.
 - **The fund is created here.** Writing an exposure to a portfolio creates the `VirtualFund`
   of that account and portfolio if it does not exist. It has no holdings until the first
   sync.
 - **A new snapshot to change it.** Write a new target at the new time.
-- **An asset target** (`target_type="asset"`) is a direct target on one asset: a share, an
-  amount, or `single_asset_quantity` in units.
+- **An asset target** (`target_type="asset"`) is a direct target on one asset: a share, or
+  `single_asset_quantity` in units.
+- **Only these fields.** A field a row does not have is refused, by the API and in-process.
 
 ## Step 2: Publish The Holdings
 
@@ -82,7 +82,7 @@ A sync sizes every exposure of the target into units, with your prices at `T`. T
 only step that needs market data, and it is yours.
 
 With your prices (AAPL 200, MSFT 400, JNJ 150, TSLA 250) the account is worth 1,000,000.
-Fund A is 40% of that, 400,000. Fund B is 300,000.
+Fund A is 40% of that, 400,000. Fund B is 30%, 300,000.
 
 | Fund | Asset | Calculation | Target units |
 | --- | --- | --- | --- |
@@ -146,9 +146,8 @@ sized_targets = [
 ]
 ```
 
-- **Every exposure must be sized:** each portfolio row, and each asset row stated as a share
-  or an amount. An asset row stated as `single_asset_quantity` is already in units and is not
-  sized.
+- **Every exposure must be sized:** each portfolio row, and each asset row stated as a share.
+  An asset row stated as `single_asset_quantity` is already in units and is not sized.
 - **An empty `positions` list** is a target sized to nothing.
 - **A target the `PositionSet` does not name** is refused.
 - A mismatch answers 400 `invalid_sized_targets` and lists every problem.
@@ -259,7 +258,7 @@ sync: the latest, or the one at `valuation_time`. Each line has the owner (`fund
 
 ## Rules To Keep
 
-- State exposure in the account target: a share of NAV or an amount per portfolio.
+- State exposure in the account target: a share of NAV per portfolio.
 - Never send ms-markets a price or a NAV. Send units, in `sized_targets`.
 - Size at every sync, with the prices of that sync.
 - Do not expect ms-markets to check that a sizing matches its portfolio's weights.

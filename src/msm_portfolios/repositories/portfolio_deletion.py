@@ -1,10 +1,11 @@
-"""Delete a portfolio with its own datasets (ADR 0049, issue 93).
+"""Delete portfolios with their own datasets (ADR 0049, issues 93 and 127).
 
 The delete is an ordered statement list that MetaTables runs in one transaction on
 PostgreSQL and on SQLite (MetaTables ADR 0026), as the account delete is (ADR 0050).
-Every statement targets a table in the Markets namespace: the portfolio's rows in its
-seven datasets, then the portfolio row. Rows in another application's table are never
-deleted here; their `RESTRICT` keys refuse the delete instead (ADR 0060).
+Every statement targets a table in the Markets namespace: the portfolios' rows in their
+seven datasets, then the portfolio rows. One list deletes one portfolio or a whole
+selection. Rows in another application's table are never deleted here; their `RESTRICT`
+keys refuse the delete instead (ADR 0060).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import String, Uuid, bindparam, delete, func, select
+from sqlalchemy import delete, func, select
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from metatables.compiled_sql.v1 import GuardedStatement
@@ -34,26 +35,59 @@ from msm.repositories.base import (
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 
 PORTFOLIO_DELETE_GUARD = "portfolio"
-"""Guard label of the last statement: the portfolio row, with the identifier read before."""
+"""Guard label of the last statement: every portfolio row, with the identifier read before."""
 
 
 @dataclass(frozen=True)
 class _PortfolioScope:
-    uid: uuid.UUID
-    unique_identifier: str
-
-    def portfolio_uid(self) -> Any:
-        return bindparam("portfolio_uid", value=self.uid, type_=Uuid(as_uuid=True))
-
-    def portfolio_identifier(self) -> Any:
-        return bindparam("portfolio_identifier", value=self.unique_identifier, type_=String())
+    uids: tuple[uuid.UUID, ...]
+    unique_identifiers: tuple[str, ...]
 
 
-def _scope(uid: uuid.UUID | str, unique_identifier: str) -> _PortfolioScope:
-    identifier = str(unique_identifier or "").strip()
-    if not identifier:
-        raise ValueError("Deleting a portfolio requires its unique_identifier.")
-    return _PortfolioScope(uid=uuid.UUID(str(uid)), unique_identifier=identifier)
+def _scope(portfolios: Sequence[tuple[uuid.UUID | str, str]]) -> _PortfolioScope:
+    pairs: dict[uuid.UUID, str] = {}
+    for uid, unique_identifier in portfolios:
+        identifier = str(unique_identifier or "").strip()
+        if not identifier:
+            raise ValueError("Deleting a portfolio requires its unique_identifier.")
+        pairs[uuid.UUID(str(uid))] = identifier
+    if not pairs:
+        raise ValueError("Deleting portfolios requires at least one portfolio.")
+    return _PortfolioScope(uids=tuple(pairs), unique_identifiers=tuple(pairs.values()))
+
+
+def portfolios_delete_statements(
+    portfolios: Sequence[tuple[uuid.UUID | str, str]],
+) -> list[GuardedStatement | Any]:
+    """The delete of ``portfolios``, ``(uid, unique_identifier)`` pairs, for one transaction.
+
+    The seven datasets go first, each in one statement for every portfolio, then the
+    portfolio rows. The last statement is guarded: it must delete exactly the portfolios
+    read before, each with its ``unique_identifier``, while no virtual fund or account
+    target row names any of them, or nothing is deleted.
+    """
+
+    scope = _scope(portfolios)
+    identifiers = list(scope.unique_identifiers)
+    statements: list[GuardedStatement | Any] = [
+        delete(table.model).where(table.model.portfolio_identifier.in_(identifiers))
+        for table in PORTFOLIO_DATASET_TABLES
+    ]
+    portfolio_rows = (
+        delete(PortfolioTable)
+        .where(PortfolioTable.uid.in_(list(scope.uids)))
+        .where(PortfolioTable.unique_identifier.in_(identifiers))
+    )
+    for _key, model, column in ACCOUNT_HISTORY_REFERENCES:
+        portfolio_rows = portfolio_rows.where(~account_history_reference(model, column))
+    statements.append(
+        GuardedStatement(
+            portfolio_rows.returning(PortfolioTable.uid, PortfolioTable.unique_identifier),
+            expect_rows=len(scope.uids),
+            label=PORTFOLIO_DELETE_GUARD,
+        )
+    )
+    return statements
 
 
 def portfolio_delete_statements(
@@ -61,34 +95,32 @@ def portfolio_delete_statements(
     uid: uuid.UUID | str,
     unique_identifier: str,
 ) -> list[GuardedStatement | Any]:
-    """The portfolio delete as ordered statements for one transaction.
+    """One portfolio's delete as ordered statements for one transaction."""
 
-    The seven datasets go first, then the portfolio row. The last statement is guarded:
-    it must delete exactly the portfolio read before, with the same
-    ``unique_identifier``, while no virtual fund or account target row names it, or
-    nothing is deleted.
+    return portfolios_delete_statements([(uid, unique_identifier)])
+
+
+def build_delete_portfolios_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolios: Sequence[tuple[uuid.UUID | str, str]],
+    dialect: MetaTableCompiledSQLDialect | None = None,
+) -> MarketsCompiledWrite:
+    """Compile the delete of ``portfolios`` for the context's DataSource.
+
+    The transaction may run for MetaTables' longest deadline (`with_delete_deadline`):
+    the 15 s default covers the whole list, and portfolios with long series can take
+    longer to delete (ADR 0049).
     """
 
-    scope = _scope(uid, unique_identifier)
-    statements: list[GuardedStatement | Any] = [
-        delete(table.model).where(table.model.portfolio_identifier == scope.portfolio_identifier())
-        for table in PORTFOLIO_DATASET_TABLES
-    ]
-    portfolio_row = (
-        delete(PortfolioTable)
-        .where(PortfolioTable.uid == scope.portfolio_uid())
-        .where(PortfolioTable.unique_identifier == scope.portfolio_identifier())
+    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
+    return compile_markets_statements(
+        portfolios_delete_statements(portfolios),
+        context=with_max_rows(with_delete_deadline(context), max(len(portfolios), 1)),
+        operation="delete",
+        data_source_uid=data_source_uid,
+        dialect=dialect,
     )
-    for _key, model, column in ACCOUNT_HISTORY_REFERENCES:
-        portfolio_row = portfolio_row.where(~account_history_reference(model, column))
-    statements.append(
-        GuardedStatement(
-            portfolio_row.returning(PortfolioTable.uid, PortfolioTable.unique_identifier),
-            expect_rows=1,
-            label=PORTFOLIO_DELETE_GUARD,
-        )
-    )
-    return statements
 
 
 def build_delete_portfolio_operation(
@@ -98,20 +130,30 @@ def build_delete_portfolio_operation(
     unique_identifier: str,
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
-    """Compile the portfolio delete for the context's DataSource.
+    """Compile one portfolio's delete for the context's DataSource."""
 
-    The transaction may run for MetaTables' longest deadline (`with_delete_deadline`):
-    the 15 s default covers the whole list, and a portfolio with long series can take
-    longer to delete (ADR 0049).
+    return build_delete_portfolios_operation(
+        context, portfolios=[(uid, unique_identifier)], dialect=dialect
+    )
+
+
+def delete_portfolios(
+    context: MarketsRepositoryContext,
+    *,
+    portfolios: Sequence[tuple[uuid.UUID | str, str]],
+) -> dict[str, Any]:
+    """Delete ``portfolios`` and their rows in their seven datasets, all or nothing.
+
+    Answers with the deleted portfolio rows, or with no rows when the guard stopped the
+    list: a portfolio no longer exists under its ``unique_identifier``, or account
+    history names it. A foreign key that refuses the delete raises the MetaTables
+    error. Either way nothing is deleted.
     """
 
-    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
-    return compile_markets_statements(
-        portfolio_delete_statements(uid=uid, unique_identifier=unique_identifier),
-        context=with_delete_deadline(context),
-        operation="delete",
-        data_source_uid=data_source_uid,
-        dialect=dialect,
+    return execute_markets_write(
+        build_delete_portfolios_operation(context, portfolios=portfolios),
+        context=context,
+        refused_by=(PORTFOLIO_DELETE_GUARD,),
     )
 
 
@@ -121,19 +163,9 @@ def delete_portfolio(
     uid: uuid.UUID | str,
     unique_identifier: str,
 ) -> dict[str, Any]:
-    """Delete the portfolio and its rows in its seven datasets, or nothing.
+    """Delete one portfolio and its rows in its seven datasets, or nothing."""
 
-    Answers with the deleted portfolio row, or with no rows when the guard stopped the
-    list: the portfolio no longer exists under ``unique_identifier``, or account
-    history names it. A foreign key that refuses the delete raises the MetaTables
-    error, and nothing is deleted.
-    """
-
-    return execute_markets_write(
-        build_delete_portfolio_operation(context, uid=uid, unique_identifier=unique_identifier),
-        context=context,
-        refused_by=(PORTFOLIO_DELETE_GUARD,),
-    )
+    return delete_portfolios(context, portfolios=[(uid, unique_identifier)])
 
 
 def build_count_portfolio_delete_rows_operation(
@@ -232,7 +264,10 @@ __all__ = [
     "PORTFOLIO_DELETE_GUARD",
     "build_count_portfolio_delete_rows_operation",
     "build_delete_portfolio_operation",
+    "build_delete_portfolios_operation",
     "count_portfolio_delete_rows",
     "delete_portfolio",
+    "delete_portfolios",
     "portfolio_delete_statements",
+    "portfolios_delete_statements",
 ]

@@ -552,7 +552,7 @@ def test_sizing_gives_every_exposure_of_the_target_in_units() -> None:
     rows, portfolios = sized_target_rows(
         [
             _exposure("portfolio", FUND_A, weight_notional_exposure=0.4),
-            _exposure("portfolio", FUND_B, constant_notional_exposure=300_000.0),
+            _exposure("portfolio", FUND_B, weight_notional_exposure=0.3),
             _exposure("asset", ASSETS["TSLA"], single_asset_quantity=-40.0),
             _exposure("asset", ASSETS["X"], weight_notional_exposure=0.05),
         ],
@@ -586,7 +586,7 @@ def test_sizing_lists_every_mismatch_with_the_target() -> None:
                 _exposure("portfolio", FUND_A, weight_notional_exposure=0.4),
                 _exposure("portfolio", FUND_B, weight_notional_exposure=0.2),
                 _exposure("asset", ASSETS["TSLA"], single_asset_quantity=10.0),
-                _exposure("asset", ASSETS["X"], constant_notional_exposure=500.0),
+                _exposure("asset", ASSETS["X"], weight_notional_exposure=0.05),
             ],
             [
                 _sizing("portfolio", FUND_A, [("AAPL", 3, 1), ("AAPL", 4, 1), ("MSFT", 0, 1)]),

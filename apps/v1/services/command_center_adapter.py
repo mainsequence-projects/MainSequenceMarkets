@@ -198,6 +198,7 @@ MUTATION_OPERATION_IDS = frozenset(
         "createPortfolioGroup",
         "deletePortfolio",
         "retirePortfolio",
+        "bulkRetirePortfolios",
         "reinstatePortfolio",
         "deletePortfolioGroup",
         "deletePortfolioWeights",

@@ -68,9 +68,10 @@ table for five minutes, and adds:
 - `blockers`: MetaTables' reasons the caller may not run the delete, prefixed
   with the table: the caller cannot write the table, the table does not accept
   writes, or its DataSource is read-only. The preflight then answers
-  `allowed: false` and execution answers `409` before the database refuses the
-  delete. Cascades never block: write on a table depends only on its own grants,
-  because a foreign key's action belongs to the referencing table.
+  `allowed: false`, and execution reports every selected row in `failed` with
+  them, before the database refuses the delete. Cascades never block: write on a
+  table depends only on its own grants, because a foreign key's action belongs to
+  the referencing table.
 
 Deleting portfolios or portfolio groups cascades to their
 `PortfolioGroupMembership` rows; deleting asset categories cascades to their
@@ -89,17 +90,26 @@ cascades fails unless the caller can access every referencing table. The
 preflight cannot detect this. PostgreSQL runs these actions as the referencing
 table's owner.
 
-Execution repeats preflight immediately before invoking domain deletion. A
-blocked selection returns HTTP `409` and does not call the delete service. The
-underlying delete operation still performs its own conflict checks, protecting
-against authorization or reference changes between preflight and execution. The
-portfolio bulk delete deletes by its preflight's counts instead of reading them
-again; each portfolio's guarded statement and the database's `RESTRICT` keys
-refuse a portfolio whose references changed in between.
+Execution never refuses the selection because one row cannot be deleted
+([issue 128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+It deletes every selected row that may go, together in one transaction, and
+answers `200` with one envelope on every bulk delete:
+
+- `detail` and `deleted_count`;
+- `deleted`: each deleted row, as the resource's delete reports it;
+- `failed`: each selected row that was not deleted, with its `uid` and the reason:
+  it was not found, a check refused it, or the database refused it.
+
+The delete runs its own checks: a reference written after the preflight, or a
+`RESTRICT` key of an application's own table, refuses the selection's transaction,
+which then deletes nothing, and each row is then deleted on its own, so only the
+refused ones are reported. The portfolio bulk delete deletes by its preflight's
+counts instead of reading them again.
 
 Request validation errors return `422`. Unsupported modes or options return
-`400`. A preflight that discovers missing or protected rows returns `200` with
-`allowed: false`; execution of that same selection returns `409`.
+`400`. A preflight that discovers missing or protected rows reports them in
+`blockers` and answers `allowed: true` when at least one selected row can still be
+deleted; execution of that selection deletes those rows and reports the others.
 
 ## Provider discovery
 

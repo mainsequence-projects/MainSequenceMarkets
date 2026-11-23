@@ -64,10 +64,13 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # (MetaTables#117), which the account and portfolio deletes rely on, 0.1.71 binds
     # SQLite compiled SQL by position (MetaTables#121), so preparing a bulk upsert's statements
     # no longer takes time quadratic in their values, 0.1.73 keeps autogenerate from
-    # dropping tables a provider does not own (MetaTables#125), and 0.1.74 autogenerates an
+    # dropping tables a provider does not own (MetaTables#125), 0.1.74 autogenerates an
     # added table on the selected runtime, stores a changed cadence, which the
     # InterpolatedPrices refusal tells a producer to do, and gives one update_hash to a
-    # positional and a keyword configuration (MetaTables#127, #131, #130).
+    # positional and a keyword configuration (MetaTables#127, #131, #130), and 0.1.77
+    # answers a delete impact in a fixed number of statements (MetaTables#136), reports a
+    # client timeout as one (MetaTables#147) and keeps values, indexes and checks through
+    # a SQLite rebuild (MetaTables#135).
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -79,7 +82,9 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.70") not in requirement.specifier
     assert Version("0.1.72") not in requirement.specifier
     assert Version("0.1.73") not in requirement.specifier
-    assert Version("0.1.74") in requirement.specifier
+    assert Version("0.1.74") not in requirement.specifier
+    assert Version("0.1.76") not in requirement.specifier
+    assert Version("0.1.77") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

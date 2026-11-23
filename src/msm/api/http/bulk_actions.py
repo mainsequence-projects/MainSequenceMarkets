@@ -160,6 +160,20 @@ class BulkDeletePreflightResponse(BulkActionPreflightResponse):
     )
 
 
+class BulkDeletedRow(HttpContractModel):
+    """One row a bulk delete removed."""
+
+    uid: str
+    unique_identifier: str | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class BulkDeleteFailure(HttpContractModel):
+    """One selected row a bulk delete did not remove, and why."""
+
+    uid: str
+    detail: str
+
+
 def build_bulk_delete_action(
     *,
     action_id: str,
@@ -239,15 +253,6 @@ def explicit_uuid_selection(
     return normalized
 
 
-def blocked_preflight_detail(preflight: BulkActionPreflightResponse) -> str:
-    """Render a stable error detail from a blocked preflight response."""
-
-    messages = list(preflight.blockers or [])
-    if messages:
-        return " ".join(messages)
-    return preflight.detail or "The bulk action is not allowed."
-
-
 __all__ = [
     "BULK_ACTION_EXECUTION_CONTRACT",
     "BULK_ACTION_PREFLIGHT_CONTRACT",
@@ -261,8 +266,9 @@ __all__ = [
     "BulkActionPreflightResponse",
     "BulkActionResourceId",
     "BulkActionSelection",
+    "BulkDeleteFailure",
     "BulkDeletePreflightResponse",
-    "blocked_preflight_detail",
+    "BulkDeletedRow",
     "build_bulk_delete_action",
     "bulk_action_option_values",
     "explicit_uuid_selection",

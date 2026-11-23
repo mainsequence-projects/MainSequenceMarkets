@@ -60,6 +60,7 @@ from .base import (
     execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
+    with_max_rows,
 )
 from .complete_reads import answering_a_write, page_context, whole_page
 from .write_inputs import input_rows as write_input_rows
@@ -629,9 +630,6 @@ def current_portfolio_target_rows_select(*, portfolio_uid: Any):
             PositionSetTable.uid.label("position_set_uid"),
             PositionSetTable.position_set_time.label("target_positions_date"),
             TargetPositionsStorage.weight_notional_exposure.label("weight_notional_exposure"),
-            TargetPositionsStorage.constant_notional_exposure.label(
-                "constant_notional_exposure"
-            ),
         )
         .select_from(TargetPositionsStorage)
         .join(PositionSetTable, PositionSetTable.uid == TargetPositionsStorage.position_set_uid)
@@ -688,6 +686,40 @@ def build_count_portfolio_account_targets_operation(
     ).subquery("current_portfolio_targets")
     statement = select(func.count().label("count")).select_from(current)
     return compile_markets_statement(statement, context=context, operation="select")
+
+
+def build_read_portfolios_current_targets_operation(
+    context: MarketsRepositoryContext,
+    *,
+    portfolio_uids: Sequence[uuid.UUID | str],
+) -> MetaTableCompiledSQLOperation:
+    """Each of ``portfolio_uids``' rows, with ``current_target_count``: the accounts whose
+    current target names it, counted as `build_count_portfolio_account_targets_operation`
+    counts them for one portfolio. A portfolio that does not exist has no row."""
+
+    count = (
+        current_portfolio_target_rows_select(portfolio_uid=PortfolioTable.uid)
+        .with_only_columns(func.count())
+        .scalar_subquery()
+    )
+    statement = select(PortfolioTable, count.label("current_target_count")).where(
+        PortfolioTable.uid.in_([uuid.UUID(str(uid)) for uid in portfolio_uids])
+    )
+    return compile_markets_statement(
+        statement,
+        context=with_max_rows(context, max(len(portfolio_uids), 1)),
+        operation="select",
+    )
+
+
+def read_portfolios_current_targets(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_read_portfolios_current_targets_operation(context, **kwargs),
+        context=context,
+    )
 
 
 def search_portfolio_account_targets(
@@ -1336,11 +1368,7 @@ def build_replace_account_target_positions_snapshot_operation(
                 **position,
                 **{
                     name: _python_scalar(position.get(name))
-                    for name in (
-                        "weight_notional_exposure",
-                        "constant_notional_exposure",
-                        "single_asset_quantity",
-                    )
+                    for name in ("weight_notional_exposure", "single_asset_quantity")
                 },
             }
             for position in positions
@@ -1368,7 +1396,6 @@ def build_replace_account_target_positions_snapshot_operation(
                 "asset_uid",
                 "portfolio_uid",
                 "weight_notional_exposure",
-                "constant_notional_exposure",
                 "single_asset_quantity",
                 "metadata_json",
             ],
@@ -1380,7 +1407,6 @@ def build_replace_account_target_positions_snapshot_operation(
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
                 input_rows.c.weight_notional_exposure,
-                input_rows.c.constant_notional_exposure,
                 input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows.join(position_set, true()).join(deleted_gate, true())),
@@ -1694,7 +1720,6 @@ def _target_positions_snapshot_statement_list(
             column("asset_uid", Uuid(as_uuid=True)),
             column("portfolio_uid", Uuid(as_uuid=True)),
             column("weight_notional_exposure", Float()),
-            column("constant_notional_exposure", Float()),
             column("single_asset_quantity", Float()),
             column("metadata_json", JSON()),
             name="input_rows",
@@ -1726,11 +1751,6 @@ def _target_positions_snapshot_statement_list(
                         type_=Float(),
                     ),
                     bindparam(
-                        f"constant_notional_exposure_{index}",
-                        value=_python_scalar(position.get("constant_notional_exposure")),
-                        type_=Float(),
-                    ),
-                    bindparam(
                         f"single_asset_quantity_{index}",
                         value=_python_scalar(position.get("single_asset_quantity")),
                         type_=Float(),
@@ -1757,7 +1777,6 @@ def _target_positions_snapshot_statement_list(
                 "asset_uid",
                 "portfolio_uid",
                 "weight_notional_exposure",
-                "constant_notional_exposure",
                 "single_asset_quantity",
                 "metadata_json",
             ],
@@ -1769,7 +1788,6 @@ def _target_positions_snapshot_statement_list(
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
                 input_rows.c.weight_notional_exposure,
-                input_rows.c.constant_notional_exposure,
                 input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows),
@@ -1884,7 +1902,6 @@ _TARGET_INPUT_COLUMNS = (
     ("asset_uid", Uuid),
     ("portfolio_uid", Uuid),
     ("weight_notional_exposure", Float),
-    ("constant_notional_exposure", Float),
     ("single_asset_quantity", Float),
     ("metadata_json", None),
 )

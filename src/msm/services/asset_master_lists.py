@@ -667,7 +667,10 @@ def bulk_delete_asset_category_records(
     description: str | None = None,
     description_contains: str | None = None,
     organization_owner_uid: str | None = None,
+    table_blockers: Sequence[str] = (),
 ) -> dict[str, Any]:
+    """Delete every selected asset category that exists and report the rest (issue 128)."""
+
     deletion_filters = _merge_bulk_delete_filters(
         current_url=current_url,
         search=search,
@@ -699,20 +702,18 @@ def bulk_delete_asset_category_records(
     else:
         target_uids = [str(uid) for uid in (uids or []) if str(uid).strip()]
 
-    deleted_count = 0
-    for target_uid in dict.fromkeys(target_uids):
-        if delete_asset_category_record(context, uid=target_uid):
-            deleted_count += 1
+    from msm.models import AssetCategoryTable
+    from msm.services.bulk_deletion import bulk_delete_rows
 
-    detail = (
-        "No asset categories matched the deletion request."
-        if deleted_count == 0
-        else f"Deleted {deleted_count} asset categor{'y' if deleted_count == 1 else 'ies'}."
+    # Every category that exists goes in one statement; the rest are reported (issue 128).
+    return bulk_delete_rows(
+        context,
+        model=AssetCategoryTable,
+        uids=target_uids,
+        label="Asset category",
+        plural="asset categories",
+        table_blockers=table_blockers,
     )
-    return {
-        "detail": detail,
-        "deleted_count": deleted_count,
-    }
 
 
 def get_asset_category_record(

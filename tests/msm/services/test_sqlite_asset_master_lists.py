@@ -117,7 +117,10 @@ def test_select_all_deletes_every_matching_category(sqlite_markets, small_read_p
         sqlite_markets.context, select_all=True, search="DOOMED"
     )
 
-    assert result == {"detail": "Deleted 601 asset categories.", "deleted_count": 601}
+    # One statement deletes every matching category (issue 128).
+    assert result["detail"] == "Deleted 601 asset categories."
+    assert result["deleted_count"] == len(result["deleted"]) == 601
+    assert result["failed"] == []
     assert category_count(sqlite_markets.engine) == 2
 
 

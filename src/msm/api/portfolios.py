@@ -202,7 +202,8 @@ class PortfolioDeleteFailure(BaseModel):
 
 
 class PortfolioBulkDeleteResponse(BaseModel):
-    """Portfolios deleted with their datasets, each in its own transaction."""
+    """What a bulk delete did: the portfolios deleted with their datasets, in one
+    transaction, and each selected portfolio it did not delete, with the reason."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -210,6 +211,31 @@ class PortfolioBulkDeleteResponse(BaseModel):
     deleted_count: int = 0
     deleted: list[PortfolioDeleteResponse] = Field(default_factory=list)
     failed: list[PortfolioDeleteFailure] = Field(default_factory=list)
+
+
+class PortfolioBulkRetireRequest(BaseModel):
+    """The portfolios to retire in one call (issue 124)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    uids: list[str] = Field(min_length=1, description="Portfolio uids to retire.")
+
+
+class PortfolioRetireFailure(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    uid: str
+    detail: str
+
+
+class PortfolioBulkRetireResponse(BaseModel):
+    """What a bulk retirement did: the portfolios retired by it or already retired, and
+    each selected portfolio it did not retire, with the reason (issue 124)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    retired: list[Portfolio] = Field(default_factory=list)
+    failed: list[PortfolioRetireFailure] = Field(default_factory=list)
 
 
 class PortfolioGroup(MarketsMetaTableRow):
@@ -515,8 +541,11 @@ def _resolve_portfolio_uid(
 __all__ = [
     "Portfolio",
     "PortfolioBulkDeleteResponse",
+    "PortfolioBulkRetireRequest",
+    "PortfolioBulkRetireResponse",
     "PortfolioCreate",
     "PortfolioDeleteFailure",
+    "PortfolioRetireFailure",
     "PortfolioDeleteResponse",
     "PortfolioDeletedRows",
     "PortfolioGroup",

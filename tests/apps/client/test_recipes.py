@@ -166,6 +166,70 @@ def test_end_signal_is_refused_while_a_portfolio_names_the_signal(markets) -> No
     assert SignalWeightsSeries.bounds([signal.signal_uid])[0].row_count == 1
 
 
+def test_end_signals_ends_what_may_go_and_reports_the_rest(markets) -> None:
+    """Issue 126: one call; a refused or missing signal never stops the others."""
+
+    first, second, named = (
+        ApplicationWeights.from_signal_configuration(
+            ApplicationWeightsConfig(provider="an-application", key=key)
+        )
+        for key in ("model-a", "model-b", "model-c")
+    )
+    for signal in (first, second, named):
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 1.0}})
+    _insert(
+        markets.engine,
+        "ms_markets__portfolio",
+        unique_identifier="names-the-signal",
+        calendar_uid=markets.calendar["uid"],
+        signal_uid=named.signal_uid,
+    )
+
+    result = recipes.end_signals(
+        [first.signal_uid, named.signal_uid, "never-published", second.signal_uid]
+    )
+
+    assert [item["signal_uid"] for item in result["ended"]] == [first.signal_uid, second.signal_uid]
+    assert all(item["deleted_weights_count"] == 1 for item in result["ended"])
+    assert [item["signal_uid"] for item in result["failed"]] == [named.signal_uid, "never-published"]
+    assert "1 portfolio names it" in result["failed"][0]["detail"]
+    assert SignalMetadata.filter(signal_uid=first.signal_uid) == []
+    assert SignalMetadata.filter(signal_uid=second.signal_uid) == []
+    assert SignalWeightsSeries.bounds([named.signal_uid])[0].row_count == 1
+
+
+def test_end_signals_keeps_only_the_signal_a_key_the_read_cannot_see_holds(markets) -> None:
+    """Issue 126: the database refuses the selection's transaction, which deletes nothing;
+    each signal is then ended on its own, and only the refused one stays."""
+
+    from msm_portfolios.models import SignalMetadataTable
+
+    kept, gone = (
+        ApplicationWeights.from_signal_configuration(
+            ApplicationWeightsConfig(provider="an-application", key=key)
+        )
+        for key in ("model-kept", "model-gone")
+    )
+    for signal in (kept, gone):
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 1.0}})
+    with markets.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE provider_ns__signalnotes (signal_uid VARCHAR(255) NOT NULL "
+            f"REFERENCES {SignalMetadataTable.__table__.name} (signal_uid) ON DELETE RESTRICT)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO provider_ns__signalnotes VALUES (?)", (kept.signal_uid,)
+        )
+
+    result = recipes.end_signals([kept.signal_uid, gone.signal_uid])
+
+    assert [item["signal_uid"] for item in result["ended"]] == [gone.signal_uid]
+    assert [item["signal_uid"] for item in result["failed"]] == [kept.signal_uid]
+    assert "could not be deleted" in result["failed"][0]["detail"]
+    assert SignalWeightsSeries.bounds([kept.signal_uid])[0].row_count == 1
+    assert SignalMetadata.filter(signal_uid=gone.signal_uid) == []
+
+
 # Portfolios ----------------------------------------------------------------------------------
 
 

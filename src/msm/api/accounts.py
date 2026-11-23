@@ -212,10 +212,10 @@ class Account(MarketsMetaTableRow):
 
     @classmethod
     def bulk_delete(cls, *, uids: Sequence[uuid.UUID | str]) -> dict[str, Any]:
-        """Delete each account as `delete` does, each in its own transaction.
+        """Delete every account that may go, as `delete` does, together in one transaction.
 
         Accounts that are missing or refused are listed in `failed`; the others are
-        deleted.
+        deleted (issue 128).
         """
 
         from msm.services import bulk_delete_accounts
@@ -749,7 +749,6 @@ class AccountTargetPositionRow(BaseModel):
     portfolio_uid: str | None = None
     unique_identifier: str
     weight_notional_exposure: str | None = None
-    constant_notional_exposure: str | None = None
     single_asset_quantity: str | None = None
     asset: AccountTargetPositionAssetReference | None = None
     portfolio: AccountTargetPositionPortfolioReference | None = None
@@ -767,8 +766,8 @@ class AccountTargetPositionsSnapshotResponse(BaseModel):
 class PortfolioAccountTarget(BaseModel):
     """One account whose current target names a portfolio (``listPortfolioAccountTargets``).
 
-    The exposure is the portfolio row's ``weight_notional_exposure`` or
-    ``constant_notional_exposure``; portfolio rows never use ``single_asset_quantity``.
+    The exposure is the portfolio row's ``weight_notional_exposure``; portfolio rows
+    never use ``single_asset_quantity``.
     ``position_set_uid`` identifies the snapshot read, so a caller can tell that
     the account's target changed before a later write.
     """
@@ -780,7 +779,6 @@ class PortfolioAccountTarget(BaseModel):
     position_set_uid: str
     target_positions_date: dt.datetime
     weight_notional_exposure: str | None = None
-    constant_notional_exposure: str | None = None
 
 
 class _AccountAddTargetPositionBaseRequest(BaseModel):
@@ -788,7 +786,6 @@ class _AccountAddTargetPositionBaseRequest(BaseModel):
 
     target_uid: str = Field(min_length=1)
     weight_notional_exposure: str | int | float | None = None
-    constant_notional_exposure: str | int | float | None = None
     single_asset_quantity: str | int | float | None = None
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
@@ -796,11 +793,7 @@ class _AccountAddTargetPositionBaseRequest(BaseModel):
     def _validate_single_exposure(self):
         provided_fields = [
             field_name
-            for field_name in (
-                "weight_notional_exposure",
-                "constant_notional_exposure",
-                "single_asset_quantity",
-            )
+            for field_name in ("weight_notional_exposure", "single_asset_quantity")
             if getattr(self, field_name) is not None
         ]
         if len(provided_fields) != 1:
@@ -932,8 +925,8 @@ class AccountVirtualFundSizedPosition(BaseModel):
 class AccountVirtualFundSizedTarget(BaseModel):
     """One exposure of the account's target, sized into units by the caller.
 
-    ms-markets stores exposure as a share of NAV or an amount and reads no price,
-    so the caller turns each exposure into units with its own prices and rules.
+    ms-markets stores exposure as a share of NAV and reads no price, so the caller
+    turns each exposure into units with its own prices and rules.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -974,7 +967,7 @@ class AccountVirtualFundAllocationPlanRequest(BaseModel):
         default_factory=list,
         description=(
             "The exposures of the `PositionSet` in units. Every portfolio exposure, and every "
-            "asset exposure stated as a share or an amount, must be sized; an asset target "
+            "asset exposure stated as a share, must be sized; an asset target "
             "stated as `single_asset_quantity` is already in units and is not sized. Any "
             "mismatch answers 400 `invalid_sized_targets`."
         ),

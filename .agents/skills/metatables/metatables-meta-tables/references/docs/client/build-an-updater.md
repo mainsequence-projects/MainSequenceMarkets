@@ -31,9 +31,14 @@ requires the table's catalog binding and effective API context. Running can exec
 dependencies, upload chunks, and update run history; it is not a pure constructor
 or DataFrame transformation.
 
-The example returns only observations later than its latest stored progress.
-For multiple streams, use per-coordinate statistics so a fast stream does not
-skip a slower one. Non-empty DataFrames must have the declared index names,
+The example returns only observations later than its own account's last stored
+row, `update_statistics.get_last_update_for_identity(account_uid)`. Update
+statistics describe the whole output table, which other producers share:
+`max_time_index_value` and `get_max_time_in_update_statistics()` are the newest
+row of any of them, so never start one stream there. A producer of several
+streams starts at the earliest of their own progress, as the tutorial's
+`own_progress` does; the runner drops the rows each stream already has.
+Non-empty DataFrames must have the declared index names,
 `datetime64[ns, UTC]` as the first index level, and matching value-column types.
 
 Return executable producers and read-only `TimeIndexTableRef` dependencies

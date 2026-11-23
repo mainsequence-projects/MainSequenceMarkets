@@ -111,12 +111,13 @@ def test_target_positions_frame_accepts_asset_and_portfolio_targets() -> None:
     assert str(flat["weight_notional_exposure"].dtype) == "float64"
 
 
-def test_target_positions_reject_stale_asset_identifier() -> None:
-    with pytest.raises(ValueError, match="not asset_identifier"):
+def test_target_positions_refuse_a_field_that_is_not_a_column() -> None:
+    with pytest.raises(ValueError, match="have no field quantity;"):
         validate_target_position_payload(
             {
-                "asset_identifier": "BTC",
+                "asset_uid": uuid.uuid4(),
                 "weight_notional_exposure": "0.25",
+                "quantity": "10",
             }
         )
 

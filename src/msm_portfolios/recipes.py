@@ -154,6 +154,19 @@ def end_signal(signal_uid: str) -> dict[str, Any]:
     return SignalMetadata.end(signal_uid)
 
 
+def end_signals(signal_uids: Sequence[str]) -> dict[str, Any]:
+    """End several signals in one Markets call: each one's weights and ``SignalMetadata``.
+
+    Every signal that may go is deleted in one transaction. A signal that is missing,
+    that the caller does not manage, or that a portfolio still names is listed in
+    ``failed`` with the reason and never stops the others (issue 126).
+    """
+
+    from msm_portfolios.api import SignalMetadata
+
+    return SignalMetadata.end_many(signal_uids)
+
+
 # Portfolios ----------------------------------------------------------------------------
 
 

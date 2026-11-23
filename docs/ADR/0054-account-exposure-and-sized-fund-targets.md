@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by [ADR 0061](0061-retire-constant-notional-exposure.md), accepted on 2026-11-23:
+`constant_notional_exposure` is retired, so a portfolio row of decision 1 states
+`weight_notional_exposure` only.
+
 Accepted (2026-11-15). The decisions marked (owner) were made by the owner on 2026-11-15.
 Implemented on `development` for 3.7.0; see "Implementation Notes".
 

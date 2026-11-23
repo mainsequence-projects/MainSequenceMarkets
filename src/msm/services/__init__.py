@@ -100,6 +100,7 @@ _EXPORTS = {
     "list_portfolio_account_targets_response": ".target_positions",
     "PortfolioRetiredError": ".portfolio_lifecycle",
     "PortfolioRetirementConflictError": ".portfolio_lifecycle",
+    "bulk_retire_portfolio_records": ".portfolio_lifecycle",
     "reinstate_portfolio_record": ".portfolio_lifecycle",
     "retire_portfolio_record": ".portfolio_lifecycle",
     "retired_portfolios": ".portfolio_lifecycle",

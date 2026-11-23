@@ -64,7 +64,6 @@ from msm.api.http import (
     ErrorResponse,
     ResourceCollection,
     api_error_with_inputs,
-    blocked_preflight_detail,
     bulk_action_option_values,
     explicit_uuid_selection,
     resource_collection_response,
@@ -356,15 +355,17 @@ def _account_bulk_selection(payload: BulkActionExecutionRequest) -> tuple[list[s
     response_model=AccountBulkDeleteResponse,
     summary="Bulk delete accounts",
     description=(
-        "Delete the selected accounts. " + _ACCOUNT_DELETE_DESCRIPTION + " The option "
-        "`delete_portfolios` in `options` applies it to every selected account. The route "
-        "runs the preflight first and answers 409 when it reports a blocker; MetaTables' "
-        "delete impact is asked for at most once."
+        "Delete every selected account that may go. " + _ACCOUNT_DELETE_DESCRIPTION + " "
+        "The option `delete_portfolios` in `options` applies it to every selected account. "
+        "The accounts that may go are deleted together in one transaction, and with "
+        "`delete_portfolios` so are the portfolios only the selection used. An account that "
+        "is missing or refused never stops the others: the answer lists each deleted "
+        "account in `deleted` and each one that was not deleted, with the reason, in "
+        "`failed` (issue 128)."
     ),
     operation_id="bulkDeleteAccounts",
     responses={
         400: {"model": ErrorResponse, "description": "Invalid account bulk-delete payload."},
-        409: {"model": ErrorResponse, "description": "One or more accounts could not be deleted."},
     },
 )
 def bulk_delete_account_rows(
@@ -374,17 +375,7 @@ def bulk_delete_account_rows(
     ],
 ) -> AccountBulkDeleteResponse:
     uids, delete_portfolios = _account_bulk_selection(payload)
-    preflight = preflight_bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
-    if not preflight.allowed:
-        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
-    response = bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
-    if response.failed:
-        details = "; ".join(f"{failure.uid}: {failure.detail}" for failure in response.failed)
-        raise HTTPException(
-            status_code=409,
-            detail=f"{response.detail} Not deleted: {details}",
-        )
-    return response
+    return bulk_delete_accounts(uids=uids, delete_portfolios=delete_portfolios)
 
 
 @router.post(
@@ -712,7 +703,7 @@ def get_account_virtual_fund_allocation_by_uid(
         "Run an allocation policy for one holdings snapshot against one target and answer the "
         "plan. Nothing is written. The snapshot is the account's holdings set at exactly "
         "`valuation_time`; the target is `position_set_uid`, which must not be later. The "
-        "target states exposure, as a share of NAV or an amount; `sized_targets` gives each "
+        "target states exposure, as a share of NAV; `sized_targets` gives each "
         "exposure in units, sized by the caller with its own prices (ADR 0054). The request "
         "carries no price, NAV or valuation. The plan has one line per owner and asset, "
         "where the owner is a virtual fund or the direct account sleeve: `target`, "

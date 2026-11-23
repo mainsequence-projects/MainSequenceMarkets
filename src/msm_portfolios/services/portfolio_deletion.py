@@ -6,7 +6,9 @@ do. No row class method runs them: `Portfolio.delete` is refused under both back
 
 A portfolio is deleted with its rows in its seven Markets datasets (weights, values,
 rebalance state, analytics, event ledger, state and cash flows) in one MetaTables
-transaction, or not at all. Account history, the virtual funds and account target rows
+transaction, or not at all. A bulk delete deletes every selected portfolio that may go,
+together in one transaction, and reports each one it did not delete with the reason; a
+refused portfolio never stops the others (issue 127). Account history, the virtual funds and account target rows
 that name the portfolio, refuses it before anything is sent: it is kept for as long as the
 account exists (ADR 0049 decision 1). Through the Markets API only the portfolio's manager
 may delete it (ADR 0060, decision 4).
@@ -103,12 +105,22 @@ class PortfolioDeletePlan:
     uid. `preflight` reports the plan, and `bulk_delete_portfolio_records` can delete by
     it, so `POST /api/v1/portfolio/bulk-delete/` counts its selection once (issue 96).
     Deleting by a plan made earlier is safe: when a portfolio's references change in
-    between, its transaction's guarded statement or a ``RESTRICT`` key still refuses it.
+    between, the transaction's guarded statement or a ``RESTRICT`` key still refuses it.
     """
 
     uids: tuple[str, ...]
     impact: PortfolioDeleteImpact
     portfolios: Mapping[str, _PlannedDelete]
+
+    @property
+    def deletable(self) -> list[_PlannedDelete]:
+        """The selected portfolios that exist and that nothing the read sees refuses."""
+
+        return [
+            planned
+            for uid in self.uids
+            if (planned := self.portfolios.get(uid)) is not None and not planned.blockers
+        ]
 
     def preflight(self) -> dict[str, Any]:
         """What deleting the selection removes and what blocks it."""
@@ -128,14 +140,21 @@ class PortfolioDeletePlan:
         warnings = list(self.impact.warnings)
         if history_blocked:
             warnings.append(ACCOUNT_HISTORY_GUIDANCE)
-        allowed = bool(self.uids) and not blockers
+        deletable = 0 if self.impact.blockers else len(self.deletable)
+        allowed = deletable > 0
         matched = len(portfolios)
-        detail = (
-            f"{matched} portfolio{' is' if matched == 1 else 's are'} ready for deletion with "
-            f"{'its' if matched == 1 else 'their'} datasets."
-            if allowed
-            else "The portfolio selection cannot be deleted as submitted."
-        )
+        if not allowed:
+            detail = "None of the selected portfolios can be deleted."
+        elif deletable == len(self.uids):
+            detail = (
+                f"{matched} portfolio{' is' if matched == 1 else 's are'} ready for deletion "
+                f"with {'its' if matched == 1 else 'their'} datasets."
+            )
+        else:
+            detail = (
+                f"{deletable} of the {len(self.uids)} selected portfolios can be deleted with "
+                f"{'its' if deletable == 1 else 'their'} datasets; the others are kept."
+            )
         return {
             "allowed": allowed,
             "detail": detail,
@@ -216,12 +235,18 @@ def bulk_delete_portfolio_records(
     uids: Sequence[uuid.UUID | str],
     plan: PortfolioDeletePlan | None = None,
 ) -> dict[str, Any]:
-    """Delete each portfolio with its datasets, each in its own transaction.
+    """Delete every selected portfolio that may go, with its datasets, and report the rest.
 
     One read counts every selected portfolio, unless ``plan`` is the plan
     `plan_portfolio_deletes` made for these ``uids``; then the delete counts nothing
-    again. A portfolio that is missing, refused, or not managed by the caller is reported
-    in ``failed`` and the others are still deleted.
+    again. A portfolio that is missing, that account history references, that the caller
+    does not manage, or that MetaTables' impact refuses for the whole table is reported in
+    ``failed``. The others are deleted together in one transaction (issue 127).
+
+    When the database refuses that transaction, nothing in it was deleted: a reference
+    was written since the read, or a key from an application's own table holds rows of
+    one of them. The read cannot tell which, so the portfolios are then deleted one per
+    transaction, and only the refused ones are reported in ``failed``.
     """
 
     target_uids = _unique_uids(uids)
@@ -229,20 +254,25 @@ def bulk_delete_portfolio_records(
         plan = plan_portfolio_deletes(context, uids=target_uids)
     elif list(plan.uids) != target_uids:
         raise ValueError("The delete plan was made for another portfolio selection.")
-    impact = plan.impact
-    deleted: list[_PlannedDelete] = []
-    failed: list[dict[str, str]] = []
+    failed: dict[str, str] = {}
+    allowed: list[_PlannedDelete] = []
     for uid in target_uids:
         planned = plan.portfolios.get(uid)
-        try:
-            done = planned is not None and _delete_planned(context, planned, impact=impact)
-        except (PortfolioDeleteConflictError, PermissionError) as exc:
-            failed.append({"uid": uid, "detail": str(exc)})
-            continue
-        if not done:
-            failed.append({"uid": uid, "detail": f"Portfolio {uid} was not found."})
-            continue
-        deleted.append(planned)
+        if planned is None:
+            failed[uid] = f"Portfolio {uid} was not found."
+        elif plan.impact.blockers:
+            failed[uid] = (
+                f"{planned.label} cannot be deleted; nothing was deleted. "
+                + " ".join(plan.impact.blockers)
+            )
+        elif planned.manager_blocker:
+            failed[uid] = planned.manager_blocker
+        elif planned.blockers:
+            failed[uid] = _refusal(planned)
+        else:
+            allowed.append(planned)
+    deleted, refused = _delete_together(context, allowed, impact=plan.impact)
+    failed.update(refused)
     count = len(deleted)
     if count == 0:
         detail = "No portfolios were deleted."
@@ -257,7 +287,7 @@ def bulk_delete_portfolio_records(
         "detail": detail,
         "deleted_count": count,
         "deleted": [_deleted_response(item) for item in deleted],
-        "failed": failed,
+        "failed": [{"uid": uid, "detail": failed[uid]} for uid in target_uids if uid in failed],
     }
 
 
@@ -276,6 +306,58 @@ def preflight_bulk_delete_portfolio_records(
 
 
 # The delete ------------------------------------------------------------------------------
+
+
+def _delete_together(
+    context: MarketsRepositoryContext,
+    allowed: Sequence[_PlannedDelete],
+    *,
+    impact: PortfolioDeleteImpact,
+) -> tuple[list[_PlannedDelete], dict[str, str]]:
+    """Delete ``allowed`` in one transaction: the deleted ones, and the refused ones' reasons.
+
+    A refused transaction deleted nothing; each portfolio is then deleted on its own, so
+    that only those the database refuses stay.
+    """
+
+    if len(allowed) < 2:
+        return _delete_each(context, allowed, impact=impact)
+    try:
+        result = portfolio_deletion_repository.delete_portfolios(
+            context,
+            portfolios=[(planned.uid, planned.unique_identifier) for planned in allowed],
+        )
+    except Exception as exc:
+        if not _is_delete_conflict(exc):
+            raise
+        logger.info("Portfolio bulk delete refused; deleting each portfolio on its own.", error=str(exc))
+        return _delete_each(context, allowed, impact=impact)
+    if not result.get("rows"):
+        # The guard stopped the list: a portfolio vanished, was renamed or was named by
+        # account history since the read. Nothing was deleted.
+        return _delete_each(context, allowed, impact=impact)
+    return list(allowed), {}
+
+
+def _delete_each(
+    context: MarketsRepositoryContext,
+    allowed: Sequence[_PlannedDelete],
+    *,
+    impact: PortfolioDeleteImpact,
+) -> tuple[list[_PlannedDelete], dict[str, str]]:
+    deleted: list[_PlannedDelete] = []
+    refused: dict[str, str] = {}
+    for planned in allowed:
+        try:
+            done = _delete_planned(context, planned, impact=impact)
+        except (PortfolioDeleteConflictError, PermissionError) as exc:
+            refused[planned.uid] = str(exc)
+            continue
+        if done:
+            deleted.append(planned)
+        else:
+            refused[planned.uid] = f"Portfolio {planned.uid} was not found."
+    return deleted, refused
 
 
 def _delete_planned(

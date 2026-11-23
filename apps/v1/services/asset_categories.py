@@ -65,8 +65,18 @@ def delete_asset_category(*, uid: str) -> bool:
 def bulk_delete_asset_categories(
     *, payload: Mapping[str, Any]
 ) -> BulkDeleteAssetCategoriesResponse:
+    """Delete every selected category that may go and report the rest (issue 128).
+
+    MetaTables' impact blockers refuse the table itself, so every category is reported
+    with them then.
+    """
+
     runtime = _get_runtime()
-    result = _bulk_delete_asset_category_records(runtime.context, **dict(payload))
+    result = _bulk_delete_asset_category_records(
+        runtime.context,
+        **dict(payload),
+        table_blockers=_asset_category_delete_impact().blockers,
+    )
     return BulkDeleteAssetCategoriesResponse.model_validate(result)
 
 
@@ -82,12 +92,20 @@ def preflight_bulk_delete_asset_categories(*, uids: list[str]) -> BulkDeletePref
     blockers = [f"Asset category {uid} was not found." for uid in missing_uids]
     impact = _asset_category_delete_impact()
     blockers.extend(impact.blockers)
-    allowed = bool(target_uids) and not blockers
-    detail = (
-        f"{matched_count} asset categor{'y is' if matched_count == 1 else 'ies are'} ready for deletion."
-        if allowed
-        else "The asset-category selection cannot be deleted as submitted."
-    )
+    # Allowed when at least one category can go; the others are reported (issue 128).
+    allowed = matched_count > 0 and not impact.blockers
+    if not allowed:
+        detail = "None of the selected asset categories can be deleted."
+    elif matched_count == len(target_uids):
+        detail = (
+            f"{matched_count} asset categor{'y is' if matched_count == 1 else 'ies are'} "
+            "ready for deletion."
+        )
+    else:
+        detail = (
+            f"{matched_count} of the {len(target_uids)} selected asset categories can be "
+            "deleted; the others are kept."
+        )
     return BulkDeletePreflightResponse(
         allowed=allowed,
         detail=detail,

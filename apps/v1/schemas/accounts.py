@@ -224,7 +224,8 @@ class AccountDeleteFailure(BaseModel):
 
 
 class AccountBulkDeleteResponse(BaseModel):
-    """Accounts deleted with their history, each in its own transaction."""
+    """What a bulk delete did: the accounts deleted with their history, in one
+    transaction, and each selected account it did not delete, with the reason."""
 
     model_config = ConfigDict(extra="ignore")
 

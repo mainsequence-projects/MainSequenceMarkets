@@ -662,6 +662,7 @@ def test_a_snapshot_repeated_with_other_values_is_a_400(monkeypatch, remote) -> 
         ("portfolio", "assign_manager", {"uid": str(uuid.uuid4()), "managed_by": "user:x"}),
         ("formula-index", "activate_definition", {"definition_uid": str(uuid.uuid4())}),
         ("signal-metadata", "end", {"signal_uid": "s"}),
+        ("signal-metadata", "end_many", {"signal_uids": ["s"]}),
         ("currency-spot", "upsert_many", {"payloads": []}),
         ("future", "upsert_many", {"payloads": []}),
         ("formula-index", "retire_definition", {"definition_uid": str(uuid.uuid4())}),

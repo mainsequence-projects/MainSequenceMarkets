@@ -224,7 +224,8 @@ def summarize_account_delete_preflight(
     """The bulk preflight's answer from each found account's plan and the impact.
 
     ``target_uids`` are the selected uids; a uid without a plan in ``accounts`` was not
-    found and blocks.
+    found. Each blocker keeps its own account, never the selection: the answer is allowed
+    when at least one account can be deleted (issue 128).
     """
 
     by_uid = {item["uid"]: item for item in accounts}
@@ -236,14 +237,22 @@ def summarize_account_delete_preflight(
             continue
         blockers.extend(f"{_label(item)}: {blocker}" for blocker in item["blockers"])
     blockers.extend(impact.blockers)
-    allowed = bool(target_uids) and not blockers
     matched = len(accounts)
-    detail = (
-        f"{matched} account{' is' if matched == 1 else 's are'} ready for deletion with "
-        f"{'its' if matched == 1 else 'their'} history."
-        if allowed
-        else "The account selection cannot be deleted as submitted."
-    )
+    deletable = 0 if impact.blockers else sum(1 for item in accounts if not item["blockers"])
+    # Allowed when at least one account can go; the others are reported (issue 128).
+    allowed = deletable > 0
+    if not allowed:
+        detail = "None of the selected accounts can be deleted."
+    elif deletable == len(target_uids):
+        detail = (
+            f"{matched} account{' is' if matched == 1 else 's are'} ready for deletion with "
+            f"{'its' if matched == 1 else 'their'} history."
+        )
+    else:
+        detail = (
+            f"{deletable} of the {len(target_uids)} selected accounts can be deleted with "
+            f"{'its' if deletable == 1 else 'their'} history; the others are kept."
+        )
     return {
         "allowed": allowed,
         "detail": detail,
@@ -264,13 +273,17 @@ def preflight_account_delete(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
+    together: Sequence[uuid.UUID | str] = (),
 ) -> dict[str, Any] | None:
     """What deleting one account removes from the Markets tables, and what blocks it.
 
-    One read. Returns `None` when the account does not exist.
+    One read. Returns `None` when the account does not exist. ``together`` are accounts
+    deleted in the same transaction, whose rows block nothing.
     """
 
-    read = account_deletion_repository.read_account_delete(context, uid=canonical_uid(uid))
+    read = account_deletion_repository.read_account_delete(
+        context, uid=canonical_uid(uid), together=unique_uids(together)
+    )
     return None if read is None else account_delete_plan(read)
 
 
@@ -301,37 +314,126 @@ def bulk_delete_accounts(
     context: MarketsRepositoryContext,
     *,
     uids: Sequence[uuid.UUID | str],
+    table_blockers: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Delete each account as `delete_account` does, each in its own transaction.
+    """Delete every selected account that may go, together, and report the rest.
 
-    An account that is missing or refused is reported in `failed` and the others are
-    still deleted.
+    One read per account, each counting the other selected accounts as deleted with it;
+    then one transaction for every account that may go (issue 128). An account that is
+    missing or that rows of an account not selected block is reported in ``failed``.
+    ``table_blockers``, MetaTables' reasons the whole table refuses the delete, report
+    every account. When the database refuses the transaction, which then deletes
+    nothing, each account is deleted on its own, so only the refused ones stay.
     """
 
+    target = unique_uids(uids)
+    plans = {
+        uid: plan
+        for uid in target
+        if (plan := preflight_account_delete(context, uid=uid, together=target)) is not None
+    }
+    allowed, failed = partition_account_deletes(target, plans, table_blockers)
     deleted: list[dict[str, Any]] = []
-    failed: list[dict[str, str]] = []
-    for uid in unique_uids(uids):
-        try:
-            result = delete_account(context, uid=uid)
-        except AccountDeleteConflictError as exc:
-            failed.append({"uid": uid, "detail": str(exc)})
-            continue
-        if result is None:
-            failed.append({"uid": uid, "detail": f"Account {uid} was not found."})
-            continue
-        deleted.append(result)
-    count = len(deleted)
-    if count == 0:
-        detail = "No accounts were deleted."
+    if allowed and run_accounts_delete(context, allowed) is not None:
+        deleted = [account_deleted_response(plan) for plan in allowed]
     else:
-        detail = f"Deleted {count} account{'s' if count != 1 else ''} with their history."
+        for plan in allowed:
+            try:
+                result = delete_account(context, uid=plan["uid"])
+            except AccountDeleteConflictError as exc:
+                failed[plan["uid"]] = str(exc)
+                continue
+            if result is None:
+                failed[plan["uid"]] = f"Account {plan['uid']} was not found."
+                continue
+            deleted.append(result)
+    count = len(deleted)
+    detail = (
+        "No accounts were deleted."
+        if count == 0
+        else f"Deleted {count} account{'s' if count != 1 else ''} with "
+        f"{'its' if count == 1 else 'their'} history."
+    )
+    return bulk_accounts_response(detail, deleted, failed, target)
+
+
+def partition_account_deletes(
+    target: Sequence[str],
+    plans: Mapping[str, Mapping[str, Any]],
+    table_blockers: Sequence[str] = (),
+) -> tuple[list[Mapping[str, Any]], dict[str, str]]:
+    """The plans of the selected accounts that may go, and the reason for each other one."""
+
+    allowed: list[Mapping[str, Any]] = []
+    failed: dict[str, str] = {}
+    for uid in target:
+        plan = plans.get(uid)
+        if plan is None:
+            failed[uid] = f"Account {uid} was not found."
+        elif table_blockers:
+            failed[uid] = (
+                f"{_label(plan)} cannot be deleted; nothing was deleted. {' '.join(table_blockers)}"
+            )
+        elif plan["blockers"]:
+            failed[uid] = f"{_label(plan)} cannot be deleted: {' '.join(plan['blockers'])}"
+        else:
+            allowed.append(plan)
+    return allowed, failed
+
+
+def run_accounts_delete(
+    context: MarketsRepositoryContext,
+    plans: Sequence[Mapping[str, Any]],
+    write: MarketsCompiledWrite | None = None,
+) -> dict[str, Any] | None:
+    """Delete ``plans``' accounts in one transaction, or ``write`` built around them.
+
+    ``write`` holds `msm.repositories.account_deletion.accounts_delete_statements` for
+    the same accounts. Answers with the transaction's result, or ``None`` when it was
+    refused and deleted nothing: a guard missed, or a foreign key refused it.
+    """
+
+    try:
+        result = execute_markets_write(
+            write
+            or account_deletion_repository.build_delete_accounts_operation(
+                context,
+                accounts=[(plan["uid"], plan["unique_identifier"]) for plan in plans],
+                row_counts=summed_row_counts(plans),
+            ),
+            context=context,
+            refused_by=(ACCOUNT_DELETE_GUARD,),
+        )
+    except MetaTableTransactionGuardError:
+        return None
+    except Exception as exc:
+        if not _is_delete_conflict(exc):
+            raise
+        return None
+    return result if result.get("rows") else None
+
+
+def summed_row_counts(plans: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    """The plans' ``row_counts`` added up, for one transaction that deletes them all."""
+
+    return {key: sum(plan["row_counts"][key] for plan in plans) for key in ACCOUNT_HISTORY_KEYS}
+
+
+def bulk_accounts_response(
+    detail: str,
+    deleted: Sequence[Mapping[str, Any]],
+    failed: Mapping[str, str],
+    target: Sequence[str],
+) -> dict[str, Any]:
+    """The bulk-delete envelope; ``failed`` keeps the order of the selection."""
+
     if failed:
         detail += f" {len(failed)} could not be deleted."
     return {
         "detail": detail,
-        "deleted_count": count,
-        "deleted": deleted,
-        "failed": failed,
+        "deleted_count": len(deleted),
+        "deleted": list(deleted),
+        "failed": [{"uid": uid, "detail": failed[uid]} for uid in target if uid in failed],
     }
 
 
@@ -342,13 +444,17 @@ def preflight_bulk_delete_accounts(
 ) -> dict[str, Any]:
     """Report what deleting the accounts removes and what blocks it, without deleting.
 
-    One read per account, and MetaTables' delete impact for the account table.
+    One read per account, each counting the other selected accounts as deleted with it,
+    and MetaTables' delete impact for the account table.
     """
 
     target_uids = unique_uids(uids)
     accounts = [
         plan
-        for plan in (preflight_account_delete(context, uid=uid) for uid in target_uids)
+        for plan in (
+            preflight_account_delete(context, uid=uid, together=target_uids)
+            for uid in target_uids
+        )
         if plan is not None
     ]
     return summarize_account_delete_preflight(target_uids, accounts, account_delete_impact())
@@ -382,13 +488,17 @@ __all__ = [
     "account_delete_plan",
     "account_delete_refused",
     "account_deleted_response",
+    "bulk_accounts_response",
     "bulk_delete_accounts",
     "canonical_uid",
     "check_account_delete_blockers",
     "delete_account",
+    "partition_account_deletes",
     "preflight_account_delete",
     "preflight_bulk_delete_accounts",
     "run_account_delete",
+    "run_accounts_delete",
     "summarize_account_delete_preflight",
+    "summed_row_counts",
     "unique_uids",
 ]

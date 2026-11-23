@@ -150,6 +150,12 @@ DELETE /api/v1/portfolio-signal/{uid}/
 Deletes one signal metadata row and all its `SignalWeightsStorage` rows in
 one transaction, or nothing. `SignalMetadata.end(signal_uid)` and
 `msm_portfolios.recipes.end_signal` do the same by `signal_uid`.
+`SignalMetadata.end_many(signal_uids)` and `msm_portfolios.recipes.end_signals`
+end several signals in one row operation and one transaction
+([issue 126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)):
+they answer `ended`, each as `end` answers it, and `failed`, each signal that is
+missing, that the caller does not manage or that a portfolio names, with the
+reason. A refused signal never stops the others.
 
 Response:
 

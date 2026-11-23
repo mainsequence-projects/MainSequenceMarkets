@@ -163,14 +163,14 @@ def test_target_snapshot_writes_the_allocation_its_position_set_and_rows(sqlite_
     assert position_set["position_set_time"] == STORED_WHEN
     stored = _rows(
         engine,
-        "SELECT target_type, portfolio_uid, asset_uid, constant_notional_exposure, "
+        "SELECT target_type, portfolio_uid, asset_uid, weight_notional_exposure, "
         "single_asset_quantity, position_set_uid, time_index, metadata_json "
         "FROM ms_markets__targetpositionsts ORDER BY target_type",
     )
     assert [
         (row["target_type"], row["asset_uid"], row["portfolio_uid"]) for row in stored
     ] == [("asset", asset.hex, None), ("portfolio", None, portfolio.hex)]
-    assert stored[1]["constant_notional_exposure"] == 1000.0
+    assert stored[1]["weight_notional_exposure"] == 0.4
     assert stored[0]["single_asset_quantity"] == 3.0
     assert {row["position_set_uid"] for row in stored} == {position_set["uid"]}
     assert {row["time_index"] for row in stored} == {STORED_WHEN}
@@ -192,9 +192,9 @@ def test_existing_target_snapshot_is_refused_without_overwrite_and_replaced_with
         {"portfolio_uid": first.hex}
     ]
 
-    replaced = _write_target(sqlite_markets, account, [_portfolio_position(second, 50.0)], overwrite=True)
+    replaced = _write_target(sqlite_markets, account, [_portfolio_position(second, 0.5)], overwrite=True)
 
-    assert [row["constant_notional_exposure"] for row in replaced["rows"]] == [50.0]
+    assert [row["weight_notional_exposure"] for row in replaced["rows"]] == [0.5]
     assert _rows(engine, "SELECT portfolio_uid FROM ms_markets__targetpositionsts") == [
         {"portfolio_uid": second.hex}
     ]
@@ -464,7 +464,7 @@ def test_the_target_service_writes_reads_back_and_refuses_repeats_and_retired_po
                 {
                     "target_type": "portfolio",
                     "portfolio_uid": str(portfolio),
-                    "constant_notional_exposure": 100.0,
+                    "weight_notional_exposure": 0.4,
                 }
             ],
         )
@@ -526,7 +526,7 @@ def test_writing_an_exposure_to_a_portfolio_creates_its_virtual_fund(sqlite_mark
     add(
         [
             exposure(first, weight_notional_exposure=0.3),
-            exposure(second, constant_notional_exposure=300_000.0),
+            exposure(second, weight_notional_exposure=0.3),
         ],
         WHEN + dt.timedelta(days=1),
     )

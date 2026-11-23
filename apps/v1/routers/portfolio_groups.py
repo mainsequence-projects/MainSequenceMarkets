@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 
 from apps.v1.schemas.portfolio_groups import (
     PortfolioGroup,
+    PortfolioGroupBulkDeleteResponse,
     PortfolioGroupDeleteResponse,
     PortfolioGroupMembership,
     PortfolioGroupMembershipBulkDeleteRequest,
@@ -35,7 +36,6 @@ from msm.api.http import (
     BulkDeletePreflightResponse,
     ErrorResponse,
     ResourceCollection,
-    blocked_preflight_detail,
     explicit_uuid_selection,
     resource_collection_response,
 )
@@ -115,11 +115,13 @@ def post_portfolio_group(
 
 @router.post(
     "/bulk-delete/",
-    response_model=PortfolioGroupDeleteResponse,
+    response_model=PortfolioGroupBulkDeleteResponse,
     summary="Bulk delete portfolio groups",
     description=(
-        "Delete the explicitly selected portfolio groups after server-side preflight and "
-        "authorization. Membership rows follow their database relationship policy."
+        "Delete every explicitly selected portfolio group that exists, in one statement; "
+        "membership rows follow their database relationship policy. A group that is missing "
+        "or refused never stops the others: the answer lists each deleted group in "
+        "`deleted` and each one that was not deleted, with the reason, in `failed`."
     ),
     operation_id="bulkDeletePortfolioGroups",
 )
@@ -128,16 +130,13 @@ def post_portfolio_group_bulk_delete(
         BulkActionExecutionRequest,
         Body(description="Command Center bulk-action execution request."),
     ],
-) -> PortfolioGroupDeleteResponse:
+) -> PortfolioGroupBulkDeleteResponse:
     try:
         uids = explicit_uuid_selection(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    preflight = BulkDeletePreflightResponse.model_validate(
-        preflight_bulk_delete_portfolio_groups(uids=uids)
-    )
-    if not preflight.allowed:
-        raise HTTPException(status_code=409, detail=blocked_preflight_detail(preflight))
+    # What may go is deleted and the rest is reported; nothing refuses the selection
+    # (issue 128).
     return bulk_delete_portfolio_groups(payload={"uids": uids})
 
 

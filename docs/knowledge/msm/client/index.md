@@ -263,7 +263,7 @@ this client.
 The allocation of an account's holdings to its virtual funds has typed methods
 too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md),
 [ADR 0054](../../../ADR/0054-account-exposure-and-sized-fund-targets.md)). The
-target states exposure, as a share of NAV or an amount. The caller sizes it into
+target states exposure, as a share of NAV. The caller sizes it into
 units with its own prices and sends the units; no price or valuation is sent:
 
 ```python
@@ -326,6 +326,9 @@ client.reinstate_portfolio(portfolio_uid)
 of the accounts whose current target names the portfolio. `retire_portfolio`
 returns the `Portfolio` with `retired_at` and raises `MarketsConflictError`
 while that list is not empty; `reinstate_portfolio` clears it.
+`bulk_retire_portfolios` retires several in one call and returns a
+`PortfolioBulkRetireResponse`: the retired portfolios in `retired`, and each one a
+current target names, or that does not exist, with the reason, in `failed`.
 
 ## Portfolio Deletion
 
@@ -344,11 +347,10 @@ for a missing portfolio, and `MarketsConflictError`, deleting nothing, while
 account history or another application's table references it. A portfolio that
 accounts referenced is retired instead.
 
-`bulk_delete_portfolios` checks the whole selection first and raises
-`MarketsConflictError`, deleting nothing, naming each portfolio that is missing
-or referenced. It then deletes each portfolio in its own transaction and returns
-a `PortfolioBulkDeleteResponse`. If one fails then, the others stay deleted and
-`MarketsConflictError` names each failure.
+`bulk_delete_portfolios` deletes every selected portfolio that may go, together in
+one transaction, and returns a `PortfolioBulkDeleteResponse`: the deleted ones in
+`deleted`, and each one that is missing or refused, with the reason, in `failed`. A
+refused portfolio never stops the others, and nothing is raised for it.
 
 ## Provider Time Series
 
@@ -370,7 +372,7 @@ frame = page.frame()
 
 `msm_portfolios.recipes` builds on them: `publish_signal_weights`,
 `signal_history`, `portfolio_history`, `weights_as_of`, `portfolio_preflight`,
-`run_portfolio`, `end_signal` and `delete_private_series`. Only a row's
+`run_portfolio`, `end_signal`, `end_signals` and `delete_private_series`. Only a row's
 manager publishes to it (`managed_by`, recorded by Markets; any other caller
 gets `MarketsAccessError`, HTTP 403). See
 [Published Series](../../msm_portfolios/portfolios/index.md#published-series).

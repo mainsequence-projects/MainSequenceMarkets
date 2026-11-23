@@ -142,6 +142,8 @@ nav:
       - Trade At The Next Observed Price: ADR/0058-trade-at-the-next-observed-price.md
       - Portfolio Currency, FX And Drifting Weights: ADR/0059-portfolio-currency-fx-and-drifting-weights.md
       - Producers Publish, Markets Reads Only Its Own Tables: ADR/0060-producers-publish-markets-reads-only-its-own-tables.md
+      - Retire The Constant Notional Exposure: ADR/0061-retire-constant-notional-exposure.md
+      - Capital Given To A Virtual Fund: ADR/0062-capital-given-to-a-virtual-fund.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - Execution Engine:
           - Execution Engine Architecture: ADR/execution_engine/0001-execution-engine-architecture.md

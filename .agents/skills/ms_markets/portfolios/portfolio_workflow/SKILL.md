@@ -91,9 +91,8 @@ Rules:
   `portfolio_uid=None`.
 - Portfolio target rows use `target_type="portfolio"`, `target_uid=portfolio_uid`,
   and `asset_uid=None`.
-- Exactly one exposure column must be present:
-  `weight_notional_exposure`, `constant_notional_exposure`, or
-  `single_asset_quantity`.
+- Exactly one exposure column must be present: `weight_notional_exposure`, or
+  `single_asset_quantity` on an asset row.
 
 ## Retiring A Portfolio
 

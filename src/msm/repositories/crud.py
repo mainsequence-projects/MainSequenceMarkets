@@ -1041,6 +1041,46 @@ def delete_model(
     )
 
 
+def build_delete_models_operation(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    uids: Sequence[uuid.UUID | str],
+) -> MetaTableCompiledSQLOperation:
+    """Delete every row of ``model`` whose identity is in ``uids``, in one statement.
+
+    It returns the deleted rows' identity (and ``unique_identifier`` when the model has
+    one), so a caller knows which of ``uids`` existed.
+    """
+
+    identity = _model_identity_attribute(model)
+    returned = [identity.label("uid")]
+    if "unique_identifier" in model.__table__.c:
+        returned.append(_model_attribute(model, "unique_identifier").label("unique_identifier"))
+    statement = (
+        delete(model)
+        .where(identity.in_([uuid.UUID(str(uid)) for uid in uids]))
+        .returning(*returned)
+    )
+    return compile_markets_statement(
+        statement,
+        context=with_max_rows(context, max(len(uids), 1)),
+        operation="delete",
+    )
+
+
+def delete_models(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    uids: Sequence[uuid.UUID | str],
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_delete_models_operation(context, model=model, uids=uids),
+        context=context,
+    )
+
+
 def _model_value_mapping(model: type[MarketsBase], values: Mapping[str, Any]) -> dict[Any, Any]:
     return {_model_attribute(model, key): value for key, value in values.items()}
 

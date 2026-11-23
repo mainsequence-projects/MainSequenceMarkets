@@ -769,12 +769,13 @@ def test_bulk_delete_portfolios_reports_failures(monkeypatch) -> None:
         },
     )
 
-    assert response.status_code == 409
+    # Issue 127: a refused portfolio never stops the others; the answer lists it.
+    assert response.status_code == 200
     assert response.json() == {
-        "detail": (
-            "Deleted 1 portfolio with its datasets. 1 could not be deleted. "
-            f"Failed: {failed_uid}: {refusal}"
-        )
+        "detail": "Deleted 1 portfolio with its datasets. 1 could not be deleted.",
+        "deleted_count": 1,
+        "deleted": [_deleted_portfolio(str(deleted_uid))],
+        "failed": [{"uid": str(failed_uid), "detail": refusal}],
     }
     (plan,) = plans
     assert captured == {"uids": [str(deleted_uid), str(failed_uid)], "plan": plan}
@@ -832,76 +833,44 @@ def test_bulk_delete_portfolios_returns_success_when_all_deleted(monkeypatch) ->
     assert calls == [("plan", [deleted_uid], None), ("delete", [deleted_uid], plan)]
 
 
-def test_bulk_delete_portfolios_refuses_a_blocked_selection(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
-        lambda **kwargs: _DeletePlan(
-            kwargs["uids"],
-            allowed=False,
-            blockers=(
-                "Portfolio 'example-sleeve': 1 virtual fund target it "
-                "(VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT).",
-            ),
+def test_bulk_delete_portfolios_deletes_by_a_plan_that_reports_blockers(monkeypatch) -> None:
+    # Issue 127: blockers keep their portfolios, never the selection; the route deletes by
+    # the plan, and the delete lists what it kept.
+    plan = _DeletePlan(
+        [str(uuid.uuid4())],
+        allowed=False,
+        blockers=(
+            "Portfolio 'example-sleeve': 1 virtual fund target it "
+            "(VirtualFundTable.target_portfolio_uid, ON DELETE RESTRICT).",
         ),
     )
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.bulk_delete_portfolios",
-        lambda **kwargs: pytest.fail("a blocked selection must not be deleted"),
-    )
-
-    response = TestClient(app).post(
-        "/api/v1/portfolio/bulk-delete/",
-        json={"selection": {"mode": "explicit", "uids": [str(uuid.uuid4())]}, "options": {}},
-    )
-
-    assert response.status_code == 409
-    assert "VirtualFundTable.target_portfolio_uid" in response.json()["detail"]
-
-
-def test_bulk_delete_portfolios_returns_409_with_not_found_reason(monkeypatch) -> None:
-    failed_uid = uuid.uuid4()
+    deleted_by: list[object] = []
 
     def fake_bulk_delete_portfolios(**kwargs):
         from apps.v1.schemas.portfolios import PortfolioBulkDeleteResponse
 
+        deleted_by.append(kwargs["plan"])
         return PortfolioBulkDeleteResponse.model_validate(
             {
                 "detail": "No portfolios were deleted. 1 could not be deleted.",
                 "deleted_count": 0,
-                "failed": [
-                    {
-                        "uid": str(failed_uid),
-                        "detail": f"Portfolio {failed_uid} was not found.",
-                    }
-                ],
+                "failed": [{"uid": plan.uids[0], "detail": plan.report["blockers"][0]}],
             }
         )
 
+    monkeypatch.setattr("apps.v1.routers.portfolios.plan_bulk_delete_portfolios", lambda **_: plan)
     monkeypatch.setattr(
-        "apps.v1.routers.portfolios.bulk_delete_portfolios",
-        fake_bulk_delete_portfolios,
-    )
-    monkeypatch.setattr(
-        "apps.v1.routers.portfolios.plan_bulk_delete_portfolios",
-        lambda **kwargs: _DeletePlan(kwargs["uids"]),
+        "apps.v1.routers.portfolios.bulk_delete_portfolios", fake_bulk_delete_portfolios
     )
 
-    client = TestClient(app)
-    response = client.post(
+    response = TestClient(app).post(
         "/api/v1/portfolio/bulk-delete/",
-        json={
-            "selection": {"mode": "explicit", "uids": [str(failed_uid)]},
-            "options": {},
-        },
+        json={"selection": {"mode": "explicit", "uids": plan.uids}, "options": {}},
     )
 
-    assert response.status_code == 409
-    assert response.json() == {
-        "detail": (
-            "No portfolios were deleted. 1 could not be deleted. "
-            f"Failed: {failed_uid}: Portfolio {failed_uid} was not found."
-        )
-    }
+    assert response.status_code == 200
+    assert deleted_by == [plan]
+    assert "VirtualFundTable.target_portfolio_uid" in response.json()["failed"][0]["detail"]
 
 
 def test_portfolio_service_maps_source_helpers(monkeypatch) -> None:

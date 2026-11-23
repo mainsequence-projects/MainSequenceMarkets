@@ -1,5 +1,10 @@
 # Upgrading To 3.7
 
+Since 5.3.0 a portfolio row states a share of NAV only; the amount
+(`constant_notional_exposure`) is retired
+([ADR 0061](ADR/0061-retire-constant-notional-exposure.md)). This page records what 3.7
+changed.
+
 ms-markets 3.7 restores the account's exposure to a portfolio as a share of NAV or an amount,
 and records each sync's lines: the sized target and the assigned units of every owner
 ([ADR 0054](ADR/0054-account-exposure-and-sized-fund-targets.md)). This page lists what

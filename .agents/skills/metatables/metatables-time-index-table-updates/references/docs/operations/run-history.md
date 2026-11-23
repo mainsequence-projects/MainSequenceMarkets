@@ -129,6 +129,13 @@ admission UID. The API validates the declared plan against registered dependenci
 before execution and rejects conflicting admissions. Transport retries reuse the
 same admission identity; new invocations use new identities.
 
+Two runs of one updater never overlap. While one runs, a start of the same updater
+answers HTTP 409 with `{"code": "update_execution_active", "execution_run_uid": ...}`,
+naming the run that holds it. A run that needs that updater as a dependency waits
+for the holding run to end, for up to 30 minutes, then starts the dependency again
+in its own graph; its data is then current. If the holding run failed, or is still
+running when the wait ends, the dependent run fails and names it.
+
 The runner reports calculation start or explicit skip through
 `PATCH /table-update-runs/{run_uid}/node-state/`; the existing finish action records
 completion and finalizes node outcomes. Dependency completion is awaited before

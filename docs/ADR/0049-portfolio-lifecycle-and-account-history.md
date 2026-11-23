@@ -504,3 +504,48 @@ tables already reach portfolios through the Markets API (ADR 0047).
   client takes its models; the wire contract is unchanged.
 - `Portfolio.delete`'s refusal, and the `501` of `POST /api/v1/rows/portfolio/delete/`,
   name the two methods next to the routes.
+
+### 2026-11-23: unreleased, issue 127
+
+`POST /api/v1/portfolio/bulk-delete/` deleted each portfolio in its own transaction, one
+after another, and refused the whole selection with `409` when the preflight found a
+blocker in any portfolio. A refusal found while deleting answered `409` after the earlier
+portfolios were deleted. On a hosted Markets API, three portfolios took 50.5 s
+([issue 127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+Deleting a selection is one operation: what may go goes, and what may not is reported.
+
+- **One transaction.** `msm_portfolios.repositories.portfolio_deletion.portfolios_delete_statements`
+  deletes the rows of every allowed portfolio in each of the seven datasets with one
+  `IN (…)` statement per dataset, then the portfolio rows. The last statement is guarded to
+  delete exactly the portfolios read, each with its `unique_identifier`, while no account
+  history names any of them. One portfolio's delete is the same list for one portfolio.
+- **What may not go is reported, not refused.** A portfolio that is missing, that account
+  history names, or that the caller does not manage is left out of the transaction and
+  listed in `failed` with the reason. A MetaTables blocker on the portfolio table itself
+  puts every portfolio there. The route answers `200`; it no longer answers `409` for the
+  selection. Its preflight answers `allowed: true` when at least one portfolio can go.
+- **A refusal the read cannot see.** A reference written after the read, or a `RESTRICT`
+  key of an application's own table, refuses the selection's transaction, which deletes
+  nothing. The read cannot tell which portfolio caused it, so the portfolios are then
+  deleted one per transaction, as `DELETE /api/v1/portfolio/{uid}/` deletes one, and only
+  the refused ones are listed in `failed`.
+
+### 2026-11-23: unreleased, issue 124
+
+Retiring several portfolios took one call each, three MetaTables operations per
+portfolio ([issue 124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)).
+`POST /api/v1/portfolio/bulk-retire/` (`MarketsClient.bulk_retire_portfolios`,
+`msm.services.bulk_retire_portfolio_records`) retires a selection in two operations.
+
+- **One update.** `msm.repositories.portfolios.build_retire_portfolios_operation` sets
+  `retired_at` on every selected live portfolio whose current targets are empty, with
+  `current_portfolio_target_rows_select` correlated to the updated row: the check stays in
+  the same statement, as decision 3 requires.
+- **One read.** `msm.repositories.accounts.build_read_portfolios_current_targets_operation`
+  then reads each selected portfolio with its number of current targets. A portfolio the
+  update retired that now has a current target, because a target write committed while
+  the update ran, is undone by `build_clear_portfolio_retirements_operation`, which clears
+  only the value this call set, as one portfolio's retirement is undone.
+- **What is not retired is reported.** A portfolio a current target names, or that does
+  not exist, is listed in `failed` with the reason and never stops the others; one
+  already retired comes back unchanged in `retired`.

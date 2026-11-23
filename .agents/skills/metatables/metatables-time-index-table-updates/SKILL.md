@@ -92,8 +92,12 @@ construct a changing dependency graph inside `update()`.
 ## Incremental output
 
 Use `UpdateStatistics` to determine the next interval, including a first-run
-fallback. Return rows matching the bound storage contract and avoid full-history
-writes unless the task explicitly needs them.
+fallback. Statistics describe the whole output table, which other producers may
+share: start each stream from its own progress,
+`get_last_update_for_identity(key)`, or from the configured start when it has
+none. Never use `max_time_index_value` or `get_max_time_in_update_statistics()`
+as one stream's start. Return rows matching the bound storage contract and avoid
+full-history writes unless the task explicitly needs them.
 
 Every non-empty frame must put `time_index` first and use exactly
 `datetime64[ns, UTC]` for that index level. Construct it explicitly with

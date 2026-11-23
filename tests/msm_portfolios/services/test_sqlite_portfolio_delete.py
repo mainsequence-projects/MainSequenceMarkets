@@ -222,7 +222,7 @@ def test_a_blank_identifier_is_refused() -> None:
 def test_a_portfolio_with_rows_in_one_dataset_is_deleted_with_them(markets) -> None:
     # Each dataset alone: `test_all_seven_datasets_go_in_one_transaction_with_the_portfolio`
     # deletes rows from all seven, `test_the_preflight_counts_match_what_the_delete_removes`
-    # counts them, and `test_bulk_delete_deletes_each_portfolio_and_reports_the_rest` keeps
+    # counts them, and `test_bulk_delete_deletes_what_may_go_and_reports_the_rest` keeps
     # another portfolio's rows in each.
     key = "values"
     engine = markets.engine
@@ -520,7 +520,9 @@ def test_a_portfolio_renamed_in_between_is_kept(markets, monkeypatch) -> None:
 # Bulk ------------------------------------------------------------------------------------
 
 
-def test_bulk_delete_deletes_each_portfolio_and_reports_the_rest(markets) -> None:
+def test_bulk_delete_deletes_what_may_go_and_reports_the_rest(markets) -> None:
+    """Issue 127: a missing or refused portfolio never stops the others."""
+
     engine = markets.engine
     first, first_identifier = _portfolio_with(engine, *DATASETS)
     blocked, blocked_identifier = _portfolio_with(engine, *DATASETS)
@@ -530,7 +532,10 @@ def test_bulk_delete_deletes_each_portfolio_and_reports_the_rest(markets) -> Non
     preflight = preflight_bulk_delete_portfolio_records(markets.context, uids=[first, blocked, missing])
     result = bulk_delete_portfolio_records(markets.context, uids=[first, blocked, missing, first])
 
-    assert preflight["allowed"] is False
+    assert preflight["allowed"] is True
+    assert preflight["detail"] == (
+        "1 of the 3 selected portfolios can be deleted with its datasets; the others are kept."
+    )
     assert preflight["matched_count"] == 2
     assert [item["uid"] for item in preflight["portfolios"]] == [str(first), str(blocked)]
     assert f"Portfolio {missing} was not found." in preflight["blockers"]
@@ -555,8 +560,11 @@ def test_the_preflight_counts_match_what_the_delete_removes(markets) -> None:
     totals_before = {key: _count(engine, name) for key, name in DATASETS.items()}
 
     preflight = preflight_bulk_delete_portfolio_records(markets.context, uids=[first, second])
+    markets.statements.clear()
     result = bulk_delete_portfolio_records(markets.context, uids=[first, second])
 
+    # Both portfolios go in one transaction: one statement per dataset, then the rows.
+    assert len(_deletes(markets)) == len(DATASETS) + 1
     assert preflight["allowed"] is True
     assert preflight["detail"] == "2 portfolios are ready for deletion with their datasets."
     counts = {item["uid"]: item["row_counts"] for item in preflight["portfolios"]}
@@ -633,14 +641,63 @@ def test_deleting_by_an_earlier_plan_still_refuses_a_portfolio_referenced_since(
 
     result = bulk_delete_portfolio_records(markets.context, uids=[kept, gone], plan=plan)
 
-    # The guarded statement stops the kept portfolio's transaction; only then is it read
-    # again, to name what refuses it. The selection is not counted again.
+    # The guarded statement stops the selection's transaction, which deletes nothing; each
+    # portfolio is then deleted on its own, and only the refused one is read again, to name
+    # what refuses it. The selection is not counted again.
     assert [item["uid"] for item in result["failed"]] == [str(kept)]
     assert "VirtualFundTable.target_portfolio_uid" in result["failed"][0]["detail"]
     assert [item["uid"] for item in result["deleted"]] == [str(gone)]
     assert len(_reads(markets)) == 1
     assert _exists(engine, kept) and _dataset_rows(engine, kept_identifier) == {key: 1 for key in DATASETS}
     assert not _exists(engine, gone) and set(_dataset_rows(engine, gone_identifier).values()) == {0}
+
+
+def test_a_key_the_read_cannot_see_keeps_only_its_portfolio(markets) -> None:
+    """Issue 127, ADR 0060: the database refuses the selection's transaction, which deletes
+    nothing; the portfolios are then deleted one by one, and only the refused one stays."""
+
+    engine = markets.engine
+    blocked, blocked_identifier = _portfolio_with(engine, *DATASETS)
+    clean, clean_identifier = _portfolio_with(engine, *DATASETS)
+    _create_provider_tables(engine)
+    _provider_row(engine, PROVIDER_VALUES_TABLE, blocked_identifier)
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[blocked, clean])
+
+    assert [item["uid"] for item in result["deleted"]] == [str(clean)]
+    assert [item["uid"] for item in result["failed"]] == [str(blocked)]
+    assert "FOREIGN KEY constraint failed" in result["failed"][0]["detail"]
+    assert result["detail"] == "Deleted 1 portfolio with its datasets. 1 could not be deleted."
+    assert not _exists(engine, clean) and set(_dataset_rows(engine, clean_identifier).values()) == {0}
+    assert _exists(engine, blocked)
+    assert _dataset_rows(engine, blocked_identifier) == {key: 1 for key in DATASETS}
+    assert _count(engine, PROVIDER_VALUES_TABLE) == 1
+
+
+def test_a_blocker_on_the_whole_table_keeps_every_portfolio(markets, monkeypatch) -> None:
+    """MetaTables' impact blockers refuse the delete itself, so every portfolio is kept."""
+
+    from msm_portfolios.services import portfolio_deletion as service
+
+    blocker = "ms_markets__portfolio: the caller cannot write this table."
+    monkeypatch.setattr(
+        service,
+        "portfolio_delete_impact",
+        lambda **_kwargs: service.PortfolioDeleteImpact(impact=None, blockers=[blocker]),
+    )
+    first, _ = _portfolio_with(markets.engine, *DATASETS)
+    second, _ = _portfolio_with(markets.engine, *DATASETS)
+
+    preflight = preflight_bulk_delete_portfolio_records(markets.context, uids=[first, second])
+    result = bulk_delete_portfolio_records(markets.context, uids=[first, second])
+
+    assert preflight["allowed"] is False
+    assert preflight["detail"] == "None of the selected portfolios can be deleted."
+    assert result["deleted_count"] == 0
+    assert [item["uid"] for item in result["failed"]] == [str(first), str(second)]
+    assert all(blocker in item["detail"] for item in result["failed"])
+    assert _deletes(markets) == []
+    assert _exists(markets.engine, first) and _exists(markets.engine, second)
 
 
 def test_a_plan_for_another_selection_is_refused(markets) -> None:

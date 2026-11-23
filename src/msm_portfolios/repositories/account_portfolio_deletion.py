@@ -27,7 +27,7 @@ from msm.repositories.account_deletion import (
     ACCOUNT_HISTORY_REFERENCES,
     account_delete_read_row,
     account_delete_read_statement,
-    account_delete_statements,
+    accounts_delete_statements,
     account_history_filters,
     account_history_reference,
 )
@@ -87,6 +87,24 @@ def account_portfolio_delete_statements(
     return statements
 
 
+def accounts_with_portfolios_delete_statements(
+    *,
+    accounts: Sequence[tuple[uuid.UUID | str, str]],
+    row_counts: Mapping[str, int],
+    portfolio_uids: Sequence[uuid.UUID | str],
+) -> list[GuardedStatement | Any]:
+    """Core's statements for ``accounts``, then the portfolios': one transaction, at most 22.
+
+    ``row_counts`` are the account reads' counts, summed; core leaves out the tables they
+    found empty.
+    """
+
+    return [
+        *accounts_delete_statements(accounts=accounts, row_counts=row_counts),
+        *account_portfolio_delete_statements(portfolio_uids),
+    ]
+
+
 def account_with_portfolios_delete_statements(
     *,
     uid: uuid.UUID | str,
@@ -94,18 +112,33 @@ def account_with_portfolios_delete_statements(
     row_counts: Mapping[str, int],
     portfolio_uids: Sequence[uuid.UUID | str],
 ) -> list[GuardedStatement | Any]:
-    """Core's account statements, then the portfolios': one transaction, at most 22.
+    """One account's statements, then the portfolios': one transaction."""
 
-    ``row_counts`` are the account read's counts; core leaves out the tables it found
-    empty.
-    """
+    return accounts_with_portfolios_delete_statements(
+        accounts=[(uid, unique_identifier)], row_counts=row_counts, portfolio_uids=portfolio_uids
+    )
 
-    return [
-        *account_delete_statements(
-            uid=uid, unique_identifier=unique_identifier, row_counts=row_counts
+
+def build_delete_accounts_with_portfolios_operation(
+    context: MarketsRepositoryContext,
+    *,
+    accounts: Sequence[tuple[uuid.UUID | str, str]],
+    row_counts: Mapping[str, int],
+    portfolio_uids: Sequence[uuid.UUID | str],
+    dialect: MetaTableCompiledSQLDialect | None = None,
+) -> MarketsCompiledWrite:
+    """Compile the accounts' and portfolios' delete, run with the delete's deadline."""
+
+    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
+    return compile_markets_statements(
+        accounts_with_portfolios_delete_statements(
+            accounts=accounts, row_counts=row_counts, portfolio_uids=portfolio_uids
         ),
-        *account_portfolio_delete_statements(portfolio_uids),
-    ]
+        context=with_max_rows(with_delete_deadline(context), max(len(portfolio_uids), 1)),
+        operation="delete",
+        data_source_uid=data_source_uid,
+        dialect=dialect,
+    )
 
 
 def build_delete_account_with_portfolios_operation(
@@ -117,19 +150,13 @@ def build_delete_account_with_portfolios_operation(
     portfolio_uids: Sequence[uuid.UUID | str],
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MarketsCompiledWrite:
-    """Compile the account and portfolio delete, run with the delete's deadline."""
+    """Compile one account's and its portfolios' delete."""
 
-    data_source_uid, dialect = resolve_markets_sql_target(context, dialect=dialect)
-    return compile_markets_statements(
-        account_with_portfolios_delete_statements(
-            uid=uid,
-            unique_identifier=unique_identifier,
-            row_counts=row_counts,
-            portfolio_uids=portfolio_uids,
-        ),
-        context=with_max_rows(with_delete_deadline(context), max(len(portfolio_uids), 1)),
-        operation="delete",
-        data_source_uid=data_source_uid,
+    return build_delete_accounts_with_portfolios_operation(
+        context,
+        accounts=[(uid, unique_identifier)],
+        row_counts=row_counts,
+        portfolio_uids=portfolio_uids,
         dialect=dialect,
     )
 
@@ -143,17 +170,20 @@ def build_read_account_with_portfolios_operation(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
+    together: Sequence[uuid.UUID | str] = (),
     dialect: MetaTableCompiledSQLDialect | None = None,
 ) -> MetaTableCompiledSQLOperation:
     """One read: core's account read, with one row per portfolio its history names.
 
     Per portfolio: the account history of other accounts that references it, its
-    manager, and its rows in each dataset. Each
+    manager, and its rows in each dataset. ``together`` are accounts deleted in the same
+    transaction: their history is not another account's (issue 128). Each
     dataset count reads only that portfolio's rows, through the dataset's
     ``(portfolio_identifier, time_index)`` index (revisions 0026 and 0031, issue 96).
     """
 
     filters = account_history_filters(uid)
+    deleted = account_history_filters([uid, *together])
     named = union(
         *(
             select(getattr(model, column).label("portfolio_uid")).where(filters[key]())
@@ -161,7 +191,7 @@ def build_read_account_with_portfolios_operation(
         )
     )
     statement = (
-        account_delete_read_statement(uid)
+        account_delete_read_statement(uid, together=together)
         .add_columns(
             PortfolioTable.uid.label(_label("uid")),
             PortfolioTable.unique_identifier.label(_label("identifier")),
@@ -170,7 +200,7 @@ def build_read_account_with_portfolios_operation(
             *(
                 select(func.count())
                 .select_from(model)
-                .where((getattr(model, column) == PortfolioTable.uid) & ~filters[key]())
+                .where((getattr(model, column) == PortfolioTable.uid) & ~deleted[key]())
                 .scalar_subquery()
                 .label(_label(key))
                 for key, model, column in ACCOUNT_HISTORY_REFERENCES
@@ -198,6 +228,7 @@ def read_account_with_portfolios(
     context: MarketsRepositoryContext,
     *,
     uid: uuid.UUID | str,
+    together: Sequence[uuid.UUID | str] = (),
 ) -> dict[str, Any] | None:
     """What deleting the account with its portfolios removes, in one read.
 
@@ -209,7 +240,7 @@ def read_account_with_portfolios(
     """
 
     result = execute_markets_operation(
-        build_read_account_with_portfolios_operation(context, uid=uid),
+        build_read_account_with_portfolios_operation(context, uid=uid, together=together),
         context=context,
     )
     rows = result.get("rows") or []
@@ -253,7 +284,9 @@ __all__ = [
     "ACCOUNT_PORTFOLIOS_GUARD",
     "account_portfolio_delete_statements",
     "account_with_portfolios_delete_statements",
+    "accounts_with_portfolios_delete_statements",
     "build_delete_account_with_portfolios_operation",
+    "build_delete_accounts_with_portfolios_operation",
     "build_read_account_with_portfolios_operation",
     "read_account_with_portfolios",
     "unreferenced_portfolios",

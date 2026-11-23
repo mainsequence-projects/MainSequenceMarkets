@@ -57,8 +57,7 @@ def test_account_targets_route_pages_the_service_result(monkeypatch) -> None:
                     "account_target_allocation_uid": str(uuid.uuid4()),
                     "position_set_uid": str(uuid.uuid4()),
                     "target_positions_date": TARGET_TIME,
-                    "weight_notional_exposure": None,
-                    "constant_notional_exposure": "250000",
+                    "weight_notional_exposure": "0.3",
                 }
             ],
         }
@@ -74,7 +73,7 @@ def test_account_targets_route_pages_the_service_result(monkeypatch) -> None:
     assert captured == {"uid": portfolio_uid, "limit": 1, "offset": 1}
     payload = response.json()
     assert [item["account_uid"] for item in payload["items"]] == [account_uid]
-    assert payload["items"][0]["constant_notional_exposure"] == "250000"
+    assert payload["items"][0]["weight_notional_exposure"] == "0.3"
     assert payload["pageInfo"]["totalItems"] == 3
     assert payload["pageInfo"]["hasNextPage"] is True
 
@@ -116,6 +115,17 @@ def test_retire_route_answers_409_while_a_current_target_names_the_portfolio(mon
 
     assert response.status_code == 409
     assert "2 accounts' current target names it" in response.json()["detail"]
+
+
+def test_bulk_retire_route_answers_400_for_an_invalid_uid(monkeypatch) -> None:
+    def invalid(*, uids):
+        raise ValueError("badly formed hexadecimal UUID string")
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.bulk_retire_portfolios", invalid)
+    client = TestClient(app)
+
+    assert client.post("/api/v1/portfolio/bulk-retire/", json={"uids": ["x"]}).status_code == 400
+    assert client.post("/api/v1/portfolio/bulk-retire/", json={"uids": []}).status_code == 422
 
 
 def test_reinstate_route_returns_the_live_portfolio(monkeypatch) -> None:
@@ -369,7 +379,6 @@ def test_list_portfolio_account_targets_maps_rows(monkeypatch) -> None:
         "position_set_uid": uuid.uuid4(),
         "target_positions_date": TARGET_TIME,
         "weight_notional_exposure": 0.25,
-        "constant_notional_exposure": None,
     }
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -400,7 +409,6 @@ def test_list_portfolio_account_targets_maps_rows(monkeypatch) -> None:
             "position_set_uid": str(row["position_set_uid"]),
             "target_positions_date": TARGET_TIME,
             "weight_notional_exposure": "0.25",
-            "constant_notional_exposure": None,
         }
     ]
 

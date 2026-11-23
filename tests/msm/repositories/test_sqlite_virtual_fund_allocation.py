@@ -2,7 +2,7 @@
 
 The reference case: two funds of two assets each share one asset, and the account
 holds one asset that is in no fund. The account target states exposure, as a share
-of NAV or an amount; the caller sizes it into units and sends them with the call.
+of NAV; the caller sizes it into units and sends them with the call.
 """
 
 from __future__ import annotations
@@ -90,13 +90,13 @@ def _reference_case(sqlite_markets, *, held=HELD):
         account,
         [{"asset_identifier": name, "quantity": quantity} for name, quantity in held.items()],
     )
-    # The exposure: a share of NAV in one portfolio, an amount in the other.
+    # The exposure: a share of NAV in each portfolio.
     target = _write_target(
         sqlite_markets,
         account,
         [
             _exposure_row(fund_a, weight_notional_exposure=0.4),
-            _exposure_row(fund_b, constant_notional_exposure=300_000.0),
+            _exposure_row(fund_b, weight_notional_exposure=0.3),
         ],
     )
     position_set = uuid.UUID(str(target["rows"][0]["position_set_uid"]))
@@ -587,7 +587,6 @@ def test_the_postgresql_writes_compile_with_the_funds_and_the_lines(
                 "asset_uid": None,
                 "portfolio_uid": str(portfolio),
                 "weight_notional_exposure": "0.4",
-                "constant_notional_exposure": None,
                 "single_asset_quantity": None,
                 "metadata_json": {},
             }

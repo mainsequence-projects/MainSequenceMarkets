@@ -90,3 +90,28 @@ def test_a_refused_retirement_raises_a_conflict(monkeypatch, client) -> None:
 
     with pytest.raises(MarketsConflictError, match="1 account's current target names it"):
         client.retire_portfolio(uuid.uuid4())
+
+
+def test_bulk_retires_and_answers_what_it_did_not_retire(monkeypatch, client) -> None:
+    # Issue 124: one call; a refused portfolio never stops the others.
+    from msm.api.portfolios import PortfolioBulkRetireResponse
+
+    retired_uid, refused_uid = str(uuid.uuid4()), str(uuid.uuid4())
+    refusal = str(PortfolioRetirementConflictError(portfolio_uid=refused_uid, account_count=1))
+    received: list[list[str]] = []
+
+    def fake_bulk_retire(*, uids):
+        received.append(uids)
+        return PortfolioBulkRetireResponse(
+            retired=[_portfolio(retired_uid, RETIRED_AT)],
+            failed=[{"uid": refused_uid, "detail": refusal}],
+        )
+
+    monkeypatch.setattr("apps.v1.routers.portfolios.bulk_retire_portfolios", fake_bulk_retire)
+
+    response = client.bulk_retire_portfolios([uuid.UUID(retired_uid), refused_uid])
+
+    assert received == [[retired_uid, refused_uid]]
+    assert isinstance(response.retired[0], Portfolio)
+    assert response.retired[0].retired_at == RETIRED_AT
+    assert [(item.uid, item.detail) for item in response.failed] == [(refused_uid, refusal)]

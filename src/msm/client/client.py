@@ -28,7 +28,12 @@ from msm.api.http import (
     BulkActionExplicitSelection,
     ResourceCollection,
 )
-from msm.api.portfolios import Portfolio, PortfolioBulkDeleteResponse, PortfolioDeleteResponse
+from msm.api.portfolios import (
+    Portfolio,
+    PortfolioBulkDeleteResponse,
+    PortfolioBulkRetireResponse,
+    PortfolioDeleteResponse,
+)
 from msm.api.remote import MarketsApiError, raise_for_error
 from msm.client.discovery import MarketsApiEndpoint, resolve_markets_api_endpoint
 
@@ -340,7 +345,7 @@ class MarketsClient:
 
         Nothing is written. The snapshot is the account's holdings set at exactly
         ``valuation_time``. ``position_set_uid`` states the account's exposure, as a
-        share of NAV or an amount; ``sized_targets`` gives each exposure in units,
+        share of NAV; ``sized_targets`` gives each exposure in units,
         sized by the caller with its own prices (ADR 0054). No price is sent. Each
         line of the plan has a ``target``, what is ``assigned`` and
         ``delta = target - assigned``. Without ``policy``,
@@ -450,6 +455,21 @@ class MarketsClient:
         payload = self.request("POST", f"{API_PREFIX}/portfolio/{portfolio_uid}/retire/")
         return Portfolio.model_validate(payload)
 
+    def bulk_retire_portfolios(self, portfolio_uids: Sequence[Any]) -> PortfolioBulkRetireResponse:
+        """Retire several portfolios in one call (``bulkRetirePortfolios``, issue 124).
+
+        Every portfolio that may be retired is retired; one that an account's current
+        target names, or that does not exist, is listed in ``failed`` with the reason and
+        never stops the others. Retired ones come back unchanged in ``retired``.
+        """
+
+        payload = self.request(
+            "POST",
+            f"{API_PREFIX}/portfolio/bulk-retire/",
+            json={"uids": [str(uid) for uid in portfolio_uids]},
+        )
+        return PortfolioBulkRetireResponse.model_validate(payload)
+
     def reinstate_portfolio(self, portfolio_uid: Any) -> Portfolio:
         """Clear a portfolio's retirement (``reinstatePortfolio``, ADR 0049)."""
 
@@ -470,10 +490,9 @@ class MarketsClient:
     def bulk_delete_portfolios(self, portfolio_uids: Sequence[Any]) -> PortfolioBulkDeleteResponse:
         """Delete portfolios with their rows in their seven datasets (``bulkDeletePortfolios``).
 
-        The route checks the whole selection first and raises ``MarketsConflictError``
-        naming each portfolio that is missing or referenced; nothing is deleted then.
-        Each portfolio is then deleted in its own transaction. If one fails, the others
-        stay deleted and ``MarketsConflictError`` names each failure.
+        Every portfolio that may go is deleted, together in one transaction. A portfolio
+        that is missing or refused never stops the others: the answer lists it in
+        ``failed`` with the reason, and the deleted ones in ``deleted``.
         """
 
         selection = BulkActionExecutionRequest(

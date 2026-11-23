@@ -89,6 +89,21 @@ def retire_portfolio(*, uid: str) -> Portfolio | None:
     return None if row is None else _validate_lifecycle_row(row)
 
 
+@registry_write("portfolio", "bulk-retire")
+def bulk_retire_portfolios(*, uids: list[str]) -> Any:
+    """Retire every selected portfolio that may be retired and report the rest (issue 124)."""
+
+    from apps.v1.schemas.portfolios import PortfolioBulkRetireResponse
+    from msm.services.portfolio_lifecycle import bulk_retire_portfolio_records
+
+    runtime = _get_lifecycle_runtime()
+    result = bulk_retire_portfolio_records(runtime.context, uids=uids)
+    return PortfolioBulkRetireResponse(
+        retired=[_validate_lifecycle_row(row) for row in result["retired"]],
+        failed=result["failed"],
+    )
+
+
 @registry_write("portfolio", "reinstate")
 def reinstate_portfolio(*, uid: str) -> Portfolio | None:
     """Clear the portfolio's retirement (ADR 0049)."""

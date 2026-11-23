@@ -7,6 +7,97 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-11-23
+
+Minor release 5.3.0, with breaking changes. An account target no longer states an amount
+([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)),
+and every bulk delete deletes what may go, in one transaction, and reports the rest
+instead of refusing the selection with `409`
+([#127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127),
+[#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+Portfolios can be retired, and signals ended, several in one call
+([#124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124),
+[#126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)).
+
+### Added
+
+- **End several signals in one call**
+  ([#126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)).
+  `SignalMetadata.end_many(signal_uids)` and the recipe `end_signals(signal_uids)` end
+  every signal that may go, its weights and its metadata row, in one row operation and one
+  transaction. A signal that is missing, that the caller does not manage, or that a
+  portfolio names is listed in `failed` with the reason and never stops the others.
+- **Retire several portfolios in one call**
+  ([#124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)).
+  `POST /api/v1/portfolio/bulk-retire/` and `MarketsClient.bulk_retire_portfolios`
+  retire every selected portfolio that may be retired in one update, which checks each
+  portfolio's current targets in the same statement, and one read after it. A portfolio
+  an account's current target names, or that does not exist, is listed in `failed` with
+  the reason and never stops the others.
+
+### Removed
+
+- **Breaking: an account target no longer states an amount**
+  ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
+  `constant_notional_exposure` is retired. It set a fund back to its amount at every
+  sync, so the fund's gains went to the account and its losses were refilled from it. A
+  portfolio row states `weight_notional_exposure`; an asset row states
+  `weight_notional_exposure` or `single_asset_quantity`. Revision `0036` drops the
+  column and keeps the name of the check that requires exactly one of the two. A target
+  that still states an amount makes the upgrade fail, and nothing is deleted: write that
+  account's target again as a share, then upgrade. On SQLite, such a failure leaves the
+  table `_alembic_tmp_ms_markets__targetpositionsts`; drop it before upgrading again.
+  Responses, `MarketsClient` and the "Accounts targeting the portfolio" view no longer
+  carry the field, and the view loses its "Notional" column.
+
+### Changed
+
+- **Requires `mainsequence-metatable` 0.1.77.** It answers a table's delete impact in a
+  fixed number of statements however many tables the delete reaches
+  ([MetaTables#136](https://github.com/mainsequence-projects/MetaTables/issues/136)),
+  reports a client timeout as one instead of naming `Retry-After`
+  ([MetaTables#147](https://github.com/mainsequence-projects/MetaTables/issues/147)), and
+  keeps values, indexes and checks through a SQLite table rebuild.
+- **Breaking: the portfolio bulk delete deletes what may go and reports the rest**
+  ([#127](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/127)).
+  `POST /api/v1/portfolio/bulk-delete/` no longer refuses the selection with `409` when
+  one portfolio is missing or refused. It deletes every portfolio that may go, together in
+  one transaction instead of one per portfolio, and answers `200` with each deleted
+  portfolio in `deleted` and each other one, with the reason, in `failed`. Its preflight
+  answers `allowed: true` when at least one portfolio can be deleted.
+  `MarketsClient.bulk_delete_portfolios` no longer raises `MarketsConflictError` for a
+  refused portfolio.
+- **Breaking: every bulk delete deletes what may go and reports the rest**
+  ([#128](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/128)).
+  `POST /api/v1/account/bulk-delete/`, `/asset-category/bulk-delete/` and
+  `/portfolio-group/bulk-delete/` no longer refuse the selection with `409` when one row
+  is missing or refused. They delete every selected row that may go, together in one
+  transaction, and answer `200` with the same envelope as the portfolio bulk delete:
+  `deleted`, and `failed` with each row's reason. The asset-category and portfolio-group
+  answers gain `deleted` and `failed`. Each selected account is read counting the other
+  selected accounts as deleted with it, so their rows block nothing and a portfolio only
+  they use goes with them. Preflights answer `allowed: true` when at least one row can be
+  deleted. `msm.api.http.blocked_preflight_detail` is removed.
+- **Breaking: in-process target writes refuse a field a row does not have**
+  ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
+  `build_target_positions_frame`, `validate_target_positions_frame` and the
+  `TargetPositions` updater raise `ValueError` for a key that is not a
+  `TargetPositionsStorage` column, as the API already answered `422`. Before, they
+  dropped such a key or passed it on. The check that refused `asset_identifier` by name
+  is gone; the rule covers it.
+
+### Fixed
+
+- **A portfolio's first run no longer runs out of time reading its bars**
+  ([#123](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/123)).
+  `InterpolatedPrices` read the source bars 500 rows a page, one request after another,
+  under the one 60-second deadline a read has. A page takes about the same time however
+  many rows it holds, so the deadline limits requests, not rows. An asset new to the
+  interpolated table reads all its bars from `OFFSET_START`, so a first run of ten new
+  assets needed more requests than the deadline allows and failed with
+  `TransferDeadlineError`. It now reads 10,000 rows a page, the most a MetaTables page
+  holds. A read of more than 100,000 rows still fails, on MetaTables' collection budget.
+
 ## [5.2.0] - 2026-11-23
 
 Minor release 5.2.0, with breaking changes to rebalance strategies. Strategies with

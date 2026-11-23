@@ -140,6 +140,37 @@ float64 on every engine. Unsigned 64-bit integers and arrays have no SQLite type
 registration rejects them with `unsupported_sqlite_type`, naming the table and
 column.
 
+A `UUID` column is created as `CHAR(32)` on SQLite, whose numeric affinity for a type
+named `UUID` would turn a value of digits into a float. A rebuild copies every value
+as it is and never casts it: the new column's affinity converts what it can without
+loss, so a value that does not fit the new type stays as written instead of becoming
+`0` or `2026`. A rebuild also restores the table's indexes, triggers and unnamed
+checks as they were written, following a renamed column as SQLite's `RENAME COLUMN`
+does; an index or check goes with a column it uses that is dropped. A trigger that
+uses a dropped column, and a constraint added under a name already taken, fail the
+migration instead: drop or rewrite that first.
+
+A rebuild keeps a column's `COLLATE`, `AUTOINCREMENT` and the last id it gave out,
+inline `UNIQUE` constraints, foreign-key actions, generated columns, and the exact SQL
+of defaults and checks, colons included. An unnamed `IN` check goes only with a Boolean
+or Enum type that made it. A single integer key stays `INTEGER`, which is 64 bits on
+SQLite and is what numbers new rows, when a revision widens it. Views and other tables'
+triggers keep working. A revision that only renames a column renames it in place.
+
+What a rebuild cannot keep fails the migration before the table changes: an
+`ON CONFLICT` clause, `COLLATE` inside a key or unique constraint, an inline
+`DEFERRABLE` key, `AUTOINCREMENT` on a key that is also a foreign key, two foreign keys
+that differ only in their action, and a dropped or batch-renamed column that a view or
+another table's trigger uses. Write that change as SQL in the revision, branched on the
+dialect.
+
+Before 0.1.75 a rebuild truncated `UUID`, date and time values, dropped expression
+indexes, triggers and the attributes above, rewrote a default or check such as
+`'{"a":1}'` to `'{"a"NULL}'`, and shortened some partial-index predicates
+([#135](https://github.com/mainsequence-projects/MetaTables/issues/135)). Values
+already truncated cannot be recovered from that database, and an index already lost
+has to be created again there.
+
 Application revisions written for PostgreSQL run unchanged. SQLite cannot alter
 columns or constraints in place, so the migration environment runs `alter_column`,
 `add_column`, `drop_column` and constraint operations through Alembic batch mode,
