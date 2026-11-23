@@ -11,13 +11,12 @@ implemented.
     ([ADR 0061](0061-retire-constant-notional-exposure.md)).
   - On 2026-11-23 he decided that each fund owns its cash
     ([Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md),
-    decision 14). The same day he settled decisions 1, 3, 4, 5, 8, 9, 10, 11 and 12 and the
-    rule in the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts
-    and portfolios that hold several currencies.
+    decision 14). The same day he settled decisions 1, 3, 4, 5 and 8 to 13 and the rule in
+    the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts and
+    portfolios that hold several currencies.
 - This ADR is about cash funds only. A fund that is always a share of the account works exactly
   as today, and nothing here changes it.
-- Everything not marked (owner) is a proposal. What is still open for the owner is under
-  [Open Questions](#open-questions).
+- Everything not marked (owner) is a proposal. No question is left open for the owner.
 - It would amend [ADR 0054](0054-account-exposure-and-sized-fund-targets.md) (what a portfolio
   row states, and how a cash fund is sized),
   [ADR 0053](0053-virtual-fund-allocation-routes-and-described-policies.md) and
@@ -235,6 +234,12 @@ When the account's target no longer names a cash fund's portfolio, or the portfo
 the target change is accepted. The fund keeps what it holds, units and cash, and stops
 rebalancing. Only a manual allocation empties it.
 
+### 13. A live cash fund's cash never goes below zero (owner)
+
+A live cash fund buys only with the cash it holds in that currency, whatever its execution
+policy's `negative_cash` allows (ADR 0059). With 10,000 USD and a strategy that wants 25,000
+of MSFT, it buys 10,000. A cash fund never borrows the account's cash.
+
 ## Operations
 
 Every operation is one transaction through the Markets API: the checks and the write together,
@@ -331,15 +336,8 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
   syncs before it allocates.
 - Every fund today is a share fund and stays one. There are no real portfolios yet, so nothing
   is converted.
-
-## Open Questions
-
-This one is the owner's to decide. My recommendation comes first.
-
-1. **A cash fund whose execution policy allows negative cash** (ADR 0059).
-   - *Recommended:* its cash below zero comes out of the account's available cash in that
-     currency, so a buy is limited by the fund's policy and by the account's available cash.
-   - *Alternative:* live, a cash fund's cash never goes below zero, whatever its policy allows.
+- A strategy whose execution policy allows negative cash buys less live, as a cash fund, than
+  in its backtest (decision 13).
 
 ## Not Decided Here
 
