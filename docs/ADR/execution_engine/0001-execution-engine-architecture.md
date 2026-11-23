@@ -102,8 +102,8 @@ Considerations (owner):
 ## Decision
 
 1. **One engine, one account** (owner). An account has at most one running engine.
-2. **The engine is its own module** (owner), separate from `msm` and `msm_portfolios`. The
-   proposed name is `msm_execution`.
+2. **The engine is its own module** (owner), separate from `msm` and `msm_portfolios`. Its
+   name is `msm_execution` (owner, 2026-11-23).
 3. **The provider imports and extends the engine** (owner). Without a provider the engine
    cannot trade. The provider owns the exchange connection, the prices and the quantization of
    orders (owner). ms-markets still takes no price in its own records, so ADR 0054 stands.
@@ -117,10 +117,12 @@ Considerations (owner):
 7. **The engine keeps the account book in local memory** (owner): what each owner holds, what
    each strategy wants, and what is working at the exchange.
 8. **Internal trades come first** (owner), at the first price observed at or after the match
-   (owner). By default only what each strategy asked to trade now is matched. Offering the
-   whole intent is a setting of the strategy, for strategies that must trade faster (owner).
-9. **What is left goes to the exchange as one order request for each asset**, and every fill
-   is split back to the owners it was for.
+   (owner). The match reserves the quantity, and the trade is booked when that price is
+   observed (owner, 2026-11-23). By default only what each strategy asked to trade now is
+   matched. Offering the whole intent is a setting of the strategy, for strategies that must
+   trade faster (owner).
+9. **What is left goes to the exchange as one order request for each asset** (owner,
+   2026-11-23), and every fill is split back to the owners it was for.
 10. **ms-markets is written afterwards** (owner), from the engine's local journal, by a
     recorder that is outside the trading path.
 11. **The engine always acts on the last signal** (owner). It never goes back to an earlier one.
@@ -155,7 +157,8 @@ Considerations (owner):
     only restrict it** (owner, 2026-11-23; ADR 0063, decision 9). A fund trades live by the
     rules its backtest used, and the account decides what it allows its funds.
 18. **The engine's own choices are settings of the account's policy**, each with a default
-    (owner, 2026-11-23; ADR 0063, decisions 1 and 4). They are not questions settled once for every user.
+    (owner, 2026-11-23; ADR 0063, decisions 1 and 4). They are not questions settled once
+    for every user.
 
 ## Vocabulary
 
@@ -249,6 +252,7 @@ For each owner and asset:
 | `wanted_now` | The position the runner wants to reach at this event |
 | `wanted_end` | The position at the end of the intent |
 | `working` | Signed units of the open order request that are for this owner |
+| `reserved` | Signed units matched in an internal trade that is waiting for its price |
 | Intent | `intent_id`, status, and the strategy's stored state for the asset |
 
 An owner whose runner has no opinion on an asset has no wanted values for it.
@@ -269,8 +273,8 @@ For each asset:
 ### What The Book Derives
 
 ```text
-left_end = wanted_end - held - working
-left_now = wanted_now - held - working, limited to the side and the size of left_end
+left_end = wanted_end - held - working - reserved
+left_now = wanted_now - held - working - reserved, limited to the side and size of left_end
 ```
 
 - `left_now` is what the runner wants traded now. It is what goes to the market.
@@ -322,8 +326,8 @@ Every change of the book is first appended to the journal, then applied.
 | --- | --- |
 | Target received | A new target arrives from a feed |
 | Position posted | A runner posts wanted positions and its stored state |
-| Internal trade matched | Owners are matched; the quantities move |
-| Internal trade priced | The first price at or after the match is observed |
+| Internal trade matched | Owners are matched; the quantities are reserved |
+| Internal trade priced | The first price at or after the match is observed; units and cash move |
 | Order requested, replaced, cancel requested | Before the request leaves for the venue |
 | Venue event | Accepted, rejected, fill, cancelled, expired |
 | Fill split | A fill is divided between owners |
@@ -340,9 +344,9 @@ Rules:
   from the venue. A split between owners cannot: only the engine knows it.
 - **Other events can be written in groups.** If the last group is lost in a crash, those
   events did not happen, and the runners decide again.
-- **The journal is local.** The proposed default is an SQLite file in write-ahead mode: it is
-  in the standard library, safe on a crash, and the recorder can read it with a cursor. A
-  provider can replace it.
+- **The journal is local, and it is the provider's choice** (owner, 2026-11-23). The default
+  is an SQLite file in write-ahead mode: it is in the standard library, safe on a crash, and
+  the recorder can read it with a cursor. A provider can replace it.
 
 A checkpoint saves the book, the open order request of each asset and each runner's stored
 state. A restart loads the last checkpoint and applies the journal after it.
@@ -412,21 +416,23 @@ Run for an asset whenever its row of the book changes:
 3. The smaller side is matched in full. The larger side is matched in proportion to each
    owner's quantity. Remainders of a unit go to the largest remainders first; ties go by a
    fixed order of the owners. The result is always the same for the same input.
-4. The quantities move at once: `held` changes for each matched owner, so what is left goes
-   to routing without waiting.
-5. The price is the first one observed at or after the match (owner). It is stamped on the
-   internal trade when it arrives.
-6. Each matched owner gets a fund fill marked internal.
+4. The match reserves the matched quantity: it is taken out of what goes to the market, so
+   what is left goes to routing without waiting. Nothing is booked yet.
+5. The price is the first one observed at or after the match (owner). When it arrives, the
+   internal trade is booked at that price's time: units and cash move between the owners
+   together, and each matched owner gets a fund fill marked internal (owner, 2026-11-23). An
+   owner never holds units it has not paid for.
 
 Only quantity that has not been sent to the venue is matched. Pulling back a working order to
-match it internally is left for later; see "Open Questions".
+match it internally is a setting of the account's policy, off by default.
 
 ### 5. Routing What Is Left
 
 1. Add up `left_now` over the owners. After the internal trades it has one side.
 2. Compare it with the asset's open order request:
    - none open: request the total;
-   - one open on the same side: replace it with the new total;
+   - one open on the same side: replace it with the new total. A replaced request is a new
+     order row (ADR 0064, decision 10);
    - the total is on the other side: reduce or cancel the open request first, then request
      what remains.
 3. Record the split: how much of the request is for each owner.
@@ -453,6 +459,10 @@ a reference price and a time after which it should not trade.
   back: the engine does not send the same request again by itself. The runners are told, and
   routing resumes when one of them posts again. What to do with unfilled volume is the
   strategy's rule, never the engine's (owner).
+- **Income.** A dividend, a coupon or interest that an asset pays. It is split between the
+  owners that hold the asset, in proportion to their units, and moves their cash. Each gets a
+  fund fill marked income (owner; ADR 0062, decision 15). A fee or interest that belongs to
+  no asset stays with the account itself.
 
 After a fill the book sends each affected runner one progress report: what was filled against
 what it wanted. Reports are merged, so a runner never has more than one waiting.
@@ -463,6 +473,10 @@ what it wanted. Reports are merged, so a runner never has more than one waiting.
 2. At that time the runner's wanted positions are withdrawn: `left` becomes zero.
 3. Its share of the open order request is cancelled.
 4. The intent ends as `expired`. The owner keeps what it holds (owner).
+
+For a direct asset row the lifetime counts from the time of the row's target snapshot, as it
+counts from a signal's time for a fund (owner, 2026-11-23). A match still reserved when the
+lifetime passes is dropped.
 
 ### 8. The Target Changes
 
@@ -714,15 +728,19 @@ Written by the recorder, never on the hot path.
 
 | From the journal | ms-markets record | Exists today |
 | --- | --- | --- |
-| One round of routing | `OrderManager` | Yes |
+| One round of routing | One batch: the `OrderManager` row and its `Order` rows, in one call (owner; ADR 0064, decision 7). The engine mints each order's id | Yes |
 | Order requests | `Order` rows of the round's `OrderManager` ([ADR 0064](../0064-an-order-has-its-own-row.md)), their state in `OrdersTS` | Yes |
 | Accepted, rejected, cancelled, expired | `OrderEventsTS` | Yes |
 | Fills | `TradesTS` | Yes |
 | Fill splits and internal trades | Fund fills | No |
-| Wanted positions and status of each owner | Rebalance state for each owner | No |
+| Wanted positions and status of each owner | Rebalance state for each owner, in the provider's own namespace | No |
 | Checkpoint positions | `AccountHoldingsSet` and `AccountHoldingsStorage` | Yes |
 | Start, stop and heartbeat of the engine | Engine session and lock | No |
 | The answer to an operation that waited for the engine | The capital allocation of ADR 0062, or its refusal | No |
+
+The new records that are published are Markets' own tables, declared in core `msm`: capital
+allocations, waiting operations, fund fills, fund holdings and the lock (owner, 2026-11-23;
+ADR 0060). The rebalance state for each owner is the provider's.
 
 ### Fund Fills
 
@@ -742,7 +760,7 @@ A fund fill is one row for each owner and fill:
 | `asset_identifier` | The asset |
 | `quantity`, `direction` | Units and side |
 | `price` | The fill's price, or the internal trade's price |
-| `source` | `market` or `internal` |
+| `source` | `market`, `internal`, or `income` for a dividend, a coupon or interest (ADR 0062, decision 15) |
 | `trade_identifier` | The `TradesTS` row, for a market fill |
 | `internal_trade_identifier` | Shared by both sides of an internal trade |
 | `rebalance_intent_id` | The intent the fill served |
@@ -761,6 +779,10 @@ what was held, what was working and the status. `PortfolioRebalanceStateTS` stor
 thing in weights for a backtest portfolio. It cannot be reused: a portfolio never receives
 real fills (ADR 0042), and one portfolio is followed by many accounts, each with its own
 progress.
+
+It is the provider's private state, kept in its own namespace in a table built from a Markets
+factory, as a portfolio's rebalance state is (owner, 2026-11-23; ADR 0060, decisions 2 and
+7). Markets holds nothing about it.
 
 ### Fund Holdings At A Sync
 
@@ -873,8 +895,8 @@ Internal trades, then routing:
 Cash is left out of these tables. Each fund's sells pay for its buys, and with the default
 policy a buy leaves only as its fund's cash arrives.
 
-The next MSFT price observed is 400.10, so the internal trade is stamped 400.10. The four
-requests fill. The book afterwards:
+The next MSFT price observed is 400.10, so the internal trade is booked at 400.10, at that
+price's time. The four requests fill. The book afterwards:
 
 | Owner | AAPL | MSFT | JNJ | TSLA |
 | --- | --- | --- | --- | --- |
@@ -921,8 +943,8 @@ the split 60 and 40. It fills in two parts:
   Markets at once. Operations on an account with no engine are unchanged.
 - The book's task is the only writer. A slow strategy, a slow database or a slow connection
   cannot block it, and none of them can change the book directly.
-- New records are needed in ms-markets: fund fills, the rebalance state for each owner, and the
-  engine session.
+- New records are needed in ms-markets: fund fills, capital allocations, waiting operations
+  and the lock. The rebalance state for each owner is the provider's own table.
 - The allocation at a sync changes for accounts run by an engine (ADR 0053).
 - The wheel gains a package. `pyproject.toml` lists the packages it ships, and the new one has
   to be added there.
@@ -1033,11 +1055,11 @@ The owner said not to worry about these for now.
 
 ## Open Questions
 
-Proposals in this ADR that the owner has not decided:
+Every question below is settled. They are kept with their answers:
 
-1. The module's name, `msm_execution`. `msm.time_index.execution` and `msm.models.execution`
-   already hold the execution records.
-2. One open order request for each asset, changed by replace, instead of several at once.
+1. Decided on 2026-11-23: the module is `msm_execution`. The execution records stay in `msm`.
+2. Decided on 2026-11-23: one open order request for each asset, changed by replace. A
+   replaced request is a new order row (ADR 0064).
 3. Decided on 2026-11-23, as a setting of the account's policy (decision 18): a fill is
    split between owners in proportion by default, so they get the same average price.
 4. Decided, as a setting: a request the venue rejects or cancels is held back until a runner
@@ -1048,18 +1070,21 @@ Proposals in this ADR that the owner has not decided:
    or whose portfolio was retired ([ADR 0049](../0049-portfolio-lifecycle-and-account-history.md)).
    Answered for a cash fund: it keeps what it holds and stops rebalancing (owner; ADR 0062,
    decision 12). A share fund is as today.
-7. The journal's default, an SQLite file, and its default safety.
-8. `OrderManager` as one round of routing.
-9. Where the new tables are declared. Their migrations belong to ms-markets either way.
+7. Decided on 2026-11-23: the journal is the provider's choice. The default is an SQLite
+   file, and an order request is safe on disk before it leaves.
+8. Decided on 2026-11-23: one round of routing is one batch, the `OrderManager` row and its
+   `Order` rows (ADR 0064).
+9. Decided on 2026-11-23: the published records are Markets' tables. The rebalance state for
+   each owner is the provider's private table (ADR 0060).
 10. Decided, as a setting: a working order is not pulled back to match it internally, by
     default.
 11. Decided on 2026-11-23: each fund owns its cash in the book. See decision 14.
 12. Decided, as a setting: the recorder's lag stops no new target by default, and trading
     continues.
-13. A direct asset row has no signal. Whether the lifetime of its strategy applies to the time
-    of its `PositionSet`.
-14. An internal trade moves its quantities at the match and gets its price at the next
-    observed one. Between the two, the fund fills have no price.
+13. Decided on 2026-11-23: for a direct asset row the lifetime counts from the time of its
+    target snapshot.
+14. Decided on 2026-11-23: the match reserves the quantity, and the internal trade is booked
+    at its price's time, units and cash together.
 15. Answered by ADR 0062 and ADR 0063: the account's rebalance strategy moves the money. A
     share fund goes to its share at every sync, as today. A cash fund changes only by a
     capital allocation a person records.

@@ -5,8 +5,8 @@
 Proposed (2026-11-23). Drafted at the owner's request on 2026-11-23. Nothing in it is
 implemented.
 
-- The decisions marked (owner) were made by the owner on 2026-11-23. Everything else is a
-  proposal, the names included.
+- The decisions marked (owner) were made by the owner on 2026-11-23, and he confirmed the
+  names the same day. Everything else is a proposal.
 - It is a different concept from [ADR 0062](0062-capital-given-to-a-virtual-fund.md), and
   kept apart from it (owner). ADR 0062 keeps the records of a cash fund. This ADR owns the
   choices.
@@ -73,17 +73,18 @@ defaults. Nothing changes for a portfolio or for a strategy that names its polic
 ### 4. An account policy extends the base (owner)
 
 An account has a policy, here called `AccountPolicy`. It has the seven settings of the
-base, for the account's own trading, and adds the account's own. The settings below, their
-names and their other values are a proposal. Each default is what ADR 0062 decided.
+base, for the account's own trading, and adds the account's own. The owner confirmed the
+settings below and their names on 2026-11-23. Each default is what ADR 0062 decided.
 
 | Setting | What it chooses | Default | Other values |
 | --- | --- | --- | --- |
 | `fund_cash_currencies` | Which currencies cash may be given to a fund in | `portfolio_allowed`: any currency the fund's portfolio allows | `valuation_only` |
-| `fund_cash_in` | Whether giving cash needs available cash in the account | `needs_available_cash` | `unchecked` |
+| `fund_cash_in` | Whether giving cash needs available cash in the account | `needs_available_cash` | `unchecked`, `needs_cash_above_direct_target` |
 | `fund_cash_out` | Taking out more cash than a fund holds | `refuse` | `sell_first` |
 | `fund_draws_on_account` | Whether a fund's cash may go below zero on the account's cash | `not_allowed` | `up_to_limit`, with a limit |
 | `fund_portfolio_removed` | A cash fund whose portfolio leaves the target | `keep_holdings` | `return_to_account` |
 | `fund_unexplained_units` | Whether a cash fund gets units that no record explains | `none` | `through_allocation_policy` |
+| `fund_income` | Who gets a dividend, a coupon or interest that an asset pays | `to_holders`: the owners that hold the asset, by their units | `to_account` |
 
 For the account's own trading, the seven settings of the base rule the account's cash at the
 venue (owner): the total of what its funds and its direct rows send (Execution Engine ADR 0001,
@@ -92,8 +93,8 @@ venue (owner): the total of what its funds and its direct rows send (Execution E
 fund's orders are already gated by its own.
 
 An account run by an engine has more choices (Execution Engine ADR 0001, "Choices Are
-Settings"). The choices and their defaults are the owner's decisions of 2026-11-23. Their
-names are a proposal.
+Settings"). The choices, their defaults and their names are the owner's decisions of
+2026-11-23.
 
 | Setting | What it chooses | Default | Other values |
 | --- | --- | --- | --- |
@@ -190,8 +191,9 @@ separate before a strategy can trade live.
 | What it does | Accepts or refuses the recorded move under its policy. It sizes nothing and reads no price |
 | Its policy | `AccountPolicy` |
 
-"To the target at every sync" is a second account strategy on the same base. Whether the
-account strategies share a class of their own is decided when the second one is written.
+"To the target at every sync" is a second account strategy on the same base:
+`SyncToTargetAccount` (owner). Whether the account strategies share a class of their own is
+decided when it is written.
 
 ### 8. Accounts keep the boundary portfolios have (owner)
 
@@ -253,6 +255,21 @@ portfolio's is (Execution Engine ADR 0001, decision 5).
 "To the target at every sync" records nothing new when it moves money. The sync's allocation
 lines are its record, as today.
 
+### 12. An account's strategy is named on its target snapshot (owner)
+
+The account's strategy is named on the target snapshot, the `PositionSet`, and a row's on its
+row, by `rebalance_strategy_uid`. The strategy names its policy, as a portfolio's does, so
+the policy is recorded with it.
+
+Neither is part of an identity. An account is not hashed. A change of strategy or of policy
+is a new target snapshot with its date, so the account's history is kept.
+
+### 13. A user's account strategy uses the two existing records (owner)
+
+A user's own strategy records nothing new when it moves money. One that keeps funds at a
+target is recorded by the sync's allocation lines, as today. One that gives or takes money
+writes capital allocations (ADR 0062).
+
 ## What It Changes
 
 - **ADR 0058.** `ExecutionPolicy` extends `ExecutionPolicyBase`. Its settings and defaults
@@ -260,9 +277,9 @@ lines are its record, as today.
   strategy, and the shipped portfolio strategies extend `PortfolioRebalanceStrategy`.
 - **ADR 0062.** Decisions 8, 11, 12 and 13 stop being fixed rules. They are the defaults of
   `fund_cash_currencies` and `fund_cash_in`, `fund_cash_out`, `fund_portfolio_removed` and
-  `fund_draws_on_account`. Its two kinds of fund (decision 1) and its rule that only a
-  manual allocation changes a cash fund (decision 4) describe two strategies. Its records
-  and its allowed currencies stand.
+  `fund_draws_on_account`. Its decision 15 is the default of `fund_income`. Its two kinds of
+  fund (decision 1) and its rule that only a manual allocation changes a cash fund
+  (decision 4) describe two strategies. Its records and its allowed currencies stand.
 - **ADR 0060.** Unchanged, and now applied to accounts: their strategies run with the
   provider and publish to Markets.
 - **ADR 0053.** Unchanged. Its allocation policies still say who owns the units that no
@@ -286,11 +303,9 @@ lines are its record, as today.
 
 ## Not Decided Here
 
-- The names `ExecutionPolicyBase`, `AccountPolicy`, `PortfolioRebalanceStrategy` and
-  `ManualAccount`, the name of the second account strategy, and the names and values of the
-  account's settings.
-- Where an account names its policy, and whether the policy is part of an identity.
-- What a user's own account strategy records when it moves money.
+Nothing. The owner settled the last open points on 2026-11-23: the names, where an account
+names its strategy and its policy (decision 12), and what a user's strategy records
+(decision 13).
 
 ## Not Verified
 

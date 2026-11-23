@@ -24,7 +24,7 @@ implemented.
     ([ADR 0061](0061-retire-constant-notional-exposure.md)).
   - On 2026-11-23 he decided that each fund owns its cash
     ([Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md),
-    decision 14). The same day he settled decisions 1, 3, 4, 5 and 8 to 13 and the rule in
+    decision 14). The same day he settled decisions 1, 3, 4, 5 and 8 to 15 and the rule in
     the [Ontology](#ontology). Decisions 8 to 10 came out of an analysis of accounts and
     portfolios that hold several currencies.
 - This ADR is about cash funds only. A fund that is always a share of the account works exactly
@@ -134,6 +134,9 @@ A portfolio row that states `weight_notional_exposure` is a share fund. A portfo
 states no share is a cash fund, and its money comes from manual allocations. An asset row does
 not change.
 
+No field names the kind (owner, 2026-11-23). It follows from the strategy the row names
+(ADR 0063, decision 11), or from stating a share or not.
+
 ### 2. A fund owns its cash (owner)
 
 As Execution Engine ADR 0001 decided (decision 14): a fill, an internal trade and the fund's
@@ -158,7 +161,8 @@ bought or sold, and it has no price.
 - **An allocation is a fact.** It is never changed or deleted; a correction is a new allocation.
 - **A move between cash funds** is two allocations at the same time: one away from one fund,
   one into the other.
-- **A cash fund's capital and result** need prices, so the provider computes them (ADR 0054).
+- **A cash fund's capital and result** need prices, so the provider computes them and keeps
+  them (ADR 0054). Markets stores no value or result series of a fund (owner, 2026-11-23).
 
 ### 4. Only a manual allocation changes a cash fund (owner)
 
@@ -186,7 +190,8 @@ Then:
   Engine ADR 0001, "Fund Holdings At A Sync"). The same holds for cash, currency by currency.
 
 A cash fund's cash is stored at the sync like its other holdings: a `VirtualFundHoldingsStorage`
-row per currency asset.
+row per currency asset. It also gets an allocation line, with its target equal to what the
+fund holds, so nothing reads as left to trade (owner, 2026-11-23).
 
 ### 6. A cash fund is sized from its own value
 
@@ -211,6 +216,11 @@ Cash allocated into a fund must be in one of the allowed currencies of the fund'
 the account must have that much available cash in that currency. Each currency is checked on
 its own: available EUR does not cover USD. ms-markets compares quantities of one asset at a
 time, so it needs no price (ADR 0054).
+
+Cash that a direct row of the account's own target keeps does not limit it (owner,
+2026-11-23). A direct row is a target, not a reserve: giving a fund cash can take the account
+below that target, and the row then shows the difference. Limiting it is another value of the
+account policy's `fund_cash_in` (ADR 0063).
 
 The owner first allowed the valuation currency only. After the currency analysis of the same
 day he widened it to the allowed currencies. Otherwise a portfolio that holds foreign assets
@@ -254,6 +264,29 @@ A live cash fund buys only with the cash it holds in that currency, whatever its
 policy's `negative_cash` allows (ADR 0059). With 10,000 USD and a strategy that wants 25,000
 of MSFT, it buys 10,000. A cash fund never borrows the account's cash.
 
+### 14. A fund changes kind when its row names another strategy (owner)
+
+A fund moves from one kind to the other when its row names another strategy in a new target
+(ADR 0063, decision 11).
+
+- **To a cash fund.** One operation, made by a person, records what the fund holds at that
+  time as its capital: its units in kind and its cash. From then on only a manual allocation
+  changes what it was given.
+- **To a share fund.** The next sync sizes it from its share of the account, as today. Its
+  capital allocations stay as history.
+
+### 15. Income goes to the owners that hold the asset (owner)
+
+A dividend, a coupon or interest that an asset pays goes to the owners that hold the asset,
+in proportion to their units, as a dividend goes into the portfolio's cash in the backtest. A
+fee or interest that belongs to no asset stays with the account itself. A trade's fee is
+already split with its fill (decision 2).
+
+- It is recorded as a fund fill of source `income`: cash only, in the currency it was paid in.
+- Whoever trades for the fund writes it, as it writes the other fund fills (decision 7).
+- It is the default of the account policy's `fund_income`. The other value keeps all income
+  with the account itself (ADR 0063).
+
 ## Operations
 
 Every operation is one transaction through the Markets API: the checks and the write together,
@@ -269,6 +302,7 @@ is described below.
 | Move cash from one cash fund to another | Two allocations at the same time | The first fund's cash is less; the cash is not one of the allowed currencies of the second fund's portfolio |
 | Allocate units in kind to a cash fund | One allocation in kind | The account itself holds fewer of those units |
 | Move units in kind away from a cash fund | One allocation in kind | The fund holds fewer of those units |
+| Make a share fund a cash fund | Its holdings at that time as its capital: allocations in kind and in cash (decision 14) | The fund is not a share fund of the account |
 
 A person makes every operation. A quantity is positive in every operation, and the side says
 which way it moves. An account delete (ADR 0050) deletes its capital allocations and fund fills
@@ -310,7 +344,7 @@ So an operation on a locked account passes the lock. By default it waits for the
 | --- | --- |
 | Capital allocations | New, time-indexed (decision 3); its keys into the account and the fund cascade on delete |
 | Waiting operations | New: an operation on a locked account, kept until the engine answers |
-| Fund fills | New, as Execution Engine ADR 0001 proposes, with the currency each settled in (decision 7) |
+| Fund fills | New, as Execution Engine ADR 0001 proposes, with the currency each settled in (decision 7) and a source for income (decision 15) |
 | `VirtualFundHoldingsStorage` | Also holds a cash fund's cash, as a row per currency asset |
 | `TargetPositionsStorage` | A portfolio row states a share, or nothing for a cash fund; an asset row is unchanged |
 | A portfolio's allowed currencies | New: a many-to-many link from a portfolio to assets (decision 9) |
@@ -389,16 +423,13 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
 
 ## Not Decided Here
 
-- Whether a portfolio row names its kind explicitly, instead of by stating a share or not.
-  ADR 0063 (decision 11) proposes that a row may name its strategy.
-- Whether cash that the account's own target keeps, a direct row on a currency (ADR 0053),
-  limits its available cash.
-- Moving a fund from one kind to the other.
-- Dividends and interest that the account receives for a cash fund's holdings, and how the
-  account's fees are shared among its funds.
-- Whether ms-markets stores a cash fund's value or result series, which need prices (ADR 0054).
-- Whether the cash currency asset gets an allocation line with a target.
-- How Command Center shows a cash fund's capital, cash and result.
+- How Command Center shows a cash fund's capital, cash and result. It is out of this
+  implementation, and is decided once the records exist (owner, 2026-11-23).
+
+The other points listed here before were settled by the owner on 2026-11-23: the kind of a
+row (decision 1), a fund's value series (decision 3), the allocation line of a fund's cash
+(decision 5), cash that a direct row keeps (decision 8), changing kind (decision 14) and
+income (decision 15).
 
 ## Not Verified
 
