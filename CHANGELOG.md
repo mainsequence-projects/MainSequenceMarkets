@@ -7,6 +7,19 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-11-23
+
+Patch release 5.3.1: ms-markets requires MetaTables 0.1.78, whose client skills use
+neutral placeholders, and its copies of those skills are refreshed. No code changes.
+
+### Changed
+
+- **Requires `mainsequence-metatable` 0.1.78.** Its client skills use neutral placeholders
+  in their examples
+  ([MetaTables#151](https://github.com/mainsequence-projects/MetaTables/issues/151)), and
+  the copies in `.agents/skills/metatables` are refreshed from it. Nothing else changes
+  after 0.1.77.
+
 ## [5.3.0] - 2026-11-23
 
 Minor release 5.3.0, with breaking changes. An account target no longer states an amount
