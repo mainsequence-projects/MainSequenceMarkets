@@ -74,8 +74,7 @@ defaults. Nothing changes for a portfolio or for a strategy that names its polic
 
 An account has a policy, here called `AccountPolicy`. It has the seven settings of the
 base, for the account's own trading, and adds the account's own. The settings below, their
-names and their other values are a proposal. Each default is what ADR 0062 decided, except
-the last, which comes from the engine's lock (Execution Engine ADR 0001, decision 15).
+names and their other values are a proposal. Each default is what ADR 0062 decided.
 
 | Setting | What it chooses | Default | Other values |
 | --- | --- | --- | --- |
@@ -85,7 +84,25 @@ the last, which comes from the engine's lock (Execution Engine ADR 0001, decisio
 | `fund_draws_on_account` | Whether a fund's cash may go below zero on the account's cash | `not_allowed` | `up_to_limit`, with a limit |
 | `fund_portfolio_removed` | A cash fund whose portfolio leaves the target | `keep_holdings` | `return_to_account` |
 | `fund_unexplained_units` | Whether a cash fund gets units that no record explains | `none` | `through_allocation_policy` |
+
+For the account's own trading, the seven settings of the base rule the account's cash at the
+venue: the total of what its funds and its direct rows send (Execution Engine ADR 0001,
+"Routing What Is Left"). `sizing` has no use there, because the orders arrive already sized.
+`calendar_gating` defaults to `none` for an account: it has no portfolio calendar, and each
+fund's orders are already gated by its own.
+
+An account run by an engine has more choices (Execution Engine ADR 0001, "Choices Are
+Settings"). Their names, values and defaults are a proposal. That an operation must pass the
+engine's lock is the owner's decision.
+
+| Setting | What it chooses | Default | Other values |
+| --- | --- | --- | --- |
 | `fund_operations_while_locked` | An operation on a fund while the account's engine runs | `wait_for_engine`: the engine answers from its book | `refuse` |
+| `fill_split` | How a fill for several owners is divided | `pro_rata`: the same average price for all | `first_come` |
+| `rejected_orders` | A request the venue rejects or cancels | `wait_for_strategy`: held back until a strategy asks again | `resend` |
+| `failed_strategy` | A fund's strategy that raises | `stop_that_fund`: the others go on | `stop_the_account` |
+| `internal_match_working_orders` | Whether a working order is pulled back to trade internally | `no` | `yes` |
+| `recorder_lag_limit` | How far the records may fall behind before no new target is taken | None: trading continues | A duration |
 
 ### 5. Users extend a policy (owner)
 
@@ -151,6 +168,17 @@ Three things change in the base so that it fits both:
    weights per asset, an account from its target's rows. `RebalanceTarget` stays: a key and
    a weight.
 
+`PortfolioRebalanceStrategy` keeps two things apart, so that the execution engine can
+replace the second (Execution Engine ADR 0001, "A Runner Decides"):
+
+| | What it is | Backtest | Live |
+| --- | --- | --- | --- |
+| Deciding | When a target may trade, the order fixed at the decision, the slice a bar allows, and how much may trade now under the cash rules | The strategy and its policy | The same strategy and policy |
+| Filling | The price and the quantity each order gets, booked in the shares and the cash | The next observed price, or the bar | The venue |
+
+Today the policy works out how much may trade and books the fill in one step. They have to be
+separate before a strategy can trade live.
+
 `ManualAccount` is then small:
 
 | | `ManualAccount` |
@@ -197,6 +225,33 @@ Proposal: `AccountTable` gains `managed_by`, as `PortfolioTable` has, so that on
 application that manages an account publishes to it (ADR 0060, decision 4). The engine's lock
 on an account belongs to that application.
 
+### 9. A live fund trades under its portfolio's policy
+
+A live fund trades by its portfolio strategy's `ExecutionPolicy`, the one its backtest ran.
+Its account's policy can only restrict it, through the `fund_` settings: a live cash fund's
+cash stays at or above zero even when its own policy allows less (ADR 0062, decision 13). A
+fund has no policy of its own.
+
+### 10. In a live account, the engine runs the account's strategy
+
+The execution engine runs the account's rebalance strategy for the account it trades
+(Execution Engine ADR 0001, "The Account's Strategy Moves Money"). It is in the provider's
+process, with the book and the prices. An account with no engine needs nothing new: a manual
+move is a Markets operation, and a fund at a share is sized by the provider's sync, as today.
+
+### 11. A row may name its strategy, and the account's is the fallback
+
+Each row of the account's target may name its own account strategy. A row that names none
+uses the account's. An account that names none keeps today's behaviour: to the target at
+every sync for a row that states a share, manual for a row that states none.
+
+This is the owner's decision for direct asset rows (Execution Engine ADR 0001, decision 4),
+applied here to portfolio rows. A strategy is named through `RebalanceStrategyMetadata`, as a
+portfolio's is (Execution Engine ADR 0001, decision 5).
+
+"To the target at every sync" records nothing new when it moves money. The sync's allocation
+lines are its record, as today.
+
 ## What It Changes
 
 - **ADR 0058.** `ExecutionPolicy` extends `ExecutionPolicyBase`. Its settings and defaults
@@ -211,8 +266,10 @@ on an account belongs to that application.
   provider and publish to Markets.
 - **ADR 0053.** Unchanged. Its allocation policies still say who owns the units that no
   record explains; `fund_unexplained_units` only says whether a cash fund takes part.
-- **Execution Engine ADR 0001.** Its lock gets a setting of `AccountPolicy`:
-  `fund_operations_while_locked`. While an account is locked, the engine applies the account
+- **Execution Engine ADR 0001.** The engine runs the account's strategy, which replaces its
+  `owner_size` hook. Its open choices become settings of `AccountPolicy`, and so does its
+  lock: `fund_operations_while_locked`. A live fund trades under its portfolio's policy,
+  restricted by its account's. While an account is locked, the engine applies the account
   policy's cash and unit settings against its book.
 
 ## Consequences
@@ -231,19 +288,8 @@ on an account belongs to that application.
 - The names `ExecutionPolicyBase`, `AccountPolicy`, `PortfolioRebalanceStrategy` and
   `ManualAccount`, the name of the second account strategy, and the names and values of the
   account's settings.
-- The class that runs an account's strategy in the provider's process, as
-  `PortfolioRebalance` runs a portfolio's.
-- Whether an account has one strategy, or each row of its target names its own. An account
-  with one fund at a fixed share and one run by hand needs one or the other.
-- What a strategy other than the manual one records when it moves money.
-- Whether an account's strategy is registered as a portfolio's is
-  (`RebalanceStrategyMetadata`).
 - Where an account names its policy, and whether the policy is part of an identity.
-- Whether a fund may have a policy of its own, different from its account's.
-- Which policy applies to a live fund when both have a say: its portfolio's
-  `ExecutionPolicy`, or its account's policy.
-- The `calendar_gating` value `portfolio_calendar` for an account, which has no portfolio
-  calendar.
+- What a user's own account strategy records when it moves money.
 
 ## Not Verified
 

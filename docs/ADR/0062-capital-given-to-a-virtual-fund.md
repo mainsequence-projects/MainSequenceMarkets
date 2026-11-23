@@ -192,8 +192,9 @@ row per currency asset.
 
 The provider sizes a cash fund's target units from the fund's own value, its holdings at the
 provider's prices plus its cash, the way the backtest sizes from its book. A share fund is sized
-from its share of the account, as today. The `owner_size` hook of Execution Engine ADR 0001
-defaults to the one or the other. `sized_targets` keeps its shape (ADR 0054).
+from its share of the account, as today. In the engine, the account's rebalance strategy
+gives each fund its size (Execution Engine ADR 0001, "The Account's Strategy Moves Money").
+`sized_targets` keeps its shape (ADR 0054).
 
 ### 7. Whoever trades for a cash fund writes its fund fills
 
@@ -363,10 +364,10 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
   currency is one of them. Markets records both.
 - **ADR 0061.** It left open whether a share of the account stays a rule applied at every sync.
   It does, for share funds, unchanged (owner).
-- **Execution Engine ADR 0001.** It answers question 15. The `owner_size` default depends on the
-  kind of fund. Fund fills become a Markets record that any trader writes. Its rule for units
-  that no fill explains applies to share funds only (owner). Its lock (decision 15) says how
-  an operation is checked while an engine runs.
+- **Execution Engine ADR 0001.** It answers question 15. A fund's size follows its kind, and
+  the account's strategy gives it. Fund fills become a Markets record that any trader writes.
+  Its rule for units that no fill explains applies to share funds only (owner). Its lock
+  (decision 15) says how an operation is checked while an engine runs.
 
 ## Consequences
 
@@ -388,6 +389,7 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
 ## Not Decided Here
 
 - Whether a portfolio row names its kind explicitly, instead of by stating a share or not.
+  ADR 0063 (decision 11) proposes that a row may name its strategy.
 - Whether cash that the account's own target keeps, a direct row on a currency (ADR 0053),
   limits its available cash.
 - Moving a fund from one kind to the other.
