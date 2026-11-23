@@ -21,6 +21,7 @@ from msm_portfolios.accounting.reducer import _validate_ledger_record_identities
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
 from msm_portfolios.rebalance_strategy.accounting import _empty_event_batch
+from msm_portfolios.rebalance_strategy.base import UNFILLED_ENDINGS
 
 from msm_portfolios.retirement import (
     drop_retired_rows,
@@ -439,12 +440,15 @@ FILL_COLUMNS = (
 
 
 def recorded_fills(rebalance_state: pd.DataFrame | None) -> pd.DataFrame:
-    """Return the trades ``PortfolioRebalance`` recorded, and its cancellations.
+    """Return the trades ``PortfolioRebalance`` recorded, its cancellations and expiries.
 
     A row carries an ``execution_price`` exactly when its asset traded at that time,
     at that observed price. A cancelled row without a price cut an order that filled
-    nothing then; the ledger records it as progress with the reason its state gives. A fill can leave the weight unchanged, when a new target
-    repeats the asset's weight; the ledger then resizes the position at its NAV.
+    nothing then; an expired row dropped what was left of an order whose signal passed
+    the strategy's lifetime, and never has a price. The ledger records both as progress
+    with the status and the reason their state gives. A fill can leave the weight
+    unchanged, when a new target repeats the asset's weight; the ledger then resizes
+    the position at its NAV.
     Each fill keeps its time, asset, price and target, plus a ``source_revision``
     that digests them, so a changed fill is a changed source.
     """
@@ -455,11 +459,11 @@ def recorded_fills(rebalance_state: pd.DataFrame | None) -> pd.DataFrame:
     if missing:
         raise ValueError("Rebalance state is missing columns: " + ", ".join(missing))
     flat = flat[~flat["execution_status"].isin({"superseded", "rejected"})]
-    cancelled = flat["execution_status"].astype(str) == "cancelled"
-    flat = flat[flat["execution_price"].notna() | cancelled].copy()
+    ended = flat["execution_status"].astype(str).isin(UNFILLED_ENDINGS)
+    flat = flat[flat["execution_price"].notna() | ended].copy()
     if flat.empty:
         return pd.DataFrame(columns=[*FILL_COLUMNS, "source_revision"])
-    cancelled = flat["execution_status"].astype(str) == "cancelled"
+    ended = flat["execution_status"].astype(str).isin(UNFILLED_ENDINGS)
     flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
     flat["target_signal_time_index"] = pd.to_datetime(
         flat["target_signal_time_index"], utc=True
@@ -467,8 +471,9 @@ def recorded_fills(rebalance_state: pd.DataFrame | None) -> pd.DataFrame:
     flat[ASSET_IDENTIFIER_DIMENSION] = flat[ASSET_IDENTIFIER_DIMENSION].astype(str)
     price = pd.to_numeric(flat["execution_price"], errors="coerce")
     priced = price.notna() & (price > 0.0) & price.map(_is_finite)
-    # A cancellation that filled nothing carries no price; the ledger records it.
-    unpriced = flat[~priced & ~(cancelled & price.isna())]
+    # A cancellation or an expiry that filled nothing carries no price; the ledger
+    # records it.
+    unpriced = flat[~priced & ~(ended & price.isna())]
     if not unpriced.empty:
         first = unpriced.iloc[0]
         raise ValueError(
@@ -515,8 +520,9 @@ class _RecordedFillBooker:
     once, at its decision: the instant before its earliest moment, with the NAV and
     the prices last observed before it, the same set for every asset. Each asset
     then fills its fixed count, or the recorded fraction of its open order, at its
-    own recorded price. A rebalance sized at each fill, or without a recorded
-    earliest moment (a strategy with its own bars), is sized at each fill.
+    own recorded price; a strategy with its own bars records one fill per slice
+    (#90). A rebalance sized at each fill, or without a recorded earliest moment, is
+    sized at each fill.
     """
 
     def __init__(
@@ -541,10 +547,7 @@ class _RecordedFillBooker:
         }
         self._decisions: dict[pd.Timestamp, dict[str, dict[str, float]]] = {}
         # Sizing at each fill is the execution policy's other choice (ADR 0058).
-        sized_at_decision = (
-            strategy.own_execution_prices() is None
-            and strategy.fill_policy().sizing == "at_decision"
-        )
+        sized_at_decision = strategy.fill_policy().sizing == "at_decision"
         for intent_id, group in booked.groupby("rebalance_intent_id", sort=True):
             if not sized_at_decision:
                 break

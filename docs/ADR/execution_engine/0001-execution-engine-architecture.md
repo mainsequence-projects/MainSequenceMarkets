@@ -789,12 +789,28 @@ These came up in the discussion. They are kept here so they can be taken up agai
   lifetime is a different portfolio. Not set means a signal never expires. The last signal is
   the only candidate; there is no fallback to an earlier one. When the lifetime passes on a
   partly executed intent, it stops and keeps what it holds, under a new `expired` status.
+  Done on 2026-11-22 for the backtest path
+  ([#114](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/114)):
+  `RebalanceStrategyBase.signal_lifetime`, a `timedelta`, `None` by default. The decision
+  does not name the clock; the implementation infers it from step 1 of "7. A Signal
+  Passes Its Lifetime" (the signal's time plus the lifetime) and measures economic time,
+  never the job's: an event at `t` acts on the latest signal, which is too old when
+  `t - time_index > signal_lifetime`, so a signal exactly that old is still valid. A
+  target too old at its earliest moment, or at its first bar, never trades. A running
+  intent stops at its next event (the first instant an order has an eligible price, or
+  its next bar), and each unfinished order writes an `expired` row with no price; the
+  ledger records it as progress. The proposed engine's timer would end the intent at the
+  signal's time plus the lifetime; the backtest has no event there and ends it at the
+  next one, with the same fills. A strategy without a lifetime keeps its revision, its
+  portfolio configuration hash and its update hashes.
 - **Unfilled volume.** What happens when volume does not fill is the rebalance strategy's
   rule, never the engine's.
 - **Size.** The size is never a constant in the strategy. It is given by whoever runs it: the
   fund in live, the portfolio in a backtest. It is always set, and a run without it raises.
   The default of 50,000,000 in `VolumeParticipation`, `LiquidityConstrained` and
-  `TrailingAverageDailyVolumeParticipation` is wrong and goes.
+  `TrailingAverageDailyVolumeParticipation` is wrong and goes. Done on 2026-11-22
+  ([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)):
+  `total_notional` is required there.
 - **Strategy registry.** Portfolios and direct asset rows name their strategy through
   `RebalanceStrategyMetadata`, by `rebalance_strategy_uid`.
 - **Internal matching** of the whole intent is a setting of the strategy.
@@ -807,15 +823,27 @@ The owner said not to worry about these for now.
 
 - `RebalanceStrategyBase` has two loops that call `apply_event`, `build_transitions` and
   `build_accounting_schedule` with `simulate_accounting_event`, and the choice of the target
-  is copied in both. The engine needs one entry that decides one event.
+  is copied in both. The engine needs one entry that decides one event. Since #89 and
+  [#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)
+  (2026-11-22) `apply_event` and the schedule are gone; `build_transitions` still has two
+  loops, one at the next observed price and one at a strategy's own bars, both running the
+  execution policy on a book. The bar loop asks the strategy for each bar's slice
+  (`bar_slices`).
 - The weights-only loop treats `weight_after` as executed. In the engine it is only what the
   strategy wants.
 - `TrailingAverageDailyVolumeParticipation` adds the notional it intends to trade to its
-  consumed capacity. Live it must add what was traded.
+  consumed capacity. Live it must add what was traded. Since #90 the backtest adds what
+  filled in the book, after the cash rules; live, it is still what the venue fills.
 - `TimeWeighted` advances by elapsed time and assumes each slice filled. `ImmediateSignal`
-  asks for everything at once. Neither has a rule for a part that does not fill.
+  asks for everything at once. Neither has a rule for a part that does not fill. Since
+  #90 both run the execution policy: a buy short of cash waits for the rebalance's sells
+  and is then cut, and `TimeWeighted`'s next slice is what its schedule is still short
+  of, so a part that did not fill is asked for again at the next bar.
 - A ledger portfolio has two sizes today: `initial_nav`, which is required, and the strategy's
-  own 50,000,000, which the strategy uses.
+  own 50,000,000, which the strategy uses. Since #113 and #90 the strategy's size is
+  `total_notional`, required, and it is the unit of the strategy's book; the ledger trades
+  the same fraction of its own orders, sized at `initial_nav`. The two can still differ
+  (ADR 0059, "Implementation Notes").
 - A weights-only portfolio has no size in its configuration.
 - A `Portfolio` row has a `signal_uid` and no strategy uid, and nothing writes the registry.
 - There is no VWAP strategy. The price bars carry a `vwap` column.

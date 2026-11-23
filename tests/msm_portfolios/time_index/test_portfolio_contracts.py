@@ -251,12 +251,32 @@ def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> Non
     assert "calendar_event" in str(close)
 
 
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: VolumeParticipation(execution_bars_instance=valuation_source("bars")),
+        lambda: LiquidityConstrained(liquidity_source_instance=valuation_source("liquidity")),
+        lambda: TrailingAverageDailyVolumeParticipation(
+            daily_liquidity_instance=valuation_source("daily"),
+            execution_bars_instance=valuation_source("bars"),
+        ),
+    ],
+    ids=["volume participation", "liquidity constrained", "trailing ADV"],
+)
+def test_a_sized_strategy_without_a_size_is_refused(build) -> None:
+    # The size is never a constant of the strategy: whoever runs it gives it (#113).
+    with pytest.raises(ValidationError) as refused:
+        build()
+
+    assert [error["loc"] for error in refused.value.errors()] == [("total_notional",)]
+
+
 def test_rebalance_strategy_serialization_includes_declared_dependency_identity() -> None:
     first = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"))
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"), total_notional=1_000.0)
     )
     second = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"))
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"), total_notional=1_000.0)
     )
 
     assert first != second
@@ -429,6 +449,50 @@ def test_calendar_event_node_publishes_persisted_session_timestamps(
     assert set(result["event_type"]) == {"market_open", "market_close"}
 
 
+def test_calendar_event_node_starts_from_its_own_calendars_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One events table holds every calendar's events (#119)."""
+
+    class PersistedCalendar:
+        name = "XNYS"
+
+        def schedule(self, *, start_date, end_date):
+            del end_date
+            schedule = calendar_schedule()
+            return schedule[schedule["market_close"] >= start_date]
+
+    monkeypatch.setattr(
+        "msm_portfolios.time_index.portfolios.calendar_events.resolve_rebalance_calendar",
+        lambda _identifier: PersistedCalendar(),
+    )
+    schedule = calendar_schedule()
+    later = schedule["market_close"].max() + pd.Timedelta(days=30)
+
+    def publish(progress):
+        node = object.__new__(PortfolioCalendarEvents)
+        node.config = PortfolioCalendarEventsConfiguration(calendar_identifier="XNYS")
+        node.update_statistics = SimpleNamespace(
+            index_progress=progress, max_time_index_value=later
+        )
+        node._output_table = PortfolioCalendarEventsStorage
+        return set(node.update().reset_index()[["time_index", "event_type"]].itertuples(index=False))
+
+    every_event = {
+        (row[event], event) for _, row in schedule.iterrows() for event in ("market_open", "market_close")
+    }
+    # Another calendar's later events, and another session label's, start nothing here.
+    other = {"XLON": {"regular": {"market_close": later}}, "XNYS": {"extended": {"market_close": later}}}
+    assert publish(other) == every_event
+    # Its own events start where each type left off: the first day's close is still due.
+    first_open = schedule["market_open"].iloc[0]
+    own = {**other, "XNYS": {"regular": {"market_open": first_open}}}
+    assert publish(own) == every_event - {(first_open, "market_open")}
+    first_close = schedule["market_close"].iloc[0]
+    own["XNYS"]["regular"]["market_close"] = first_close
+    assert publish(own) == every_event - {(first_open, "market_open"), (first_close, "market_close")}
+
+
 def test_calendar_event_node_rejects_noncanonical_calendar_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -514,7 +578,9 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
     node.signal_weights = signal
-    node.rebalance_strategy = LiquidityConstrained(liquidity_source_instance=liquidity)
+    node.rebalance_strategy = LiquidityConstrained(
+        liquidity_source_instance=liquidity, total_notional=1_000.0
+    )
 
     # The signal is a published series (ADR 0060): read by the rebalance, never run by it.
     assert node.dependencies() == {"available_liquidity": liquidity}
@@ -554,6 +620,35 @@ def test_rebalance_and_projection_progress_resolve_nested_asset_state(monkeypatc
     # The projection's progress is its published series (ADR 0060).
     assert projection._latest_projection_time_index_value() == latest
     assert bounds_calls == ["portfolio"]
+
+
+def test_rebalance_and_analytics_progress_is_their_portfolios_own(monkeypatch) -> None:
+    """In a shared table, the table's latest time belongs to another portfolio (#118)."""
+
+    theirs = pd.Timestamp("2026-02-01T00:00:00Z")
+    mine = pd.Timestamp("2026-01-01T02:00:00Z")
+    statistics = SimpleNamespace(
+        index_progress={"other": {"intent": {"btc": theirs}, "returns": theirs}},
+        max_time_index_value=theirs,
+    )
+    rebalance = object.__new__(PortfolioRebalance)
+    rebalance._resolve_portfolio_identifier = lambda: "portfolio"
+    rebalance.update_statistics = statistics
+    analytics = object.__new__(PortfolioAnalytics)
+    analytics.portfolio_identifier = "portfolio"
+    monkeypatch.setattr(PortfolioAnalytics, "analysis_identifier", property(lambda self: "returns"))
+    analytics.update_statistics = statistics
+
+    assert rebalance._latest_transition_time_index_value() is None
+    assert rebalance._execution_window(None)[0] == PortfolioRebalance.OFFSET_START
+    assert analytics._latest_analytics_time_index() is None
+
+    statistics.index_progress["portfolio"] = {"intent": {"btc": mine}, "returns": mine}
+    assert rebalance._latest_transition_time_index_value() == mine
+    assert analytics._latest_analytics_time_index() == mine
+    rebalance.update_statistics = analytics.update_statistics = None
+    assert rebalance._latest_transition_time_index_value() is None
+    assert analytics._latest_analytics_time_index() is None
 
 
 def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
@@ -1252,6 +1347,7 @@ def test_trailing_daily_volume_strategy_declares_both_observed_sources() -> None
     strategy = TrailingAverageDailyVolumeParticipation(
         daily_liquidity_instance=daily,
         execution_bars_instance=intraday,
+        total_notional=1_000.0,
     )
 
     assert strategy.declared_dependencies() == {
@@ -1314,8 +1410,9 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
         [(signal_time, "signal", "btc", 1.0)],
         columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
+    # The signal's own bar sizes the order: 1 / 100 of the book (#90).
     bars = pd.DataFrame(
-        [(timestamp, "btc", 100.0, 2.0) for timestamp in event_times],
+        [(timestamp, "btc", 100.0, 2.0) for timestamp in event_times.insert(0, signal_time)],
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
@@ -1323,10 +1420,12 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
         start=event_times[0],
         end=event_times[0],
         signal_observations=signals,
-        observed_inputs={"execution_bars": bars.loc[[event_times[0]]]},
+        observed_inputs={"execution_bars": bars.loc[[signal_time, event_times[0]]]},
         previous_state=None,
     )
     assert first.iloc[0]["execution_status"] == "partial"
+    # 10% of the bar's 2 shares, on a $1,000 book: 0.0002 of the book, 2% of its NAV.
+    assert first.iloc[0]["executed_quantity"] == pytest.approx(0.0002)
     assert first.iloc[0]["weight_after"] == pytest.approx(0.02)
 
     resumed = strategy.build_transitions(
@@ -1341,7 +1440,8 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
     assert resumed.iloc[0]["remaining_weight_delta"] == pytest.approx(0.96)
 
 
-def test_liquidity_strategy_records_pending_state_when_capacity_is_zero() -> None:
+def test_liquidity_strategy_writes_no_row_when_capacity_is_zero() -> None:
+    """Only a step of an order writes a row (#90): without liquidity the order waits."""
     liquidity_source = valuation_source("liquidity")
     strategy = LiquidityConstrained(
         liquidity_source_instance=liquidity_source,
@@ -1354,7 +1454,7 @@ def test_liquidity_strategy_records_pending_state_when_capacity_is_zero() -> Non
         columns=["time_index", "signal_uid", ASSET_IDENTIFIER, "signal_weight"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     observations = pd.DataFrame(
-        [(event_time, "btc", 100.0, 0.0)],
+        [(signal_time, "btc", 100.0, 0.0), (event_time, "btc", 100.0, 0.0)],
         columns=["time_index", ASSET_IDENTIFIER, "mid_price", "available_notional"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
@@ -1365,9 +1465,7 @@ def test_liquidity_strategy_records_pending_state_when_capacity_is_zero() -> Non
         observed_inputs={"available_liquidity": observations},
         previous_state=None,
     )
-    assert result.iloc[0]["execution_status"] == "pending"
-    assert result.iloc[0]["executed_weight_delta"] == 0.0
-    assert result.iloc[0]["remaining_weight_delta"] == 1.0
+    assert result.empty
 
 
 def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> None:
@@ -1385,8 +1483,9 @@ def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> N
         [(pd.Timestamp("2026-01-01T00:00:00Z"), "btc", 1.0)],
         columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
+    # The signal's own bar sizes the first order; the 01:00 bar sizes the second.
     first_bar = pd.DataFrame(
-        [(first_event, "btc", 100.0, 2.0)],
+        [(pd.Timestamp("2026-01-01T00:00:00Z"), "btc", 100.0, 2.0), (first_event, "btc", 100.0, 2.0)],
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
@@ -1412,14 +1511,17 @@ def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> N
         start=second_event,
         end=second_event,
         signal_observations=second_signal,
-        observed_inputs={"execution_bars": second_bar},
+        observed_inputs={"execution_bars": pd.concat([first_bar, second_bar])},
         previous_state=first,
     )
 
-    assert second["execution_status"].tolist() == ["superseded", "partial"]
-    assert second.iloc[0]["rebalance_intent_id"] != second.iloc[1]["rebalance_intent_id"]
-    assert second.iloc[1]["weight_before"] == pytest.approx(0.02)
-    assert second.iloc[1]["weight_after"] == pytest.approx(0.04)
+    # The newer target replaces the running rebalance at its first bar; the old
+    # orders end without a row (#90, as at the next observed price).
+    assert second["execution_status"].tolist() == ["partial"]
+    assert second.iloc[0]["rebalance_intent_id"] != first.iloc[0]["rebalance_intent_id"]
+    assert second.iloc[0]["target_weight"] == 0.5
+    assert second.iloc[0]["weight_before"] == pytest.approx(0.02)
+    assert second.iloc[0]["weight_after"] == pytest.approx(0.04)
 
 
 def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price() -> None:
@@ -1457,6 +1559,8 @@ def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price(
     ).set_index(["time_index", ASSET_IDENTIFIER])
     bars = pd.DataFrame(
         [
+            # The signal's own bar sizes the order: 1 / 50 of the book (#90).
+            (signal_time, "btc", 50.0, 100.0),
             (event_times[0], "btc", 50.0, 100.0),
             (event_times[1], "btc", 60.0, 100.0),
             (event_times[2], "btc", 70.0, 100.0),
@@ -1472,16 +1576,23 @@ def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price(
         previous_state=None,
     )
 
-    # The daily cap leaves nothing to trade at 12:00: no trade, so no fill price.
-    assert result["execution_price"].tolist()[:2] == [50.0, 60.0]
-    assert pd.isna(result["execution_price"].iloc[2])
-    assert result["executed_notional"].tolist() == pytest.approx([1_000.0, 500.0, 0.0])
-    assert result["weight_after"].tolist() == pytest.approx([0.10, 0.15, 0.15])
-    assert result["executed_quantity"].tolist()[:2] == pytest.approx([20.0, 500.0 / 60.0])
-    state = strategy.parse_strategy_state(result.iloc[-1].to_dict())
-    assert state["trailing_average_daily_notional"] == pytest.approx(15_000.0)
-    assert state["daily_notional_limit"] == pytest.approx(1_500.0)
-    assert state["daily_notional_consumed"] == pytest.approx(1_500.0)
+    # $1,000 at 10:00, then the $500 left of the daily cap at 11:00. The cap leaves
+    # nothing to trade at 12:00: no trade, no row.
+    assert result["time_index"].tolist() == list(event_times[:2])
+    assert result["execution_price"].tolist() == [50.0, 60.0]
+    # Shares of the $10,000 book: 20 and 500 / 60 shares of the asset.
+    assert (result["executed_quantity"] * strategy.total_notional).tolist() == pytest.approx(
+        [20.0, 500.0 / 60.0]
+    )
+    # The weights come from the book's shares at each bar's price: 0.17 of a NAV of 1.02.
+    assert result["weight_after"].tolist() == pytest.approx([0.10, 0.17 / 1.02])
+    states = [strategy.parse_strategy_state(row)["bar"] for row in result.to_dict("records")]
+    assert [state["daily_notional_consumed"] for state in states] == pytest.approx(
+        [1_000.0, 1_500.0]
+    )
+    assert states[-1]["trailing_average_daily_notional"] == pytest.approx(15_000.0)
+    assert states[-1]["daily_notional_limit"] == pytest.approx(1_500.0)
+    assert states[-1]["daily_notional_remaining"] == pytest.approx(0.0)
 
 
 def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersession() -> None:
@@ -1510,7 +1621,7 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
         columns=["time_index", ASSET_IDENTIFIER, "signal_weight"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first_bar = pd.DataFrame(
-        [(first_event, "btc", 50.0, 20.0)],
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 50.0, 20.0), (first_event, "btc", 50.0, 20.0)],
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
@@ -1536,15 +1647,23 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
         start=second_event,
         end=second_event,
         signal_observations=second_signal,
-        observed_inputs={"daily_liquidity": daily, "execution_bars": second_bar},
+        observed_inputs={
+            "daily_liquidity": daily,
+            "execution_bars": pd.concat([first_bar, second_bar]),
+        },
         previous_state=first,
     )
 
-    assert first.iloc[0]["executed_notional"] == pytest.approx(1_000.0)
-    assert resumed["execution_status"].tolist() == ["superseded", "partial"]
-    assert resumed.iloc[-1]["executed_notional"] == pytest.approx(500.0)
+    first_state = strategy.parse_strategy_state(first.iloc[0].to_dict())["bar"]
+    assert first_state["daily_notional_consumed"] == pytest.approx(1_000.0)
+    # The newer target replaces the running one and trades the $500 left of the cap.
+    assert resumed["execution_status"].tolist() == ["partial"]
+    assert resumed.iloc[-1]["target_weight"] == 0.5
+    assert resumed.iloc[-1]["executed_quantity"] * strategy.total_notional * 50.0 == (
+        pytest.approx(500.0)
+    )
     assert resumed.iloc[-1]["weight_after"] == pytest.approx(0.15)
-    state = strategy.parse_strategy_state(resumed.iloc[-1].to_dict())
+    state = strategy.parse_strategy_state(resumed.iloc[-1].to_dict())["bar"]
     assert state["daily_notional_consumed"] == pytest.approx(1_500.0)
 
 
@@ -1568,7 +1687,7 @@ def test_trailing_daily_volume_waits_for_required_completed_history() -> None:
         columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     bars = pd.DataFrame(
-        [(event_time, "btc", 50.0, 100.0)],
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 50.0, 100.0), (event_time, "btc", 50.0, 100.0)],
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
@@ -1580,11 +1699,16 @@ def test_trailing_daily_volume_waits_for_required_completed_history() -> None:
         previous_state=None,
     )
 
-    assert result.iloc[0]["execution_status"] == "pending"
-    assert result.iloc[0]["executed_notional"] == 0.0
-    state = strategy.parse_strategy_state(result.iloc[0].to_dict())
-    assert state["history_observations"] == 1
-    assert state["trailing_average_daily_notional"] is None
+    # One completed day of the two required: no capacity, so the order waits and only
+    # a step of it would write a row (#90).
+    assert result.empty
+    context = strategy.prepare_execution_context(
+        events=pd.DataFrame({"time_index": [event_time], "event_source": "execution_bars"}),
+        observed_inputs={"daily_liquidity": daily, "execution_bars": bars},
+    )
+    capacity = context.capacity_by_event_asset[(event_time, "btc")]
+    assert capacity.history_observations == 1
+    assert capacity.average_daily_notional is None
 
 
 def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None:
@@ -1613,7 +1737,7 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
         columns=["time_index", ASSET_IDENTIFIER, "vwap", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first_bar = pd.DataFrame(
-        [(first_event, "btc", 50.0, 30.0)],
+        [(pd.Timestamp("2025-12-31T22:00:00Z"), "btc", 50.0, 30.0), (first_event, "btc", 50.0, 30.0)],
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
@@ -1645,9 +1769,9 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
         previous_state=first,
     )
 
-    assert first.iloc[0]["executed_notional"] == pytest.approx(1_500.0)
-    assert resumed.iloc[0]["executed_notional"] == pytest.approx(1_000.0)
-    state = strategy.parse_strategy_state(resumed.iloc[0].to_dict())
+    first_state = strategy.parse_strategy_state(first.iloc[0].to_dict())["bar"]
+    assert first_state["daily_notional_consumed"] == pytest.approx(1_500.0)
+    state = strategy.parse_strategy_state(resumed.iloc[0].to_dict())["bar"]
     assert state["session_date"] == "2026-01-02"
     assert state["daily_notional_consumed"] == pytest.approx(1_000.0)
     assert state["trailing_average_daily_notional"] == pytest.approx(25_000.0)

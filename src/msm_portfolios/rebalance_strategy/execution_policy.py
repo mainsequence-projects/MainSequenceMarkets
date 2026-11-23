@@ -15,7 +15,9 @@ policy whose defaults are the owner's decisions:
 
 ``PortfolioRebalance`` runs the policy on a ``RebalanceBook``, which tracks shares and
 cash in the portfolio's currency, in units of the NAV at the portfolio's first rebalance
-(ADR 0059: prices in another currency are converted at the last observed FX rate).
+(ADR 0059: prices in another currency are converted at the last observed FX rate). A
+strategy with its own bars fills each order in slices, one per bar, and the policy's
+cash rules apply to each bar's slices as they apply to whole orders (#90).
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SHARE_TOLERANCE = 1e-12
 INSUFFICIENT_CASH = "insufficient_cash"
+# Why an expired order's remainder was dropped: its signal passed the strategy's lifetime.
+SIGNAL_LIFETIME = "signal_lifetime"
 
 
 class ExecutionPolicy(BaseModel):
@@ -71,7 +75,8 @@ class ExecutionPolicy(BaseModel):
         default="pro_rata",
         description=(
             "How buys at the same instant share too little cash. pro_rata: each fills the "
-            "same fraction of its order."
+            "same fraction of what it would trade then: its order, or the slice of it a "
+            "strategy's bar allows."
         ),
     )
     uncovered_buys: Literal["cut_and_cancel"] = Field(
@@ -191,6 +196,27 @@ class ExecutionPolicy(BaseModel):
             book.orders[asset] = order
         return book
 
+    def size_at_fill(
+        self,
+        book: RebalanceBook,
+        *,
+        fill_prices: dict[str, float],
+        nav: float,
+    ) -> None:
+        """Size the open orders of ``fill_prices`` not sized yet: ``sizing="at_fill"``.
+
+        Each is sized at its own fill, target weight x ``nav`` / its fill price, less
+        the shares held. An order sized at the decision is left as it is.
+        """
+        for asset in sorted(fill_prices):
+            order = book.orders.get(asset)
+            if order is None or order.status != "open" or order.order_shares is not None:
+                continue
+            order.size(
+                book.target_weights.get(asset, 0.0) * nav / fill_prices[asset],
+                book.held.get(asset, 0.0),
+            )
+
     def step(
         self,
         book: RebalanceBook,
@@ -198,11 +224,18 @@ class ExecutionPolicy(BaseModel):
         time_index: pd.Timestamp,
         fill_prices: dict[str, float],
         last_prices: dict[str, float],
+        slices: dict[str, float] | None = None,
     ) -> list[BookEntry]:
         """Apply one instant: the assets of ``fill_prices`` may trade at those prices.
 
-        ``last_prices`` values the holdings for the NAV at this instant. Returns one entry
-        per asset that filled, partly filled or was cancelled.
+        ``last_prices`` values the holdings for the NAV at this instant. Without
+        ``slices`` each order may trade all it has open. A strategy that fills an order
+        over several bars gives each order's slice for this bar instead: at most that
+        many shares (a non-negative magnitude) trade, in the order's direction and never
+        more than it has open; an order with no slice does not trade. The cash rules
+        then apply to the slices: buys short of cash fill the same fraction of their
+        slices. Returns one entry per asset that filled, partly filled or was
+        cancelled.
         """
         candidates = [
             asset
@@ -212,62 +245,66 @@ class ExecutionPolicy(BaseModel):
         if not candidates:
             return []
         nav = book.nav(last_prices)
+        self.size_at_fill(
+            book, fill_prices={asset: fill_prices[asset] for asset in candidates}, nav=nav
+        )
+        wanted: dict[str, float] = {}
         for asset in candidates:
             order = book.orders[asset]
-            if order.order_shares is None:
-                order.size(
-                    book.target_weights.get(asset, 0.0) * nav / fill_prices[asset],
-                    book.held.get(asset, 0.0),
+            shares = order.remaining_shares
+            if slices is not None:
+                shares = math.copysign(
+                    min(abs(shares), max(float(slices.get(asset, 0.0)), 0.0)), shares
                 )
-        sells = [asset for asset in candidates if book.orders[asset].side == "sell"]
-        buys = [asset for asset in candidates if book.orders[asset].side == "buy"]
-        unchanged = [asset for asset in candidates if book.orders[asset].side == "none"]
+                if order.side != "none" and abs(shares) <= SHARE_TOLERANCE:
+                    continue
+            wanted[asset] = shares
+        sells = [asset for asset in wanted if book.orders[asset].side == "sell"]
+        buys = [asset for asset in wanted if book.orders[asset].side == "buy"]
+        unchanged = [asset for asset in wanted if book.orders[asset].side == "none"]
         entries: list[BookEntry] = []
         if self.sells_before_buys:
-            entries += self._fill_in_full(book, sells, fill_prices, nav)
-            entries += self._fill_in_full(book, unchanged, fill_prices, nav)
-            entries += self._fill_buys(book, buys, fill_prices, nav)
+            entries += self._fill_in_full(book, sells, wanted, fill_prices, nav)
+            entries += self._fill_in_full(book, unchanged, wanted, fill_prices, nav)
+            entries += self._fill_buys(book, buys, wanted, fill_prices, nav)
         else:
-            entries += self._fill_buys(book, buys, fill_prices, nav)
-            entries += self._fill_in_full(book, sells, fill_prices, nav)
-            entries += self._fill_in_full(book, unchanged, fill_prices, nav)
+            entries += self._fill_buys(book, buys, wanted, fill_prices, nav)
+            entries += self._fill_in_full(book, sells, wanted, fill_prices, nav)
+            entries += self._fill_in_full(book, unchanged, wanted, fill_prices, nav)
         return entries
 
     @staticmethod
     def _fill_in_full(
         book: RebalanceBook,
         assets: list[str],
+        wanted: dict[str, float],
         prices: dict[str, float],
         nav: float,
     ) -> list[BookEntry]:
-        entries = []
-        for asset in assets:
-            order = book.orders[asset]
-            entries.append(book.fill(asset, order.remaining_shares, prices[asset], nav))
-        return entries
+        return [book.fill(asset, wanted[asset], prices[asset], nav) for asset in assets]
 
     def _fill_buys(
         self,
         book: RebalanceBook,
         assets: list[str],
+        wanted: dict[str, float],
         prices: dict[str, float],
         nav: float,
     ) -> list[BookEntry]:
         if not assets:
             return []
-        needed = sum(book.orders[asset].remaining_shares * prices[asset] for asset in assets)
+        needed = sum(wanted[asset] * prices[asset] for asset in assets)
         available = book.cash + self.negative_cash_allowance(nav, book.unit_value)
         fraction = 1.0
         if needed > available + SHARE_TOLERANCE:
-            # pro_rata: every buy fills the same fraction of its order.
+            # pro_rata: every buy fills the same fraction of what it would trade now.
             fraction = max(available, 0.0) / needed if needed > 0.0 else 0.0
         sells_pending = book.has_pending_sells()
         entries = []
         for asset in assets:
-            order = book.orders[asset]
-            shares = order.remaining_shares * fraction
+            shares = wanted[asset] * fraction
             if fraction >= 1.0:
-                entries.append(book.fill(asset, order.remaining_shares, prices[asset], nav))
+                entries.append(book.fill(asset, wanted[asset], prices[asset], nav))
             elif sells_pending:
                 # The rest waits for the cash of the rebalance's pending sells.
                 if shares > SHARE_TOLERANCE:
@@ -296,7 +333,7 @@ class BookOrder:
     remaining_shares: float = 0.0
     filled_shares: float = 0.0
     side: Literal["buy", "sell", "none"] = "none"
-    status: Literal["open", "filled", "cancelled"] = "open"
+    status: Literal["open", "filled", "cancelled", "expired"] = "open"
 
     def size(self, target_shares: float, held: float) -> None:
         self.target_shares = target_shares
@@ -310,8 +347,10 @@ class BookEntry:
     """What one instant did to one asset's order.
 
     ``status`` is the order's: ``partial`` while some of it is still open,
-    ``complete`` once all of it filled, ``cancelled`` once its remainder was cut.
-    ``shares`` may be zero for a cancellation or for an unchanged holding.
+    ``complete`` once all of it filled, ``cancelled`` once its remainder was cut,
+    ``expired`` once its signal passed the strategy's lifetime and its remainder was
+    dropped. ``shares`` may be zero for a cancellation, an expiry or an unchanged
+    holding.
     ``fill_fraction`` is the part of the order still open before this instant that
     filled: the ledger scales its own order by it.
     """
@@ -321,7 +360,7 @@ class BookEntry:
     price: float
     weight_before: float
     weight_after: float
-    status: Literal["partial", "complete", "cancelled"]
+    status: Literal["partial", "complete", "cancelled", "expired"]
     fill_fraction: float = 1.0
     cancelled_shares: float = 0.0
     cancel_reason: str | None = None
@@ -358,6 +397,40 @@ class RebalanceBook:
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"Rebalance {self.intent_id} has a non-positive NAV.")
         return value
+
+    def expire(self, last_prices: dict[str, float], nav: float) -> list[BookEntry]:
+        """End every open order: its signal passed the strategy's lifetime.
+
+        Each keeps the shares it filled; what is left of it is dropped and recorded
+        as ``cancelled_shares``, with the reason ``signal_lifetime``. Nothing trades.
+        ``last_prices`` value the holdings for the weights; ``nav`` is the book's NAV
+        at them.
+        """
+        entries = []
+        for asset in sorted(self.orders):
+            order = self.orders[asset]
+            if order.status != "open":
+                continue
+            held = self.held.get(asset, 0.0)
+            price = float(last_prices.get(asset, order.decision_price))
+            dropped = order.remaining_shares
+            order.remaining_shares = 0.0
+            order.status = "expired"
+            weight = held * price / nav
+            entries.append(
+                BookEntry(
+                    asset_identifier=asset,
+                    shares=0.0,
+                    price=price,
+                    weight_before=weight,
+                    weight_after=weight,
+                    status="expired",
+                    fill_fraction=0.0,
+                    cancelled_shares=dropped,
+                    cancel_reason=SIGNAL_LIFETIME,
+                )
+            )
+        return entries
 
     def has_pending_sells(self) -> bool:
         return any(
@@ -423,6 +496,7 @@ def order_side(shares: float | None) -> Literal["buy", "sell", "none"]:
 
 __all__ = [
     "INSUFFICIENT_CASH",
+    "SIGNAL_LIFETIME",
     "BookEntry",
     "BookOrder",
     "ExecutionPolicy",

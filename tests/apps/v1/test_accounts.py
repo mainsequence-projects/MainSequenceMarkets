@@ -1682,17 +1682,25 @@ def test_account_repository_builds_atomic_holdings_replacement_operation(
     assert "FROM inserted" not in sql
     assert "JOIN holdings_set ON true" in sql
     assert "JOIN deleted_gate ON true" in sql
-    assert "CAST(%(quantity_0)s AS FLOAT)" in sql
-    assert "CAST(%(direction_0)s::SMALLINT AS SMALLINT)" in sql
+    # The positions are one JSONB parameter, read as a typed recordset (#112).
+    assert "jsonb_to_recordset(CAST(%(input_rows_rows)s::JSONB AS JSONB))" in sql
+    assert "quantity FLOAT, direction SMALLINT, target_trade_time TIMESTAMP WITH TIME ZONE" in sql
     assert operation.statement.parameters["holdings_set_uid"] == holdings_set_uid
     assert operation.statement.parameters["account_uid"] == account_uid
     assert operation.statement.parameters["overwrite"] is True
-    assert operation.statement.parameters["asset_identifier_0"] == "example-asset-btc"
+    assert operation.statement.parameters["input_rows_rows"] == [
+        {
+            "asset_identifier": "example-asset-btc",
+            "quantity": 10.0,
+            "direction": -1,
+            "target_trade_time": "2026-06-05T08:00:00+00:00",
+            "extra_details": {"source": "test"},
+        }
+    ]
     # MetaTables 0.1.65 types JSON parameters, so PostgreSQL binds a list as JSON.
     assert operation.statement.parameter_types == {
         "holdings_date": "timestamp with time zone",
-        "target_trade_time_0": "timestamp with time zone",
-        "extra_details_0": "json",
+        "input_rows_rows": "json",
     }
     assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()
 
@@ -2066,17 +2074,25 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
     assert operation.statement.parameters["account_uid"] == account_uid
     assert operation.statement.parameters["account_name"] == "Some account"
     assert operation.statement.parameters["target_positions_date"] == "2026-06-08T10:30:00Z"
-    assert operation.statement.parameters["target_type_0"] == "asset"
-    assert operation.statement.parameters["target_uid_0"] == asset_uid
-    assert operation.statement.parameters["asset_uid_0"] == asset_uid
-    assert operation.statement.parameters["portfolio_uid_0"] is None
-    assert operation.statement.parameters["weight_notional_exposure_0"] == "1.0"
-    assert operation.statement.parameters["metadata_json_0"] == {"source": "test"}
+    # The positions are one JSONB parameter, read as a typed recordset (#112).
+    assert "jsonb_to_recordset(CAST(%(input_rows_rows)s::JSONB AS JSONB))" in sql
+    assert operation.statement.parameters["input_rows_rows"] == [
+        {
+            "target_type": "asset",
+            "target_uid": str(asset_uid),
+            "asset_uid": str(asset_uid),
+            "portfolio_uid": None,
+            "weight_notional_exposure": 1.0,
+            "constant_notional_exposure": None,
+            "single_asset_quantity": None,
+            "metadata_json": {"source": "test"},
+        }
+    ]
     assert operation.statement.parameter_types == {
         "target_positions_date": "timestamp with time zone",
         "account_allocation_model_metadata_json": "json",
         "account_target_allocation_metadata_json": "json",
-        "metadata_json_0": "json",
+        "input_rows_rows": "json",
         "position_set_metadata_json": "json",
     }
     assert operation.data_source_uid == offline_postgresql_runtime.require_data_source_uid()

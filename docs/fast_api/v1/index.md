@@ -76,6 +76,8 @@ the route does not handle it, the route answers:
 |---|---|---|
 | 500 | `InvalidStatementError` | MetaTables rejected a statement the Markets API compiled as invalid. The fault is the Markets API's, and the same request fails the same way again. |
 | 502 | `UpstreamApiError` | The upstream API refused the call for another reason (it answered 4xx): permissions, a missing table, a conflict. The same request will be refused again. |
+| 503 | `IncompleteReadError` | A read could not answer every row of one state of its tables: they changed between its pages in each of four reads, or each answer was cut ([issue 115](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/115)). Nothing was written; try again. `Retry-After` is `1`. |
+| 500 | `IncompleteReadAfterWriteError` | The write is stored, and reading its answer back failed in the same way. Read the result again; do not send the write again. |
 | 503 | `UpstreamApiError` | The upstream API failed or could not be reached (5xx, `429`, no answer, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
 
 A statement is invalid when MetaTables refuses it (4xx) with one of the codes in

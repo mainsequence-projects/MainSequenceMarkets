@@ -418,6 +418,9 @@ def test_a_bar_strategy_skips_the_signals_own_bar_and_interpolated_bars() -> Non
 def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
     bars = bar_frame(
         [
+            # The signal's own bars size the order (#90).
+            ("2026-11-18T10:00Z", "AAPL", False),
+            ("2026-11-18T10:00Z", "MSFT", False),
             ("2026-11-18T10:30Z", "AAPL", False),
             ("2026-11-18T10:30Z", "MSFT", False),
             ("2026-11-18T11:00Z", "AAPL", False),
@@ -436,7 +439,8 @@ def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
         signal_frame([("2026-11-18T10:00:00Z", {"AAPL": 0.5, "MSFT": 0.5})]),
     )
 
-    # TimeWeighted starts its clock at 10:30. At 11:00 only AAPL has a bar.
+    # TimeWeighted starts its clock at 10:30. At 11:00 only AAPL has a bar; MSFT's
+    # order waits, writes no row, and catches up at 11:30.
     assert moved(result) == {
         (utc("2026-11-18T11:00Z"), "AAPL"),
         (utc("2026-11-18T11:30Z"), "AAPL"),
@@ -446,7 +450,7 @@ def test_a_bar_strategy_moves_an_asset_only_at_its_own_observed_bar() -> None:
         ASSET_IDENTIFIER
     )
     assert at_eleven.loc["AAPL", "execution_price"] == 100.0
-    assert pd.isna(at_eleven.loc["MSFT", "execution_price"])
+    assert "MSFT" not in at_eleven.index
 
 
 # --- The calendar ------------------------------------------------------------------------
@@ -523,6 +527,40 @@ def written_fills(frame: pd.DataFrame) -> set[tuple[pd.Timestamp, str]]:
     flat = frame.reset_index()
     traded = flat[flat["executed_weight_delta"] != 0]
     return {(utc(row["time_index"]), row[ASSET_IDENTIFIER]) for row in traded.to_dict("records")}
+
+
+def test_a_new_portfolio_in_a_shared_table_starts_at_its_own_first_rebalance() -> None:
+    """A producer keeps one rebalance-state table for all its portfolios (#118).
+
+    The second portfolio's first run must not start after the first portfolio's latest
+    row: it has none of its own, so it starts at its first signal.
+    """
+
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([("2026-11-18T21:30:00Z", {"AAPL": 0.6, "ILLQ": 0.3})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build(
+        "prices",
+        pd.concat(
+            [AAPL_MINUTES, bars_at("ILLQ", ["2026-11-18T20:00Z", "2026-11-19T14:45Z"], price=20.0)]
+        ),
+        index=["time_index", ASSET_IDENTIFIER],
+    )
+    strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        first = runner.run("2026-11-19T14:50:00Z")
+        runner.node._portfolio_identifier = "second"
+        second = runner.run("2026-11-19T14:50:00Z")
+
+    expected = {(utc("2026-11-19T14:31Z"), "AAPL"), (utc("2026-11-19T14:45Z"), "ILLQ")}
+    assert written_fills(first) == expected
+    assert written_fills(second) == expected
+    assert set(second.index.get_level_values("portfolio_identifier")) == {"second"}
 
 
 def test_incremental_runs_wait_for_the_next_price_and_fill_assets_across_runs() -> None:

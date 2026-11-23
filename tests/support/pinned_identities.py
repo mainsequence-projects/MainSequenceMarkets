@@ -206,19 +206,21 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
 
 STRATEGIES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "immediate_signal": lambda updaters: _immediate_signal(),
+    # The size these identities were pinned with, the strategies' former default (#113).
     "liquidity_constrained_on_asset_snapshot": lambda updaters: LiquidityConstrained(
-        liquidity_source_instance=updaters["asset_snapshot"]
+        liquidity_source_instance=updaters["asset_snapshot"], total_notional=50_000_000
     ),
     "time_weighted_on_interpolated_prices": lambda updaters: TimeWeighted(
         execution_bars_instance=updaters["interpolated_prices"]
     ),
     "volume_participation_on_interpolated_prices": lambda updaters: VolumeParticipation(
-        execution_bars_instance=updaters["interpolated_prices"]
+        execution_bars_instance=updaters["interpolated_prices"], total_notional=50_000_000
     ),
     "trailing_average_daily_volume_on_asset_snapshot": lambda updaters: (
         TrailingAverageDailyVolumeParticipation(
             daily_liquidity_instance=updaters["asset_snapshot"],
             execution_bars_instance=updaters["interpolated_prices"],
+            total_notional=50_000_000,
         )
     ),
 }

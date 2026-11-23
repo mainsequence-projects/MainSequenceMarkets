@@ -312,7 +312,8 @@ class PortfolioRebalanceStateStorage(MarketsTimeIndexMetaTableMixin, MarketsBase
         info={
             "label": "Execution Status",
             "description": (
-                "Lifecycle state: pending, partial, complete, superseded, cancelled, or rejected."
+                "Lifecycle state: pending, partial, complete, superseded, cancelled, "
+                "expired (the signal passed the strategy's signal_lifetime), or rejected."
             ),
         },
     )

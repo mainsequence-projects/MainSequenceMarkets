@@ -13,6 +13,12 @@ handle the exception itself gets one answer here, for every router:
 - ``503`` when it failed or could not be reached (5xx, ``429``, no answer, or the
   MetaTables API could not be located), which a caller may try again.
 
+A read that could not answer every row of one state of its tables
+(``IncompleteReadError``, MainSequenceMarkets#115) answers ``503`` with ``Retry-After``,
+``error_type`` ``IncompleteReadError``. When that read was a write's answer, read after the
+write committed, it answers ``500``, ``error_type`` ``IncompleteReadAfterWriteError``: the
+write is stored and must not be sent again.
+
 The body is ``{"detail", "error_type", "upstream_status"}``, with ``error_type``
 ``UpstreamApiError`` for ``502`` and ``503``. ``detail`` carries the reason the
 upstream API gave and nothing else from the exchange: not the request, whose SQL and
@@ -31,7 +37,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mainsequence.client.exceptions import ApiError
 from metatables.endpoint import ApiResolutionError
-from msm.api.remote import INVALID_STATEMENT_ERROR_TYPE, UPSTREAM_ERROR_TYPE
+from msm.api.remote import (
+    INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE,
+    INCOMPLETE_READ_ERROR_TYPE,
+    INVALID_STATEMENT_ERROR_TYPE,
+    UPSTREAM_ERROR_TYPE,
+)
+from msm.repositories.complete_reads import IncompleteReadError
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +82,14 @@ _URL_CREDENTIALS = re.compile(r"(?<=://)[^\s/@]+@")
 def install_upstream_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ApiError, _upstream_api_error)
     app.add_exception_handler(ApiResolutionError, _upstream_unreachable)
+    app.add_exception_handler(IncompleteReadError, _incomplete_read)
+
+
+def _incomplete_read(_request: Request, exc: IncompleteReadError) -> JSONResponse:
+    logger.warning("A read could not answer every row: %s", exc)
+    if exc.written:
+        return _answer(500, str(exc), None, {}, INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE)
+    return _answer(503, str(exc), None, {"Retry-After": "1"}, INCOMPLETE_READ_ERROR_TYPE)
 
 
 def _upstream_api_error(_request: Request, exc: ApiError) -> JSONResponse:

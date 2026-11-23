@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytz
 from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
-from tqdm import tqdm
 
 from metatables import (
     PlatformTimeIndexMetaTable,
@@ -275,16 +274,6 @@ def _sessions_closing_between(
     return schedule[((closes >= first) & (closes <= last)).to_numpy()]
 
 
-def _has_trading_halts(schedule: pd.DataFrame) -> bool:
-    """Whether some session does not open at the instant the previous one closed."""
-
-    if len(schedule) < 2:
-        return False
-    opens = schedule["market_open"].to_numpy()[1:]
-    closes = schedule["market_close"].to_numpy()[:-1]
-    return bool((opens != closes).any())
-
-
 def _normalize_time_indexed_frame_ns_utc(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         return frame
@@ -334,88 +323,67 @@ class UpsampleAndInterpolation:
     @staticmethod
     def upsample_bars(
         bars_df: pd.DataFrame,
-        upsample_frequency_obs: int,
-        upsample_frequency_td: object,
+        *,
+        interval: datetime.timedelta,
         schedule: pd.DataFrame,
-        open_to_close_time_delta: datetime.timedelta,
-        is_portfolio: bool = False,
     ) -> pd.DataFrame:
-        """
-        Upsamples the bars dataframe based on the given parameters.
-        For example, it can convert 5-minute bars to 1-minute bars.
-        Note that this method works on iloc as the underlying data should be already interpolated so should be completed
+        """Aggregate interpolated bars into one bar per ``interval`` of each session (#117).
 
+        A session's intervals start at its open, one ``interval`` after another; the last
+        ends at the session's close and can be shorter. A bar belongs to the interval its
+        close falls in: after the interval's start, up to and including its end. A bar that
+        closes at or before the open, such as the interpolation's row at the open itself,
+        belongs to none.
+
+        Each interval with bars gives one bar stamped at the interval's end, with
+        ``open_time`` its start: the first bar's open, the last bar's close, the highest
+        high and lowest low, the volume and trade count summed, and the VWAP weighted by
+        volume, or the last close when no volume traded. It is ``interpolated`` only when
+        every bar in it was filled forward.
 
         Args:
-            bars_df (pd.DataFrame): The bars data to be upsampled.
-            upsample_frequency_obs (int): Frequency for upsampling.
-            upsample_frequency_td (object): Time delta for upsampling.
-            schedule (pd.DataFrame): Sessions of the asset's stored calendar that cover the
-                bars, with ``market_open`` and ``market_close`` in UTC.
-            open_to_close_time_delta (datetime.timedelta): Time delta between open and close.
-            is_portfolio (bool): Whether the data is for a portfolio or a single asset.
-
-        Returns:
-            pd.DataFrame: The upsampled bars dataframe.
+            bars_df: Interpolated bars of one asset, indexed by their close.
+            interval: The target bar length.
+            schedule: Sessions of the asset's stored calendar that cover the bars, with
+                ``market_open`` and ``market_close`` in UTC.
         """
-        obs = bars_df.shape[0] / upsample_frequency_obs
-        assert obs > 1.0
 
-        trading_halts = _has_trading_halts(schedule)
-        full_schedule = {
-            session_date: session
-            for session_date, session in zip(
-                _session_dates(schedule), schedule.to_dict("records"), strict=True
-            )
-        }
-
-        all_dfs = []
-        for i in tqdm(
-            range(bars_df.shape[0] - upsample_frequency_obs + 1),
-            desc=f"Upsampling from {bars_df['trade_day'].iloc[0]} to {bars_df['trade_day'].iloc[-1]} for assets {bars_df[ASSET_IDENTIFIER_DIMENSION].dropna().unique()}",
+        closes = pd.DatetimeIndex(bars_df.index)
+        out: list[dict[str, Any]] = []
+        for session_open, session_close in schedule[["market_open", "market_close"]].itertuples(
+            index=False
         ):
-            start = i
-            end = i + upsample_frequency_obs
-            tmp_df = bars_df.iloc[start:end]
-
-            day_schedule = full_schedule[pd.Timestamp(tmp_df["trade_day"].iloc[0]).date()]
-            first_available_bar = day_schedule["market_open"] + upsample_frequency_td
-            last_available_bar = day_schedule["market_close"]
-
-            if trading_halts and tmp_df.index[-1] < first_available_bar:
-                # edge case 1market is close should not upsample to the next day
+            in_session = bars_df[(closes > session_open) & (closes <= session_close)]
+            if in_session.empty:
                 continue
-            elif trading_halts and tmp_df.index[-1] > last_available_bar:
-                continue
-            else:
-                dollar = tmp_df.vwap * tmp_df.volume
-                volume = np.nansum(tmp_df.volume.values)
-                vwap = np.nansum(dollar.values) / volume
-                close = tmp_df.close.iloc[-1]
-                vwap = vwap if not np.isnan(vwap) else close
-                new_bar = {
-                    "open_time": tmp_df.index[0] - open_to_close_time_delta,
-                    "time": tmp_df.index[-1],
+            elapsed = pd.DatetimeIndex(in_session.index) - session_open
+            for number, group in in_session.groupby(np.ceil(elapsed / interval).astype(int)):
+                end = min(session_open + number * interval, session_close)
+                volume = float(np.nansum(group["volume"].to_numpy(dtype=float)))
+                close = group["close"].iloc[-1]
+                vwap = close
+                if volume > 0 and "vwap" in group.columns:
+                    vwap = float(np.nansum((group["vwap"] * group["volume"]).to_numpy(dtype=float)) / volume)
+                bar: dict[str, Any] = {
+                    "time": end,
+                    "open_time": session_open + (number - 1) * interval,
+                    "open": group["open"].iloc[0],
+                    "high": np.nanmax(group["high"].to_numpy(dtype=float)),
+                    "low": np.nanmin(group["low"].to_numpy(dtype=float)),
+                    "close": close,
                     "volume": volume,
                     "vwap": vwap,
-                    "open": tmp_df.open.iloc[0],
-                    "close": close,
                 }
-                if not is_portfolio:
-                    new_bar.update(
-                        {
-                            "high": np.nanmax(tmp_df.high.values),
-                            "low": np.nanmin(tmp_df.low.values),
-                        }
-                    )
-
-            all_dfs.append(new_bar)
-
-        all_dfs = pd.DataFrame(all_dfs)
-        all_dfs[ASSET_IDENTIFIER_DIMENSION] = bars_df[ASSET_IDENTIFIER_DIMENSION].iloc[0]
-        all_dfs = all_dfs.set_index("time")
-
-        return all_dfs
+                if "trade_count" in group.columns:
+                    bar["trade_count"] = float(np.nansum(group["trade_count"].to_numpy(dtype=float)))
+                if "interpolated" in group.columns:
+                    bar["interpolated"] = bool(group["interpolated"].fillna(False).astype(bool).all())
+                out.append(bar)
+        if not out:
+            return pd.DataFrame()
+        upsampled = pd.DataFrame(out)
+        upsampled[ASSET_IDENTIFIER_DIMENSION] = bars_df[ASSET_IDENTIFIER_DIMENSION].iloc[0]
+        return upsampled.set_index("time").sort_index()
 
     def get_interpolated_upsampled_bars(
         self,
@@ -481,18 +449,15 @@ class UpsampleAndInterpolation:
             all_columns = self.TIMESTAMP_COLS
             upsampled_df = tmp_df
         else:
-            upsample_freq_obs = (
+            # Source bars per target bar; one is the source frequency itself.
+            bars_per_target = (
                 string_frequency_to_minutes(self.upsample_frequency_id) // bars_frequency_min
             )
-
-            if upsample_freq_obs > bars_frequency_min:
+            if bars_per_target > 1:
                 upsampled_df = UpsampleAndInterpolation.upsample_bars(
-                    bars_df=tmp_df,
-                    upsample_frequency_obs=upsample_freq_obs,
-                    upsample_frequency_td=self.upsample_frequency_td,
+                    tmp_df,
+                    interval=self.upsample_frequency_td,
                     schedule=schedule,
-                    is_portfolio=False,
-                    open_to_close_time_delta=datetime.timedelta(minutes=bars_frequency_min),
                 )
             else:
                 upsampled_df = tmp_df

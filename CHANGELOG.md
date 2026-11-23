@@ -7,6 +7,115 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-11-23
+
+Minor release 5.2.0, with breaking changes to rebalance strategies. Strategies with
+their own bars size each order at the decision and pay for it with cash
+([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)), and
+the sized strategies require `total_notional`
+([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)).
+The identities of these strategies, and of the portfolios that use them, change. It
+adds a strategy's `signal_lifetime`, and fixes large PostgreSQL position writes,
+intraday upsampling, the start of a calendar or portfolio in a shared table, incomplete
+reads and asset-category reads. No migration.
+
+### Added
+
+- **A signal older than the strategy's lifetime is disregarded**
+  ([#114](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/114)).
+  Every rebalance strategy has `signal_lifetime`, for example 30 minutes or 20 days.
+  An event acts only on the latest signal, and not at all once that signal is older
+  than the lifetime, counted from its `time_index`; there is no fallback to an earlier
+  signal. A rebalance whose signal expires keeps what it filled, and its unfinished
+  orders end with the new status `expired`. Without a lifetime nothing changes,
+  identities included.
+
+### Changed
+
+- **Breaking: strategies with their own bars size the order at the decision and pay for
+  it with cash** ([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)).
+  `TimeWeighted`, `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` fix each order once, with each asset's last
+  bar before the earliest moment, and each bar fills a slice of it. They have the
+  `execution_policy` of `ImmediateSignal`, with its defaults: sells before buys, buys
+  limited to the cash on hand, buys short of cash filling the same fraction, and what a buy
+  cannot pay cancelled once the sells have filled. Their rows record the book's shares and
+  cash, so the weights path values them from shares and the ledger books each slice of its
+  own order; they write no `pending` or `superseded` rows. `total_notional` is the money
+  one unit of the book stands for. Results change, and so do the identities of these
+  strategies and of the portfolios that use them. `apply_event` is replaced by
+  `bar_slices`.
+- **Breaking: a sized strategy is given its size**
+  ([#113](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/113)).
+  `VolumeParticipation`, `LiquidityConstrained` and
+  `TrailingAverageDailyVolumeParticipation` no longer default `total_notional` to
+  50,000,000: a configuration without it is refused with a `ValidationError` naming
+  `total_notional`. The size sets how much of the portfolio a bar's capacity trades, so
+  the default silently changed results; whoever runs the strategy gives it (execution
+  engine ADR 0001). A configuration that leaves it out must now pass it; passing
+  50,000,000 keeps the old behaviour but gives the strategy, and a portfolio that uses
+  it, a new revision and configuration hash, because a size given is hashed. The pinned
+  identities of these strategies are updated.
+
+### Fixed
+
+- **PostgreSQL writes a holdings or target snapshot of 10,000 positions**
+  ([#112](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/112)).
+  `POST /api/v1/account/{account_uid}/add-holdings/` refused more than 3,951 positions
+  and `add-target-positions` more than 2,846 asset positions, with a `502`: each bound a
+  value for every column of every row, and the statement passed MetaTables' 1,000,000
+  characters of SQL. Both now send their positions as one JSONB parameter, as the
+  allocation write does since 5.0.0, and store the same rows. SQLite was not affected.
+- **Intraday bars upsampled to a longer frequency are bars of that frequency**
+  ([#117](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/117)).
+  `InterpolatedPrices` raised `KeyError: "['interpolated'] not in index"` for 1-minute
+  bars upsampled to 5 or 15 minutes. For 5 → 15 and 15 → 60 minutes it wrote the source
+  bars unaggregated, and other pairs gave overlapping windows, one per source bar, the
+  first opening before the market. It now writes one bar per target interval of each
+  session: aligned to the open, the last one ending at the close, with the interval's
+  open, high, low, close, summed volume and trade count, volume-weighted VWAP, and
+  `interpolated` only when every source bar in it was filled forward.
+- **A calendar's events in a shared table start from its own events**
+  ([#119](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/119)).
+  One `PortfolioCalendarEventsTS` table holds every calendar's events. A calendar's
+  first run started after the table's latest event, another calendar's, so its earlier
+  sessions were never written, and nothing said so. `PortfolioCalendarEvents` now
+  continues each event type of its calendar and session label after that type's own
+  latest event, and starts at `OFFSET_START` when it has none.
+- **A new portfolio in a shared rebalance-state table starts at its own first rebalance**
+  ([#118](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/118)).
+  A producer keeps one rebalance-state table for all its portfolios. A portfolio with no
+  row yet took the table's latest time as its own and started after it: it wrote
+  nothing, or a history cut to after another portfolio's last rebalance, and reported no
+  error. It now reads only its own progress, and with none starts at `OFFSET_START`.
+  `PortfolioAnalytics` had the same fallback and now reads its portfolio's and
+  analysis's progress.
+- **A read that cannot answer every row reaches an API caller typed**
+  ([#115](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/115)).
+  `IncompleteReadError` answered a bare `500` with a plain-text body. It now answers
+  `503` with `Retry-After` and `error_type` `IncompleteReadError`. When the read was the
+  answer of a write that had committed, such as a target or holdings write past one
+  answer, it answers `500` with `error_type` `IncompleteReadAfterWriteError` and says the
+  write is stored. `msm.client` raises `IncompleteReadError` for both, with `written`
+  telling them apart.
+- **Asset-category reads answer every member, and the asset, category and index lists
+  page past 500 rows**
+  ([#116](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/116)).
+  `msm.services.asset_master_lists` read at most 500 rows and sorted, filtered and sliced
+  them in Python. A category of 1,101 assets answered 500 members in its record and 500
+  as `number_of_assets` on `GET /api/v1/asset-category/{uid}/`, and writing its record
+  back deleted the other 601. `bulk_delete_asset_category_records` with `select_all`
+  deleted 500 of 601 categories and reported success. Pages past 500 rows came back
+  short or empty, as on `GET /api/v1/asset/monitor/frame/` with 1,101 assets, and
+  `list_asset_catalog_rows` left out OpenFIGI names past the first 500. A category's
+  record now answers every member or raises `IncompleteReadError` (after a create or
+  update, as the answer of a stored write), `number_of_assets` is counted in the
+  database, and `select_all` reads every category. `list_asset_rows`,
+  `list_asset_catalog_rows`, `list_index_catalog_rows`, `list_asset_category_rows` and
+  `list_asset_category_rows_response` search, page and count in the database, matching
+  with SQL `LIKE`, ignoring case. `list_asset_rows` and `list_asset_rows_response` take an
+  exact `asset_type`, which the monitor frame passes with its `limit` and `offset`.
+
 ## [5.1.0] - 2026-11-22
 
 Minor release 5.1.0: an account's target history in one call, one round trip fewer

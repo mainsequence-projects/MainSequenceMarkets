@@ -122,8 +122,17 @@ class PortfolioAnalytics(PortfolioCanonicalUpdater):
         )
 
     def _latest_analytics_time_index(self):
-        statistics = getattr(self, "update_statistics", None)
-        return None if statistics is None else statistics.max_time_index_value
+        """This portfolio's and analysis's latest row time, not the table's (#118).
+
+        One analytics table holds every portfolio's analyses: the table's latest time
+        would cut a new portfolio's analysis to after another one's last period.
+        """
+
+        progress = getattr(getattr(self, "update_statistics", None), "index_progress", None)
+        if not isinstance(progress, dict):
+            return None
+        mine = progress.get(self.portfolio_identifier)
+        return mine.get(self.analysis_identifier) if isinstance(mine, dict) else None
 
     @classmethod
     def _validate_config(

@@ -32,7 +32,7 @@ from sqlalchemy import (
     values,
 )
 from sqlalchemy import and_
-from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import aliased
 
@@ -61,7 +61,8 @@ from .base import (
     execute_markets_write,
     resolve_markets_sql_target,
 )
-from .complete_reads import page_context, whole_page
+from .complete_reads import answering_a_write, page_context, whole_page
+from .write_inputs import input_rows as write_input_rows
 from .crud import (
     build_create_model_operation,
     build_get_model_by_uid_operation,
@@ -791,65 +792,22 @@ def build_replace_account_holdings_snapshot_operation(
         .cte("holdings_set")
     )
 
-    input_row_values = []
-    for index, position in enumerate(positions):
-        target_trade_time = _utc_timestamp(
-            position.get("target_trade_time") or normalized_holdings_date,
-            field_name=f"positions[{index}].target_trade_time",
-        )
-        input_row_values.append(
-            (
-                bindparam(
-                    f"asset_identifier_{index}",
-                    value=str(position["asset_identifier"]),
-                    type_=String(),
+    input_rows = write_input_rows(
+        "input_rows",
+        _HOLDING_INPUT_COLUMNS,
+        [
+            {
+                **position,
+                "target_trade_time": _utc_timestamp(
+                    position.get("target_trade_time") or normalized_holdings_date,
+                    field_name=f"positions[{index}].target_trade_time",
                 ),
-                cast(
-                    bindparam(
-                        f"quantity_{index}",
-                        value=_python_scalar(position.get("quantity")),
-                        type_=Float(),
-                    ),
-                    Float(),
-                ),
-                cast(
-                    bindparam(
-                        f"direction_{index}",
-                        value=int(position.get("direction", 1)),
-                        type_=SmallInteger(),
-                    ),
-                    SmallInteger(),
-                ),
-                cast(
-                    bindparam(
-                        f"target_trade_time_{index}",
-                        value=target_trade_time,
-                        type_=DateTime(timezone=True),
-                    ),
-                    DateTime(timezone=True),
-                ),
-                cast(
-                    bindparam(
-                        f"extra_details_{index}",
-                        value=position.get("extra_details") or {},
-                        type_=JSONB(),
-                    ),
-                    JSONB(),
-                ),
-            )
-        )
-
-    input_rows = (
-        values(
-            column("asset_identifier", String()),
-            column("quantity", Float()),
-            column("direction", SmallInteger()),
-            column("target_trade_time", DateTime(timezone=True)),
-            column("extra_details", JSONB()),
-            name="input_rows",
-        )
-        .data(input_row_values)
-        .cte("input_rows")
+                "quantity": _python_scalar(position.get("quantity")),
+                "direction": int(position.get("direction", 1)),
+            }
+            for index, position in enumerate(positions)
+        ],
+        postgresql=True,
     )
     deleted = (
         delete(AccountHoldingsStorage)
@@ -1370,96 +1328,24 @@ def build_replace_account_target_positions_snapshot_operation(
 
     position_set = position_set_upsert.cte("position_set")
 
-    input_row_values = []
-    for index, position in enumerate(positions):
-        input_row_values.append(
-            (
-                bindparam(
-                    f"target_type_{index}",
-                    value=str(position["target_type"]),
-                    type_=String(),
-                ),
-                cast(
-                    bindparam(
-                        f"target_uid_{index}",
-                        value=uuid.UUID(str(position["target_uid"])),
-                        type_=Uuid(as_uuid=True),
-                    ),
-                    Uuid(as_uuid=True),
-                ),
-                cast(
-                    bindparam(
-                        f"asset_uid_{index}",
-                        value=(
-                            uuid.UUID(str(position["asset_uid"]))
-                            if position.get("asset_uid") not in (None, "")
-                            else None
-                        ),
-                        type_=Uuid(as_uuid=True),
-                    ),
-                    Uuid(as_uuid=True),
-                ),
-                cast(
-                    bindparam(
-                        f"portfolio_uid_{index}",
-                        value=(
-                            uuid.UUID(str(position["portfolio_uid"]))
-                            if position.get("portfolio_uid") not in (None, "")
-                            else None
-                        ),
-                        type_=Uuid(as_uuid=True),
-                    ),
-                    Uuid(as_uuid=True),
-                ),
-                cast(
-                    bindparam(
-                        f"weight_notional_exposure_{index}",
-                        value=_python_scalar(position.get("weight_notional_exposure")),
-                        type_=Float(),
-                    ),
-                    Float(),
-                ),
-                cast(
-                    bindparam(
-                        f"constant_notional_exposure_{index}",
-                        value=_python_scalar(position.get("constant_notional_exposure")),
-                        type_=Float(),
-                    ),
-                    Float(),
-                ),
-                cast(
-                    bindparam(
-                        f"single_asset_quantity_{index}",
-                        value=_python_scalar(position.get("single_asset_quantity")),
-                        type_=Float(),
-                    ),
-                    Float(),
-                ),
-                cast(
-                    bindparam(
-                        f"metadata_json_{index}",
-                        value=position.get("metadata_json") or {},
-                        type_=JSONB(),
-                    ),
-                    JSONB(),
-                ),
-            )
-        )
-
-    input_rows = (
-        values(
-            column("target_type", String()),
-            column("target_uid", Uuid(as_uuid=True)),
-            column("asset_uid", Uuid(as_uuid=True)),
-            column("portfolio_uid", Uuid(as_uuid=True)),
-            column("weight_notional_exposure", Float()),
-            column("constant_notional_exposure", Float()),
-            column("single_asset_quantity", Float()),
-            column("metadata_json", JSONB()),
-            name="input_rows",
-        )
-        .data(input_row_values)
-        .cte("input_rows")
+    input_rows = write_input_rows(
+        "input_rows",
+        _TARGET_INPUT_COLUMNS,
+        [
+            {
+                **position,
+                **{
+                    name: _python_scalar(position.get(name))
+                    for name in (
+                        "weight_notional_exposure",
+                        "constant_notional_exposure",
+                        "single_asset_quantity",
+                    )
+                },
+            }
+            for position in positions
+        ],
+        postgresql=True,
     )
     deleted = (
         delete(TargetPositionsStorage)
@@ -1972,16 +1858,37 @@ def replace_account_target_positions_snapshot(
     if rows is None:
         from .account_snapshot_reads import read_account_target_snapshot
 
-        return read_account_target_snapshot(
-            context,
-            account_uid=kwargs["account_uid"],
-            order="desc",
-            target_positions_date=_utc_timestamp(
-                kwargs["target_positions_date"], field_name="target_positions_date"
-            ),
-            include_asset_detail=kwargs.get("include_asset_detail", True),
-        )
+        with answering_a_write():
+            return read_account_target_snapshot(
+                context,
+                account_uid=kwargs["account_uid"],
+                order="desc",
+                target_positions_date=_utc_timestamp(
+                    kwargs["target_positions_date"], field_name="target_positions_date"
+                ),
+                include_asset_detail=kwargs.get("include_asset_detail", True),
+            )
     return {**result, "rows": rows, "row_count": len(rows)}
+
+
+_HOLDING_INPUT_COLUMNS = (
+    ("asset_identifier", String),
+    ("quantity", Float),
+    ("direction", SmallInteger),
+    ("target_trade_time", DateTime),
+    ("extra_details", None),
+)
+_TARGET_INPUT_COLUMNS = (
+    ("target_type", String),
+    ("target_uid", Uuid),
+    ("asset_uid", Uuid),
+    ("portfolio_uid", Uuid),
+    ("weight_notional_exposure", Float),
+    ("constant_notional_exposure", Float),
+    ("single_asset_quantity", Float),
+    ("metadata_json", None),
+)
+"""The PostgreSQL holdings and target writes take their rows as one JSONB input (#112)."""
 
 
 MappingOrDict = dict[str, Any]

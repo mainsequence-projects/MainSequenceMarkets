@@ -520,12 +520,20 @@ def test_linear_perpetual_funding_precedes_sizing_without_notional_cash() -> Non
 
 
 def test_recorded_bar_price_and_its_revision_drive_partial_execution() -> None:
+    """The ledger decides 10 shares at the 09:00 mark of 100, on a NAV of 1,000.
+
+    The order's earliest moment is the 10:00 bar. By 16:00, 6 of the 13 hours to the
+    window's end have passed: the book fills 6/13 of its order, and the ledger trades
+    6/13 of its own 10 shares, rounded down to 4, at the bar's 80 (#90).
+    """
     signals = pd.DataFrame(
         [("2026-01-02T09:00:00Z", "time-weighted", "STOCK", 1.0)],
         columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
     ).set_index(["time_index", "signal_uid", "asset_identifier"])
     bars = pd.DataFrame(
         [
+            # The signal's own bar sizes the order; the first bar after it trades it.
+            ("2026-01-02T09:00:00Z", "STOCK", 90.0, "bar-0"),
             ("2026-01-02T10:00:00Z", "STOCK", 90.0, "bar-1"),
             ("2026-01-02T16:00:00Z", "STOCK", 80.0, "bar-2"),
         ],
@@ -533,6 +541,7 @@ def test_recorded_bar_price_and_its_revision_drive_partial_execution() -> None:
     )
     prices = pd.DataFrame(
         [
+            ("2026-01-02T09:00:00Z", "STOCK", 100.0, "USD", "mark-0"),
             ("2026-01-02T10:00:00Z", "STOCK", 100.0, "USD", "mark-1"),
             ("2026-01-02T16:00:00Z", "STOCK", 100.0, "USD", "mark-2"),
         ],
@@ -595,8 +604,8 @@ def test_recorded_bar_price_and_its_revision_drive_partial_execution() -> None:
     ].iloc[-1]
 
     assert position_rows.iloc[-1]["price"] == pytest.approx(80.0)
-    assert position_rows.iloc[-1]["quantity_delta"] == pytest.approx(5.0)
-    assert summary["recognized_pnl"] == pytest.approx(100.0)
+    assert position_rows.iloc[-1]["quantity_delta"] == pytest.approx(4.0)
+    assert summary["recognized_pnl"] == pytest.approx(80.0)
 
     revised_bars = bars.copy()
     revised_bars.loc[revised_bars["source_revision"] == "bar-2", "close"] = 81.0

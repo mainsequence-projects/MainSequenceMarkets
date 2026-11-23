@@ -124,10 +124,29 @@ def _remove_category_assets(*, category_uid: Any, asset_uids: list[Any]) -> None
             AssetCategoryMembership.delete(membership.uid)
 
 
-def _category_assets(category_uid: Any):
-    from msm.api.assets import Asset, AssetCategoryMembership
+def _category_memberships(category_uid: Any) -> list[Any]:
+    """Every membership of the category: `filter` answers one page, so read until a short one."""
 
-    memberships = AssetCategoryMembership.filter(category_uid=category_uid, limit=500)
+    from msm.api.assets import AssetCategoryMembership
+
+    page_size = 500
+    memberships: list[Any] = []
+    while True:
+        page = AssetCategoryMembership.filter(
+            category_uid=category_uid,
+            order_by="uid",
+            limit=page_size,
+            offset=len(memberships),
+        )
+        memberships.extend(page)
+        if len(page) < page_size:
+            return memberships
+
+
+def _category_assets(category_uid: Any):
+    from msm.api.assets import Asset
+
+    memberships = _category_memberships(category_uid)
     assets = []
     for membership in memberships:
         asset = Asset.get_by_uid(membership.asset_uid)

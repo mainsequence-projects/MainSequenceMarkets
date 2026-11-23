@@ -187,8 +187,9 @@ class PortfolioWeights(PublishedSeriesNode):
         flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
         if latest is not None:
             flat = flat[flat["time_index"] > pd.Timestamp(latest)]
-        # A cancelled row can still have filled part of its order (ADR 0058).
-        flat = flat[~flat["execution_status"].isin({"superseded", "rejected"})]
+        # A cancelled row can still have filled part of its order (ADR 0058); an
+        # expired one never trades: it keeps the weight its order reached (#114).
+        flat = flat[~flat["execution_status"].isin({"superseded", "expired", "rejected"})]
         if flat.empty:
             return pd.DataFrame()
         flat = flat.sort_values(

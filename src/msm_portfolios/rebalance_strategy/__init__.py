@@ -1,5 +1,6 @@
 from .base import (
     AssetExecution,
+    BarSlice,
     PriceConversion,
     RebalanceInputContract,
     RebalanceStrategyBase,
@@ -16,6 +17,7 @@ from .accounting import (
     ProportionalExecutionCostModel,
     TargetWeightExecutionModel,
 )
+from .bars import BarStrategy, SizedBarStrategy
 from .calendar_event import CalendarEventSignal
 from .execution_policy import ExecutionPolicy
 from .immediate_signal import ImmediateSignal
@@ -27,6 +29,8 @@ from .volume_participation import VolumeParticipation
 __all__ = [
     "AccountingExecutionContext",
     "AssetExecution",
+    "BarSlice",
+    "BarStrategy",
     "CalendarEventSignal",
     "ExecutionCostModel",
     "ExecutionPolicy",
@@ -39,6 +43,7 @@ __all__ = [
     "RebalanceInputContract",
     "RebalanceStrategyBase",
     "RebalanceTarget",
+    "SizedBarStrategy",
     "TargetWeightExecutionModel",
     "TimeWeighted",
     "TrailingAverageDailyVolumeParticipation",

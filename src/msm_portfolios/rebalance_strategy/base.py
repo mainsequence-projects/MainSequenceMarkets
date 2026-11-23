@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
+import metatables.updaters.configuration as update_configuration
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 
@@ -36,9 +37,15 @@ ExecutionStatus = Literal[
     "complete",
     "superseded",
     "cancelled",
+    "expired",
     "rejected",
 ]
-TERMINAL_EXECUTION_STATUSES = frozenset({"complete", "superseded", "cancelled", "rejected"})
+TERMINAL_EXECUTION_STATUSES = frozenset(
+    {"complete", "superseded", "cancelled", "expired", "rejected"}
+)
+# Statuses that drop what is left of an order. Their row carries no price when nothing
+# filled then, and the ledger records it as progress.
+UNFILLED_ENDINGS = frozenset({"cancelled", "expired"})
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,23 @@ class AssetExecution:
     status: str | None = None
 
 
+@dataclass(frozen=True)
+class BarSlice:
+    """How much of one order a strategy's bar lets it trade (#90).
+
+    ``shares`` is a non-negative magnitude in the book's share unit: at most that many
+    of the order's open shares trade at the bar, in the order's direction. The
+    execution policy's cash rules can trade less. ``state`` holds the strategy's own
+    facts about the bar (elapsed time, volume, liquidity, daily capacity), recorded in
+    the row's ``strategy_state`` under ``"bar"``.
+    """
+
+    shares: float
+    observed_volume: float | None = None
+    observed_available_liquidity: float | None = None
+    state: dict[str, Any] = field(default_factory=dict)
+
+
 class RebalanceStrategyBase(BaseModel):
     """Dependency-declaring state machine for portfolio rebalance execution."""
 
@@ -115,6 +139,19 @@ class RebalanceStrategyBase(BaseModel):
         default="supersede_active",
         description="Policy applied when a newer signal replaces unfinished execution.",
     )
+    signal_lifetime: dt.timedelta | None = Field(
+        default=None,
+        gt=dt.timedelta(0),
+        exclude_if=lambda value: value is None,
+        description=(
+            "How long a signal stays valid after its time_index, for example 30 minutes "
+            "or 20 days. An event at time t acts only on the latest signal, and not at "
+            "all when t - signal time_index > signal_lifetime; there is no fallback to "
+            "an earlier signal. A rebalance whose signal passes it keeps what it filled "
+            "and ends 'expired'. None: a signal never expires. Hash-bearing when set."
+        ),
+        examples=["PT30M", "P20D"],
+    )
     execution_model_instance: SerializeAsAny[PositionExecutionModel] | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -131,6 +168,22 @@ class RebalanceStrategyBase(BaseModel):
 
     def get_explanation(self) -> str:
         return f"{self.__class__.__name__}: dependency-declaring rebalance state machine."
+
+    def signal_expired(self, signal_time_index: Any, time_index: Any) -> bool:
+        """Return whether a signal is too old to act on at ``time_index``.
+
+        The clock is economic time, never the job's: an event at ``time_index`` acts
+        on the latest signal, which is too old when ``time_index - signal_time_index >
+        signal_lifetime``. A signal exactly ``signal_lifetime`` old is still valid.
+        Measuring the age from the signal's own ``time_index`` is inferred from the
+        execution engine ADR's timer "at the signal's time plus the strategy's
+        lifetime"; the owner's decision does not name the clock (#114). Without a
+        lifetime no signal expires.
+        """
+        if self.signal_lifetime is None:
+            return False
+        age = self._as_utc_timestamp(time_index) - self._as_utc_timestamp(signal_time_index)
+        return age > pd.Timedelta(self.signal_lifetime)
 
     def declared_dependencies(self) -> dict[str, RebalanceDependency]:
         """Return deterministic named inputs required in addition to signal weights."""
@@ -207,20 +260,49 @@ class RebalanceStrategyBase(BaseModel):
         del events, observed_inputs
         return None
 
-    def apply_event(
+    def bar_slices(
         self,
         *,
         event_time: pd.Timestamp,
-        event_source: str,
         event_observations: dict[str, pd.DataFrame],
-        target: RebalanceTarget,
-        current_weights: dict[str, float],
-        previous_asset_state: dict[str, dict[str, Any]],
-        new_target: bool,
+        book: RebalanceBook,
+        prices: dict[str, float],
+        bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
-    ) -> dict[str, AssetExecution]:
-        """Apply one event of the strategy's own bars to the current executed state."""
+    ) -> dict[str, BarSlice]:
+        """Return the slice each open order of ``prices`` may trade at this bar.
+
+        A strategy with its own bars implements it (#90). ``book`` holds every order,
+        fixed at the decision: ``order_shares``, ``filled_shares``, and the
+        ``earliest_time_index`` the strategy's clock starts at. ``prices`` are the
+        bar's observed prices of the assets whose orders are open and may trade now;
+        ``event_observations`` are the strategy's inputs at the bar, and
+        ``bar_states`` each asset's latest ``"bar"`` state.
+        """
         raise NotImplementedError
+
+    def bar_state(
+        self,
+        *,
+        bar_slice: BarSlice,
+        entry: BookEntry,
+    ) -> dict[str, Any]:
+        """Return the ``"bar"`` state recorded once ``entry`` traded at the bar.
+
+        The default is the slice's own state. A strategy that counts what traded, as a
+        daily participation cap does, adds it here.
+        """
+        del entry
+        return dict(bar_slice.state)
+
+    def book_unit_value(self, ledger_unit_value: float | None) -> float | None:
+        """Return one book unit in the portfolio's currency, or ``None`` without one.
+
+        The book's unit is the NAV at the portfolio's first rebalance. A ledger's
+        initial NAV, ``ledger_unit_value``, gives it a currency (ADR 0059); a strategy
+        with its own size returns that size instead.
+        """
+        return ledger_unit_value
 
     def simulate_recorded_fills(
         self,
@@ -238,10 +320,12 @@ class RebalanceStrategyBase(BaseModel):
         """Book the fills ``PortfolioRebalance`` recorded at one time.
 
         ``fills`` holds one row per asset that traded at ``time_index``, with its
-        ``weight_after``, ``execution_price`` and ``source_revision``. The strategy
-        decides nothing here. ``decided_quantities`` are the share counts the
-        rebalance fixed at its decision; each fill trades to its count at the
-        recorded price. Without them, quantities are sized from the NAV now.
+        ``weight_after``, ``execution_price`` and ``source_revision``, and one per
+        order cancelled or expired then without a fill, which has no price and is
+        recorded as progress. The strategy decides nothing here.
+        ``decided_quantities`` are the share counts the rebalance fixed at its
+        decision; each fill trades to its count at the recorded price. Without them,
+        quantities are sized from the NAV now.
         """
 
         model = self.execution_model_instance
@@ -276,7 +360,8 @@ class RebalanceStrategyBase(BaseModel):
             weight_after = float(row["weight_after"])
             self._require_finite("weight_after", weight_after, asset=asset)
             row_state = self.parse_strategy_state(row)
-            cancelled = str(row.get("execution_status")) == "cancelled"
+            # A cancelled or expired order dropped its remainder; the ledger records it.
+            ending = str(row.get("execution_status"))
             price = row.get("execution_price")
             priced = price is not None and not pd.isna(price)
             asset_executions[asset] = AssetExecution(
@@ -290,7 +375,7 @@ class RebalanceStrategyBase(BaseModel):
                 ),
                 strategy_state=row_state,
                 fill_fraction=float(row_state.get("fill_fraction", 1.0)),
-                status="cancelled" if cancelled else None,
+                status=ending if ending in UNFILLED_ENDINGS else None,
             )
             signal_target_weights[asset] = float(row["target_weight"])
         context = AccountingExecutionContext(
@@ -324,11 +409,7 @@ class RebalanceStrategyBase(BaseModel):
             },
             strategy_revision=strategy_revision,
             completion_tolerance=self.completion_tolerance,
-            cash_floor=(
-                self.fill_policy().cash_floor(float(valuation_result.nav))
-                if self.own_execution_prices() is None
-                else None
-            ),
+            cash_floor=self.fill_policy().cash_floor(float(valuation_result.nav)),
         )
         return model.simulate(
             context,
@@ -352,19 +433,27 @@ class RebalanceStrategyBase(BaseModel):
 
         Every asset trades only at a price observed strictly after the signal that
         set its target, at or after the earliest moment the portfolio calendar
-        allows, and assets fill independently (ADR 0058). A strategy with its own
-        bars trades at them; any other strategy trades each asset at its next
-        observed price in ``fill_prices``, the portfolio's valuation source as
-        returned by ``observed_prices``, run by its ``fill_policy``. A missing price
-        never raises: the trade waits. ``reference_prices`` (``valuation_prices`` of
-        the same source, with each asset's last row before the window) value the
-        portfolio and size the decision; without them ``fill_prices`` do.
+        allows, and assets fill independently (ADR 0058). With a ``signal_lifetime``,
+        a signal is acted on only until it is that old (``signal_expired``): a target
+        too old at its first event never trades, and a running one ends ``expired``
+        at its first event after it, keeping what it filled (#114). A strategy with
+        its own bars trades at them, a slice of each order per bar (#90); any other
+        strategy trades each asset at its next observed price in ``fill_prices``, the
+        portfolio's valuation source as returned by ``observed_prices``. Both run their
+        ``fill_policy`` on a book of shares and cash. A missing price never raises: the
+        trade waits. ``reference_prices`` (``valuation_prices`` of the same source, with
+        each asset's last row before the window) value the portfolio and size the
+        decision; without them ``fill_prices`` do. A strategy with its own bars values
+        and sizes with all the rows of its bars, interpolated ones too.
         ``price_conversion`` converts prices quoted in another currency into the
         portfolio's at the last observed FX rate (ADR 0059); without it every price is
-        in the portfolio's currency. ``book_unit_value`` is the ledger's initial NAV,
-        which a fixed-amount negative cash limit needs.
+        in the portfolio's currency, as the prices of a strategy's own bars always are.
+        ``book_unit_value`` is the ledger's initial NAV, which a fixed-amount negative
+        cash limit needs; ``book_unit_value()`` may replace it with the strategy's own
+        size.
         """
         own_prices = self.own_execution_prices()
+        book_unit_value = self.book_unit_value(book_unit_value)
         if own_prices is None:
             if fill_prices is None:
                 raise ValueError(
@@ -388,13 +477,11 @@ class RebalanceStrategyBase(BaseModel):
             start=start,
             end=end,
             signal_observations=signal_observations,
-            observed_inputs={
-                **observed_inputs,
-                input_name: _without_interpolated(observed_inputs.get(input_name)),
-            },
+            observed_inputs=observed_inputs,
             previous_state=previous_state,
             input_name=input_name,
             price_column=price_column,
+            book_unit_value=book_unit_value,
         )
 
     def _activations(
@@ -412,7 +499,8 @@ class RebalanceStrategyBase(BaseModel):
         signal at or before that moment. The earliest moment is the strategy's
         moment while the portfolio calendar is in session, otherwise the next
         session start. A target whose next session start is not published yet
-        waits for a later run.
+        waits for a later run. A target whose signal is past its lifetime at its
+        earliest moment never activates, and no earlier signal takes its place.
         """
         events = self._normalize_events(
             self.select_events(
@@ -439,7 +527,7 @@ class RebalanceStrategyBase(BaseModel):
             if latest is None:
                 continue
             earliest = earliest_moment(moment, sessions)
-            if earliest is None:
+            if earliest is None or self.signal_expired(latest.signal_time_index, earliest):
                 continue
             if activations and activations[-1][1].intent_id == latest.intent_id:
                 continue
@@ -447,10 +535,10 @@ class RebalanceStrategyBase(BaseModel):
         return activations
 
     def fill_policy(self) -> ExecutionPolicy:
-        """Return the execution choices for trading at the next observed price.
+        """Return the execution choices for the strategy's fills.
 
-        The base enforces the facts; the policy owns the choices (ADR 0058). A
-        strategy that trades at the portfolio's prices returns its configured policy.
+        The base enforces the facts; the policy owns the choices (ADR 0058). Every
+        built-in strategy returns its configured ``execution_policy`` (#90).
         """
         return ExecutionPolicy()
 
@@ -559,6 +647,11 @@ class RebalanceStrategyBase(BaseModel):
                 continue
             if book is None or order_time is None:
                 break
+            if self.signal_expired(book.signal_time_index, order_time):
+                # The first instant an order could trade after the signal's lifetime:
+                # the rebalance keeps what it filled and every open order expires.
+                rows.extend(self._expired_rows(book, order_time, references))
+                continue
             due = {
                 asset: price
                 for asset, order in book.orders.items()
@@ -602,26 +695,87 @@ class RebalanceStrategyBase(BaseModel):
         ]
         return min((time for time in times if time is not None), default=None)
 
+    def _expired_rows(
+        self,
+        book: RebalanceBook,
+        time_index: pd.Timestamp,
+        references: _PriceSeries,
+        *,
+        event_source: str = "valuation_source",
+        bar_states: dict[str, dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """End every open order of ``book`` at ``time_index``: its signal is too old.
+
+        The rebalance keeps what it filled; each open order writes an ``expired`` row
+        with no price. A strategy with its own bars carries each asset's ``"bar"``
+        state into the row.
+        """
+        last_prices = references.last_prices(set(book.held) | set(book.orders), time_index)
+        return [
+            self._book_row(
+                book,
+                entry,
+                time_index,
+                None,
+                event_source=event_source,
+                bar_state=(
+                    None
+                    if bar_states is None
+                    else bar_states.get(entry.asset_identifier, {})
+                ),
+            )
+            for entry in book.expire(last_prices, book.nav(last_prices))
+        ]
+
     def _book_row(
         self,
         book: RebalanceBook,
         entry: BookEntry,
         time_index: pd.Timestamp,
-        observed_price: float,
+        observed_price: float | None,
+        *,
+        event_source: str = "valuation_source",
+        bar_slice: BarSlice | None = None,
+        bar_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Return the row of one order step: the observed price, in its own currency."""
+        """Return the row of one order step: the observed price, in its own currency.
+
+        An expired order trades nothing and has no observed price. A strategy with its
+        own bars records the bar's volume or liquidity and its ``"bar"`` state.
+        """
         asset = entry.asset_identifier
         order = book.orders[asset]
-        traded = entry.status != "cancelled" or abs(entry.shares) > 0.0
+        traded = observed_price is not None and (
+            entry.status not in UNFILLED_ENDINGS or abs(entry.shares) > 0.0
+        )
         target_weight = float(book.target_weights.get(asset, 0.0))
         self._require_finite("target_weight", target_weight, asset=asset)
         self._require_finite("weight_after", entry.weight_after, asset=asset)
+        state = {
+            "schema_version": 2,
+            "earliest_time_index": book.earliest_time_index.isoformat(),
+            "decision_nav": book.decision_nav,
+            "fx_rate": None if observed_price is None else entry.price / observed_price,
+            "weight_at_decision": order.weight_at_decision,
+            "decision_price": order.decision_price,
+            "target_shares": order.target_shares,
+            "order_shares": order.order_shares,
+            "filled_shares": order.filled_shares,
+            "fill_fraction": entry.fill_fraction,
+            "remaining_shares": order.remaining_shares,
+            "cancelled_shares": entry.cancelled_shares,
+            "cancel_reason": entry.cancel_reason,
+            "held_shares": book.held.get(asset, 0.0),
+            "cash": book.cash,
+        }
+        if bar_state is not None:
+            state["bar"] = bar_state
         return {
             "time_index": time_index,
             "rebalance_intent_id": book.intent_id,
             "asset_identifier": asset,
             "target_signal_time_index": book.signal_time_index,
-            "event_source": "valuation_source",
+            "event_source": event_source,
             "target_weight": target_weight,
             "weight_before": entry.weight_before,
             "weight_after": entry.weight_after,
@@ -630,29 +784,11 @@ class RebalanceStrategyBase(BaseModel):
             "execution_price": observed_price if traded else None,
             "executed_quantity": entry.shares,
             "executed_notional": entry.shares * entry.price,
-            "observed_volume": None,
-            "observed_available_liquidity": None,
-            "strategy_state": json.dumps(
-                {
-                    "schema_version": 2,
-                    "earliest_time_index": book.earliest_time_index.isoformat(),
-                    "decision_nav": book.decision_nav,
-                    "fx_rate": entry.price / observed_price,
-                    "weight_at_decision": order.weight_at_decision,
-                    "decision_price": order.decision_price,
-                    "target_shares": order.target_shares,
-                    "order_shares": order.order_shares,
-                    "filled_shares": order.filled_shares,
-                    "fill_fraction": entry.fill_fraction,
-                    "remaining_shares": order.remaining_shares,
-                    "cancelled_shares": entry.cancelled_shares,
-                    "cancel_reason": entry.cancel_reason,
-                    "held_shares": book.held.get(asset, 0.0),
-                    "cash": book.cash,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
+            "observed_volume": None if bar_slice is None else bar_slice.observed_volume,
+            "observed_available_liquidity": (
+                None if bar_slice is None else bar_slice.observed_available_liquidity
             ),
+            "strategy_state": json.dumps(state, sort_keys=True, separators=(",", ":")),
             "execution_status": entry.status,
         }
 
@@ -663,12 +799,11 @@ class RebalanceStrategyBase(BaseModel):
     ) -> pd.Timestamp | None:
         """Return the earliest moment of the newest recorded rebalance.
 
-        Its open orders trade at their first eligible price from that moment on, so
-        prices are read from there rather than from the window start. Strategies with
-        their own bars have none.
+        Its open orders trade at their first eligible price from that moment on, and
+        an order without a row is sized again with the last prices before it, so
+        prices are read from there rather than from the window start: the valuation
+        source's, or the strategy's own bars (#90).
         """
-        if self.own_execution_prices() is not None:
-            return None
         _target, earliest = self._recorded_target(
             _latest_rows_by_asset(previous_state), signal_observations
         )
@@ -847,173 +982,164 @@ class RebalanceStrategyBase(BaseModel):
         previous_state: pd.DataFrame | None,
         input_name: str,
         price_column: str,
+        book_unit_value: float | None,
     ) -> pd.DataFrame:
+        """Run the execution policy at the strategy's own bars; write a row per order step.
+
+        A bar trades only toward a signal observed strictly before it. A new target's
+        earliest moment is the first of the strategy's events at which it is the latest
+        signal, and its order is fixed at the decision, the instant before, with each
+        asset's last bar strictly before the earliest moment: target weight x NAV /
+        price (#90). At every bar the strategy's ``bar_slices`` decide how much of each
+        open order may trade there; the ``fill_policy`` books the slices with its cash
+        rules. An asset trades only at its own observed bar, at that bar's price; rows
+        flagged ``interpolated`` never fill, though they value the book and size the
+        decision as the ledger values the portfolio. A newer target replaces the running
+        rebalance at its earliest moment. ``previous_state`` holds the latest row of
+        every asset: a resumed run rebuilds the book from it.
+        """
+        policy = self.fill_policy()
+        raw_bars = observed_inputs.get(input_name)
+        references = _PriceSeries(valuation_prices(raw_bars, price_column=price_column))
+        fills = _PriceSeries(observed_prices(raw_bars, price_column=price_column))
+        observed = {**observed_inputs, input_name: _without_interpolated(raw_bars)}
         events = self._normalize_events(
             self.select_events(
                 start,
                 end,
                 signal_observations=signal_observations,
-                observed_inputs=observed_inputs,
+                observed_inputs=observed,
             )
         )
         if events.empty:
             return pd.DataFrame()
-
-        observations_by_event = self._observations_by_event(
-            observed_inputs,
-            event_times=pd.DatetimeIndex(events["time_index"]),
+        latest_rows = _latest_rows_by_asset(previous_state)
+        held, cash = self._recorded_holdings(latest_rows)
+        book, after = self._recorded_book(
+            policy, latest_rows, signal_observations, references, held, cash, book_unit_value
         )
-        signal_targets = self._targets_from_signal_observations(signal_observations)
-        next_target_index = 0
-        latest_target: RebalanceTarget | None = None
-        execution_context = self.prepare_execution_context(
-            events=events,
-            observed_inputs=observed_inputs,
-        )
-        state_by_asset = self._state_by_asset(previous_state)
-        current_weights = {
-            asset: float(row.get("weight_after", 0.0)) for asset, row in state_by_asset.items()
+        bar_states = {
+            asset: dict(self.parse_strategy_state(row).get("bar") or {})
+            for asset, row in latest_rows.items()
         }
+        targets = self._targets_from_signal_observations(signal_observations)
+        execution_context = self.prepare_execution_context(
+            events=events, observed_inputs=observed
+        )
+        observations_by_event = self._observations_by_event(
+            observed, event_times=pd.DatetimeIndex(events["time_index"])
+        )
         rows: list[dict[str, Any]] = []
-        active_intent = self._active_intent(state_by_asset)
-
+        next_target = 0
+        latest: RebalanceTarget | None = None
         for event in events.to_dict(orient="records"):
             event_time = self._as_utc_timestamp(event["time_index"])
             event_source = str(event["event_source"])
-            # A bar trades only toward a signal observed strictly before it.
             while (
-                next_target_index < len(signal_targets)
-                and signal_targets[next_target_index].signal_time_index < event_time
+                next_target < len(targets)
+                and targets[next_target].signal_time_index < event_time
             ):
-                latest_target = signal_targets[next_target_index]
-                next_target_index += 1
-            target = latest_target
-            persisted_target = self._target_from_state(state_by_asset)
-            if target is None or (
-                persisted_target is not None
-                and persisted_target.signal_time_index > target.signal_time_index
+                latest = targets[next_target]
+                next_target += 1
+            if latest is not None and (
+                book is None or latest.signal_time_index > book.signal_time_index
             ):
-                target = persisted_target
-            if target is None:
+                if self.signal_expired(latest.signal_time_index, event_time):
+                    # The latest signal is the only candidate and it is too old: nothing
+                    # trades, and a running rebalance of an older signal stops too.
+                    if book is not None:
+                        rows.extend(
+                            self._expired_rows(
+                                book,
+                                event_time,
+                                references,
+                                event_source=event_source,
+                                bar_states=bar_states,
+                            )
+                        )
+                    continue
+                decision_time = event_time - pd.Timedelta(1, unit="ns")
+                if book is not None:
+                    held, cash = dict(book.held), book.cash
+                elif cash is None:
+                    held, cash = self._holdings_from_weights(
+                        latest_rows, references, decision_time
+                    )
+                book = policy.open_book(
+                    intent_id=latest.intent_id,
+                    signal_time_index=latest.signal_time_index,
+                    earliest_time_index=event_time,
+                    target_weights=latest.weights,
+                    held=held,
+                    cash=cash,
+                    decision_prices=references.last_prices(
+                        set(held) | set(latest.weights), decision_time
+                    ),
+                    unit_value=book_unit_value,
+                )
+                after = {asset: decision_time for asset in book.orders}
+            if book is None:
                 continue
-
-            new_target = active_intent != target.intent_id
-            if new_target and active_intent is not None:
+            if self.signal_expired(book.signal_time_index, event_time):
                 rows.extend(
-                    self._superseded_rows(
-                        event_time=event_time,
+                    self._expired_rows(
+                        book,
+                        event_time,
+                        references,
                         event_source=event_source,
-                        active_intent=active_intent,
-                        state_by_asset=state_by_asset,
+                        bar_states=bar_states,
                     )
                 )
-
-            if not new_target and self._intent_is_complete(state_by_asset, target.intent_id):
                 continue
-
-            event_observations = {
-                name: grouped.get(event_time, pd.DataFrame())
-                for name, grouped in observations_by_event.items()
+            due = {
+                asset: price
+                for asset, order in book.orders.items()
+                if order.status == "open"
+                and event_time > after[asset]
+                and (price := fills.price_at(asset, event_time)) is not None
             }
-            executions = self.apply_event(
+            if not due:
+                continue
+            last_prices = references.last_prices(set(book.held) | set(due), event_time)
+            # An order sized at its fill is sized before the strategy slices it.
+            policy.size_at_fill(book, fill_prices=due, nav=book.nav(last_prices))
+            slices = self.bar_slices(
                 event_time=event_time,
-                event_source=event_source,
-                event_observations=event_observations,
-                target=target,
-                current_weights=dict(current_weights),
-                previous_asset_state=state_by_asset,
-                new_target=new_target,
+                event_observations={
+                    name: grouped.get(event_time, pd.DataFrame())
+                    for name, grouped in observations_by_event.items()
+                },
+                book=book,
+                prices=due,
+                bar_states=bar_states,
                 execution_context=execution_context,
             )
-            assets = sorted(set(current_weights) | set(target.weights))
-            missing_assets = sorted(set(assets) - set(executions))
-            if missing_assets:
-                raise ValueError(
-                    f"{self.__class__.__name__}.apply_event() omitted assets: "
-                    + ", ".join(missing_assets)
-                )
-            observed_prices_at_event = _prices_by_asset(
-                event_observations.get(input_name),
-                price_column=price_column,
+            entries = policy.step(
+                book,
+                time_index=event_time,
+                fill_prices=due,
+                last_prices=last_prices,
+                slices={asset: slices[asset].shares for asset in due},
             )
-
-            pending_rows: list[dict[str, Any]] = []
-            all_complete = True
-            for asset in assets:
-                before = float(current_weights.get(asset, 0.0))
-                target_weight = float(target.weights.get(asset, 0.0))
-                execution = executions[asset]
-                after = float(execution.weight_after)
-                if abs(after - before) > 0.0 and asset not in observed_prices_at_event:
-                    # An asset moves only at its own observed bar.
-                    execution = AssetExecution(
-                        weight_after=before,
-                        strategy_state=execution.strategy_state,
+            for asset in due:
+                after[asset] = event_time
+            for entry in entries:
+                asset = entry.asset_identifier
+                bar_states[asset] = {
+                    **self.bar_state(bar_slice=slices[asset], entry=entry),
+                    "slice_shares": slices[asset].shares,
+                }
+                rows.append(
+                    self._book_row(
+                        book,
+                        entry,
+                        event_time,
+                        due[asset],
+                        event_source=event_source,
+                        bar_slice=slices[asset],
+                        bar_state=bar_states[asset],
                     )
-                    after = before
-                # A trade books the bar's own observed price at this time; no trade, no
-                # fill price: the ledger books rows with a price.
-                execution_price = (
-                    observed_prices_at_event[asset] if abs(after - before) > 0.0 else None
                 )
-                self._require_finite("target_weight", target_weight, asset=asset)
-                self._require_finite("weight_before", before, asset=asset)
-                self._require_finite("weight_after", after, asset=asset)
-                for fact_name in (
-                    "executed_quantity",
-                    "executed_notional",
-                    "observed_volume",
-                    "observed_available_liquidity",
-                ):
-                    fact = getattr(execution, fact_name)
-                    if fact is not None:
-                        self._require_finite(fact_name, float(fact), asset=asset)
-                if execution_price is not None:
-                    self._require_finite("execution_price", float(execution_price), asset=asset)
-                remaining = target_weight - after
-                all_complete = all_complete and abs(remaining) <= self.completion_tolerance
-                pending_rows.append(
-                    {
-                        "time_index": event_time,
-                        "rebalance_intent_id": target.intent_id,
-                        "asset_identifier": asset,
-                        "target_signal_time_index": target.signal_time_index,
-                        "event_source": event_source,
-                        "target_weight": target_weight,
-                        "weight_before": before,
-                        "weight_after": after,
-                        "executed_weight_delta": after - before,
-                        "remaining_weight_delta": remaining,
-                        "execution_price": execution_price,
-                        "executed_quantity": execution.executed_quantity,
-                        "executed_notional": execution.executed_notional,
-                        "observed_volume": execution.observed_volume,
-                        "observed_available_liquidity": (execution.observed_available_liquidity),
-                        "strategy_state": json.dumps(
-                            {"schema_version": 1, **execution.strategy_state},
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    }
-                )
-
-            status: ExecutionStatus
-            if all_complete:
-                status = "complete"
-            elif all(
-                abs(float(row["executed_weight_delta"])) <= self.completion_tolerance
-                for row in pending_rows
-            ):
-                status = "pending"
-            else:
-                status = "partial"
-            for row in pending_rows:
-                row["execution_status"] = status
-                state_by_asset[str(row["asset_identifier"])] = dict(row)
-                current_weights[str(row["asset_identifier"])] = float(row["weight_after"])
-            rows.extend(pending_rows)
-            active_intent = target.intent_id
-
         return pd.DataFrame(rows)
 
     def _targets_from_signal_observations(
@@ -1112,106 +1238,6 @@ class RebalanceStrategyBase(BaseModel):
         return indexed
 
     @staticmethod
-    def _state_by_asset(previous_state: pd.DataFrame | None) -> dict[str, dict[str, Any]]:
-        if previous_state is None or previous_state.empty:
-            return {}
-        flat = previous_state.reset_index().copy()
-        if "time_index" in flat.columns:
-            flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
-            flat = flat.sort_values("time_index", kind="stable")
-        if "execution_status" in flat.columns:
-            active = flat[~flat["execution_status"].isin({"superseded", "cancelled", "rejected"})]
-            if not active.empty:
-                flat = active
-        latest = flat.groupby(ASSET_IDENTIFIER_DIMENSION, sort=False).tail(1)
-        return {
-            str(row[ASSET_IDENTIFIER_DIMENSION]): row for row in latest.to_dict(orient="records")
-        }
-
-    @staticmethod
-    def _active_intent(state_by_asset: dict[str, dict[str, Any]]) -> str | None:
-        intents = {
-            str(row["rebalance_intent_id"])
-            for row in state_by_asset.values()
-            if row.get("rebalance_intent_id") not in (None, "")
-        }
-        if len(intents) > 1:
-            raise ValueError("Persisted rebalance state contains multiple active intents.")
-        return next(iter(intents), None)
-
-    @classmethod
-    def _target_from_state(
-        cls,
-        state_by_asset: dict[str, dict[str, Any]],
-    ) -> RebalanceTarget | None:
-        active_intent = cls._active_intent(state_by_asset)
-        if active_intent is None:
-            return None
-        rows = {
-            asset: row
-            for asset, row in state_by_asset.items()
-            if str(row.get("rebalance_intent_id")) == active_intent
-        }
-        if not rows:
-            return None
-        signal_times = {
-            cls._as_utc_timestamp(row["target_signal_time_index"]) for row in rows.values()
-        }
-        if len(signal_times) != 1:
-            raise ValueError("Persisted active intent contains multiple target signal timestamps.")
-        return RebalanceTarget(
-            intent_id=active_intent,
-            signal_time_index=next(iter(signal_times)),
-            weights={asset: float(row["target_weight"]) for asset, row in sorted(rows.items())},
-        )
-
-    @staticmethod
-    def _intent_is_complete(
-        state_by_asset: dict[str, dict[str, Any]],
-        intent_id: str,
-    ) -> bool:
-        rows = [
-            row
-            for row in state_by_asset.values()
-            if str(row.get("rebalance_intent_id")) == intent_id
-        ]
-        return bool(rows) and all(row.get("execution_status") == "complete" for row in rows)
-
-    @staticmethod
-    def _superseded_rows(
-        *,
-        event_time: pd.Timestamp,
-        event_source: str,
-        active_intent: str,
-        state_by_asset: dict[str, dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for asset, prior in sorted(state_by_asset.items()):
-            if str(prior.get("rebalance_intent_id")) != active_intent:
-                continue
-            if prior.get("execution_status") in TERMINAL_EXECUTION_STATUSES:
-                continue
-            weight = float(prior.get("weight_after", 0.0))
-            rows.append(
-                {
-                    **prior,
-                    "time_index": event_time,
-                    "asset_identifier": asset,
-                    "event_source": event_source,
-                    "execution_status": "superseded",
-                    "weight_before": weight,
-                    "weight_after": weight,
-                    "executed_weight_delta": 0.0,
-                    "execution_price": None,
-                    "executed_quantity": None,
-                    "executed_notional": None,
-                    "observed_volume": None,
-                    "observed_available_liquidity": None,
-                }
-            )
-        return rows
-
-    @staticmethod
     def _as_utc_timestamp(value: Any) -> pd.Timestamp:
         timestamp = pd.Timestamp(value)
         return (
@@ -1238,6 +1264,21 @@ class RebalanceStrategyBase(BaseModel):
     def _require_finite(name: str, value: float, *, asset: str) -> None:
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite for asset {asset!r}.")
+
+
+@update_configuration.serialize_argument.register(RebalanceStrategyBase)
+def _serialize_rebalance_strategy(value: RebalanceStrategyBase) -> dict[str, Any]:
+    """Serialize a strategy for MetaTables identities as any pydantic model is.
+
+    MetaTables writes every field, also one the model leaves out of its own dump. A
+    strategy without a ``signal_lifetime`` is written without it, so it keeps the
+    portfolio and update identities it had before the field existed; a lifetime is
+    hashed (#114).
+    """
+    serialized = update_configuration.serialize_argument.dispatch(BaseModel)(value)
+    if value.signal_lifetime is None:
+        serialized["serialized_model"].pop("signal_lifetime")
+    return serialized
 
 
 def earliest_moment(
@@ -1363,19 +1404,6 @@ def _without_interpolated(frame: pd.DataFrame | None) -> pd.DataFrame:
     return frame[~flags.to_numpy()]
 
 
-def _prices_by_asset(frame: pd.DataFrame | None, *, price_column: str) -> dict[str, float]:
-    if frame is None or frame.empty:
-        return {}
-    prices = observed_prices(frame, price_column=price_column)
-    return dict(
-        zip(
-            prices[ASSET_IDENTIFIER_DIMENSION].astype(str),
-            prices["price"].astype(float),
-            strict=True,
-        )
-    )
-
-
 class PriceConversion:
     """Prices into the portfolio's currency at the last observed FX rate (ADR 0059).
 
@@ -1430,7 +1458,12 @@ class PriceConversion:
         return float(series[1][position])
 
 
-_ORDER_STATUS = {"partial": "open", "complete": "filled", "cancelled": "cancelled"}
+_ORDER_STATUS = {
+    "partial": "open",
+    "complete": "filled",
+    "cancelled": "cancelled",
+    "expired": "expired",
+}
 
 
 def _latest_rows_by_asset(previous_state: pd.DataFrame | None) -> dict[str, dict[str, Any]]:
@@ -1541,6 +1574,7 @@ def dependency_events(frame: pd.DataFrame, *, source: str) -> pd.DataFrame:
 
 __all__ = [
     "AssetExecution",
+    "BarSlice",
     "ExecutionStatus",
     "PriceConversion",
     "RebalanceDependency",

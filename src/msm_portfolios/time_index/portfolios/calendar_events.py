@@ -65,13 +65,36 @@ class PortfolioCalendarEvents(PortfolioCanonicalUpdater):
             )
         return config
 
+    def _latest_by_event_type(
+        self, config: PortfolioCalendarEventsConfiguration
+    ) -> dict[str, pd.Timestamp | None]:
+        """This calendar and session label's latest event of each type, not the table's.
+
+        One events table holds every calendar's events, so the table's latest time is
+        another calendar's progress, never this one's start (#119).
+        """
+
+        progress = getattr(getattr(self, "update_statistics", None), "index_progress", None)
+        own = (progress or {}).get(config.calendar_identifier) if isinstance(progress, dict) else None
+        own = own.get(config.session_label) if isinstance(own, dict) else None
+        return {
+            event_type: (
+                None
+                if not isinstance(own, dict) or own.get(event_type) is None
+                else pd.Timestamp(own[event_type])
+            )
+            for event_type in config.event_types
+        }
+
     def update(self) -> pd.DataFrame:
         config = self._validate_config(self.config)
-        latest = getattr(getattr(self, "update_statistics", None), "max_time_index_value", None)
+        latest = self._latest_by_event_type(config)
+        # Each event type continues after its own latest event; one with none starts at
+        # OFFSET_START. The schedule is read from the earliest of those starts.
         start: pd.Timestamp = (
             pd.Timestamp(self.OFFSET_START)
-            if latest is None
-            else pd.Timestamp(latest) + pd.Timedelta(1, unit="ns")
+            if any(value is None for value in latest.values())
+            else min(latest.values()) + pd.Timedelta(1, unit="ns")
         )
         end = pd.Timestamp.now(tz="UTC")
         maximum_window = os.getenv("MAX_TD_FROM_LATEST_VALUE")
@@ -124,7 +147,12 @@ class PortfolioCalendarEvents(PortfolioCanonicalUpdater):
             )
         frame = pd.DataFrame(rows)
         frame["time_index"] = normalize_datetime64_ns_utc(frame["time_index"])
-        frame = frame[(frame["time_index"] >= start) & (frame["time_index"] <= end)]
+        published = frame["event_type"].map(latest)
+        frame = frame[
+            (frame["time_index"] >= start)
+            & (frame["time_index"] <= end)
+            & (published.isna() | (frame["time_index"] > published))
+        ]
         return self.validate_frame(frame, output_table=self.output_table)
 
     @classmethod

@@ -28,6 +28,7 @@ def list_assets(
     offset: int = 0,
     category_uid: str | None = None,
     unique_identifiers: Sequence[str] | None = None,
+    asset_type: str | None = None,
 ) -> list[Asset]:
     runtime = _get_runtime()
     rows = _list_asset_rows(
@@ -37,6 +38,7 @@ def list_assets(
         offset=offset,
         category_uid=category_uid,
         unique_identifiers=unique_identifiers,
+        asset_type=asset_type,
     )
     return [Asset.model_validate(row) for row in rows]
 
@@ -82,16 +84,13 @@ def get_asset_monitor_frame(
     unique_identifiers: Sequence[str] | None = None,
     request_url: str | None = None,
 ) -> TabularFrameResponse:
-    fetch_limit = 500 if asset_type else limit
-    fetch_offset = 0 if asset_type else offset
     rows = list_assets(
         search=search,
-        limit=fetch_limit,
-        offset=fetch_offset,
+        limit=limit,
+        offset=offset,
         unique_identifiers=unique_identifiers,
+        asset_type=asset_type,
     )
-    if asset_type:
-        rows = [row for row in rows if row.asset_type == asset_type][offset : offset + limit]
 
     source_context: dict[str, Any] = {"operationId": ASSET_MONITOR_OPERATION_ID}
     if unique_identifiers:
@@ -107,7 +106,7 @@ def get_asset_monitor_frame(
                 "unique_identifier": row.unique_identifier or None,
                 "asset_type": row.asset_type or None,
             }
-            for row in rows[:limit]
+            for row in rows
         ],
         fields=[
             build_tabular_field(

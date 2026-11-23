@@ -3,11 +3,9 @@ from __future__ import annotations
 import datetime as dt
 
 import pandas as pd
-import pytest
 
 from msm_portfolios.contrib.prices.updaters import (
     UpsampleAndInterpolation,
-    _has_trading_halts,
     interpolate_daily_bars,
     interpolate_intraday_bars,
 )
@@ -203,28 +201,6 @@ def test_a_session_the_source_missed_is_filled_and_flagged() -> None:
     assert result.loc[filled, "close"] == 101.0
     assert bool(result.loc[filled, "interpolated"])
     assert not bool(result.loc[pd.Timestamp("2024-12-26T21:00:00Z"), "interpolated"])
-
-
-@pytest.mark.parametrize(
-    ("schedule", "expected"),
-    [
-        (always_open("2026-03-01", 5), False),
-        (
-            schedule_frame(
-                [
-                    ("2026-09-03", "2026-09-03T13:30:00Z", "2026-09-03T20:00:00Z"),
-                    NYSE_SESSION,
-                ]
-            ),
-            True,
-        ),
-        # A 24/7 calendar a user closed for one day: the name could not say this.
-        (pd.concat([always_open("2026-03-01", 2), always_open("2026-03-04", 2)]), True),
-        (schedule_frame([NYSE_SESSION]), False),
-    ],
-)
-def test_trading_halts_are_computed_from_the_sessions(schedule, expected) -> None:
-    assert _has_trading_halts(schedule) is expected
 
 
 def test_intraday_interpolation_reads_sessions_from_the_schedule() -> None:
