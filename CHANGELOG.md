@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-11-23
+
 Major release 6.0.0. An order has its own row, and a batch's orders, their states, events
 and trades are written in two requests, with no updater run
 ([ADR 0064](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0064-an-order-has-its-own-row/),
