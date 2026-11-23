@@ -712,7 +712,7 @@ def get_account_virtual_fund_allocation_by_uid(
         "Run an allocation policy for one holdings snapshot against one target and answer the "
         "plan. Nothing is written. The snapshot is the account's holdings set at exactly "
         "`valuation_time`; the target is `position_set_uid`, which must not be later. The "
-        "target states exposure, as a share of NAV or an amount; `sized_targets` gives each "
+        "target states exposure, as a share of NAV; `sized_targets` gives each "
         "exposure in units, sized by the caller with its own prices (ADR 0054). The request "
         "carries no price, NAV or valuation. The plan has one line per owner and asset, "
         "where the owner is a virtual fund or the direct account sleeve: `target`, "

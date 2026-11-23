@@ -629,9 +629,6 @@ def current_portfolio_target_rows_select(*, portfolio_uid: Any):
             PositionSetTable.uid.label("position_set_uid"),
             PositionSetTable.position_set_time.label("target_positions_date"),
             TargetPositionsStorage.weight_notional_exposure.label("weight_notional_exposure"),
-            TargetPositionsStorage.constant_notional_exposure.label(
-                "constant_notional_exposure"
-            ),
         )
         .select_from(TargetPositionsStorage)
         .join(PositionSetTable, PositionSetTable.uid == TargetPositionsStorage.position_set_uid)
@@ -1336,11 +1333,7 @@ def build_replace_account_target_positions_snapshot_operation(
                 **position,
                 **{
                     name: _python_scalar(position.get(name))
-                    for name in (
-                        "weight_notional_exposure",
-                        "constant_notional_exposure",
-                        "single_asset_quantity",
-                    )
+                    for name in ("weight_notional_exposure", "single_asset_quantity")
                 },
             }
             for position in positions
@@ -1368,7 +1361,6 @@ def build_replace_account_target_positions_snapshot_operation(
                 "asset_uid",
                 "portfolio_uid",
                 "weight_notional_exposure",
-                "constant_notional_exposure",
                 "single_asset_quantity",
                 "metadata_json",
             ],
@@ -1380,7 +1372,6 @@ def build_replace_account_target_positions_snapshot_operation(
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
                 input_rows.c.weight_notional_exposure,
-                input_rows.c.constant_notional_exposure,
                 input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows.join(position_set, true()).join(deleted_gate, true())),
@@ -1694,7 +1685,6 @@ def _target_positions_snapshot_statement_list(
             column("asset_uid", Uuid(as_uuid=True)),
             column("portfolio_uid", Uuid(as_uuid=True)),
             column("weight_notional_exposure", Float()),
-            column("constant_notional_exposure", Float()),
             column("single_asset_quantity", Float()),
             column("metadata_json", JSON()),
             name="input_rows",
@@ -1726,11 +1716,6 @@ def _target_positions_snapshot_statement_list(
                         type_=Float(),
                     ),
                     bindparam(
-                        f"constant_notional_exposure_{index}",
-                        value=_python_scalar(position.get("constant_notional_exposure")),
-                        type_=Float(),
-                    ),
-                    bindparam(
                         f"single_asset_quantity_{index}",
                         value=_python_scalar(position.get("single_asset_quantity")),
                         type_=Float(),
@@ -1757,7 +1742,6 @@ def _target_positions_snapshot_statement_list(
                 "asset_uid",
                 "portfolio_uid",
                 "weight_notional_exposure",
-                "constant_notional_exposure",
                 "single_asset_quantity",
                 "metadata_json",
             ],
@@ -1769,7 +1753,6 @@ def _target_positions_snapshot_statement_list(
                 input_rows.c.asset_uid,
                 input_rows.c.portfolio_uid,
                 input_rows.c.weight_notional_exposure,
-                input_rows.c.constant_notional_exposure,
                 input_rows.c.single_asset_quantity,
                 input_rows.c.metadata_json,
             ).select_from(input_rows),
@@ -1884,7 +1867,6 @@ _TARGET_INPUT_COLUMNS = (
     ("asset_uid", Uuid),
     ("portfolio_uid", Uuid),
     ("weight_notional_exposure", Float),
-    ("constant_notional_exposure", Float),
     ("single_asset_quantity", Float),
     ("metadata_json", None),
 )

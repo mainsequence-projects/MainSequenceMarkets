@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by [ADR 0061](0061-retire-constant-notional-exposure.md), accepted on 2026-11-23:
+`constant_notional_exposure` is retired. A portfolio row states `weight_notional_exposure`;
+an asset row states `weight_notional_exposure` or `single_asset_quantity`.
+
 Accepted - implemented and amended
 
 This ADR defines the target architecture for account target-position rows that

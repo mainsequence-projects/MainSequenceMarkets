@@ -7,6 +7,31 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking: an account target no longer states an amount**
+  ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
+  `constant_notional_exposure` is retired. It set a fund back to its amount at every
+  sync, so the fund's gains went to the account and its losses were refilled from it. A
+  portfolio row states `weight_notional_exposure`; an asset row states
+  `weight_notional_exposure` or `single_asset_quantity`. Revision `0036` drops the
+  column and keeps the name of the check that requires exactly one of the two. A target
+  that still states an amount makes the upgrade fail, and nothing is deleted: write that
+  account's target again as a share, then upgrade. On SQLite, such a failure leaves the
+  table `_alembic_tmp_ms_markets__targetpositionsts`; drop it before upgrading again.
+  Responses, `MarketsClient` and the "Accounts targeting the portfolio" view no longer
+  carry the field, and the view loses its "Notional" column.
+
+### Changed
+
+- **Breaking: in-process target writes refuse a field a row does not have**
+  ([ADR 0061](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0061-retire-constant-notional-exposure/)).
+  `build_target_positions_frame`, `validate_target_positions_frame` and the
+  `TargetPositions` updater raise `ValueError` for a key that is not a
+  `TargetPositionsStorage` column, as the API already answered `422`. Before, they
+  dropped such a key or passed it on. The check that refused `asset_identifier` by name
+  is gone; the rule covers it.
+
 ## [5.2.0] - 2026-11-23
 
 Minor release 5.2.0, with breaking changes to rebalance strategies. Strategies with

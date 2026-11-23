@@ -809,7 +809,6 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "0.55",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": {
                         "uid": str(asset_uid),
@@ -828,7 +827,6 @@ def test_get_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "portfolio_uid": str(portfolio_uid),
                     "unique_identifier": "example-sleeve",
                     "weight_notional_exposure": "0.45",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
                     "portfolio": {
@@ -943,7 +941,6 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "0.6",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
                     "portfolio": None,
@@ -955,7 +952,6 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
                     "portfolio_uid": str(portfolio_uid),
                     "unique_identifier": "example-sleeve",
                     "weight_notional_exposure": "0.4",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
                     "portfolio": None,
@@ -1011,7 +1007,6 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
         {
             "target_uid": str(asset_uid),
             "weight_notional_exposure": "0.60",
-            "constant_notional_exposure": None,
             "single_asset_quantity": None,
             "metadata_json": {},
             "target_type": "asset",
@@ -1021,7 +1016,6 @@ def test_add_account_target_positions_returns_snapshot(monkeypatch) -> None:
         {
             "target_uid": str(portfolio_uid),
             "weight_notional_exposure": "0.40",
-            "constant_notional_exposure": None,
             "single_asset_quantity": None,
             "metadata_json": {"portfolio_role": "satellite_sleeve"},
             "target_type": "portfolio",
@@ -1307,7 +1301,6 @@ def test_account_target_positions_service_maps_snapshot(monkeypatch) -> None:
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "0.55",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
                     "portfolio": None,
@@ -1358,7 +1351,6 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
                     "portfolio_uid": None,
                     "unique_identifier": "btc_spot",
                     "weight_notional_exposure": "1.0",
-                    "constant_notional_exposure": None,
                     "single_asset_quantity": None,
                     "asset": None,
                     "portfolio": None,
@@ -1406,7 +1398,6 @@ def test_add_account_target_positions_service_maps_snapshot(monkeypatch) -> None
         {
             "target_uid": str(target_uid),
             "weight_notional_exposure": "1.0",
-            "constant_notional_exposure": None,
             "single_asset_quantity": None,
             "metadata_json": {},
             "target_type": "asset",
@@ -1948,7 +1939,6 @@ def test_core_add_account_target_positions_snapshot_derives_parent_rows(
             "asset_uid": str(asset_uid),
             "portfolio_uid": None,
             "weight_notional_exposure": 1.0,
-            "constant_notional_exposure": None,
             "single_asset_quantity": None,
             "metadata_json": {},
         }
@@ -2046,7 +2036,6 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
                 "asset_uid": str(asset_uid),
                 "portfolio_uid": None,
                 "weight_notional_exposure": "1.0",
-                "constant_notional_exposure": None,
                 "single_asset_quantity": None,
                 "metadata_json": {"source": "test"},
             }
@@ -2083,7 +2072,6 @@ def test_account_repository_builds_atomic_target_positions_replacement_operation
             "asset_uid": str(asset_uid),
             "portfolio_uid": None,
             "weight_notional_exposure": 1.0,
-            "constant_notional_exposure": None,
             "single_asset_quantity": None,
             "metadata_json": {"source": "test"},
         }

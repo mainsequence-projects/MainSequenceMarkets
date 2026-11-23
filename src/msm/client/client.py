@@ -340,7 +340,7 @@ class MarketsClient:
 
         Nothing is written. The snapshot is the account's holdings set at exactly
         ``valuation_time``. ``position_set_uid`` states the account's exposure, as a
-        share of NAV or an amount; ``sized_targets`` gives each exposure in units,
+        share of NAV; ``sized_targets`` gives each exposure in units,
         sized by the caller with its own prices (ADR 0054). No price is sent. Each
         line of the plan has a ``target``, what is ``assigned`` and
         ``delta = target - assigned``. Without ``policy``,

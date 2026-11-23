@@ -38,7 +38,7 @@ Three different things describe a virtual fund (ADR 0054):
 
 | What | Where | Unit | Who writes it |
 | --- | --- | --- | --- |
-| The exposure the account wants to a portfolio | `TargetPositionsStorage`, one row per portfolio | A share of NAV or an amount | The user, through the provider |
+| The exposure the account wants to a portfolio | `TargetPositionsStorage`, one row per portfolio | A share of NAV | The user, through the provider |
 | The sized target: that exposure per asset | `AccountAllocationLinesStorage.target_quantity` | Units | The provider, at a sync |
 | What each owner was assigned of the account's holdings | `AccountAllocationLinesStorage.assigned_quantity`, and `VirtualFundHoldingsStorage` for a fund | Units | ms-markets, at a sync |
 
@@ -49,8 +49,7 @@ PositionSetTable
   <- TargetPositionsStorage
        target_type = "portfolio"
        portfolio_uid -> PortfolioTable.uid
-       weight_notional_exposure      a share of the account's NAV, or
-       constant_notional_exposure    an amount
+       weight_notional_exposure      a share of the account's NAV
 ```
 
 Writing an exposure to a portfolio creates the `VirtualFund` of that account and
@@ -159,7 +158,7 @@ plan = plan_account_virtual_fund_allocations(
 `sized_targets` gives the exposures of the `PositionSet` in units:
 
 - every portfolio exposure must be sized, and so must an asset exposure stated
-  as a share or an amount;
+  as a share;
 - an asset target stated as `single_asset_quantity` is already in units and is
   not sized;
 - an empty `positions` list is a target sized to nothing;
@@ -200,8 +199,8 @@ asset, where the owner is a virtual fund or the direct account sleeve:
 | `delta` | `target - assigned`: positive when units are missing, negative when there are more than the target asks for |
 
 Take an account that holds AAPL 1,000, MSFT 600, JNJ 1,000 and TSLA 1,640. It
-wants 40% of its NAV in portfolio A (60% AAPL, 40% MSFT) and 300,000 in
-portfolio B (50% MSFT, 50% JNJ). At the provider's prices the account is worth
+wants 40% of its NAV in portfolio A (60% AAPL, 40% MSFT) and 30% in portfolio
+B (50% MSFT, 50% JNJ). At the provider's prices the account is worth
 1,000,000, and the provider sizes fund A at AAPL 1,200 and MSFT 400, and fund B
 at MSFT 375 and JNJ 1,000:
 

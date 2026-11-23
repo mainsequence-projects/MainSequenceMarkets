@@ -33,7 +33,6 @@ from msm.repositories.account_snapshot_reads import (
 
 TARGET_POSITION_EXPOSURE_FIELDS = (
     "weight_notional_exposure",
-    "constant_notional_exposure",
     "single_asset_quantity",
 )
 
@@ -46,8 +45,13 @@ class AccountTargetPositionsSnapshotExistsError(ValueError):
 
 def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(position)
-    if "asset_identifier" in payload:
-        raise ValueError("Target positions use asset_uid or portfolio_uid, not asset_identifier.")
+    fields = TargetPositionsStorage.__table__.columns.keys()
+    unknown_fields = sorted(set(payload).difference(fields))
+    if unknown_fields:
+        raise ValueError(
+            f"Target positions have no field {', '.join(unknown_fields)}; "
+            f"a target position holds only {', '.join(fields)}."
+        )
 
     provided_fields = [
         field_name
@@ -57,8 +61,7 @@ def validate_target_position_payload(position: Mapping[str, Any]) -> dict[str, A
     if len(provided_fields) != 1:
         raise ValueError(
             "Each target position must provide exactly one of "
-            "`weight_notional_exposure`, `constant_notional_exposure`, "
-            "or `single_asset_quantity`."
+            "`weight_notional_exposure` or `single_asset_quantity`."
         )
 
     asset_uid = _optional_uuid_string(payload.get("asset_uid"), field_name="asset_uid")
@@ -121,7 +124,6 @@ def build_target_positions_frame(
                 "asset_uid": payload["asset_uid"],
                 "portfolio_uid": payload["portfolio_uid"],
                 "weight_notional_exposure": payload.get("weight_notional_exposure"),
-                "constant_notional_exposure": payload.get("constant_notional_exposure"),
                 "single_asset_quantity": payload.get("single_asset_quantity"),
                 "metadata_json": payload.get("metadata_json") or {},
             }
@@ -511,9 +513,6 @@ def _build_portfolio_account_target_row(row: Mapping[str, Any]) -> dict[str, Any
             field_name="target_positions_date",
         ),
         "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
-        "constant_notional_exposure": _number_string_or_none(
-            row.get("constant_notional_exposure")
-        ),
     }
 
 
@@ -590,7 +589,6 @@ def _portfolio_weight_rows(
 def _exposure_columns(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "weight_notional_exposure": row.get("weight_notional_exposure"),
-        "constant_notional_exposure": row.get("constant_notional_exposure"),
         "single_asset_quantity": row.get("single_asset_quantity"),
     }
 
@@ -604,10 +602,6 @@ def _expanded_exposure_columns(
     if exposure["weight_notional_exposure"] is not None:
         exposure["weight_notional_exposure"] = (
             float(exposure["weight_notional_exposure"]) * portfolio_weight
-        )
-    if exposure["constant_notional_exposure"] is not None:
-        exposure["constant_notional_exposure"] = (
-            float(exposure["constant_notional_exposure"]) * portfolio_weight
         )
     return exposure
 
@@ -684,7 +678,6 @@ def _build_account_target_position_row(
             portfolio_reference=portfolio_reference,
         ),
         "weight_notional_exposure": _number_string_or_none(row.get("weight_notional_exposure")),
-        "constant_notional_exposure": _number_string_or_none(row.get("constant_notional_exposure")),
         "single_asset_quantity": _number_string_or_none(row.get("single_asset_quantity")),
         "asset": asset_reference if include_asset_detail else None,
         "portfolio": portfolio_reference,
@@ -816,7 +809,6 @@ def _position_payload(position: Mapping[str, Any] | Any) -> dict[str, Any]:
             "asset_uid",
             "portfolio_uid",
             "weight_notional_exposure",
-            "constant_notional_exposure",
             "single_asset_quantity",
             "metadata_json",
         )
@@ -835,7 +827,6 @@ def _target_positions_frame_operation_rows(frame: pd.DataFrame) -> list[dict[str
                 field_name="portfolio_uid",
             ),
             "weight_notional_exposure": _none_if_missing(row.get("weight_notional_exposure")),
-            "constant_notional_exposure": _none_if_missing(row.get("constant_notional_exposure")),
             "single_asset_quantity": _none_if_missing(row.get("single_asset_quantity")),
             "metadata_json": _mapping_or_empty(row.get("metadata_json")),
         }

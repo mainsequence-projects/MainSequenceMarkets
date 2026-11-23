@@ -98,7 +98,7 @@ def _account(engine, context, *portfolios: uuid.UUID) -> uuid.UUID:
                 "target_type": "portfolio",
                 "target_uid": portfolio,
                 "portfolio_uid": portfolio,
-                "constant_notional_exposure": 1000.0,
+                "weight_notional_exposure": 0.4,
                 "metadata_json": {},
             }
             for portfolio in portfolios

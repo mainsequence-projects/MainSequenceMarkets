@@ -182,8 +182,6 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
             "("
             "CASE WHEN weight_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
             ") + ("
-            "CASE WHEN constant_notional_exposure IS NOT NULL THEN 1 ELSE 0 END"
-            ") + ("
             "CASE WHEN single_asset_quantity IS NOT NULL THEN 1 ELSE 0 END"
             ") = 1",
             name="ck_target_positions_single_exposure",
@@ -277,14 +275,6 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Weight Notional Exposure",
             "description": "Target exposure as a notional portfolio weight when this exposure mode is used.",
-        },
-    )
-    constant_notional_exposure: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Constant Notional Exposure",
-            "description": "Target exposure as an absolute notional amount when this exposure mode is used.",
         },
     )
     single_asset_quantity: Mapped[float | None] = mapped_column(

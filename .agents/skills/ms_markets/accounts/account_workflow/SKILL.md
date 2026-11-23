@@ -92,8 +92,7 @@ Rules:
   exposure rows for a `PositionSet`. Each row uses exactly one concrete target
   reference: `asset_uid` or `portfolio_uid`. `target_uid` must match the
   selected concrete UID. Exactly one exposure field must be present per row:
-  `weight_notional_exposure`, `constant_notional_exposure`, or
-  `single_asset_quantity`.
+  `weight_notional_exposure` or, for an asset row, `single_asset_quantity`.
 - `AccountHoldingsStorage` stores real holdings rows keyed by
   `(time_index, account_uid, asset_identifier)`.
 - Account holdings use positive `quantity` plus `direction` (`1` long, `-1`
@@ -226,8 +225,8 @@ writing (ADR 0053, ADR 0054). It takes `position_set_uid`, `valuation_time`,
 without one, `proportional_attribution` runs with its defaults.
 
 The account target states exposure: a portfolio row holds
-`weight_notional_exposure` (a share of NAV) or `constant_notional_exposure` (an
-amount), never units. Writing it creates the `VirtualFund`. The caller sizes each
+`weight_notional_exposure` (a share of NAV), never units. Writing it creates the
+`VirtualFund`. The caller sizes each
 exposure into units with its own prices and passes them as `sized_targets`:
 `{"target_type", "target_uid", "positions": [{"asset_uid", "quantity",
 "direction"}]}`. The planner takes no price, NAV or valuation. See

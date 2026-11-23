@@ -2,6 +2,9 @@
 
 ## Status
 
+Amended by [ADR 0061](0061-retire-constant-notional-exposure.md), accepted on 2026-11-23:
+`constant_notional_exposure` is retired, so no target states an amount.
+
 Accepted - first implementation landed
 
 This ADR defines the business logic and implementation plan for allocating real

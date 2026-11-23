@@ -5,9 +5,8 @@ description: Use this skill when a library or application that uses ms-markets w
 
 # Account Exposure, Sizing And Allocation
 
-Use this skill when a workflow has to record "40% of the account in this portfolio" or
-"300,000 in this portfolio", turn it into units at a sync, and keep each virtual fund's
-target, holdings and delta.
+Use this skill when a workflow has to record "40% of the account in this portfolio", turn
+it into units at a sync, and keep each virtual fund's target, holdings and delta.
 
 ms-markets is a record library. It reads no price and computes no NAV (ADR 0054).
 
@@ -25,12 +24,12 @@ Read with:
 
 | What | Where | Unit | Who writes it |
 | --- | --- | --- | --- |
-| The exposure the account wants to a portfolio | `TargetPositionsStorage`, one row per portfolio | A share of NAV or an amount | The user, through the project |
+| The exposure the account wants to a portfolio | `TargetPositionsStorage`, one row per portfolio | A share of NAV | The user, through the project |
 | The sized target of each owner per asset | `AccountAllocationLinesStorage.target_quantity` | Units | The project, at a sync |
 | What each owner was assigned | `AccountAllocationLinesStorage.assigned_quantity`; `VirtualFundHoldingsStorage` for a fund | Units | ms-markets, at a sync |
 
 A portfolio has weights, not units. Never write units as an account's target to a
-portfolio, and never ask ms-markets to turn a share or an amount into units.
+portfolio, and never ask ms-markets to turn a share into units.
 
 ## Who Does What
 
@@ -54,16 +53,16 @@ target = client.add_account_target_positions(
     target_positions_date=target_time,
     positions=[
         {"target_type": "portfolio", "portfolio_uid": portfolio_a_uid, "weight_notional_exposure": 0.40},
-        {"target_type": "portfolio", "portfolio_uid": portfolio_b_uid, "constant_notional_exposure": 300_000},
+        {"target_type": "portfolio", "portfolio_uid": portfolio_b_uid, "weight_notional_exposure": 0.30},
     ],
 )
 ```
 
-- One row per portfolio, with exactly one of `weight_notional_exposure` and
-  `constant_notional_exposure`.
+- One row per portfolio, stating `weight_notional_exposure`.
 - Writing it creates the `VirtualFund` of that account and portfolio if it does not exist.
-- An asset row is a direct target: a share, an amount, or `single_asset_quantity` in units.
+- An asset row is a direct target: a share, or `single_asset_quantity` in units.
 - In-process code builds the same rows with `build_target_positions_frame(...)`.
+- A field a row does not have is refused, by the API and in-process.
 
 ## The Sync
 
@@ -99,8 +98,8 @@ result = client.allocate_account_virtual_funds(
 )
 ```
 
-- Every portfolio exposure must be sized, and every asset exposure stated as a share or an
-  amount. An asset row stated as `single_asset_quantity` is not sized.
+- Every portfolio exposure must be sized, and every asset exposure stated as a share. An
+  asset row stated as `single_asset_quantity` is not sized.
 - An empty `positions` list is a target sized to nothing.
 - A mismatch answers 400 `invalid_sized_targets` and lists every problem.
 - A `quantity` is positive; `direction` is `1` or `-1`.

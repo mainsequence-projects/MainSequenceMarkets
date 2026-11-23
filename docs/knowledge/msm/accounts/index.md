@@ -268,7 +268,6 @@ There is no top-level `msm.accounts` shim. Import account rows from
 | asset_uid nullable FK         |
 | portfolio_uid nullable FK     |
 | weight_notional_exposure      |
-| constant_notional_exposure    |
 | single_asset_quantity         |
 | exactly one exposure required |
 +------------+------------------+
@@ -381,8 +380,8 @@ MetaTable fields on `AccountHoldingsStorage`.
 Virtual-fund allocation holdings are derived views over real account holdings.
 They are not canonical custody and are not produced by portfolio construction.
 
-An account's exposure to a portfolio is a share of NAV or an amount, written as
-a portfolio row of the target. Writing it creates the `VirtualFund`. ms-markets
+An account's exposure to a portfolio is a share of NAV, written as a portfolio
+row of the target. Writing it creates the `VirtualFund`. ms-markets
 reads no price, so the caller sizes each exposure into units and sends them with
 the allocation (ADR 0054).
 

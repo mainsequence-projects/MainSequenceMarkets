@@ -329,11 +329,11 @@ def _write_target(sqlite_markets, account, positions, *, overwrite=False):
     )
 
 
-def _portfolio_position(portfolio, exposure=1000.0):
+def _portfolio_position(portfolio, weight=0.4):
     return {
         "target_type": "portfolio",
         "target_uid": portfolio,
         "portfolio_uid": portfolio,
-        "constant_notional_exposure": exposure,
+        "weight_notional_exposure": weight,
         "metadata_json": {"note": "sqlite"},
     }

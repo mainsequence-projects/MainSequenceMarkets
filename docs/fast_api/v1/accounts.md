@@ -325,11 +325,10 @@ direct account snapshots and virtual-fund-grouped views.
   - each position uses `target_type`, `target_uid`, and exactly one concrete
     target reference: `asset_uid` for asset rows or `portfolio_uid` for
     portfolio rows
-  - each position must provide exactly one of `weight_notional_exposure`,
-    `constant_notional_exposure`, or `single_asset_quantity`
+  - each position must provide exactly one of `weight_notional_exposure` or
+    `single_asset_quantity`, and a field a position does not have is a `422`
   - `single_asset_quantity` is valid only for direct asset target rows;
-    portfolio target rows must use `weight_notional_exposure` or
-    `constant_notional_exposure`
+    portfolio target rows must use `weight_notional_exposure`
   - `overwrite=false` rejects an existing position set at the same timestamp;
     `overwrite=true` replaces rows through one scoped MetaTable operation so the
     parent upserts, delete, and replacement insert share the same backend

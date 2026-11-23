@@ -169,7 +169,6 @@ def test_target_activation_follows_the_snapshot_write(offline_postgresql_runtime
                 "asset_uid": str(asset_uid),
                 "portfolio_uid": None,
                 "weight_notional_exposure": 1.0,
-                "constant_notional_exposure": None,
                 "single_asset_quantity": None,
                 "metadata_json": {},
             }

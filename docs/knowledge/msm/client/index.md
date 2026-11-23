@@ -263,7 +263,7 @@ this client.
 The allocation of an account's holdings to its virtual funds has typed methods
 too ([ADR 0053](../../../ADR/0053-virtual-fund-allocation-routes-and-described-policies.md),
 [ADR 0054](../../../ADR/0054-account-exposure-and-sized-fund-targets.md)). The
-target states exposure, as a share of NAV or an amount. The caller sizes it into
+target states exposure, as a share of NAV. The caller sizes it into
 units with its own prices and sends the units; no price or valuation is sent:
 
 ```python
