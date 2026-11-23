@@ -13,6 +13,10 @@ implemented.
 - It would amend [ADR 0058](0058-trade-at-the-next-observed-price.md): `ExecutionPolicy`
   extends a base. It would amend ADR 0062: its decisions 8, 11, 12 and 13 become defaults
   of the account policy, and its two kinds of fund become two account rebalance strategies.
+- It is implemented together with ADR 0062 and
+  [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md), as one
+  coordinated implementation (owner, 2026-11-23). The three are kept in agreement: a change
+  to one is checked against the other two.
 
 ## Context
 
@@ -70,7 +74,8 @@ defaults. Nothing changes for a portfolio or for a strategy that names its polic
 
 An account has a policy, here called `AccountPolicy`. It has the seven settings of the
 base, for the account's own trading, and adds the account's own. The settings below, their
-names and their other values are a proposal. Each default is what ADR 0062 decided.
+names and their other values are a proposal. Each default is what ADR 0062 decided, except
+the last, which comes from the engine's lock (Execution Engine ADR 0001, decision 15).
 
 | Setting | What it chooses | Default | Other values |
 | --- | --- | --- | --- |
@@ -80,6 +85,7 @@ names and their other values are a proposal. Each default is what ADR 0062 decid
 | `fund_draws_on_account` | Whether a fund's cash may go below zero on the account's cash | `not_allowed` | `up_to_limit`, with a limit |
 | `fund_portfolio_removed` | A cash fund whose portfolio leaves the target | `keep_holdings` | `return_to_account` |
 | `fund_unexplained_units` | Whether a cash fund gets units that no record explains | `none` | `through_allocation_policy` |
+| `fund_operations_while_locked` | An operation on a fund while the account's engine runs | `wait_for_engine`: the engine answers from its book | `refuse` |
 
 ### 5. Users extend a policy (owner)
 
@@ -179,12 +185,17 @@ tables or run a provider's code.
   portfolio allows, the account's available cash, a fund's cash. It applies them to every
   provider alike. A rule a user adds in their own class runs on the provider's side, before
   it publishes.
+- **While an engine runs for an account, its funds are locked** (owner; Execution Engine ADR
+  0001, decision 15). Markets' rows about those funds are then behind the engine's book. So
+  Markets checks only what the book cannot change, and the engine applies the cash and unit
+  settings against its book before the answer is published.
 - **A policy reaches Markets as data.** An account's policy is recorded as the import path
   of its class and its settings. Markets reads the settings it knows and never loads the
   class.
 
 Proposal: `AccountTable` gains `managed_by`, as `PortfolioTable` has, so that only the
-application that manages an account publishes to it (ADR 0060, decision 4).
+application that manages an account publishes to it (ADR 0060, decision 4). The engine's lock
+on an account belongs to that application.
 
 ## What It Changes
 
@@ -200,6 +211,9 @@ application that manages an account publishes to it (ADR 0060, decision 4).
   provider and publish to Markets.
 - **ADR 0053.** Unchanged. Its allocation policies still say who owns the units that no
   record explains; `fund_unexplained_units` only says whether a cash fund takes part.
+- **Execution Engine ADR 0001.** Its lock gets a setting of `AccountPolicy`:
+  `fund_operations_while_locked`. While an account is locked, the engine applies the account
+  policy's cash and unit settings against its book.
 
 ## Consequences
 

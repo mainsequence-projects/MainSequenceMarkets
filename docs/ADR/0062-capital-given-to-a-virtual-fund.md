@@ -6,6 +6,15 @@ Amended by [ADR 0063](0063-a-policy-base-for-portfolios-and-accounts.md), propos
 2026-11-23: decisions 8, 11, 12 and 13 are the defaults of the account policy's settings, not
 fixed rules, and the two kinds of fund are two account rebalance strategies.
 
+Amended by [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md),
+decision 15, on 2026-11-23: while an engine runs for an account, the account's funds are
+locked, and an operation on them is checked against the engine's book. See "An Account Locked
+By A Running Engine".
+
+Implemented together with Execution Engine ADR 0001 and ADR 0063, as one coordinated
+implementation (owner, 2026-11-23). The three are kept in agreement: a change to one is
+checked against the other two.
+
 Proposed (2026-11-23). Drafted at the owner's request on 2026-11-23. Nothing in it is
 implemented.
 
@@ -249,7 +258,8 @@ of MSFT, it buys 10,000. A cash fund never borrows the account's cash.
 Every operation is one transaction through the Markets API: the checks and the write together,
 so two requests can never spend the same cash. A request with several operations applies each
 one that passes and lists the others with the reason, like every bulk call. A move between
-funds is one operation.
+funds is one operation. This is how an account with no engine running works. A locked account
+is described below.
 
 | Operation | What it records | Refused when |
 | --- | --- | --- |
@@ -263,11 +273,41 @@ A person makes every operation. A quantity is positive in every operation, and t
 which way it moves. An account delete (ADR 0050) deletes its capital allocations and fund fills
 with the rest of its history.
 
+### An Account Locked By A Running Engine
+
+While an execution engine runs for an account, the account's funds are locked (owner,
+2026-11-23; Execution Engine ADR 0001, decision 15). The engine trades faster than any call to
+Markets, so Markets' rows about those funds are behind the engine's book. A check against
+them can accept what a fund no longer has.
+
+In the worked example, fund B has 50,000 in cash on day 2. Its engine spends it, and the
+recorder has not written those fills yet. A person asks to move 50,000 away from fund B.
+Markets' rows still show the cash. Checked against them, the move is accepted and fund B's
+cash goes to -50,000, which decision 13 forbids.
+
+So an operation on a locked account passes the lock. How it passes is a proposal:
+
+1. Markets checks what the engine's book cannot change: the fund is a cash fund of the
+   account, its portfolio is not retired, and the cash is one of the portfolio's allowed
+   currencies. It keeps the operation as waiting.
+2. The engine checks the cash and the units against its book, under the account's policy.
+   These are the checks of decisions 8 and 11.
+3. The engine's recorder publishes the answer, after the fills that came before it. Markets
+   writes the capital allocation, or marks the operation refused with its reason.
+
+- **A capital allocation is still a fact.** An operation becomes one only when the engine
+  accepts it. A waiting operation is a separate row.
+- **Waiting or refusing is a setting of the account's policy** (ADR 0063, decision 4). The
+  proposed default is to wait for the engine.
+- **A sync of a locked account** is written by the engine's recorder only.
+- **With no engine running** nothing changes: the table above holds as written.
+
 ### Records
 
 | Record | Change |
 | --- | --- |
 | Capital allocations | New, time-indexed (decision 3); its keys into the account and the fund cascade on delete |
+| Waiting operations | New: an operation on a locked account, kept until the engine answers |
 | Fund fills | New, as Execution Engine ADR 0001 proposes, with the currency each settled in (decision 7) |
 | `VirtualFundHoldingsStorage` | Also holds a cash fund's cash, as a row per currency asset |
 | `TargetPositionsStorage` | A portfolio row states a share, or nothing for a cash fund; an asset row is unchanged |
@@ -325,7 +365,8 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
   It does, for share funds, unchanged (owner).
 - **Execution Engine ADR 0001.** It answers question 15. The `owner_size` default depends on the
   kind of fund. Fund fills become a Markets record that any trader writes. Its rule for units
-  that no fill explains applies to share funds only (owner).
+  that no fill explains applies to share funds only (owner). Its lock (decision 15) says how
+  an operation is checked while an engine runs.
 
 ## Consequences
 
@@ -337,7 +378,8 @@ none. The move is refused (decision 11). Moving 100 MSFT away in kind is accepte
 - Trading for a cash fund means writing its fund fills.
 - Available cash is as fresh as the account's last sync. A trade of the account itself after
   it is not seen until the next holdings snapshot, so a provider that trades outside the funds
-  syncs before it allocates.
+  syncs before it allocates. For an account locked by an engine, the engine's book answers
+  instead.
 - Every fund today is a share fund and stays one. There are no real portfolios yet, so nothing
   is converted.
 - A strategy whose execution policy allows negative cash buys less live, as a cash fund, than
