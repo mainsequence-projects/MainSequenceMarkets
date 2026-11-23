@@ -32,6 +32,15 @@ and this project follows versioned releases.
   dropped such a key or passed it on. The check that refused `asset_identifier` by name
   is gone; the rule covers it.
 
+### Fixed
+
+- **A portfolio's first run no longer runs out of time reading its bars**
+  (alpaca-connectors#49). `InterpolatedPrices` read the source bars 500 rows a page, one
+  request after another, under the one 60-second deadline a read has. An asset new to the
+  interpolated table reads its bars from `OFFSET_START`, so ten such assets took thirteen
+  requests and the last did not fit: the run failed with `TransferDeadlineError`. It now
+  reads 10,000 rows a page, the most a MetaTables page holds.
+
 ## [5.2.0] - 2026-11-23
 
 Minor release 5.2.0, with breaking changes to rebalance strategies. Strategies with
