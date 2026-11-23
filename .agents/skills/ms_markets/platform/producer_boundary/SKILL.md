@@ -55,6 +55,7 @@ under the `runtime` and the `remote` row backend:
 | `portfolio_preflight` | `(portfolio_configuration, *, portfolio_identifier=None) -> PortfolioPreflight` | Why a portfolio cannot run yet (a published signal with no observation, a ledger portfolio, a retired portfolio) |
 | `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None) -> PortfolioRun` | Runs the chain in order (signal, prices and calendar events, rebalance state, weights, values) from the signal's first observation, creates or updates the `Portfolio` row, publishes, answers what was written and whether a first rebalance happened |
 | `end_signal` | `(signal_uid) -> dict` | Deletes a signal's weights and its metadata in one Markets call |
+| `end_signals` | `(signal_uids) -> dict` | Ends several signals in one Markets call and one transaction; answers `ended`, and `failed` with each refused or missing signal's reason, which never stops the others |
 | `delete_private_series` | `(tables, *, portfolios=(), calendars=(), accounts=()) -> dict[str, int]` | Deletes the producer's private rows of the given keys, a table before the tables it references, before the registry delete |
 
 The series operations are the primitive; use them directly when no recipe fits.

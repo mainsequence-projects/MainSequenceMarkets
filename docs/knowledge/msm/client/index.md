@@ -372,7 +372,7 @@ frame = page.frame()
 
 `msm_portfolios.recipes` builds on them: `publish_signal_weights`,
 `signal_history`, `portfolio_history`, `weights_as_of`, `portfolio_preflight`,
-`run_portfolio`, `end_signal` and `delete_private_series`. Only a row's
+`run_portfolio`, `end_signal`, `end_signals` and `delete_private_series`. Only a row's
 manager publishes to it (`managed_by`, recorded by Markets; any other caller
 gets `MarketsAccessError`, HTTP 403). See
 [Published Series](../../msm_portfolios/portfolios/index.md#published-series).

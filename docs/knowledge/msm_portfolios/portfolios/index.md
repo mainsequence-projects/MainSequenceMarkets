@@ -580,6 +580,7 @@ it calls one.
 | `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
 | `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, ...)` | Runs the chain in order from the signal's first observation, creates the `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values, and answers what was written and whether a first rebalance happened. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
+| `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
 | `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
 
 ## Private State Tables

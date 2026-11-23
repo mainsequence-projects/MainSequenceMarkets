@@ -9,6 +9,12 @@ and this project follows versioned releases.
 
 ### Added
 
+- **End several signals in one call**
+  ([#126](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/126)).
+  `SignalMetadata.end_many(signal_uids)` and the recipe `end_signals(signal_uids)` end
+  every signal that may go, its weights and its metadata row, in one row operation and one
+  transaction. A signal that is missing, that the caller does not manage, or that a
+  portfolio names is listed in `failed` with the reason and never stops the others.
 - **Retire several portfolios in one call**
   ([#124](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/124)).
   `POST /api/v1/portfolio/bulk-retire/` and `MarketsClient.bulk_retire_portfolios`

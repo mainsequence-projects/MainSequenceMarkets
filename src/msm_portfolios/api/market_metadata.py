@@ -106,6 +106,22 @@ class SignalMetadata(MarketsMetaTableRow):
         return deleted
 
     @classmethod
+    def end_many(cls, signal_uids: Sequence[str]) -> dict[str, Any]:
+        """End several signals in one call: each one's weights and metadata row (issue 126).
+
+        Every signal that may go is deleted in one transaction. A signal that is missing,
+        that the caller does not manage, or that a ``Portfolio`` names is listed in
+        ``failed`` with the reason and never stops the others; ``ended`` holds each ended
+        signal as ``end`` answers it. ``msm_portfolios.recipes.end_signals`` calls it.
+        """
+
+        from msm_portfolios.services.public_api import end_signal_metadata_records
+
+        return end_signal_metadata_records(
+            cls._series_context(), signal_uids=[str(uid) for uid in signal_uids]
+        )
+
+    @classmethod
     def _series_context(cls):
         from msm.bootstrap import resolve_runtime
         from msm_portfolios.time_index.signals.storage import SignalWeightsStorage

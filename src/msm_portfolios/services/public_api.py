@@ -26,9 +26,10 @@ from msm.repositories.base import (
     execute_markets_operation,
     execute_markets_write,
     resolve_markets_sql_target,
+    with_max_rows,
 )
 from msm.services.assets.reference_details import asset_reference_details
-from msm.api.managers import require_manager
+from msm.api.managers import manager_refusal, require_manager
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.services.portfolio_reads import (
@@ -678,6 +679,150 @@ def delete_signal_metadata_record(
     }
 
 
+def end_signal_metadata_records(
+    context: MarketsRepositoryContext,
+    *,
+    signal_uids: Sequence[str],
+) -> dict[str, Any]:
+    """End several signals: each one's weights and ``SignalMetadata`` row (issue 126).
+
+    One read finds each signal's row, its manager, its weights and the portfolios that
+    name it; one transaction then deletes every signal that may go, weights first. A
+    signal that is missing, that the caller does not manage (ADR 0060 decision 4), or
+    that a portfolio names (its ``RESTRICT`` key) is reported in ``failed`` with the
+    reason and never stops the others. A refusal only the database finds (a portfolio
+    written since the read, or a key from an application's own table) refuses the
+    transaction, which deletes nothing; each signal is then ended on its own, so only the
+    refused ones stay. ``ended`` holds each ended signal as `delete_signal_metadata_record`
+    answers it.
+    """
+
+    target = list(dict.fromkeys(str(uid) for uid in signal_uids))
+    if any(not uid for uid in target):
+        raise ValueError("signal_uid must be a non-empty string.")
+    if not target:
+        return {"ended": [], "failed": []}
+    found = {row["signal_uid"]: row for row in _read_signals_to_end(context, target)}
+    failed: dict[str, str] = {}
+    allowed: list[dict[str, Any]] = []
+    for signal_uid in target:
+        row = found.get(signal_uid)
+        refusal = None if row is None else manager_refusal(f"Signal {signal_uid!r}", row["managed_by"])
+        if row is None:
+            failed[signal_uid] = f"No SignalMetadata row has signal_uid {signal_uid!r}."
+        elif refusal is not None:
+            failed[signal_uid] = refusal
+        elif row["portfolio_count"]:
+            count = row["portfolio_count"]
+            failed[signal_uid] = (
+                f"Signal {signal_uid!r} is referenced by protected rows ({count} "
+                f"portfolio{'s' if count != 1 else ''} name{'s' if count == 1 else ''} it) "
+                "and could not be deleted."
+            )
+        else:
+            allowed.append(row)
+    ended = _end_signals_together(context, allowed)
+    if ended is None:
+        ended = []
+        for row in allowed:
+            try:
+                result = delete_signal_metadata_record(context, signal_uid=row["signal_uid"])
+            except (SignalDeleteConflictError, PermissionError) as exc:
+                failed[row["signal_uid"]] = str(exc)
+                continue
+            if result is None:
+                failed[row["signal_uid"]] = f"No SignalMetadata row has signal_uid {row['signal_uid']!r}."
+                continue
+            ended.append(result)
+    return {
+        "ended": ended,
+        "failed": [{"signal_uid": uid, "detail": failed[uid]} for uid in target if uid in failed],
+    }
+
+
+def _read_signals_to_end(context: MarketsRepositoryContext, signal_uids: Sequence[str]) -> list[dict[str, Any]]:
+    weights = (
+        select(func.count())
+        .select_from(SignalWeightsStorage)
+        .where(SignalWeightsStorage.signal_uid == SignalMetadataTable.signal_uid)
+        .scalar_subquery()
+    )
+    portfolios = (
+        select(func.count())
+        .select_from(PortfolioTable)
+        .where(PortfolioTable.signal_uid == SignalMetadataTable.signal_uid)
+        .scalar_subquery()
+    )
+    statement = select(
+        SignalMetadataTable.uid.label("uid"),
+        SignalMetadataTable.signal_uid.label("signal_uid"),
+        SignalMetadataTable.managed_by.label("managed_by"),
+        weights.label("weights_count"),
+        portfolios.label("portfolio_count"),
+    ).where(SignalMetadataTable.signal_uid.in_(list(signal_uids)))
+    result = execute_markets_operation(
+        compile_markets_statement(
+            statement, context=with_max_rows(context, max(len(signal_uids), 1)), operation="select"
+        ),
+        context=context,
+    )
+    return [
+        {
+            "uid": uuid.UUID(str(row["uid"])),
+            "signal_uid": _string_or_empty(row.get("signal_uid")),
+            "managed_by": row.get("managed_by"),
+            "weights_count": int(row.get("weights_count") or 0),
+            "portfolio_count": int(row.get("portfolio_count") or 0),
+        }
+        for row in _operation_result_rows(result)
+    ]
+
+
+def _end_signals_together(
+    context: MarketsRepositoryContext, rows: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]] | None:
+    """Delete ``rows``' weights and metadata in one transaction; ``None`` when refused."""
+
+    if not rows:
+        return []
+    signal_uids = [row["signal_uid"] for row in rows]
+    data_source_uid, dialect = resolve_markets_sql_target(context)
+    write = compile_markets_statements(
+        [
+            delete(SignalWeightsStorage).where(SignalWeightsStorage.signal_uid.in_(signal_uids)),
+            GuardedStatement(
+                delete(SignalMetadataTable)
+                .where(SignalMetadataTable.uid.in_([row["uid"] for row in rows]))
+                .returning(SignalMetadataTable.uid.label("uid")),
+                expect_rows=len(rows),
+                label=SIGNAL_DELETE_GUARD,
+            ),
+        ],
+        context=with_max_rows(context, len(rows)),
+        operation="delete",
+        data_source_uid=data_source_uid,
+        dialect=dialect,
+    )
+    try:
+        result = execute_markets_write(write, context=context, refused_by=(SIGNAL_DELETE_GUARD,))
+    except Exception as exc:
+        if not _is_delete_conflict(exc):
+            raise
+        return None
+    if not _operation_result_rows(result):
+        return None
+    return [
+        {
+            "detail": "Signal metadata deleted.",
+            "signal_metadata_uid": str(row["uid"]),
+            "signal_uid": row["signal_uid"],
+            "deleted_count": 1,
+            "deleted_weights_count": row["weights_count"],
+        }
+        for row in rows
+    ]
+
+
 def delete_signal_weights(
     context: MarketsRepositoryContext,
     *,
@@ -1270,6 +1415,7 @@ __all__ = [
     "SignalDeleteConflictError",
     "delete_portfolio_weights",
     "delete_signal_metadata_record",
+    "end_signal_metadata_records",
     "delete_signal_weights",
     "create_signal_metadata_response",
     "get_portfolio_detail_response",
