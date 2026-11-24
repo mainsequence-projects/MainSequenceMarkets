@@ -145,6 +145,8 @@ nav:
       - Retire The Constant Notional Exposure: ADR/0061-retire-constant-notional-exposure.md
       - Capital Given To A Virtual Fund: ADR/0062-capital-given-to-a-virtual-fund.md
       - Policies And Rebalance Strategies For Portfolios And Accounts: ADR/0063-a-policy-base-for-portfolios-and-accounts.md
+      - An Order Has Its Own Row: ADR/0064-an-order-has-its-own-row.md
+      - Every Portfolio Keeps A Ledger: ADR/0065-every-portfolio-keeps-a-ledger.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - Execution Engine:
           - Execution Engine Architecture: ADR/execution_engine/0001-execution-engine-architecture.md

@@ -1,0 +1,232 @@
+# 0065. Every Portfolio Keeps A Ledger
+
+## Status
+
+Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24, from the analysis of
+[issue #133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133).
+Nothing in it is implemented.
+
+- The decisions marked (owner) were made by the owner on 2026-11-24. Everything else is a
+  proposal.
+- It would supersede two sections of
+  [ADR 0042](0042-position-cash-flow-portfolio-accounting.md), "Backward Compatibility:
+  Mandatory Release Contract" and "Disabled Accounting Preserves Configuration And
+  Identity", and its rule that the weight-return engine is the default without accounting
+  configuration.
+- It would amend [ADR 0059](0059-portfolio-currency-fx-and-drifting-weights.md): decision 5
+  (weights drift in the weights-only path) is removed, decision 3 loses its weights-only
+  refusal, and its note on a ledger portfolio's two sizes is settled by decision 7 here.
+- It would amend [ADR 0058](0058-trade-at-the-next-observed-price.md), decision 6: nothing
+  is left to refuse an accounting configuration.
+- It would amend [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md):
+  `run_portfolio` runs the ledger (decision 6 here).
+- It settles two of the known gaps of
+  [Execution Engine ADR 0001](execution_engine/0001-execution-engine-architecture.md): a ledger
+  portfolio has two sizes, and a weights-only portfolio has none.
+
+## Context
+
+A portfolio comes in two kinds today. Both share the signal, the rebalance strategy and
+`PortfolioRebalance`, which records the fills, and the ledger books exactly those fills
+(ADR 0058, decision 6). They differ after the fills:
+
+| | Without a ledger | With a ledger |
+| --- | --- | --- |
+| Run by | `run_portfolio`: `PortfolioWeights`, then `PortfoliosUpdater` | `PortfolioEngine` |
+| Size | a book in units; bar strategies state `total_notional` | `initial_nav`, in the portfolio's currency |
+| Books | the fills, and a commission on turnover | the fills, their execution costs, and what its lifecycle models book: dividends, coupons, funding, exercise, expiry, settlement |
+| Output | weights and values, published to Markets' `PortfolioWeightsTS` and `PortfoliosTS` | the event ledger, in the producer's own table |
+
+The first kind came first. ADR 0042 added the ledger as an option: leaving
+`accounting_configuration` empty keeps the first kind, and the portfolios that existed then
+had to keep their identity and history. The owner said on 2026-11-18 that there are no real
+portfolios yet. The code calls `PortfoliosUpdater` "the legacy weight-only valuation path"
+(`src/msm_portfolios/time_index/portfolios/__init__.py:105`).
+
+Both kinds hide the same error. A valuation source's prices are at the level its producer
+chose, adjusted for events or not. With unadjusted prices:
+
+- **Without a ledger,** nothing books a dividend. The price falls by it, and so does the
+  value, with no error.
+- **With a ledger and no dividend model,** the same happens.
+  `lifecycle_event_model_instances` is empty by default
+  (`src/msm_portfolios/accounting/configuration.py:52`), and nothing checks that a held
+  asset's events have a model. ADR 0042's rule that missing inputs are errors covers only
+  the models that are configured.
+- **A matured bond** keeps its last price for ever in both. The value is marked
+  `valuation_stale` with a warning (ADR 0058), not refused.
+
+The ledger can't replace the first kind today:
+
+- **It publishes nothing.** `project_portfolio_values`, `project_state` and
+  `project_cash_flows` (`src/msm_portfolios/accounting/projections.py`) are called only by an
+  example. `PortfolioStateTS` and `PortfolioCashFlowsTS` exist, and nothing writes them.
+  ADR 0042 lists these projections as remaining work.
+- **Nothing runs it.** `run_portfolio` refuses a ledger portfolio
+  (`src/msm_portfolios/recipes.py:248`). Only examples and tests run `PortfolioEngine`.
+- **A bar strategy gives it two sizes.** `initial_nav` sizes the ledger and
+  `total_notional` sizes the strategy's book, and nothing says which wins (ADR 0059).
+
+## Decision
+
+### 1. Every portfolio keeps a ledger (owner)
+
+There is one kind of portfolio, the one ADR 0042 calls position-aware. `PortfolioEngine`
+books every portfolio. The portfolio without a ledger is retired, with every mechanism that
+serves only it (decision 9).
+
+`PortfolioBuildConfiguration.accounting_configuration` is required. A configuration without
+it is refused like any configuration that lacks a required field. Nothing refuses an empty
+one by name.
+
+### 2. A portfolio refuses to run while it holds an asset with an event nothing books (owner)
+
+Before it books anything, a run checks every asset the portfolio holds or is about to buy.
+Every event that asset can have must be booked, either by a lifecycle model or by the price
+(decision 4). Otherwise the run refuses, names each asset and event type that nothing books,
+and writes nothing.
+
+Where the run learns which events an asset can have is open (see "Open Question").
+
+### 3. Prices stay at their source's level (owner)
+
+A valuation source's prices are at the level its producer chose, adjusted or unadjusted.
+A price source never adjusts the prices it takes: `InterpolatedPrices` uses them as they
+are.
+
+### 4. The valuation model says which events its prices include
+
+The portfolio states which event types its prices already include, as a setting of its
+valuation model: `MarketPriceValuationModel.events_in_price`, empty by default (unadjusted
+prices).
+
+- An event type is booked when a lifecycle model books it or `events_in_price` names it.
+- A configuration that does both for one event type is refused, because the event would be
+  counted twice.
+
+### 5. The ledger publishes the portfolio's weights and values
+
+Projections of the ledger publish to Markets' `PortfolioWeightsTS` and `PortfoliosTS`,
+through `PortfolioWeightsSeries` and `PortfolioValuesSeries` (ADR 0060). Each is a published
+node, as `PortfolioWeights` and `PortfoliosUpdater` are today. Each reads the ledger, not the
+rebalance state.
+
+- **Values.** `close` is the NAV divided by `initial_nav`, so a portfolio starts at 1 as
+  today. `return_` is its change, and `valuation_stale` comes from the ledger's stale
+  valuations (ADR 0058). `project_portfolio_values` already computes `close`, the return and
+  `calculated_close`.
+- **Weights.** Each ledger event that changes a position gets a row for each asset. `weight`
+  is the position's value divided by the NAV after the event. The price and volume columns
+  keep their meaning.
+- `PortfolioWeightsTS.held_shares` and `book_cash` are dropped. Only `PortfoliosUpdater`
+  reads them, and the ledger holds the quantities.
+
+### 6. `run_portfolio` runs the ledger
+
+`run_portfolio` runs one portfolio's chain in order: prices, calendar events, rebalance,
+`PortfolioEngine`, weights, values. It creates or updates the `Portfolio` row and answers as
+it does today. `portfolio_preflight` no longer refuses a ledger portfolio.
+
+### 7. One size: `initial_nav`
+
+With a ledger, the book's unit is the NAV at the first rebalance, which is `initial_nav`
+(ADR 0059, decision 3). `RebalanceStrategyBase.book_unit_value` already returns it.
+
+- `SizedBarStrategy.total_notional` is retired. Its strategies take their size from
+  `initial_nav`, as `ImmediateSignal` and `TimeWeighted` do with a ledger.
+- A fixed-amount negative cash limit is allowed for every portfolio.
+
+### 8. Costs come from the strategy's execution cost models
+
+`PortfolioBuildConfiguration.execution_configuration` and its `commission_fee` (default
+0.00018 of turnover) are retired. `PortfoliosUpdater` is their only reader. The ledger books
+the costs of the strategy's `execution_cost_model_instances`. A portfolio that wants the old
+fee states `ProportionalExecutionCostModel(rate=0.00018)`.
+
+### 9. What is removed, in the same change
+
+- `PortfoliosUpdater`, with its valuation from the rebalance book or from constant weights
+  (`_calculate_portfolio_returns`, `_has_book`, `_book_cash_as_of`) and its refusal of
+  accounting configurations.
+- `PortfolioWeights`' projection from the rebalance state, which decision 5 replaces.
+- The signal's price override, `get_asset_uid_to_override_portfolio_price`. Only
+  `PortfoliosUpdater` reads it, and no signal overrides it.
+- `total_notional` (decision 7), `execution_configuration` (decision 8), and the `None`
+  case of `book_unit_value`.
+- The refusal of a fixed-amount limit without accounting
+  (`src/msm_portfolios/configuration.py:609`).
+- Every example, test, guide and skill that builds a portfolio without a ledger is given one:
+  `examples/`, `tests/`, `docs/knowledge/`, `docs/tutorial/` and `.agents/skills/ms_markets/`.
+  The pinned identities in `tests/identity` are updated on purpose.
+
+A new Alembic revision drops `PortfolioWeightsTS.held_shares` and `book_cash`, which revision
+0030 added.
+
+## Worked Example
+
+A portfolio of $1,000,000 holds half AAPL and half MSFT. AAPL is at $200, so the portfolio
+holds 2,500 shares. AAPL pays a dividend of $0.25 a share, and its unadjusted close falls by
+about $0.25.
+
+| Configuration | Today | Under this ADR |
+| --- | --- | --- |
+| No ledger | The value falls about $625 (0.000625 of the book), with no error. | Not possible. |
+| Ledger, no dividend model, `events_in_price` empty | The same. | Refused: AAPL, dividend. |
+| Ledger with `DividendCashFlowModel` | A $625 receivable at entitlement, then the cash at payment. The NAV doesn't fall. | The same. |
+| Ledger, adjusted prices, `events_in_price=("dividend",)` | No such setting. | The price carries the dividend, and nothing books it. |
+| Ledger, `DividendCashFlowModel` and `events_in_price=("dividend",)` | No such setting. | Refused: the dividend would be counted twice. |
+
+## Open Question
+
+Where does the run learn which events an asset can have (decision 2)? Markets has no table
+of asset events. Bonds' coupons and maturities are in `BondAssetDetailsTable`, and
+`DividendCashFlowModel` reads a dividend source the producer declares.
+
+- **A. Dated events in Markets.** Markets keeps each asset's events: dividends, coupons,
+  redemptions, splits and expiries. The run checks the events of its held assets in its
+  window. This is exact, but it needs a new Markets dataset that providers fill. An event a
+  provider never recorded passes unnoticed.
+- **B. Event types per asset type.** Each asset type states the event types its assets can
+  have: an equity, dividends and splits; a bond, coupons and redemption; an option, exercise
+  and expiry. The run refuses an asset whose type has an event type nothing books. This needs
+  no event data, and a missing row can't fool it. It also refuses a stock that never pays,
+  until a dividend model or `events_in_price` covers it. In the example, B names MSFT as
+  well. Markets' asset type registry (`AssetTypeTable`) would carry the event types.
+
+The recommendation is B. Under A, a missing row hides an event exactly as a missing model
+hides it today.
+
+## Consequences
+
+- It breaks every portfolio configuration, so it ships in a major release. Every portfolio
+  states `initial_nav`, `initial_state_time_index`, `position_valuation_model_instance` and
+  the lifecycle models its assets need. Every portfolio's identity changes.
+- A portfolio that holds an asset with an event nothing books ran before, and now refuses.
+- Readers of `PortfoliosTS` and `PortfolioWeightsTS`, such as the Markets API's portfolio
+  routes (`apps/v1/routers/portfolios.py`), see the same columns, without `held_shares` and
+  `book_cash`.
+- Each portfolio run gains `PortfolioEngine`'s update execution, because the engine is a
+  MetaTables updater. In the joined run of
+  [MetaTables#156](https://github.com/mainsequence-projects/MetaTables/issues/156), it is one
+  more node per portfolio.
+
+## Not Decided Here
+
+- Whether `PortfolioStateTS` and `PortfolioCashFlowsTS` (positions, cash in each currency,
+  completed cash flows) are published. Both tables exist in Markets, and nothing writes them.
+- The rebalance's book doesn't see income the ledger books. The ledger sizes its own orders
+  at its own NAV (ADR 0058, decision 6a), so after the first dividend the book's cash and the
+  ledger's differ. Whether the book should read the ledger is not decided here.
+- Income in accounts and funds ([ADR 0062](0062-capital-given-to-a-virtual-fund.md),
+  decision 15) is unchanged.
+
+## Not Verified
+
+- Whether a ledger with no lifecycle models, priced at market and charged a proportional
+  cost, gives the values `PortfoliosUpdater` gives today. The formulas were compared (ADR
+  0059, decision 5, and `project_portfolio_values`), not two runs.
+- Whether real portfolios exist now. The owner said there were none on 2026-11-18.
+- Whether the ledger's replay accepts a back-adjusted price source, which rewrites its past
+  prices at each event.
+- What the engine's update execution costs in the hosted Production Environment. It was not
+  measured.
