@@ -303,7 +303,10 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   it reads prices only for the assets the portfolio trades.
 - **The nodes.** `PortfolioValues` replaces `PortfoliosUpdater`. `PortfolioWeights`
   builds the portfolio's `PortfolioEngine`, and its `PortfolioRebalance`, once the
-  portfolio's identity is known. Both nodes take `rebalance_output_table` and
+  portfolio's identity is known. It runs the signal, then the ledger: the rebalance reads
+  the signal, a published series, and never runs it, so a signal that computes its
+  weights is computed there. A weight at a time with several events is over the NAV
+  after the last of them. Both nodes take `rebalance_output_table` and
   `event_ledger_output_table`. The ledger's update hash names the rebalance it reads, and so
   the table that rebalance writes.
 - **The default execution model.** `default_execution_model` builds one
@@ -327,6 +330,16 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   `PortfolioWeights.set_weights_frame`, `MarketPriceValuationModel.price_column`, and
   `RebalanceStrategyBase.book_unit_value`; the strategies sized in money or volume take the
   unit from the book (`SizedBarStrategy.book_unit`), and `bar_state` receives the book.
+- **The portfolio's currency is an asset.** The ledger's rows reference it, so a
+  portfolio whose currency is not an `Asset` in Markets has its ledger write refused by a
+  foreign key. MetaTables answers that refusal without naming the key
+  ([MetaTables#157](https://github.com/mainsequence-projects/MetaTables/issues/157)). The
+  equal-weights example registers `USD`.
+- **The equal-weights example** was run twice on a disposable local runtime. As written it
+  publishes its signal, then its rebalance refuses: `FixedWeights` dates its signal
+  2018-01-02, before every example bar, so no price sizes the order. That predates this
+  change. With the signal dated inside the bars, the first run wrote 20 ledger rows and
+  published 2 weights and 5 values, and the second wrote nothing.
 - **Revision 0038** was run up, down and up again on SQLite and on PostgreSQL (TimescaleDB
   2.22, PostgreSQL 17), where the account registration tests also wrote a type's events.
 - **Tests.** The recipe test runs `run_portfolio` through the ledger under both row backends:

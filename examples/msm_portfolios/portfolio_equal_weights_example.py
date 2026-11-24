@@ -39,6 +39,7 @@ import msm_portfolios  # noqa: E402
 from metatables import TimeIndexMetaTable  # noqa: E402
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm.api.assets import Asset, AssetCalendar, AssetType  # noqa: E402
+from msm.constants import ASSET_TYPE_CURRENCY, ASSET_TYPE_CURRENCY_DEFINITION  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.time_index.assets.asset_indexed import (  # noqa: E402
     AssetIndexedUpdater,
@@ -78,6 +79,9 @@ from msm_portfolios.rebalance_strategy import (  # noqa: E402
     CalendarEventSignal,
     ProportionalExecutionCostModel,
 )
+
+
+PORTFOLIO_CURRENCY = "USD"
 
 
 class ExamplePortfolioResolver:
@@ -157,8 +161,15 @@ def start_portfolio_example_runtime(
 def register_assets() -> list[Asset]:
     asset_type = AssetType.upsert(**EXAMPLE_CRYPTO_ASSET_TYPE)
     assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
+    # The portfolio's currency is an asset too: the ledger's cash is in it (ADR 0065).
+    AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
+    currency = Asset.upsert(
+        unique_identifier=PORTFOLIO_CURRENCY,
+        asset_type=ASSET_TYPE_CURRENCY,
+    )
     print_detail("asset_type", asset_type.asset_type)
     print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
+    print_detail("portfolio_currency", currency.unique_identifier)
     return assets
 
 
@@ -214,7 +225,7 @@ def build_portfolio_configuration(
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=price_source,
-            valuation_asset_identifier="USD",
+            valuation_asset_identifier=PORTFOLIO_CURRENCY,
             valuation_column="close",
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,

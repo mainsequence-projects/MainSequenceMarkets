@@ -209,6 +209,9 @@ The current opening-state contract is deliberately narrow:
 - `initial_state_time_index` must be timezone-aware.
 - The opening book is exactly `initial_nav` units of settled cash in the
   portfolio's currency, `PortfolioBuildConfiguration.valuation_asset_identifier`.
+  That currency is an `Asset` in Markets, as every asset the portfolio trades is:
+  the ledger's rows reference it, and a ledger write that names an unknown asset is
+  refused.
 - Restart does not create another opening contribution. It reconstructs state
   from the canonical ledger.
 

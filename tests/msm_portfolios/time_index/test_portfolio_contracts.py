@@ -509,13 +509,25 @@ def test_portfolio_values_depend_on_the_weights() -> None:
     assert node.dependencies() == {"portfolio_weights": weights}
 
 
-def test_portfolio_weights_depend_on_the_ledger() -> None:
-    """The weights project the ledger, which runs the rebalance and prices (ADR 0065)."""
+def test_portfolio_weights_run_the_signal_then_the_ledger() -> None:
+    """The weights project the ledger, which runs the rebalance and prices (ADR 0065).
+
+    The rebalance reads the signal, a published series, and never runs it: the weights
+    run it first, so a signal that computes its weights publishes them.
+    """
     node = object.__new__(PortfolioWeights)
     node._portfolio_configuration = object()
-    engine = object()
+    signal = object()
+    engine = SimpleNamespace(
+        config=SimpleNamespace(
+            portfolio_rebalance_instance=SimpleNamespace(signal_weights=signal)
+        )
+    )
     node.ensure_portfolio_engine = lambda: engine
-    assert node.dependencies() == {"portfolio_engine": engine}
+    assert list(node.dependencies().items()) == [
+        ("signal_weights", signal),
+        ("portfolio_engine", engine),
+    ]
 
 
 def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:

@@ -228,6 +228,55 @@ def _one_asset_ledger(*, price: float, later_price: float, weight: float) -> pd.
     ).ledger
 
 
+def test_the_weights_at_a_time_use_the_nav_after_every_fill_then() -> None:
+    """Two assets bought at once with a 1% cost: each weight is over the same final NAV."""
+    signals = pd.DataFrame(
+        [
+            ("2026-01-01T23:00:00Z", "two-fills", "AAA", 0.5),
+            ("2026-01-01T23:00:00Z", "two-fills", "BBB", 0.4),
+        ],
+        columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
+    ).set_index(["time_index", "signal_uid", "asset_identifier"])
+    prices = pd.DataFrame(
+        [
+            (stamp, asset, price, "USD", f"{asset}-{position}")
+            for position, stamp in enumerate(("2026-01-01T22:00:00Z", "2026-01-02T00:00:00Z"))
+            for asset, price in (("AAA", 100.0), ("BBB", 50.0))
+        ],
+        columns=["time_index", "asset_identifier", "price", "price_asset_identifier", "source_revision"],
+    )
+    strategy = always_open_strategy(
+        execution_cost_model_instances=(ProportionalExecutionCostModel(rate=0.01),)
+    )
+    ledger_frame = PortfolioEngine.calculate_backtest(
+        portfolio_identifier="two-fills",
+        accounting_configuration=ledger(),
+        valuation_asset_identifier="USD",
+        rebalance_strategy=strategy,
+        rebalance_state=recorded_fills_of(
+            strategy, signals, prices, first="2026-01-01", published_until="2026-01-02T00:00:00Z"
+        ),
+        valuation_observations=prices,
+    ).ledger
+
+    weights = project_portfolio_weights(ledger_frame).reset_index()
+    fill_time = pd.Timestamp("2026-01-02T00:00:00Z")
+    at_fill = weights[pd.to_datetime(weights["time_index"], utc=True) == fill_time]
+    held = project_state(ledger_frame).reset_index()
+    held = held[(held["state_kind"] == "position")]
+    quantities = held.groupby("asset_identifier")["quantity"].last()
+    values = project_portfolio_values(ledger_frame, initial_nav=1_000.0).reset_index()
+    nav = float(
+        values.loc[pd.to_datetime(values["time_index"], utc=True) == fill_time, "close"].iloc[-1]
+    ) * 1_000.0
+
+    assert nav < 1_000.0  # the costs were paid
+    assert dict(zip(at_fill["asset_identifier"], at_fill["weight"], strict=True)) == pytest.approx(
+        {"AAA": quantities["AAA"] * 100.0 / nav, "BBB": quantities["BBB"] * 50.0 / nav}
+    )
+    assert set(at_fill["weight_before"]) == {0.0}
+
+
 def test_a_strategy_without_an_execution_model_trades_fractional_units() -> None:
     """The default execution model (ADR 0065, decision 11): 600 USD at 700 is 6/7 units."""
     ledger_frame = _one_asset_ledger(price=700.0, later_price=700.0, weight=0.6)

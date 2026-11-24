@@ -190,70 +190,69 @@ def project_portfolio_values(ledger: pd.DataFrame, *, initial_nav: float) -> pd.
 
 
 def project_portfolio_weights(ledger: pd.DataFrame) -> pd.DataFrame:
-    """Project the weights of the assets each ledger event changed (ADR 0065).
+    """Project the weights of the assets the ledger's events changed at each time (ADR 0065).
 
-    An event that changes a position records each asset's value before and after it in
-    its valuation summary. An asset's ``weight`` is its value over the NAV after the
-    event, ``weight_before`` its value over the NAV before it, and ``price_current`` the
-    price the event booked it at. When several events at one time change an asset, the
-    weight is the last one's and ``weight_before`` the first one's.
+    An event that changes a position records every held asset's value before and after
+    it in its valuation summary. At a time with such events, each asset they changed gets
+    a row: ``weight`` is its value over the NAV after the last of them, ``weight_before``
+    its value over the NAV before the first, and ``price_current`` the price the last
+    event that traded it booked.
     """
 
     flat = ledger.copy().reset_index()
     _validate_ledger_record_identities(flat)
     columns = ["weight", "weight_before", "price_current"]
-    empty = _empty(columns, ["time_index", "portfolio_identifier", "asset_identifier"])
+    index = ["time_index", "portfolio_identifier", "asset_identifier"]
     if flat.empty:
-        return empty
+        return _empty(columns, index)
     deltas = flat[flat["record_kind"] == "position_delta"]
     if deltas.empty:
-        return empty
+        return _empty(columns, index)
     summaries = flat[flat["record_kind"] == "valuation_summary"].set_index(
         ["portfolio_identifier", "event_identifier"]
     )
     rows: list[dict] = []
-    for record in deltas.sort_values(
+    for (portfolio, time_index), changed in deltas.sort_values(
         ["portfolio_identifier", "event_sequence", "record_sequence"], kind="stable"
-    ).to_dict(orient="records"):
-        key = (record["portfolio_identifier"], record["event_identifier"])
-        if key not in summaries.index:
-            raise ValueError(
-                f"Ledger event {record['event_identifier']!r} has no valuation summary."
+    ).groupby(["portfolio_identifier", "time_index"], sort=True):
+        events = list(dict.fromkeys(changed["event_identifier"]))
+        first = _summary(summaries, portfolio, events[0])
+        last = _summary(summaries, portfolio, events[-1])
+        before = first["payload"].get("position_values_before", {})
+        after = last["payload"]["position_values"]
+        prices = changed.groupby(changed["asset_identifier"].astype(str), sort=False)["price"].last()
+        for asset in dict.fromkeys(changed["asset_identifier"].astype(str)):
+            price = prices.get(asset)
+            rows.append(
+                {
+                    "time_index": time_index,
+                    "portfolio_identifier": portfolio,
+                    "asset_identifier": asset,
+                    "weight": _share(after.get(asset, 0.0), last["nav_after"]),
+                    "weight_before": _share(before.get(asset, 0.0), first["nav_before"]),
+                    "price_current": None if price is None or pd.isna(price) else float(price),
+                }
             )
-        summary = summaries.loc[key]
-        payload = _payload(summary["extension_payload"])
-        if "position_values" not in payload:
-            raise ValueError(
-                f"Ledger event {record['event_identifier']!r} changes a position but "
-                "records no position values."
-            )
-        asset = str(record["asset_identifier"])
-        nav_after = float(summary["nav_after"])
-        nav_before = float(summary["nav_before"])
-        rows.append(
-            {
-                "time_index": record["time_index"],
-                "portfolio_identifier": record["portfolio_identifier"],
-                "asset_identifier": asset,
-                "event_sequence": record["event_sequence"],
-                "weight": _share(payload["position_values"].get(asset, 0.0), nav_after),
-                "weight_before": _share(
-                    payload.get("position_values_before", {}).get(asset, 0.0), nav_before
-                ),
-                "price_current": (
-                    None if pd.isna(record.get("price")) else float(record["price"])
-                ),
-            }
+    return pd.DataFrame(rows).set_index(index)[columns].sort_index()
+
+
+def _summary(summaries: pd.DataFrame, portfolio: str, event_identifier: str) -> dict:
+    """An event's valuation summary: its NAV before and after, and its payload."""
+    key = (portfolio, event_identifier)
+    if key not in summaries.index:
+        raise ValueError(f"Ledger event {event_identifier!r} has no valuation summary.")
+    summary = summaries.loc[key]
+    payload = _payload(summary["extension_payload"])
+    if "position_values" not in payload:
+        raise ValueError(
+            f"Ledger event {event_identifier!r} changes a position but records no "
+            "position values."
         )
-    frame = pd.DataFrame(rows).sort_values(
-        ["portfolio_identifier", "time_index", "asset_identifier", "event_sequence"],
-        kind="stable",
-    )
-    keys = ["time_index", "portfolio_identifier", "asset_identifier"]
-    grouped = frame.groupby(keys, sort=False)
-    projected = grouped[["weight", "price_current"]].last()
-    projected["weight_before"] = grouped["weight_before"].first()
-    return projected[columns].sort_index()
+    return {
+        "nav_before": float(summary["nav_before"]),
+        "nav_after": float(summary["nav_after"]),
+        "payload": payload,
+    }
 
 
 def _empty(columns: list[str], index: list[str]) -> pd.DataFrame:

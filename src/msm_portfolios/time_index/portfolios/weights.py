@@ -139,10 +139,18 @@ class PortfolioWeights(PublishedSeriesNode):
         return self.ensure_portfolio_engine().config.portfolio_rebalance_instance
 
     def dependencies(self) -> dict[str, Any]:
-        """The portfolio's ledger, which runs its rebalance state and prices first."""
+        """The portfolio's signal, then its ledger, which runs its rebalance state and prices.
+
+        The signal is a published series: the rebalance reads it and never runs it, so a
+        signal that computes its weights is computed here, before the ledger's run.
+        """
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
-        return {"portfolio_engine": self.ensure_portfolio_engine()}
+        engine = self.ensure_portfolio_engine()
+        return {
+            "signal_weights": engine.config.portfolio_rebalance_instance.signal_weights,
+            "portfolio_engine": engine,
+        }
 
     def series_key(self) -> str:
         return self._resolve_portfolio_identifier()
