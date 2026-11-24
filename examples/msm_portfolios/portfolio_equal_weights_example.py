@@ -31,6 +31,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     PORTFOLIO_UNIQUE_IDENTIFIER,
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
+    SIGNAL_TIME_INDEX,
     SOURCE_PRICE_CADENCE,
     TIME_INDEX,
 )
@@ -212,6 +213,7 @@ def build_fixed_weights_config() -> FixedWeightsConfig:
             AUIDWeight(unique_identifier=asset_uid, weight=weight)
             for asset_uid in ASSET_UNIQUE_IDENTIFIERS
         ],
+        signal_time_index=SIGNAL_TIME_INDEX.to_pydatetime(),
     )
 
 

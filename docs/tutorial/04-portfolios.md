@@ -21,10 +21,12 @@ Both write only to the [local runtime](../concepts.md#namespaces-and-sandboxes).
 first stage applies a committed revision of the example's own provider. It creates one
 table, the same in every database, and changes none of Markets'.
 
-With updaters on, the second stage currently stops in the rebalance, after it has
-written the interpolated prices: `FixedWeights` dates its one signal 2018-01-02 and the
-example's bars begin in May 2026, so there is no price to size shares with.
-`--no-run-updaters` runs to the end.
+The example's source bars close daily from 2026-05-23. Its `FixedWeights` signal states
+its weights once, at `signal_time_index` (`SIGNAL_TIME_INDEX`, 2026-05-23 12:00 UTC): after
+the first close, because a rebalance sizes its shares with the last prices before its
+earliest moment. The rebalance fills them at the next close, and the first run publishes
+the signal, the portfolio's weights and its values. A second run writes nothing new.
+`--no-run-updaters` builds the frames without publishing them.
 
 Every asset the portfolio prices must be linked to a stored calendar with
 `AssetCalendar` before interpolation runs. The run script links the example

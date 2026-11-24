@@ -787,9 +787,12 @@ observation at or before each event. The signal offers no HTTP route of its
 own: an application puts its own route, with its own authorisation, in front
 of `publish`.
 
-`FixedWeights` keeps weights in its configuration, so new weights are a new
-signal; `ExternalWeights` stays the signal for weights in a CSV artifact keyed
-by FIGI.
+`FixedWeights` keeps weights in its configuration, with the time of its one
+observation (`signal_time_index`, timezone-aware), so new weights or a new time
+are a new signal. State a time after the portfolio's first observed price: a
+rebalance sizes its shares with the last prices before its earliest moment, and
+refuses without one. `ExternalWeights` stays the signal for weights in a CSV
+artifact keyed by FIGI.
 
 ## Repair legacy midnight-indexed portfolio values
 

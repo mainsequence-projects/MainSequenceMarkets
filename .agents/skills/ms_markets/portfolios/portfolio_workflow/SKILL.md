@@ -274,9 +274,10 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 Both write only to MetaTables' local SQLite runtime: a sandbox is a separate database,
-never another namespace. With updaters on, the example currently stops in the rebalance
-(`FixedWeights` dates its signal 2018-01-02, the example's bars begin in May 2026);
-`--no-run-updaters` runs to the end. Normal runtime code still builds the graph explicitly as
+never another namespace. With updaters on, the first run publishes the signal, the
+portfolio's weights and its values, and a second run writes nothing new. Its `FixedWeights`
+signal is stated after the first source close (`SIGNAL_TIME_INDEX`), so the rebalance has a
+price to size it with. Normal runtime code still builds the graph explicitly as
 source price or valuation node -> interpolation when needed -> signal node -> portfolio node. If
 the backend dependency tree was created by an older graph, run the top-level
 portfolio node once with `refresh_dependency_tree=True`, or call
@@ -491,6 +492,10 @@ Contributed signal rules:
 
 - `FixedWeightsConfig` must not require asset/price configuration for portfolio
   core behavior.
+- `FixedWeightsConfig.signal_time_index` (required, timezone-aware) is the time of the
+  signal's one observation, and part of its signal uid. State it after the portfolio's
+  first observed price: a rebalance sizes with the last prices before its earliest
+  moment and refuses without one (ADR 0058).
 - Weights an application receives (not computes) use `ApplicationWeights`, or
   `msm_portfolios.recipes.publish_signal_weights` directly; do not write a signal
   class for them. Its identity is `ApplicationWeightsConfig(provider, key)`, never the

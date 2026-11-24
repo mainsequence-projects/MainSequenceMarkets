@@ -51,6 +51,9 @@ def build_fixed_weights_signal() -> FixedWeights:
             AUIDWeight(unique_identifier=asset_identifier, weight=weight)
             for asset_identifier in ASSET_UNIQUE_IDENTIFIERS
         ],
+        # After the ledger opens (2026-01-01). The source needs a fair_value before the
+        # first close after this time, or the rebalance cannot size the weights (ADR 0058).
+        signal_time_index=dt.datetime(2026, 1, 2, 12, tzinfo=dt.UTC),
     )
     return FixedWeights.from_signal_configuration(
         signal_config,

@@ -71,6 +71,15 @@ event nothing books.
   for every strategy. The strategies sized in money or volume take it from the book
   (`SizedBarStrategy.book_unit`), and `RebalanceStrategyBase.bar_state` receives the book.
   A fixed-amount negative cash limit is allowed for every portfolio.
+- **Breaking: `FixedWeights` states when its weights apply.** `FixedWeightsConfig.signal_time_index`
+  (required, timezone-aware) is the time of the signal's one observation. It was always
+  2018-01-02, so a portfolio whose prices start later had no price to size its rebalance
+  with and refused to run
+  ([#134](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/134)). The
+  time is part of the signal uid, so every `FixedWeights` signal uid changes, and the
+  identity of every portfolio built on one. The equal-weights example states its weights
+  after its first close and now publishes its weights and values, and so does the account
+  workflow built on it.
 
 ### Removed
 

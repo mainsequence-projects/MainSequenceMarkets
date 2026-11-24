@@ -32,6 +32,9 @@ NAMESPACE = "mainsequence.examples.portfolios"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
 CRYPTO_CALENDAR_UNIQUE_IDENTIFIER = "CRYPTO_24_7"
 TIME_INDEX = pd.Timestamp("2026-05-25T00:00:00Z")
+# The source bars close daily from 2026-05-23. The weights are stated after the first close,
+# so the rebalance sizes them with that close and fills them at the next one (ADR 0058).
+SIGNAL_TIME_INDEX = pd.Timestamp("2026-05-23T12:00:00Z")
 ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
 SOURCE_PRICE_CADENCE = ExternalPricesStorage.__cadence__
 PRICE_UPSAMPLE_FREQUENCY_ID = "1d"
@@ -99,6 +102,7 @@ __all__ = [
     "PROVIDER_NAMESPACE",
     "PROVIDER_STORAGE_APP",
     "ProviderBase",
+    "SIGNAL_TIME_INDEX",
     "SOURCE_PRICE_CADENCE",
     "TIME_INDEX",
 ]

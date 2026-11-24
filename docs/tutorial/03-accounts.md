@@ -159,8 +159,6 @@ reusable portfolio sleeve, assigns that sleeve to an example portfolio group,
 then creates the account group, two accounts, canonical asset snapshots with
 ticker/name metadata, one shared account allocation model, account-owned target
 allocation relationships, direct asset plus portfolio `PositionSet` target-row
-publication, holdings publication, and pretty-printed account positions. With the
-portfolio updaters on it currently stops in the rebalance, because the portfolio
-example's signal predates its bars; `--no-run-portfolio-updaters` runs to the end.
+publication, holdings publication, and pretty-printed account positions.
 
 **Next →** [Portfolios](04-portfolios.md)

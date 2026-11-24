@@ -265,7 +265,8 @@ PINNED_CONFIGURATION_PATHS = (
 
 PINNED_SIGNAL_UIDS = {
     "library_signal_weights": "bae957552a8ef090996db67ef64e846a",
-    "library_fixed_weights": "2874b08647b5f015f339f08210f117ea",
+    # Rotated when FixedWeightsConfig gained signal_time_index (#134).
+    "library_fixed_weights": "f7544fc3893593aafb4bb83d29e56f0d",
     "library_application_weights": "18737141b453a2a42ea24500673fdc29",
     "application_signal": "278f13bd9d683932451e5f4087fec5a7",
 }
@@ -273,7 +274,8 @@ PINNED_SIGNAL_UIDS = {
 PINNED_PORTFOLIO_CONFIGURATION_HASHES = {
     # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
     "library_signal_weights": "7bc09bfb4b3c8d0c7b02dbf5980ee435",
-    "library_fixed_weights": "931703900182f1ce2dd48d55ef9b37aa",
+    # Rotated again with the FixedWeights signal_uid (#134).
+    "library_fixed_weights": "5949c5708874269eee666ff45a7c68a9",
 }
 
 PINNED_UPDATE_HASHES = {
@@ -291,12 +293,13 @@ PINNED_NESTED_SIGNAL_UIDS = {
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
     # Rotated by the next-observed-price fill rule (issue #89, ADR 0058). All four
-    # rotated again with their bar strategies' execution_policy (#90).
-    "interpolated_prices_valuation": "d8ca91fa4fa941548d8e2f4911cd8452",
+    # rotated again with their bar strategies' execution_policy (#90), and with the
+    # FixedWeights signal_uid they hold (#134).
+    "interpolated_prices_valuation": "47b0f796d3b52a0bf0839875c5a0882a",
     # Execution windows are datetime.time values, which hash as ISO strings.
-    "time_weighted_rebalance": "c6ac093a9ae4b5bc9d1a4cf06cc56035",
-    "volume_participation_rebalance": "50832c3f4481e62b19f3d971d9ed3783",
-    "trailing_average_daily_volume_rebalance": "236e815ea24dffc9a1c26558925d8a43",
+    "time_weighted_rebalance": "34ca96b85ea7a2d559b5beb4b05242e4",
+    "volume_participation_rebalance": "27141c729e29e26698159da23facc199",
+    "trailing_average_daily_volume_rebalance": "26ef20d2d8004c7237f3ed45decb3cde",
 }
 
 PINNED_STRATEGY_REVISIONS = {

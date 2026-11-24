@@ -105,7 +105,8 @@ LIBRARY_SIGNALS: dict[str, Callable[[], SignalWeights]] = {
             asset_unique_identifier_weights=[
                 AUIDWeight(unique_identifier="ASSET_A", weight=0.6),
                 AUIDWeight(unique_identifier="ASSET_B", weight=0.4),
-            ]
+            ],
+            signal_time_index=pd.Timestamp("2026-01-02T12:00:00Z").to_pydatetime(),
         ),
     ),
     "library_application_weights": lambda: _signal(

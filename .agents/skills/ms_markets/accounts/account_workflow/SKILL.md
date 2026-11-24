@@ -214,9 +214,7 @@ example `PortfolioGroup` through `PortfolioGroup.add(...)` and
 `PortfolioGroup.add_portfolio(...)`; do not write membership rows directly.
 Use `run_account_portfolio_full_workflow(use_portfolio_example=False)` or the
 example CLI flag `--standalone-target-sleeve` only when testing the account
-path without the portfolio example. With the portfolio updaters on, the chained
-example currently stops in the rebalance (its signal predates its bars);
-`--no-run-portfolio-updaters` runs to the end.
+path without the portfolio example.
 
 ## Virtual-Fund Allocation Pattern
 
