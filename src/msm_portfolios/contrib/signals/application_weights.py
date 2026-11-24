@@ -4,6 +4,9 @@ An application that receives weights (chosen by a person, a model or another sys
 calls ``publish`` each time it has a new set; the weights are published to Markets'
 ``SignalWeightsSeries`` (ADR 0060). The configuration names the stream, never the
 weights, so the signal uid stays the same while the weights change.
+
+It is the published kind of signal: nothing computes it, so it is no MetaTables node and
+a portfolio's rebalance has no edge to it. The rebalance reads its weights from Markets.
 """
 
 from __future__ import annotations
@@ -16,10 +19,10 @@ import pandas as pd
 from pydantic import Field
 
 from msm_portfolios.configuration import PortfolioConfigBaseModel
-from msm_portfolios.time_index import ASSET_IDENTIFIER, SignalWeights
+from msm_portfolios.series_nodes import PublishedSeriesReads
+from msm_portfolios.time_index import SIGNAL_UID, SignalWeightsConfiguration
 from msm_portfolios.time_index.metadata import extract_signal_description
-
-_EMPTY_COLUMNS = ["time_index", ASSET_IDENTIFIER, "signal_weight"]
+from msm_portfolios.time_index.signals.weights import SignalWeightsSource
 
 
 class ApplicationWeightsConfig(PortfolioConfigBaseModel):
@@ -40,7 +43,7 @@ class ApplicationWeightsConfig(PortfolioConfigBaseModel):
     )
 
 
-class ApplicationWeights(SignalWeights):
+class ApplicationWeights(SignalWeightsSource, PublishedSeriesReads):
     """Weights an application gives; observations are published, never calculated.
 
     ``publish`` writes one or more observations. Each observation is the whole set
@@ -48,10 +51,20 @@ class ApplicationWeights(SignalWeights):
     leaves out is written at ``0``, so the portfolio leaves it. Weights are stored
     as given (no normalisation, negatives allowed) and stand until the next
     observation. Markets enforces these rules (``SignalWeightsSeries.publish``).
+
+    It is read from Markets: ``get_df_between_dates``, ``get_last_observation`` and
+    ``first_observation_time`` read its published series.
     """
 
-    OFFSET_START = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
-    computes_weights = False
+    series_resource = "signal-weights"
+    key_column = SIGNAL_UID
+
+    def __init__(self, config: SignalWeightsConfiguration | None = None) -> None:
+        self.config = self._validate_config(config or self.default_config())
+        self.signal_configuration = self.config.signal_configuration
+
+    def series_key(self) -> str:
+        return self.signal_uid
 
     @property
     def application_weights_config(self) -> ApplicationWeightsConfig:
@@ -60,9 +73,6 @@ class ApplicationWeights(SignalWeights):
                 "ApplicationWeights requires ApplicationWeightsConfig as signal_configuration."
             )
         return self.signal_configuration
-
-    def dependencies(self) -> dict:
-        return {}
 
     def maximum_forward_fill(self) -> timedelta:
         return timedelta(days=36500)
@@ -73,6 +83,12 @@ class ApplicationWeights(SignalWeights):
             f"{self.__class__.__name__}: weights published by {config.provider!r} "
             f"under key {config.key!r}."
         )
+
+    def first_observation_time(self) -> pd.Timestamp | None:
+        """The time of the signal's first published observation, or ``None`` before it."""
+
+        first_time = self.reader.bounds(self.signal_uid).first_time
+        return None if first_time is None else pd.Timestamp(first_time)
 
     def get_asset_list(self) -> list[str] | None:
         """Every asset this signal has published, or ``None`` before its first publication."""
@@ -101,10 +117,5 @@ class ApplicationWeights(SignalWeights):
         if description is None and not SignalMetadata.filter(signal_uid=self.signal_uid, limit=1):
             description = extract_signal_description(self)
         return publish_signal_weights(self.signal_uid, observations, description=description)
-
-    def _calculate_signal_weights(self) -> pd.DataFrame:
-        """Nothing to calculate: the weights arrive through ``publish``."""
-        return pd.DataFrame(columns=_EMPTY_COLUMNS)
-
 
 __all__ = ["ApplicationWeights", "ApplicationWeightsConfig"]

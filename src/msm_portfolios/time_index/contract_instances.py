@@ -16,9 +16,12 @@ from the private table to Markets, is the only coupling between them. Markets ne
 discovers, counts or reads such a table. The application deletes its private rows
 before it deletes a registry row (``msm_portfolios.recipes.delete_private_series``).
 
-Signal weights, portfolio weights and portfolio values are not instances: they are
-published to Markets' own tables (``msm_portfolios.api.SignalWeightsSeries`` and the
-two portfolio series).
+Portfolio weights and portfolio values are not instances: they are published to
+Markets' own tables (``msm_portfolios.api.PortfolioWeightsSeries`` and
+``PortfolioValuesSeries``). A computed signal (``SignalWeights``) writes the
+application's own ``SignalWeightsTS`` instance, built with
+``msm.storage_instances.configured_time_index_instance``, and publishes the same rows to
+Markets' ``SignalWeightsTS`` (``SignalWeightsSeries``).
 """
 
 from __future__ import annotations

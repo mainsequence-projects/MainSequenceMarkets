@@ -15,6 +15,7 @@ from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     NAMESPACE,
+    SIGNAL_WEIGHTS_STORAGE,
 )
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm_portfolios.accounting import (  # noqa: E402
@@ -55,8 +56,11 @@ def build_fixed_weights_signal() -> FixedWeights:
         # first close after this time, or the rebalance cannot size the weights (ADR 0058).
         signal_time_index=dt.datetime(2026, 1, 2, 12, tzinfo=dt.UTC),
     )
+    # The computed signal writes the equal-weight example's signal table, which that
+    # example's provider migrates, and publishes the same rows to Markets.
     return FixedWeights.from_signal_configuration(
         signal_config,
+        output_table=SIGNAL_WEIGHTS_STORAGE,
         namespace=NAMESPACE,
     )
 

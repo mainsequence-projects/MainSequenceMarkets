@@ -15,7 +15,10 @@ Minor release 6.1.0, with breaking changes. Every portfolio keeps a ledger
 projections of the ledger. A portfolio refuses to run while it holds an asset with an
 event nothing books. Every portfolio of a tick runs in one MetaTables invocation, which runs
 what they share once
-([#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)).
+([#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)). A
+computed signal is its own node of that run: it writes its producer's own signal table and
+publishes the same rows to Markets, and the rebalance only reads it (ADR 0060, amended on
+2026-11-24).
 
 ### Added
 
@@ -23,16 +26,20 @@ what they share once
   (`msm_portfolios.recipes`,
   [#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)). The
   portfolios' `PortfolioEngine`s are the heads of one `run_updaters` call (MetaTables ADR
-  0031), so a dependency several of them share (prices, calendar events, a strategy's or a
-  signal's input) runs once, before every node that reads it. Then each portfolio publishes
-  its weights and values and records its signal on its `Portfolio` row. It answers
+  0031), so a dependency several of them share (prices, calendar events, a computed signal
+  and its inputs, a strategy's input) runs once, before every node that reads it. Then each
+  portfolio publishes its weights and values and records its signal on its `Portfolio` row.
+  It answers
   `PortfolioRuns`: `ran`, a `PortfolioRun` for each portfolio that ran, in the order given,
   and `failed`, a `PortfolioRunFailure` (position, identifier, reason, error) for each one
   the preflight refused, whose node or a dependency it needs failed, or whose publication
-  failed; a failure never stops the others. It reads the signals' bounds in one call, and
-  a portfolio's first rebalance is what its weights' publication says
+  failed; a failure never stops the others. It reads the published signals' bounds in one
+  call, and a portfolio's first rebalance is what its weights' publication says
   ([#135](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/135)).
 
+- **`delete_private_series(..., signals=[...])`** deletes a producer's own rows of the
+  given signals, such as a computed signal's table, before `end_signal`, which that table's
+  `RESTRICT` key refuses while its rows remain.
 - **Asset types list their events.** `AssetType.event_types` (column `event_types` of
   `ms_markets__assettype`, revision `0038`) names the events an asset of the type can have.
   The built-in types list them (`msm.EVENT_TYPE_*`): `equity` dividend and split, `bond`
@@ -89,17 +96,41 @@ what they share once
   one MetaTables invocation, every node once. It raises what stopped the portfolio: the
   preflight's `ValueError`, its own node's error or a dependency's. It checks the
   strategy's calendar before anything runs.
-- **Breaking: a published node runs nothing.** `SignalWeights.run()`,
-  `PortfolioWeights.run()` and `PortfolioValues.run()` compute and publish their rows and
-  take no `update_tree`; `PortfolioValues.run()` takes no `update_only_tree` or
-  `update_pointers` and always records the portfolio's signal. A portfolio's chain runs
-  only through `run_portfolios` or `run_portfolio`.
-- **Breaking: the rebalance runs a signal that computes its weights.**
-  `PortfolioRebalance.update()` computes and publishes such a signal (`FixedWeights`,
-  `MarketCap`, ...) before it reads it, and `PortfolioRebalance.dependencies()` declares the
-  updaters and tables the signal's `dependencies()` names, as `signal.<name>`, so they
-  join the run. A signal whose weights arrive by publication (`ApplicationWeights`) is only
-  read, and a retired portfolio's run, whose window is empty, reads nothing.
+- **Breaking: a published node runs nothing.** `PortfolioWeights.run()` and
+  `PortfolioValues.run()` compute and publish their rows and take no `update_tree`;
+  `PortfolioValues.run()` takes no `update_only_tree` or `update_pointers` and always
+  records the portfolio's signal. A portfolio's chain runs only through `run_portfolios`
+  or `run_portfolio`.
+- **Breaking: a computed signal is its own node, with its own table** (ADR 0060, decisions
+  2 and 5 amended by the owner on 2026-11-24).
+  - `SignalWeights` and its subclasses (`FixedWeights`, `MarketCap`, `ExternalWeights`,
+    `IntradayTrend`, `ETFReplicator`) are MetaTables updaters again. Their `output_table=`
+    (required) is the producer's own `SignalWeightsTS` instance,
+    `configured_time_index_instance(SignalWeightsStorage, ...)`, which its provider
+    migrates. Markets' own `SignalWeightsTS` is refused.
+  - A signal's update writes its `SignalMetadata` row when that is missing or changed. It
+    keeps the computed rows after the signal's last row in its table, publishes them to
+    Markets' `SignalWeightsTS` (`SignalWeightsSeries`, with ADR 0060's rules and manager
+    check), and returns them for MetaTables to write. Its progress is its table's update
+    statistics. Its `dependencies()` are its own inputs, which MetaTables runs first.
+  - `PortfolioRebalance.dependencies()` names a computed signal as `signal_weights`, so it
+    runs before the rebalance, once per run however many portfolios read it. The rebalance
+    reads its window, and each asset's last row before it, from the signal's table. It
+    never runs or publishes a signal, and a retired portfolio's run, whose window is empty,
+    reads nothing.
+  - A signal whose weights arrive only by publication (`ApplicationWeights`) is no node and
+    has no edge: the rebalance reads it from Markets.
+  - Both kinds are `SignalWeightsSource`s: the `signal_uid`, forward fill, asset list,
+    interpolation and `first_observation_time`. `signal_weights_instance` takes one.
+  - A `signal_uid` is unchanged: it hashes the signal's class and configuration, never its
+    table or namespace. A computed signal's update hash is its class, configuration and
+    namespace. `SignalWeightsConfiguration` is a MetaTables `BaseConfiguration`, which
+    refuses unknown fields.
+  - The equal-weights example declares its signal table (`SIGNAL_WEIGHTS_STORAGE`), and
+    its provider's revision `0002` creates it. On a disposable local runtime its first run
+    made 6 update executions, the signal's included: the signal wrote 2 rows to that table
+    and published the same 2 to Markets, with the same rebalance, ledger, weights and
+    values as before. The second run wrote nothing.
 - **Requires `mainsequence-metatable` 0.1.83** (`>=0.1.83,<0.2`), for `run_updaters`
   (MetaTables#156), which registers a run's updates and their edges with one request each
   (MetaTables#162). A time-index write a constraint refuses now raises
@@ -133,13 +164,14 @@ what they share once
   `publish` reads the key's registry row, its series' bounds and whether its rows' assets
   are registered in one statement, and reads the stored rows only where a row is at or
   before the key's last stored time. `publish(new_only=True)` leaves those rows out without
-  comparing them; the published nodes (`PublishedSeriesNode.publish_frame`) publish that
-  way and read no bounds of their own. A run of the equal-weights example made 163
+  comparing them; the published nodes and a computed signal
+  (`msm_portfolios.series_nodes.publish_new_rows`) publish that way and read no bounds of
+  their own. A run of the equal-weights example made 163
   requests instead of 189.
 - **A run writes a signal's metadata and the `Portfolio` row only when they change**
   ([#136](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/136)).
-  `SignalWeights.run()` reads the signal's `SignalMetadata` row and writes it only when it
-  is missing or its description changed (`ensure_signal_metadata`, which
+  A computed signal's update reads its `SignalMetadata` row and writes it only when it is
+  missing or its description changed (`ensure_signal_metadata`, which
   `publish_signal_weights` uses too). `PortfolioValues` no longer writes the signal's
   metadata again, and writes the `Portfolio` row only when its signal or price column
   changes. A second run of the equal-weights example made 101 requests instead of 108.
@@ -153,15 +185,18 @@ what they share once
   so `resolve_asset_schedules` makes one read instead of three. A calendar's exceptions
   are read in pages of 9,000 rows instead of 1,000. A second run of the equal-weights
   example made 87 requests instead of 101, 4 of them for the calendar instead of 11.
-- **A first run with a computed signal starts where the signal does, and reads only its
-  calendar's events**
+- **A first run starts where its signal does, and reads only its calendar's events**
   ([#138](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/138)). A
-  signal that computes its weights publishes in the rebalance's update, so on a first run
-  the preflight found no observation and the rebalance started at `OFFSET_START`
-  (2018-01-01). `PortfolioRebalance` now starts a first run at the first observation the
-  signal's publication reports. A strategy input is read at the coordinates the strategy
-  follows (`dependency_seed_coordinates`), so the calendar events' window is read for the
-  strategy's calendar, session label and event types only. The first run of the
+  first run with a computed signal started at `OFFSET_START` (2018-01-01): the preflight
+  found no observation before the run computed it. On a first run (no state of its own)
+  `PortfolioRebalance` now starts at the signal's first observation, read when it runs: a
+  computed signal's from its table's update statistics (its node ran first), a published
+  one's from Markets. `run_portfolios` no longer moves any node's `OFFSET_START` from the
+  preflight, so a portfolio on a published signal publishes values from its ledger's
+  opening, as one on a computed signal does. A window with no price yet no longer fails
+  its session check (`in_session`). A strategy input is read at the coordinates the
+  strategy follows (`dependency_seed_coordinates`), so the calendar events' window is read
+  for the strategy's calendar, session label and event types only. The first run of the
   equal-weights example made 135 requests instead of 147: its calendar events took one
   read instead of 13 pages of 6,499 rows.
 - **A portfolio run looks its MetaTables runtime up once**
@@ -185,8 +220,8 @@ what they share once
   state the ledger's update kept. A node that finds no rows kept reads them itself, as
   outside a run: a ledger whose rebalance read no prices or read fewer than it needs, and
   every node run on its own. The ledger takes `retired_at` from the `Portfolio` row its
-  run resolved, and `FixedWeights` no longer reads its own series: publishing its one
-  observation again writes nothing. The ledger books the same rows. A second run of the
+  run resolved, and a computed signal reads no series before it publishes: its table's
+  update statistics say what is new. The ledger books the same rows. A second run of the
   equal-weights example reads the ledger once instead of three times and the prices once
   instead of three times plus a seed read: 71 requests instead of 76.
 
@@ -206,6 +241,11 @@ what they share once
 - **Breaking: the published nodes' dependencies.** `PortfolioWeights.dependencies()`,
   `PortfolioValues.dependencies()` and `PublishedSeriesNode.run_dependencies()` are
   removed; `dependencies()` stays on `SignalWeights`, where it names the signal's inputs.
+- **Breaking: the published signal's node.** `SignalWeights.computes_weights` is removed:
+  a computed signal is a node and a published one is not. `ApplicationWeights` is no
+  longer a published node: it has no `run()`, `update()`, `dependencies()`,
+  `OFFSET_START` or `namespace` argument, and reads Markets through
+  `PublishedSeriesReads`. `PublishedSeriesNode.publish_frame` calls `publish_new_rows`.
 
 ## [6.0.0] - 2026-11-23
 

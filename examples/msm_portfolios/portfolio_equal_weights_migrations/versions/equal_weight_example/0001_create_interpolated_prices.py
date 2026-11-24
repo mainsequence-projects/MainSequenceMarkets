@@ -1,6 +1,6 @@
 """Create the equal-weight example's interpolated-price table.
 
-The example's only revision, the same in every database: the table's name holds the
+The example's first revision, the same in every database: the table's name holds the
 interpolation configuration's key and no Environment's UID. It creates that table, keyed
 to Markets' asset registry, and changes no Markets table.
 

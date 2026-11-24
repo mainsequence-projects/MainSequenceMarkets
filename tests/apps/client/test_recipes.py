@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import uuid
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -26,7 +27,14 @@ from msm_portfolios.api import (
     SignalMetadata,
     SignalWeightsSeries,
 )
-from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
+from msm.storage_instances import configured_time_index_instance
+from msm_portfolios.contrib.signals import (
+    ApplicationWeights,
+    ApplicationWeightsConfig,
+    AUIDWeight,
+    FixedWeights,
+    FixedWeightsConfig,
+)
 from msm_portfolios.accounting import (
     MarketPriceValuationModel,
     PortfolioAccountingConfiguration,
@@ -44,7 +52,8 @@ from msm_portfolios.time_index.portfolios.rebalance import (
 )
 from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_portfolios.rebalance_strategy import ImmediateSignal
-from msm_portfolios.time_index import compute_portfolio_configuration_hash
+from msm_portfolios.time_index import SignalWeights, compute_portfolio_configuration_hash
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from tests.support.metatables_runs import serve_joined_runs
 from tests.support.pinned_identities import _bound
 from tests.support.rebalance import PublishedTable
@@ -278,7 +287,7 @@ def _prices(name: str = "prices") -> Prices:
 
 
 def _configuration(
-    signal: ApplicationWeights,
+    signal: ApplicationWeights | FixedWeights,
     *,
     prices: Prices | None = None,
     calendar_events: Prices | None = None,
@@ -340,12 +349,13 @@ def rebalance_state(monkeypatch):
     ``run_updaters`` (``tests/support/metatables_runs.py``): its graph and order are
     MetaTables'. A ledger node computes its rows (``PortfolioEngine.update``) and keeps
     them in memory, where the weights and values nodes read them; the other nodes write
-    nothing. Answers the invocations, each the update hashes of the nodes it ran.
+    nothing. Answers the invocations, each the update hashes of the nodes it ran, and
+    ``calculate``, the node calculation a test may replace.
     """
 
     ledger: dict[str, list[pd.DataFrame]] = {}
 
-    def calculate(updater):
+    def book(updater):
         if isinstance(updater, PortfolioEngine):
             frame = updater.update()
             if not frame.empty:
@@ -363,7 +373,8 @@ def rebalance_state(monkeypatch):
         lambda self, **_kwargs: _filled_state(self._portfolio_identifier),
     )
     monkeypatch.setattr(PortfolioEngine, "get_df_between_dates", booked)
-    runs = serve_joined_runs(monkeypatch, calculate)
+    runs = serve_joined_runs(monkeypatch, lambda updater: runs.calculate(updater))
+    runs.calculate = book
     with (
         _bound(PortfolioRebalanceStateStorage, "a0000000-0000-4000-8000-0000000000aa"),
         _bound(PortfolioEventLedgerStorage, "a0000000-0000-4000-8000-0000000000bb"),
@@ -534,6 +545,72 @@ def test_run_portfolios_lists_a_portfolio_that_cannot_run_and_runs_the_others(
     assert len(rebalance_state.invocations) == 1
 
 
+class SignalTableBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+SIGNAL_TABLE = configured_time_index_instance(
+    SignalWeightsStorage,
+    instance_key="signals",
+    namespace="an-application",
+    storage_app="an_application",
+    base=SignalTableBase,
+)
+
+
+def test_a_computed_signal_is_its_own_node_that_runs_before_the_rebalance(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """2026-11-24: the signal node writes its own table and publishes to Markets; the
+    rebalance depends on it, so it runs first. Nothing is published before the run, and
+    the preflight refuses nothing: the run computes it."""
+
+    table: list[pd.DataFrame] = []  # the producer's signal table, as MetaTables writes it
+    calculate = rebalance_state.calculate
+
+    def calculate_signal(updater):
+        if not isinstance(updater, SignalWeights):
+            return calculate(updater)
+        progress: dict = {}
+        for frame in table:
+            for time, signal_uid, asset in frame.index:
+                progress.setdefault(signal_uid, {})[asset] = time
+        updater.update_statistics = SimpleNamespace(index_progress=progress)
+        frame = updater.update()
+        if not frame.empty:
+            table.append(frame)
+        return frame
+
+    rebalance_state.calculate = calculate_signal
+    with _bound(SIGNAL_TABLE, "a0000000-0000-4000-8000-0000000000cc"):
+        signal = FixedWeights.from_signal_configuration(
+            FixedWeightsConfig(
+                asset_unique_identifier_weights=[
+                    AUIDWeight(unique_identifier="AAA", weight=0.6),
+                    AUIDWeight(unique_identifier="BBB", weight=0.4),
+                ],
+                signal_time_index=T0,
+            ),
+            output_table=SIGNAL_TABLE,
+        )
+        configuration = _configuration(signal)
+        resolver = Resolver(markets.calendar["uid"])
+
+        assert recipes.portfolio_preflight(configuration).ready is True
+        first = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
+        second = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
+
+    for invocation in (0, 1):
+        kinds = rebalance_state.kinds_of(invocation)
+        assert kinds.count("FixedWeights") == 1
+        assert kinds.index("FixedWeights") < kinds.index("PortfolioRebalance")
+    assert len(table) == 1 and len(table[0]) == 2
+    (bounds,) = SignalWeightsSeries.bounds([signal.signal_uid])
+    assert (bounds.first_time, bounds.last_time, bounds.row_count) == (T0, T0, 2)
+    assert first.first_rebalance is True and first.portfolio.signal_uid == signal.signal_uid
+    assert (second.first_rebalance, second.weights, second.values) == (False, None, None)
+
+
 def test_portfolio_preflight_reports_why_a_portfolio_cannot_run(markets) -> None:
     signal = _signal()
 
@@ -565,10 +642,18 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
     events = configured_portfolio_calendar_events_storage(
         instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
     )
+    signals = configured_time_index_instance(
+        SignalWeightsStorage,
+        instance_key="private",
+        namespace="my-app",
+        storage_app="my_app",
+        base=ProducerBase,
+    )
 
     def prepare(engine):
         rebalance.__table__.create(engine)
         events.__table__.create(engine)
+        signals.__table__.create(engine)
 
     markets = make_sqlite_markets(
         tmp_path, monkeypatch, template=sqlite_revisions.file("head"), prepare=prepare
@@ -591,12 +676,32 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
             target_signal_time_index=T0,
         )
     _insert(markets.engine, events.__table__.name, time_index=T0, calendar_identifier="XNYS")
+    for signal_uid in ("kept-signal", "ended-signal"):
+        _insert(markets.engine, "ms_markets__signalmetadata", signal_uid=signal_uid)
+        _insert(
+            markets.engine,
+            signals.__table__.name,
+            time_index=T0,
+            signal_uid=signal_uid,
+            asset_identifier="AAA",
+            signal_weight=1.0,
+        )
 
     deleted = recipes.delete_private_series(
-        [rebalance, events], portfolios=["deleted"], calendars=["XNYS"]
+        [rebalance, events, signals],
+        portfolios=["deleted"],
+        calendars=["XNYS"],
+        signals=["ended-signal"],
     )
 
-    assert deleted == {rebalance.__table__.name: 1, events.__table__.name: 1}
+    assert deleted == {
+        rebalance.__table__.name: 1,
+        events.__table__.name: 1,
+        signals.__table__.name: 1,
+    }
+    assert _rows(markets.engine, f"SELECT signal_uid FROM {signals.__table__.name}") == [
+        {"signal_uid": "kept-signal"}
+    ]
     remaining = _rows(
         markets.engine, f"SELECT portfolio_identifier FROM {rebalance.__table__.name}"
     )

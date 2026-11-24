@@ -358,7 +358,9 @@ Markets reads and writes only its own tables (ADR 0060). Signal weights,
 portfolio weights and portfolio values are published: an application sends
 their rows to `SignalWeightsSeries`, `PortfolioWeightsSeries` and
 `PortfolioValuesSeries` (`msm_portfolios.api`) and reads them back the same
-way; it keeps no table for them. Under the remote backend each operation is
+way; it keeps no table for them. A signal it computes is the exception: that
+signal is its own node, which writes the application's own signal table and
+publishes the same rows. Under the remote backend each operation is
 `POST /api/v1/rows/{resource}/{operation}/`:
 
 ```python

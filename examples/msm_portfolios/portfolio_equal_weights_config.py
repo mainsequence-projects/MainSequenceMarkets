@@ -1,9 +1,9 @@
-"""The equal-weight example's configuration, and the one table it owns.
+"""The equal-weight example's configuration, and the two tables it owns.
 
-The example is a producer: it declares its interpolated-price table on its own base, in its
-own namespace, and migrates it with its own provider (`portfolio_equal_weights_migrations`).
-The table's key comes from the configuration alone, so the committed revision creates it in
-every Environment.
+The example is a producer: it declares its interpolated-price table and its signal table on
+its own base, in its own namespace, and migrates them with its own provider
+(`portfolio_equal_weights_migrations`). Each table's key comes from the configuration alone,
+so the committed revisions create them in every Environment.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     InterpolatedPricesStorage,
     interpolated_prices_instance_key,
 )
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage  # noqa: E402
 
 NAMESPACE = "mainsequence.examples.portfolios"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
@@ -62,6 +63,16 @@ INTERPOLATED_PRICES_STORAGE = configured_time_index_instance(
         intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
     ),
     cadence=PRICE_UPSAMPLE_FREQUENCY_ID,
+    namespace=PROVIDER_NAMESPACE,
+    storage_app=PROVIDER_STORAGE_APP,
+    base=ProviderBase,
+)
+
+# The computed signal's own table: FixedWeights writes its rows here and publishes the
+# same rows to Markets' SignalWeightsTS. Every signal the example computes shares it.
+SIGNAL_WEIGHTS_STORAGE = configured_time_index_instance(
+    SignalWeightsStorage,
+    instance_key="signals",
     namespace=PROVIDER_NAMESPACE,
     storage_app=PROVIDER_STORAGE_APP,
     base=ProviderBase,
@@ -103,6 +114,7 @@ __all__ = [
     "PROVIDER_STORAGE_APP",
     "ProviderBase",
     "SIGNAL_TIME_INDEX",
+    "SIGNAL_WEIGHTS_STORAGE",
     "SOURCE_PRICE_CADENCE",
     "TIME_INDEX",
 ]

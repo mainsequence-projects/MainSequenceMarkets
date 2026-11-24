@@ -12,6 +12,9 @@ called:
 - Physical table names and MetaTable identifiers come from each model's
   authored identifier.
 
+A computed signal is a MetaTables updater (2026-11-24): its class path is pinned with
+the updaters' and with the signals'.
+
 Changing a value pinned here rotates that identity in every Environment: new
 ``TimeIndexTableUpdate`` records, a new ``signal_uid`` whose rows do not include
 the old ones, a different strategy revision on ledger events, or a different
@@ -46,6 +49,7 @@ from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, Interpola
 from msm_portfolios.contrib.signals.intraday_trend import IntradayTrend, IntradayTrendConfig
 from msm_portfolios.time_index import (
     SignalWeights,
+    SignalWeightsSource,
     compute_portfolio_configuration_hash,
     compute_signal_uid,
 )
@@ -216,12 +220,19 @@ PINNED_UPDATER_PATHS = (
     "msm.time_index.indices.values:IndexValuesUpdater",
     "msm.time_index.utils.stamped:StampedUpdater",
     "msm_portfolios.contrib.prices.updaters:InterpolatedPrices",
+    # A computed signal is its own node, with its producer's table (2026-11-24).
+    "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
+    "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
+    "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
+    "msm_portfolios.contrib.signals.market_cap:MarketCap",
+    "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
     "msm_portfolios.time_index.base:AssetScopedPortfolioCanonicalUpdater",
     "msm_portfolios.time_index.base:PortfolioCanonicalUpdater",
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngine",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalytics",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEvents",
     "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalance",
+    "msm_portfolios.time_index.signals.weights:SignalWeights",
     "msm_pricing.time_index.curves:CurveTimestampedUpdater",
     "msm_pricing.time_index.curves:DiscountCurvesUpdater",
     "msm_pricing.time_index.index_fixings:FixingRatesUpdater",
@@ -229,16 +240,19 @@ PINNED_UPDATER_PATHS = (
 )
 
 PINNED_PUBLISHED_NODE_PATHS = (
-    # Nodes of the published series (ADR 0060): no MetaTables update hash, but a
-    # signal's class path is hashed into its signal_uid.
+    # Nodes of the published portfolio series (ADR 0060): no MetaTables update hash.
+    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
+    "msm_portfolios.time_index.portfolios:PortfolioValues",
+)
+
+PINNED_SIGNAL_PATHS = (
+    # Every signal, computed or published: its class path is hashed into its signal_uid.
     "msm_portfolios.contrib.signals.application_weights:ApplicationWeights",
     "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
     "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
     "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
     "msm_portfolios.contrib.signals.market_cap:MarketCap",
     "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
-    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
-    "msm_portfolios.time_index.portfolios:PortfolioValues",
     "msm_portfolios.time_index.signals.weights:SignalWeights",
 )
 
@@ -471,6 +485,14 @@ def test_published_series_node_class_paths_are_pinned() -> None:
         _defined_subclass_paths(PublishedSeriesNode),
         PINNED_PUBLISHED_NODE_PATHS,
         "published series node",
+    )
+
+
+def test_signal_class_paths_are_pinned() -> None:
+    _assert_paths_pinned(
+        _defined_subclass_paths(SignalWeightsSource),
+        PINNED_SIGNAL_PATHS,
+        "signal",
     )
 
 

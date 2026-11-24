@@ -1,9 +1,9 @@
 # Portfolios
 
 Construct an equal-weights portfolio end to end. The workflow runs in two
-stages: a migration of the example's own interpolated-price table, then a run step
-that publishes prices, computes weights, and publishes
-the portfolio's signal weights, weights and values to Markets. It reuses the calendar from
+stages: a migration of the example's own interpolated-price and signal tables, then a run
+step that publishes prices, computes the signal into the example's signal table, and
+publishes the signal weights, the portfolio's weights and its values to Markets. It reuses the calendar from
 [Calendars](02-calendars.md) as `Portfolio.calendar_uid`.
 
 For the runtime model behind these row APIs, see [Core Concepts](../concepts.md).
@@ -18,14 +18,15 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 Both write only to the [local runtime](../concepts.md#namespaces-and-sandboxes). The
-first stage applies a committed revision of the example's own provider. It creates one
-table, the same in every database, and changes none of Markets'.
+first stage applies the committed revisions of the example's own provider. They create two
+tables, the same in every database, and change none of Markets'.
 
 The example's source bars close daily from 2026-05-23. Its `FixedWeights` signal states
 its weights once, at `signal_time_index` (`SIGNAL_TIME_INDEX`, 2026-05-23 12:00 UTC): after
 the first close, because a rebalance sizes its shares with the last prices before its
-earliest moment. The rebalance fills them at the next close, and the first run publishes
-the signal, the portfolio's weights and its values. A second run writes nothing new.
+earliest moment. The rebalance fills them at the next close. The first run writes the
+signal to the example's signal table and publishes it, then the portfolio's weights and its
+values. A second run writes nothing new.
 `--no-run-updaters` builds the frames without publishing them.
 
 Every asset the portfolio prices must be linked to a stored calendar with
@@ -40,13 +41,16 @@ in its own namespace, in `portfolio_equal_weights_config.py`, keyed by its confi
 the source's table name and cadence, the upsample frequency and the interpolation rule.
 Change one of them and the table is a new one, with a new revision to commit:
 autogenerate it with `metatables migrations revision` once the provider's earlier
-revisions are applied. The run script publishes example OHLCV source bars to
-`ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
-`PortfolioCalendarEvents`, `PortfolioRebalance`, the portfolio's ledger
-(`PortfolioEngine`), `PortfolioWeights` and `PortfolioValues`, creates or reuses the
-crypto `CRYPTO_24_7` calendar, and stores the calendar and signal on the
-`Portfolio` row. `SignalWeights`, `PortfolioWeights` and `PortfolioValues`
-publish their rows through the series operations
+revisions are applied. Next to it, it declares its signal table
+(`SIGNAL_WEIGHTS_STORAGE`), the `FixedWeights` signal's `output_table=`. The run script
+publishes example OHLCV source bars to `ExternalPricesStorage`, interpolates prices, runs
+the `FixedWeights` signal, `PortfolioCalendarEvents`, `PortfolioRebalance`, the
+portfolio's ledger (`PortfolioEngine`), `PortfolioWeights` and `PortfolioValues`, creates
+or reuses the crypto `CRYPTO_24_7` calendar, and stores the calendar and signal on the
+`Portfolio` row. The signal is its own node: it writes its rows to the example's signal
+table and publishes them to Markets, and the rebalance, which depends on it, reads them
+from that table. `PortfolioWeights` and `PortfolioValues` publish their rows through the
+series operations
 ([Published Series](../knowledge/msm_portfolios/portfolios/index.md#published-series)).
 The price configuration holds the source bars updater, and `InterpolatedPrices`
 receives the example's table as `output_table=`. The portfolio configuration receives that

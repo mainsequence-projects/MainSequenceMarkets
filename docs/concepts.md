@@ -164,7 +164,9 @@ work?** If yes, the design is wrong. Publish the rows, or keep them and serve th
 
 Signal weights, portfolio weights and portfolio values are published: they are stored once,
 in Markets' tables, and an application keeps no copy
-([Published Series](knowledge/msm_portfolios/portfolios/index.md#published-series)). A
+([Published Series](knowledge/msm_portfolios/portfolios/index.md#published-series)). The one
+exception is a signal the application computes: it is its own node, which writes the
+application's own signal table and publishes the same rows to Markets. A
 producer never grants Markets a role on its tables, never sends Markets a table uid, and
 builds on the series operations and the recipes of `msm_portfolios.recipes`. A private table
 of an application may reference a registry row with a foreign key; Markets never discovers,

@@ -114,12 +114,13 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self._initialize_configuration(init_kwargs=build_configuration)
 
     def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
-        """The prices, the strategy's declared inputs and the signal's own inputs.
+        """The signal, the prices it trades at and the strategy's declared inputs.
 
-        The signal is a published series (ADR 0060), not a MetaTables node: a signal
-        that computes its weights is computed by ``update()`` before it is read, so the
-        updaters and tables it reads are declared here, as ``signal.<name>``. In one
-        joined run a dependency several portfolios share runs once (issue #133).
+        A computed signal (``SignalWeights``) is its own node: the rebalance depends on it
+        as ``signal_weights``, so it runs first, and reads its rows from its table. A
+        signal whose weights arrive only by publication (``ApplicationWeights``) is no
+        node and has no edge; the rebalance reads it from Markets. In one joined run a
+        dependency several portfolios share runs once (issue #133).
         """
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
@@ -127,19 +128,9 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         for reserved in ("signal_weights", "valuation_source", "fx_source"):
             if reserved in declared:
                 raise ValueError(f"{reserved!r} is reserved by PortfolioRebalance.")
-        signal_inputs = {
-            f"signal.{name}": dependency
-            for name, dependency in sorted(self._signal_dependencies().items())
-        }
-        clashing = sorted(set(signal_inputs) & set(declared))
-        if clashing:
-            raise ValueError(
-                "PortfolioRebalance names the signal's inputs "
-                f"{', '.join(clashing)}; the strategy declares them too."
-            )
         invalid = {
             name: dependency
-            for name, dependency in {**declared, **signal_inputs}.items()
+            for name, dependency in declared.items()
             if not isinstance(dependency, (TimeIndexTableUpdater, TimeIndexTableRef))
         }
         if invalid:
@@ -148,30 +139,14 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 "TimeIndexTableRef instances: " + ", ".join(sorted(invalid))
             )
         dependencies: dict[str, TimeIndexTableUpdater | TimeIndexTableRef] = {}
+        if isinstance(self.signal_weights, TimeIndexTableUpdater):
+            dependencies["signal_weights"] = self.signal_weights
         if self.rebalance_strategy.own_execution_prices() is None:
             # Each asset trades at its next observed price in the valuation source.
             dependencies["valuation_source"] = self.valuation_source
             if self.fx_source is not None:
                 dependencies["fx_source"] = self.fx_source
-        return {**dependencies, **dict(sorted(declared.items())), **signal_inputs}
-
-    def _signal_dependencies(self) -> dict[str, Any]:
-        """What a signal that computes its weights reads; nothing for a published one."""
-        if not self.signal_weights.computes_weights:
-            return {}
-        return self.signal_weights.dependencies() or {}
-
-    def _publish_signal(self) -> Any:
-        """Compute and publish a signal that computes its weights, before it is read.
-
-        Its inputs are this node's dependencies, so they ran before it. A signal whose
-        weights arrive by publication (``ApplicationWeights``) is only read, and a retired
-        portfolio's run, whose window is empty, reads nothing. Answers the signal's
-        ``SeriesPublication``, or ``None`` when it published nothing.
-        """
-        if self.signal_weights.computes_weights:
-            return self.signal_weights.run()
-        return None
+        return {**dependencies, **dict(sorted(declared.items()))}
 
     def update(self) -> pd.DataFrame:
         if getattr(self, "_portfolio_configuration", None) is None:
@@ -189,14 +164,15 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         end = end_before_retirement(end, boundary)
         if window_is_empty(start, end):
             return self._no_transitions()
-        publication = self._publish_signal()
-        if latest is None and getattr(publication, "first_time", None) is not None:
-            # A first run starts at the signal's first observation, whatever kind of
-            # signal it is: a computed one has none until it publishes here (#138).
-            start, end = self._execution_window(None, signal_start=publication.first_time)
-            end = end_before_retirement(end, boundary)
-            if window_is_empty(start, end):
-                return self._no_transitions()
+        if latest is None:
+            # A first run starts at the signal's first observation (#138). A computed
+            # signal ran before this node in the same graph, so its table holds it.
+            first = self.signal_weights.first_observation_time()
+            if first is not None:
+                start, end = self._execution_window(None, signal_start=first)
+                end = end_before_retirement(end, boundary)
+                if window_is_empty(start, end):
+                    return self._no_transitions()
         assets = self._required_asset_identifiers()
         signals = self._signal_observations(start=start, end=end, assets=assets)
         if not assets and not signals.empty:

@@ -63,7 +63,7 @@ class FixedWeights(SignalWeights):
         return {}
 
     def _calculate_signal_weights(self) -> pd.DataFrame:
-        """The one observation, every run: once stored, publishing it writes nothing."""
+        """The one observation, every run: once it is in the signal's table, it is not new."""
 
         df = pd.DataFrame([m.model_dump() for m in self.asset_unique_identifier_weights]).rename(
             columns={"unique_identifier": ASSET_IDENTIFIER, "weight": "signal_weight"}

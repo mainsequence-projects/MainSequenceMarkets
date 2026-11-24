@@ -26,6 +26,7 @@ _EXPORTS = {
     "PortfolioValues": ".time_index",
     "SignalWeights": ".time_index",
     "SignalWeightsConfiguration": ".time_index",
+    "SignalWeightsSource": ".time_index",
     "attach_schemas": ".bootstrap",
     "canonical_portfolio_configuration": ".time_index",
     "canonical_signal_configuration": ".time_index",

@@ -1,20 +1,24 @@
-"""Engine nodes whose output is a published series (ADR 0060, decision 5).
+"""Engine nodes whose output is a published series, and the reads of one (ADR 0060).
 
-``SignalWeights`` and its subclasses, ``PortfolioWeights`` and ``PortfolioValues``
-are not ``TimeIndexTableUpdater``s: they are bound to no table and MetaTables keeps no
-update record of them. ``run()`` computes ``update()`` and publishes the rows through
-the series row class (``SignalWeightsSeries``, ``PortfolioWeightsSeries`` or
-``PortfolioValuesSeries``); it runs nothing else. The updaters a node reads are run
-by one joined MetaTables run (``msm_portfolios.recipes.run_portfolios``, issue #133). A
-node's progress is the series itself (``bounds`` and ``last``), and a row at or before
-the key's last stored time is not published again, so running the same window twice
-writes nothing.
+``PortfolioWeights`` and ``PortfolioValues`` are not ``TimeIndexTableUpdater``s: they
+are bound to no table and MetaTables keeps no update record of them. ``run()`` computes
+``update()`` and publishes the rows through the series row class
+(``PortfolioWeightsSeries`` or ``PortfolioValuesSeries``); it runs nothing else. The
+ledger they project is run by one joined MetaTables run
+(``msm_portfolios.recipes.run_portfolios``, issue #133). A node's progress is the series
+itself (``bounds`` and ``last``), and a row at or before the key's last stored time is
+not published again, so running the same window twice writes nothing.
+
+A signal is not one of them. A computed signal (``SignalWeights``) is a MetaTables node
+with its producer's own table, and publishes the rows it writes there with
+``publish_new_rows``; a signal whose weights arrive only by publication
+(``ApplicationWeights``) reads its published series with ``PublishedSeriesReads``.
 
 The same code runs in a producer under the ``remote`` backend and in the Markets
 deployment under ``runtime``.
 
-``get_df_between_dates`` and ``get_last_observation`` read the node's own published
-series with the arguments the engine passes to any time-index source, so the rebalance
+``get_df_between_dates`` and ``get_last_observation`` read a key's published series
+with the arguments the engine passes to any time-index source, so the rebalance
 strategies read a published signal the way they read prices.
 """
 
@@ -193,44 +197,19 @@ class PublishedSeriesReader:
         return keys, assets
 
 
-class PublishedSeriesNode:
-    """Base of the nodes that compute a published series and publish it.
+class PublishedSeriesReads:
+    """Reads of one key's published series, as a time-index source answers them.
 
-    A subclass names its storage contract (``_required_output_table``), its series
-    resource (``series_resource``), its key column (``key_column``) and the key it
-    publishes (``series_key``), and implements ``update()``.
+    A subclass names its series resource (``series_resource``), its key column
+    (``key_column``) and its key (``series_key``).
     """
 
-    OFFSET_START = dt.datetime(2018, 1, 1, tzinfo=dt.UTC)
     series_resource: ClassVar[str]
     key_column: ClassVar[str]
     asset_column: ClassVar[str | None] = ASSET_IDENTIFIER
 
-    def __init__(self, config: Any = None, *, namespace: str | None = None) -> None:
-        self.config = self._validate_config(config or self.default_config())
-        self.hash_namespace = markets_namespace(namespace)
-
-    # Hooks -----------------------------------------------------------------------------
-
-    @classmethod
-    def default_config(cls) -> Any:
-        return None
-
-    @classmethod
-    def _validate_config(cls, config: Any) -> Any:
-        return config
-
-    @classmethod
-    def _required_output_table(cls) -> type[Any]:
-        raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
-
-    def update(self) -> pd.DataFrame:
-        raise NotImplementedError(f"{self.__class__.__name__} must implement update().")
-
     def series_key(self) -> str:
         raise NotImplementedError(f"{self.__class__.__name__} must implement series_key().")
-
-    # Run -------------------------------------------------------------------------------
 
     @property
     def logger(self) -> Any:
@@ -243,47 +222,6 @@ class PublishedSeriesNode:
         return PublishedSeriesReader(
             self.series_resource, key_column=self.key_column, asset_column=self.asset_column
         )
-
-    def run(self) -> Any:
-        """Compute and publish the rows; the updaters the node reads are not run here."""
-
-        return self.publish_frame(self.update())
-
-    def publish_frame(self, frame: pd.DataFrame | None) -> Any:
-        """Publish ``frame``'s rows after the key's last stored time, oldest first.
-
-        Markets leaves out the rows at or before that time (``publish(new_only=True)``),
-        so the node reads nothing before it publishes. A long frame goes in several
-        calls, each holding whole timestamps. Answers the last call's
-        ``SeriesPublication`` with the written and skipped rows of all of them, or
-        ``None`` when nothing was new.
-        """
-
-        from msm_portfolios.services.series import PUBLISH_MAX_ROWS
-
-        rows = series_rows(frame, key_column=self.key_column)
-        if not rows:
-            return None
-        key = str(rows[0][self.key_column])
-        if any(str(row[self.key_column]) != key for row in rows):
-            raise ValueError(f"{self.__class__.__name__} publishes one {self.key_column} per run.")
-        written = skipped = 0
-        publication = None
-        while rows:
-            batch = next(iter(whole_time_batches(rows, PUBLISH_MAX_ROWS)))
-            publication = self.reader.rows.publish(key, batch, new_only=True)
-            written += publication.written
-            skipped += publication.skipped
-            rows = rows[len(batch) :]
-            if publication.last_time is not None:
-                rows = [row for row in rows if row[TIME_INDEX] > publication.last_time]
-        if not written:
-            self.logger.info(f"{self.__class__.__name__}: nothing new to publish for {key}.")
-            return None
-        self.logger.info(f"{self.__class__.__name__}: published {written} rows for {key}.")
-        return publication.model_copy(update={"written": written, "skipped": skipped})
-
-    # Reads of the node's own series --------------------------------------------------------
 
     def get_df_between_dates(
         self,
@@ -315,6 +253,50 @@ class PublishedSeriesNode:
             default_keys=[self.series_key()],
         )
 
+
+class PublishedSeriesNode(PublishedSeriesReads):
+    """Base of the nodes that compute a published series and publish it.
+
+    A subclass names its storage contract (``_required_output_table``), its series
+    resource (``series_resource``), its key column (``key_column``) and the key it
+    publishes (``series_key``), and implements ``update()``.
+    """
+
+    OFFSET_START = dt.datetime(2018, 1, 1, tzinfo=dt.UTC)
+
+    def __init__(self, config: Any = None, *, namespace: str | None = None) -> None:
+        self.config = self._validate_config(config or self.default_config())
+        self.hash_namespace = markets_namespace(namespace)
+
+    # Hooks -----------------------------------------------------------------------------
+
+    @classmethod
+    def default_config(cls) -> Any:
+        return None
+
+    @classmethod
+    def _validate_config(cls, config: Any) -> Any:
+        return config
+
+    @classmethod
+    def _required_output_table(cls) -> type[Any]:
+        raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
+
+    def update(self) -> pd.DataFrame:
+        raise NotImplementedError(f"{self.__class__.__name__} must implement update().")
+
+    # Run -------------------------------------------------------------------------------
+
+    def run(self) -> Any:
+        """Compute and publish the rows; the updaters the node reads are not run here."""
+
+        return self.publish_frame(self.update())
+
+    def publish_frame(self, frame: pd.DataFrame | None) -> Any:
+        """Publish ``frame``'s rows after the key's last stored time (``publish_new_rows``)."""
+
+        return publish_new_rows(self.reader, frame, publisher=self.__class__.__name__)
+
     # Frames ----------------------------------------------------------------------------
 
     @classmethod
@@ -344,6 +326,43 @@ class PublishedSeriesNode:
             found = [item for item in found if item is not None]
             return max(found) if found else None
         return value
+
+
+def publish_new_rows(
+    series: PublishedSeriesReader, frame: pd.DataFrame | None, *, publisher: str
+) -> Any:
+    """Publish ``frame``'s rows of one key after the key's last stored time, oldest first.
+
+    Markets leaves out the rows at or before that time (``publish(new_only=True)``), so
+    the publisher reads nothing before it publishes. A long frame goes in several calls,
+    each holding whole timestamps. Answers the last call's ``SeriesPublication`` with the
+    written and skipped rows of all of them, or ``None`` when nothing was new.
+    """
+
+    from msm_portfolios import logger
+    from msm_portfolios.services.series import PUBLISH_MAX_ROWS
+
+    rows = series_rows(frame, key_column=series.key_column)
+    if not rows:
+        return None
+    key = str(rows[0][series.key_column])
+    if any(str(row[series.key_column]) != key for row in rows):
+        raise ValueError(f"{publisher} publishes one {series.key_column} per run.")
+    written = skipped = 0
+    publication = None
+    while rows:
+        batch = next(iter(whole_time_batches(rows, PUBLISH_MAX_ROWS)))
+        publication = series.rows.publish(key, batch, new_only=True)
+        written += publication.written
+        skipped += publication.skipped
+        rows = rows[len(batch) :]
+        if publication.last_time is not None:
+            rows = [row for row in rows if row[TIME_INDEX] > publication.last_time]
+    if not written:
+        logger.info(f"{publisher}: nothing new to publish for {key}.")
+        return None
+    logger.info(f"{publisher}: published {written} rows for {key}.")
+    return publication.model_copy(update={"written": written, "skipped": skipped})
 
 
 def series_rows(frame: pd.DataFrame | None, *, key_column: str) -> list[dict[str, Any]]:
@@ -411,6 +430,8 @@ def _datetime_or_none(value: Any) -> dt.datetime | None:
 __all__ = [
     "PublishedSeriesNode",
     "PublishedSeriesReader",
+    "PublishedSeriesReads",
+    "publish_new_rows",
     "series_class",
     "series_rows",
     "whole_time_batches",

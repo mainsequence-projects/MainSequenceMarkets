@@ -119,11 +119,12 @@ it if it attaches the tables at startup.
 | Application that publishes signals or portfolios through the Markets API (`msm.client`) | none: it calls the Markets API |
 
 Prefer table `editor` for producers: namespace `editor` also allows deleting every
-table in the namespace. Signal weights, portfolio weights and portfolio values are
-never written with a role: they are published through the Markets API
+table in the namespace. Markets' signal weights, portfolio weights and portfolio values
+are never written with a role: they are published through the Markets API
 (`SignalWeightsSeries`, `PortfolioWeightsSeries`, `PortfolioValuesSeries`, ADR 0060).
 The project's own tables belong in its own namespace, which its first migration
-creates (see `.agents/skills/metatables/metatables-migrations/SKILL.md`).
+creates (see `.agents/skills/metatables/metatables-migrations/SKILL.md`). Its computed
+signals' table is one of them: each signal node writes it and publishes the same rows.
 
 The other direction never exists: a Markets workload (`markets-api`,
 `migrate-markets`) gets no role on a project's tables or namespace, and a project

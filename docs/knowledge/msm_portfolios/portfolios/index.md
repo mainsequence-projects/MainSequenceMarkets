@@ -527,9 +527,12 @@ Markets reads and writes only its own tables (ADR 0060). Signal weights,
 portfolio weights and portfolio values of a registered signal or portfolio are
 stored once, in `SignalWeightsStorage`, `PortfolioWeightsStorage` and
 `PortfoliosStorage`. An application publishes their rows to Markets and reads
-them back from Markets; it has no table for them and keeps no copy. Publishing
-shares the rows with every reader of Markets, so a portfolio that must not be
-shared is not registered. The skill
+them back from Markets; it has no table for them and keeps no copy. The one
+exception is a signal it computes: that signal is its own node, which writes the
+application's own signal table and publishes the same rows
+([A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)).
+Publishing shares the rows with every reader of Markets, so a portfolio that
+must not be shared is not registered. The skill
 `.agents/skills/ms_markets/platform/producer_boundary/SKILL.md` teaches the
 pattern to an application that builds on ms-markets.
 
@@ -583,9 +586,9 @@ creates has no manager.
 
 ### The Engine Publishes
 
-`SignalWeights` and its subclasses, `PortfolioWeights` and `PortfolioValues`
-are not `TimeIndexTableUpdater`s: they are bound to no table and MetaTables
-keeps no update record of them (`msm_portfolios.series_nodes`).
+`PortfolioWeights` and `PortfolioValues` are not `TimeIndexTableUpdater`s:
+they are bound to no table and MetaTables keeps no update record of them
+(`msm_portfolios.series_nodes`).
 `run()` computes `update()` and publishes the rows through the series row
 class; it runs nothing else. A node's progress is the series itself
 (`bounds` and `last`). A row at or before the key's last stored time is not
@@ -609,17 +612,72 @@ the ledger's `initial_nav` (`close`, so a portfolio starts at 1), its change
 several portfolios share runs once, and every node runs after what it reads:
 
 ```text
-prices, calendar events, strategy and signal inputs   (each shared node once)
-        -> PortfolioRebalance of each portfolio        (publishes a computed signal, then reads it)
-        -> PortfolioEngine of each portfolio           (the heads)
+prices, calendar events, strategy inputs, signal inputs  (each shared node once)
+        -> computed signals                       (each writes its table and publishes)
+        -> PortfolioRebalance of each portfolio   (reads its signal)
+        -> PortfolioEngine of each portfolio      (the heads)
 then, per portfolio: PortfolioWeights.run(), PortfolioValues.run()
 ```
 
-A signal is a published series, not a MetaTables node. A signal that computes
-its weights is computed and published by the rebalance that reads it, before it
-reads it, and the updaters its `dependencies()` names are the rebalance's
-`signal.<name>` dependencies, so they join the graph too. A signal whose weights
-arrive by publication (`ApplicationWeights`) is only read.
+A computed signal is a node of that graph: the rebalance depends on it, so it
+runs first, once however many portfolios read it
+([A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)). A
+signal whose weights arrive only by publication (`ApplicationWeights`) is no
+node and has no edge: the rebalance reads it from Markets.
+
+### A Computed Signal Is Its Own Node
+
+The owner decided on 2026-11-24 that a signal its producer computes is an
+independent time series, updated by its own node, for example every minute
+([ADR 0060](../../../ADR/0060-producers-publish-markets-reads-only-its-own-tables.md),
+decisions 2 and 5 amended). The rebalance applies its own rules (say weekly) and
+uses the latest observation at or before each rebalance date.
+
+- **The node.** `SignalWeights` and its subclasses (`FixedWeights`, `MarketCap`,
+  `ExternalWeights`, `IntradayTrend`, `ETFReplicator`) are MetaTables updaters.
+  Their `output_table=` is the producer's own `SignalWeightsTS` instance, which
+  holds every signal it computes, keyed by `signal_uid`. Markets' own table is
+  refused: only publishing writes it.
+- **Its update.** It writes the signal's `SignalMetadata` row when that is
+  missing or changed. It keeps the computed rows after the signal's last row in
+  its table, publishes them to Markets' `SignalWeightsTS` (`SignalWeightsSeries`,
+  with the publish rules and the manager check), and returns them, and MetaTables
+  writes them to the table.
+- **Failures.** A failed publish writes nothing. A write that fails after the
+  publish is computed again by the next run, and Markets leaves out the rows it
+  has.
+- **Its progress.** The table's update statistics. Its `dependencies()` are its own
+  inputs, which MetaTables runs before it.
+- **The rebalance.** `PortfolioRebalance.dependencies()` names it as
+  `signal_weights`. The rebalance reads its window, and each asset's last row
+  before it, from the signal's table, and never runs or publishes a signal.
+- **A first run.** It starts at the signal's first observation, from the table's
+  statistics.
+- **Its identity.** Its `signal_uid` is its class and configuration, never its
+  table or namespace.
+
+```python
+from msm.storage_instances import configured_time_index_instance
+from msm_portfolios.contrib.signals import FixedWeights
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+
+ProviderSignalWeightsStorage = configured_time_index_instance(
+    SignalWeightsStorage,
+    instance_key="signals",
+    namespace="my-provider",
+    storage_app="my_provider",
+    base=ProviderBase,  # the application's own base (Private State Tables)
+)
+signal = FixedWeights.from_signal_configuration(
+    fixed_weights_configuration,
+    output_table=ProviderSignalWeightsStorage,
+    namespace="my-provider",
+)
+```
+
+Both kinds of signal are `SignalWeightsSource`s: the `signal_uid`, how long a weight
+holds (`maximum_forward_fill`), the asset list, interpolation and
+`first_observation_time`. `signal_weights_instance` takes either.
 
 A failed node stops only the portfolios that need it. `run_portfolios` answers
 `ran`, a `PortfolioRun` for each portfolio that ran, and `failed`, each portfolio
@@ -647,12 +705,12 @@ it calls one.
 | `signal_history(signal_uids, *, latest=0)` | First and last observation of many signals in one call; with `latest`, each signal's latest observations as a time by asset matrix. |
 | `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
 | `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
-| `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
-| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None)` | Runs every portfolio's ledger in one joined MetaTables run from each signal's first observation (shared prices, calendar events and inputs once, each rebalance, each ledger), creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran` and `failed` (see "Running portfolios"). |
+| `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a published signal with no observation. A computed signal is computed by the run. |
+| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None)` | Runs every portfolio's ledger in one joined MetaTables run from each signal's first observation (shared prices, calendar events, computed signals and inputs once, each rebalance, each ledger), creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran` and `failed` (see "Running portfolios"). |
 | `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
 | `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
-| `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
+| `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=(), signals=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. A computed signal's table refuses `end_signal` until its rows are deleted. |
 
 ## Private State Tables
 
@@ -719,7 +777,9 @@ of any other Markets storage, with the same three required arguments, and takes
 
 Bind the engine to them with `rebalance_output_table=` and
 `event_ledger_output_table=` on `PortfolioValues`, `PortfolioWeights` and
-`run_portfolio`, and with `output_table=` on the calendar events updater. `namespace=` on a node is the MetaTables
+`run_portfolio`, and with `output_table=` on the calendar events updater and on a
+computed signal (its `SignalWeightsTS` instance,
+[A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)). `namespace=` on a node is the MetaTables
 hash namespace of the chain, not a table's namespace; a private table's
 namespace comes from its factory. `InterpolatedPrices` requires `output_table=`,
 the application's own table of that interpolation configuration
@@ -808,8 +868,9 @@ depend on where a provider's code lives.
 | An observation at or before the signal's last stored time is refused (`ValueError`) and nothing is written. | The nodes publish only rows newer than the last stored one, and a portfolio that already rebalanced on an observation is not recomputed, so a restatement would never reach it. |
 | Weights are stored as given: no normalisation, negatives allowed; they must be finite numbers. | Whether weights sum to one, or may be short, is the provider's rule. |
 
-The signal has no dependencies, reads no price and values nothing. Its
-weights stand until the next observation (`maximum_forward_fill` is 36,500
+The signal is no node: nothing computes it, it reads no price and values
+nothing, and a rebalance reads it from Markets. Its weights stand until the next
+observation (`maximum_forward_fill` is 36,500
 days), and `get_asset_list()` is every asset it has published. When the
 portfolio trades is the rebalance strategy's decision, from the latest
 observation at or before each event. The signal offers no HTTP route of its
@@ -821,7 +882,8 @@ observation (`signal_time_index`, timezone-aware), so new weights or a new time
 are a new signal. State a time after the portfolio's first observed price: a
 rebalance sizes its shares with the last prices before its earliest moment, and
 refuses without one. `ExternalWeights` stays the signal for weights in a CSV
-artifact keyed by FIGI.
+artifact keyed by FIGI. Both are computed signals: each is its own node with the
+producer's signal table as `output_table=`.
 
 ## Repair legacy midnight-indexed portfolio values
 
@@ -993,8 +1055,8 @@ operation deletes the other side of the relationship.
 
 Portfolio time-index-table output is separate from registry MetaTables. These storage
 classes are registered through the same catalog bootstrap, after their FK target
-MetaTables. The exception is the table of `InterpolatedPrices`, which its producer
-declares and migrates:
+MetaTables. The exceptions are the tables of `InterpolatedPrices` and of a computed
+signal, which their producer declares and migrates:
 
 ```text
 +-----------------------------+             writes             +--------------------------------------+
@@ -1002,7 +1064,8 @@ declares and migrates:
 | PortfolioRebalance          |------------------------------->| PortfolioRebalanceStateStorage       |
 | PortfolioEngine             |------------------------------->| PortfolioEventLedgerStorage          |
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
-| SignalWeights               |------------------------------->| SignalWeightsStorage                 |
+| SignalWeights               |------------------------------->| producer's SignalWeightsTS           |
+|                             |        and publishes to        | Markets' SignalWeightsStorage        |
 | PortfolioValues             |------------------------------->| PortfoliosStorage                    |
 | PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
 | External price updaters     |------------------------------->| ExternalPricesStorage                |
@@ -1019,9 +1082,10 @@ declares and migrates:
 +-----------------------------+                                +--------------------------------------+
 ```
 
-`PortfolioWeights`, `SignalWeights` and `PortfolioValues` write through the
-series operations ([Published Series](#published-series)); the other nodes are
-`TimeIndexTableUpdater`s bound to their table.
+`PortfolioWeights` and `PortfolioValues` write through the series operations
+([Published Series](#published-series)). The other nodes are `TimeIndexTableUpdater`s
+bound to their table; a computed signal (`SignalWeights`) also publishes the rows it
+writes.
 
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
@@ -1283,7 +1347,10 @@ price_source = InterpolatedPrices(
     output_table=INTERPOLATED_PRICES_STORAGE,
 )
 
-signal_weights = FixedWeights.from_signal_configuration(...)
+# The signal's own table: see portfolio_equal_weights_config.py.
+signal_weights = FixedWeights.from_signal_configuration(
+    ..., output_table=SIGNAL_WEIGHTS_STORAGE
+)
 calendar_events = PortfolioCalendarEvents(
     config=PortfolioCalendarEventsConfiguration(
         calendar_identifier="CRYPTO_24_7",
@@ -1315,8 +1382,8 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
 )
 
-# One joined MetaTables run: the source bars, the interpolated prices and the
-# calendar events once, then the rebalance and the ledger; then weights and values.
+# One joined MetaTables run: the source bars, the interpolated prices, the calendar
+# events and the signal once, then the rebalance and the ledger; then weights and values.
 run = recipes.run_portfolio(portfolio_configuration, portfolio_resolver=resolver)
 ```
 
@@ -1339,11 +1406,10 @@ portfolio_configuration = PortfolioConfiguration(
 )
 ```
 
-`PortfolioRebalance.dependencies()` is the valuation source (and FX source) the
-strategy trades at, unless it has bars of its own, merged with the typed sources the
-strategy declares and, for a signal that computes its weights, the signal's own
-inputs as `signal.<name>`. It computes and publishes such a signal before it reads
-it, and only reads a signal whose weights arrive by publication. It
+`PortfolioRebalance.dependencies()` is a computed signal (`signal_weights`), the
+valuation source (and FX source) the strategy trades at, unless it has bars of its own,
+and the typed sources the strategy declares. It reads the signal and never runs it: a
+computed signal from its own table, a published one from Markets. It
 validates those observations against the strategy's required grain and fields and
 persists the resulting state. `PortfolioEngine.dependencies()` is the rebalance
 state, the valuation source, the FX source and the inputs the valuation and

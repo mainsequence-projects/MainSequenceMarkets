@@ -151,7 +151,7 @@ for dry-run planning, or add `--apply-virtual-fund-allocation` to publish the
 virtual-fund holdings after the plan is printed.
 
 See `examples/msm/accounts/account_portfolio_full_workflow.py` for the full
-account plus portfolio path. Apply the committed revision of the portfolio example's
+account plus portfolio path. Apply the committed revisions of the portfolio example's
 own provider first ([Portfolios](04-portfolios.md#two-stage-equal-weights-workflow));
 the default runner migrates nothing. It chains
 `examples/msm_portfolios/portfolio_equal_weights_example.py` to create a

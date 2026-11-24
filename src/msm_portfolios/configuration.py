@@ -21,7 +21,7 @@ from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
 from msm_portfolios.time_index import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
-    SignalWeights,
+    SignalWeightsSource,
     canonical_signal_configuration,
 )
 from msm_portfolios.time_index.base import (
@@ -143,7 +143,7 @@ class PricesConfiguration(PortfolioConfigBaseModel):
 
     This config controls *how Portfolios fetches and shapes prices*.
     It is distinct from signal-weight validity, which is controlled by
-    `SignalWeights.maximum_forward_fill()`.
+    `SignalWeightsSource.maximum_forward_fill()`.
 
     Attributes:
         upsample_frequency_id: Target frequency after interpolation (e.g., "1d", "15m").
@@ -285,8 +285,9 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     IMPORTANT (Portfolios design)
     ----------------------
     Portfolios uses **direct injection** (instances), not string lookups:
-    - `signal_weights_instance` is a SignalWeights node, whose weights are the
-      published `SignalWeightsSeries` of its `signal_uid` (ADR 0060)
+    - `signal_weights_instance` is the portfolio's signal: a computed `SignalWeights`
+      node, which writes its own table and publishes to Markets, or a published
+      signal such as `ApplicationWeights`, read from Markets (ADR 0060)
     - `rebalance_strategy_instance` is a RebalanceStrategyBase state machine whose
       declared updater dependencies are serialized as part of its identity
 
@@ -295,8 +296,8 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
             Rebalance strategy instance controlling observed inputs, target activation,
             event selection, partial execution, and unfinished state.
         signal_weights_instance:
-            Signal node producing `signal_weight` per asset and time. It is serialized
-            from its own signal configuration.
+            The signal giving `signal_weight` per asset and time. It is serialized
+            from its own signal configuration, never from its table.
     """
 
     model_config = ConfigDict(
@@ -317,11 +318,12 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
     )
 
     signal_weights_instance: Annotated[
-        SignalWeights,
+        SignalWeightsSource,
         Field(
             description=(
-                "Instance of a SignalWeights node. It is serialized from its concrete "
-                "signal configuration; its weights are published to Markets."
+                "The portfolio's signal: a computed SignalWeights node or a published "
+                "signal (ApplicationWeights). It is serialized from its concrete signal "
+                "configuration; its weights are published to Markets."
             ),
             examples=[
                 # Example is intentionally schematic; actual fields depend on the strategy class.
@@ -336,7 +338,7 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
         when_used="json",
         return_type=dict[str, Any],
     )
-    def ser_signal_weights(self, v: SignalWeights) -> dict[str, Any]:
+    def ser_signal_weights(self, v: SignalWeightsSource) -> dict[str, Any]:
         """Serialize the concrete signal identity."""
         return canonical_signal_configuration(v)
 

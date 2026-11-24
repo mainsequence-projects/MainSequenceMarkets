@@ -19,7 +19,10 @@ the API does not define HTML rendering semantics for signal descriptions.
 
 `SignalWeightsStorage.signal_uid` references `SignalMetadataTable.signal_uid`.
 Deleting a signal metadata row therefore deletes the signal's weight rows and
-then the metadata row, in one transaction.
+then the metadata row, in one transaction. A computed signal's own table, in its
+producer's namespace, references the row too: its `RESTRICT` key refuses the
+delete (`409`) until the producer deletes its rows
+(`delete_private_series(..., signals=[...])`).
 
 A signal's weights are published to Markets' own `SignalWeightsStorage`
 through the `signal-weights` row operations

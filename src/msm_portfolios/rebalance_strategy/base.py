@@ -1320,9 +1320,10 @@ def in_session(times: pd.DatetimeIndex, sessions: pd.DataFrame | None) -> np.nda
     """Return which ``times`` fall inside a session: ``market_open < t <= market_close``.
 
     A bar is stamped at its end, so a row stamped exactly at an open is not inside
-    the session it opens. Without a calendar every time counts.
+    the session it opens. Without a calendar every time counts. ``times`` are compared
+    in UTC, so an empty selection (whose times have no timezone) holds no time.
     """
-    times = pd.DatetimeIndex(times)
+    times = pd.DatetimeIndex(pd.to_datetime(times, utc=True))
     if sessions is None:
         return np.ones(len(times), dtype=bool)
     event_times = pd.DatetimeIndex(pd.to_datetime(sessions["time_index"], utc=True))

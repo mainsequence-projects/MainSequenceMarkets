@@ -29,14 +29,17 @@ If yes, the design is wrong. Publish the rows, or keep them and serve them yours
 
 | Dataset | Choice | Why |
 | --- | --- | --- |
-| Signal weights of a registered signal | Publish (`SignalWeightsSeries`) | A series Markets defines for a registry row; every reader reads it the same way |
+| Signal weights the application receives | Publish (`SignalWeightsSeries`) | A series Markets defines for a registry row; every reader reads it the same way |
+| Signal weights the application computes | Keep in its own signal table **and** publish (`SignalWeightsSeries`) | The signal is its own node: its table is the node's output, which the application's rebalance reads; every other reader reads Markets |
 | Executed weights and values of a registered portfolio | Publish (`PortfolioWeightsSeries`, `PortfolioValuesSeries`) | Same |
 | Rebalance state, calendar events, event ledger | Keep (private state tables) | Only the engine that runs the portfolio needs them |
 | Prices the application owns, its own analytics, anything else | Keep | Not a Markets series |
 | A portfolio that must not be shared | Do not register it in Markets | Publishing shares the rows with every reader of Markets |
 
 A published row is stored once, in Markets. A producer keeps no copy of it and has no
-table for it.
+table for it, with one exception: a signal it computes is its own node, which writes the
+producer's own signal table and publishes the same rows to Markets (ADR 0060, amended on
+2026-11-24).
 
 ## What a producer supplies and what it reuses
 
@@ -53,11 +56,11 @@ under the `runtime` and the `remote` row backend:
 | `portfolio_history` | `(portfolio_identifier, *, limit=100, offset=0) -> PortfolioHistory` | A portfolio's values newest first, with the total count |
 | `weights_as_of` | `(portfolio_identifiers, at=None) -> DataFrame` | Each portfolio's latest executed weights at or before `at` |
 | `portfolio_preflight` | `(portfolio_configuration, *, portfolio_identifier=None) -> PortfolioPreflight` | Why a portfolio cannot run yet (a published signal with no observation, a retired portfolio) |
-| `run_portfolios` | `(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None) -> PortfolioRuns` | Runs every portfolio's ledger in one joined MetaTables run (`run_updaters`): a dependency several portfolios share (prices, calendar events, a strategy's or signal's input) runs once, each rebalance publishes a signal that computes its weights before it reads it, then each portfolio publishes the weights and values its ledger projects and creates or updates its `Portfolio` row. Answers `ran` (a `PortfolioRun` each, in the order given) and `failed` (position, identifier, reason, error); a refused or failed portfolio never stops the others. The per-tick call |
+| `run_portfolios` | `(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None) -> PortfolioRuns` | Runs every portfolio's ledger in one joined MetaTables run (`run_updaters`): a dependency several portfolios share (prices, calendar events, a computed signal and its inputs, a strategy's input) runs once; a computed signal's node writes its table and publishes before the rebalances that read it; then each portfolio publishes the weights and values its ledger projects and creates or updates its `Portfolio` row. Answers `ran` (a `PortfolioRun` each, in the order given) and `failed` (position, identifier, reason, error); a refused or failed portfolio never stops the others. The per-tick call |
 | `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None) -> PortfolioRun` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it |
 | `end_signal` | `(signal_uid) -> dict` | Deletes a signal's weights and its metadata in one Markets call |
 | `end_signals` | `(signal_uids) -> dict` | Ends several signals in one Markets call and one transaction; answers `ended`, and `failed` with each refused or missing signal's reason, which never stops the others |
-| `delete_private_series` | `(tables, *, portfolios=(), calendars=(), accounts=()) -> dict[str, int]` | Deletes the producer's private rows of the given keys, a table before the tables it references, before the registry delete |
+| `delete_private_series` | `(tables, *, portfolios=(), calendars=(), accounts=(), signals=()) -> dict[str, int]` | Deletes the producer's private rows of the given keys, a table before the tables it references, before the registry delete |
 
 The series operations are the primitive; use them directly when no recipe fits.
 Each takes a `key` (`signal_uid`, or the portfolio's `unique_identifier`):
@@ -106,9 +109,24 @@ history = recipes.portfolio_history(run.portfolio.unique_identifier)
 ```
 
 `ApplicationWeights.publish(observations)` is the same as `publish_signal_weights` for
-that signal. A signal that computes its weights (`MarketCap`, `FixedWeights`, ...)
-is published inside the run, by the rebalance that reads it, after the updaters its
-`dependencies()` names; its own `run()` publishes it without running those.
+that signal. It is no node: the rebalance reads it from Markets.
+
+A signal the application computes (`MarketCap`, `FixedWeights`, or its own subclass of
+`SignalWeights`) is its own node of the portfolio DAG, with the application's own signal
+table as `output_table=` (below). In a run, MetaTables runs the updaters its
+`dependencies()` names, then the signal: its update writes the signal's metadata when it is
+missing or changed, publishes the new rows to Markets (with the manager check) and returns
+them for its table. The rebalance depends on it (`signal_weights`) and reads its table: its
+window, and each asset's last row before it. A first run starts at the signal's first
+observation.
+
+```python
+signal = FixedWeights.from_signal_configuration(
+    fixed_weights_config,
+    output_table=MySignals,  # private, below
+    namespace="my-app",
+)
+```
 
 Every portfolio of a tick goes in one call, so what they share runs once (issue #133):
 
@@ -168,6 +186,21 @@ MyEventLedger = configured_portfolio_event_ledger_storage(
 and its provider targets `MyBase.metadata` (`platform/metatable_migrations` has the
 template).
 
+The signals the application computes share one table of its own, an instance of
+`SignalWeightsTS` keyed by `signal_uid`:
+
+```python
+from msm.storage_instances import configured_time_index_instance
+from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+
+MySignals = configured_time_index_instance(
+    SignalWeightsStorage, instance_key="signals", namespace="my-app", storage_app="my_app",
+    base=MyBase,
+)
+```
+
+A signal node refuses Markets' own `SignalWeightsTS`: only publishing writes it.
+
 Bind the engine to them: `rebalance_output_table=` and `event_ledger_output_table=` on
 `run_portfolios`, `run_portfolio`, `PortfolioValues` and `PortfolioWeights`, and `output_table=` on the
 calendar events updater. `configured_time_index_instance` builds an instance of any other
@@ -189,6 +222,8 @@ copied there. Markets does not discover, count or name the table:
 ```python
 recipes.delete_private_series([MyLedger, MyRebalanceState], portfolios=[identifier])
 # then DELETE /api/v1/portfolio/{uid}/ (Markets deletes the published series with it)
+recipes.delete_private_series([MySignals], signals=[signal_uid])
+recipes.end_signal(signal_uid)  # a computed signal's rows in MySignals would refuse it
 ```
 
 ## What a producer never does
@@ -196,7 +231,8 @@ recipes.delete_private_series([MyLedger, MyRebalanceState], portfolios=[identifi
 - Grant Markets (`markets-api` or `migrate-markets`) a role on its tables or namespace.
 - Register a table with Markets, or send Markets a table uid, name or namespace.
 - Keep a namespace for Markets to read.
-- Keep a copy, an instance or a cache of a published series.
+- Keep a copy, an instance or a cache of a published series. A computed signal's own
+  table is the one exception: its node writes it and publishes the same rows.
 - Write a Markets table directly with its own MetaTables grant instead of publishing.
 - Name another application, connector or product in ms-markets.
 
@@ -212,8 +248,8 @@ Each application records its boundary in an ADR of its own, with these sections:
 4. **Where each read comes from afterwards**: per read, the recipe or series operation
    (`signal_history`, `portfolio_history`, `weights_as_of`, `window`, `last`) or its own
    table.
-5. **Delete order**: `delete_private_series` over which tables, then which Markets
-   deletes (`end_signal`, the portfolio delete).
+5. **Delete order**: `delete_private_series` over which tables (its computed signals'
+   table included), then which Markets deletes (`end_signal`, the portfolio delete).
 6. **Business rules that do not change**: eligibility, ownership, schedules; applied
    before each recipe.
 7. **Rollout in each Environment**: `msm registry assign-manager` for rows that predate
@@ -239,7 +275,8 @@ Nothing moves by itself. A person runs, in each Environment:
 - [ ] No role on any of the application's tables or namespaces is held by a Markets
       workload (`markets-api`, `migrate-markets`).
 - [ ] No table uid, name or namespace of the application appears in a call to Markets.
-- [ ] The application has no table for signal weights, portfolio weights or values.
+- [ ] The application has no table for portfolio weights or values, and no signal table
+      but its computed signals' own, which their nodes write and publish every run.
 - [ ] Every read of those series goes through a recipe or a series operation.
 - [ ] Private tables are built with the factories and deleted with
       `delete_private_series` before registry deletes.

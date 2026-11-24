@@ -14,7 +14,8 @@ import pytest
 
 from msm_portfolios.api import SignalWeightsSeries
 from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
-from msm_portfolios.time_index import SIGNAL_UID, SignalWeights
+from metatables import TimeIndexTableUpdater
+from msm_portfolios.time_index import SIGNAL_UID, SignalWeights, SignalWeightsSource
 from tests.support.sqlite_markets import _asset, make_sqlite_markets, serve_row_operations
 
 UTC = dt.UTC
@@ -59,12 +60,15 @@ def test_identity_is_the_configuration_not_the_weights(markets) -> None:
     assert _signal(key="2").signal_uid != first.signal_uid
 
 
-def test_signal_has_no_dependencies_and_forward_fills_until_the_next_observation() -> None:
+def test_signal_is_no_node_and_forward_fills_until_the_next_observation() -> None:
+    """Its weights arrive only by publication: nothing computes or runs it (2026-11-24)."""
+
     signal = object.__new__(ApplicationWeights)
 
-    assert signal.dependencies() == {}
+    assert not isinstance(signal, TimeIndexTableUpdater)
+    assert not hasattr(signal, "dependencies") and not hasattr(signal, "update")
+    assert isinstance(signal, SignalWeightsSource)
     assert signal.maximum_forward_fill() >= dt.timedelta(days=365 * 99)
-    assert ApplicationWeights.computes_weights is False
 
 
 def test_weights_are_stored_as_given_keyed_by_unique_identifier(markets) -> None:
@@ -142,8 +146,14 @@ def test_publish_needs_an_observation(markets) -> None:
         _signal().publish({})
 
 
-def test_a_run_calculates_nothing(markets) -> None:
-    assert _signal().update().empty
+def test_its_first_observation_is_its_first_published_one(markets) -> None:
+    signal = _signal()
+    assert signal.first_observation_time() is None
+
+    signal.publish({_at(2): {"AAA": 1.0}})
+    signal.publish({_at(3): {"BBB": 1.0}})
+
+    assert signal.first_observation_time() == pd.Timestamp(_at(2))
 
 
 def test_published_weights_forward_fill_into_portfolio_events(markets) -> None:

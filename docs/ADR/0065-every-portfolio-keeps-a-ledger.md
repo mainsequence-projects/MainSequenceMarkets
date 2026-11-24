@@ -303,10 +303,10 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   it reads prices only for the assets the portfolio trades.
 - **The nodes.** `PortfolioValues` replaces `PortfoliosUpdater`. `PortfolioWeights`
   builds the portfolio's `PortfolioEngine`, and its `PortfolioRebalance`, once the
-  portfolio's identity is known. It runs the signal, then the ledger: the rebalance reads
-  the signal, a published series, and never runs it, so a signal that computes its
-  weights is computed there. A weight at a time with several events is over the NAV
-  after the last of them. Both nodes take `rebalance_output_table` and
+  portfolio's identity is known. A weight at a time with several events is over the NAV
+  after the last of them. (Corrected on 2026-11-24: this note said the weights ran the
+  signal and then the ledger. Neither the weights nor the rebalance run a signal: a
+  computed signal is its own node, below.) Both nodes take `rebalance_output_table` and
   `event_ledger_output_table`. The ledger's update hash names the rebalance it reads, and so
   the table that rebalance writes.
 - **The default execution model.** `default_execution_model` builds one
@@ -357,14 +357,38 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   and `run_portfolio` is the same for one portfolio. A node several portfolios share runs
   once.
 - The weights no longer run the signal. `PortfolioWeights` and `PortfolioValues` are not
-  MetaTables nodes, so they publish after the run and run nothing. The rebalance computes
-  and publishes a signal that computes its weights before it reads it, and declares the
-  signal's own inputs as `signal.<name>`, so they join the graph.
+  MetaTables nodes, so they publish after the run and run nothing. (Corrected on
+  2026-11-24: #133 had the rebalance compute and publish a computed signal before reading
+  it, with the signal's inputs as its own `signal.<name>` dependencies. The owner decided
+  that a computed signal is its own node instead; see the note below.)
 - The equal-weights example, run twice on a disposable local runtime: 5 update executions
   per run (source bars, interpolated prices, calendar events, rebalance, ledger), against 6
   before; 200 requests on the first run and 121 on the second, against 244 and 156 on
   MetaTables 0.1.78 (the same on 0.1.80 and 0.1.82). The stored rows are the same, and the
   second run writes nothing.
+
+### 2026-11-24: a computed signal is its own node
+
+The owner decided on 2026-11-24, amending
+[ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md) decisions 2 and 5:
+
+- **The signal node.** A computed signal (`SignalWeights` and its subclasses) is its own
+  node of the portfolio DAG. It writes the producer's own `SignalWeightsTS` instance and,
+  in the same update, publishes the new rows to Markets.
+- **The rebalance.** `PortfolioRebalance` depends on the signal as `signal_weights`, so
+  in the joined run the signal runs first, once however many portfolios read it. The
+  rebalance reads the signal's rows from the node's table, and a first run starts at the
+  signal's first observation there.
+- **A published signal.** `ApplicationWeights` is read from Markets, with no node and no
+  edge.
+- **The equal-weights example.** It declares its signal table next to its interpolated
+  prices; its provider's revision `0002` creates the table.
+  - Run twice on a disposable local runtime, it made 6 update executions per run: the
+    signal is the sixth. The signal node wrote 2 rows to the example's signal table and
+    published the same 2 to Markets' `SignalWeightsTS`.
+  - The rebalance, ledger, weights (0.5 and 0.5 at 2026-05-24) and values (1.0, 1.0,
+    0.99982003, 1.0292265, 1.01942435) are the same as before. The second run wrote
+    nothing, and the account workflow ran after it.
 
 ## Not Verified
 

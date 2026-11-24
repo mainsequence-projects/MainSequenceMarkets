@@ -8,10 +8,11 @@ keeps owning the storage contract: the instance has the core storage's columns,
 dtypes, nullability, time index, index names and foreign keys to the Markets
 registries. How Markets finds the instance depends on the series: pricing
 market-data bindings carry its ``storage_table_uid``, the Index dataset catalog
-its table uid (both outside ADR 0060's decision). Portfolio values, weights and
-signal weights are never instances: they are published to Markets' own tables
-(ADR 0060). An application's private portfolio state uses the portfolio package's own
-contract-instance factories.
+its table uid (both outside ADR 0060's decision). Portfolio values and weights are
+never instances: they are published to Markets' own tables (ADR 0060). A computed
+signal writes an instance of ``SignalWeightsTS``, its node's own table, and publishes
+the same rows to Markets' (ADR 0060 as amended on 2026-11-24). An application's private
+portfolio state uses the portfolio package's own contract-instance factories.
 
 Those foreign keys point at Markets' own ``Column`` objects. No Markets table is
 copied into the provider's metadata, so ``target_metadata=<its base>.metadata``

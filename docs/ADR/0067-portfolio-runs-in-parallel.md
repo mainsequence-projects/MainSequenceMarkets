@@ -13,7 +13,9 @@ MetaTables 0.1.83 runs several updaters in one graph and in parallel. Nothing in
   a producer declares its tables in one catalog, and a run looks them up and never builds
   one.
 - Decision 6 needs the owner: it touches the manager rule of
-  [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md).
+  [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md). The owner decided
+  on 2026-11-24 that a computed signal is its own node (ADR 0060, amended for decisions 2
+  and 5); who publishes it from a node Job run is still open.
 
 ## Context
 
@@ -89,8 +91,10 @@ flowchart TB
         direction TB
         SB["price bars"] --> IP["InterpolatedPrices"]
         CE["PortfolioCalendarEvents"]
-        IP --> RB["PortfolioRebalance<br/>computes and publishes the signal"]
+        SG["computed signal<br/>writes its table, publishes"]
+        IP --> RB["PortfolioRebalance<br/>reads the signal"]
         CE --> RB
+        SG --> RB
         RB --> PE["PortfolioEngine (ledger)"]
         IP --> PE
     end
@@ -99,8 +103,9 @@ flowchart TB
 
 The rest of the current behaviour:
 
-- **A producer's updaters join only as dependencies.** A valuation source, a signal's inputs
-  or a strategy's inputs join the graph through `PortfolioRebalance.dependencies()`. Any
+- **A producer's updaters join only as dependencies.** A valuation source, a computed signal
+  (with its own inputs) or a strategy's inputs join the graph through
+  `PortfolioRebalance.dependencies()`. Any
   other updater of the producer needs its own `run_updaters` call, so anything shared runs
   again there.
 - **The per-run savings live in the process.**
@@ -138,7 +143,7 @@ The rest of what blocks it:
   - A node Job runs as the Job's workload User.
   - The Markets API refuses a publish whose caller isn't the series' manager
     (`manager_refusal`, `src/msm/api/managers.py`).
-  - `PortfolioRebalance` publishes a computed signal inside its update, so in a node Job run
+  - A computed signal's node publishes its new rows inside its update, so in a node Job run
     that publish is the workload User's.
 
 ## Decision
@@ -203,6 +208,7 @@ in the graph:
 - `PortfolioRebalance`;
 - `PortfolioCalendarEvents`;
 - `InterpolatedPrices`;
+- the computed signals ms-markets ships;
 - the declared inputs of the strategies and signals ms-markets ships.
 
 A test runs that check on a portfolio graph, so a change that breaks it fails in CI. The check
@@ -215,22 +221,14 @@ A producer's node Job script calls one ms-markets function and passes it the pro
 catalog (decision 3). The function attaches the Markets runtime the nodes need, finds the
 node's output table in the catalog, then runs MetaTables' `run_updater_node()`.
 
-### 6. A computed signal published from a node Job (owner)
+### 6. Who publishes a computed signal from a node Job run (owner)
 
-In a node Job run, `PortfolioRebalance` publishes a computed signal as the node Job's
-workload User. The options:
-
-- **(a) The workload User manages the signal.**
-  - In node Job mode, the producer's node Job workload User is the manager of the
-    portfolios' computed signals. An Organization admin assigns it with `assign_manager`.
-  - `run_portfolios` checks this before anything starts, and refuses with the fix.
-  - Recommended: it needs no new Markets capability.
-- **(b) The caller publishes the signal.** The signal stays computed in the rebalance, but
-  the caller publishes it. Not possible: a node Job outcome carries no result, so the
-  weights can't come back to the caller.
-- **(c) The node acts for the caller.** The workload User publishes on behalf of the
-  orchestrator's caller. That would be a new platform and Markets capability. Not available
-  today (not verified).
+The owner decided on 2026-11-24 that a computed signal is its own node of the portfolio DAG
+([ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md), amended for
+decisions 2 and 5): its update writes the producer's own signal table and publishes the new
+rows to Markets, and the rebalance only reads the table. In a node Job run that publish is
+the node Job's workload User's, and Markets refuses it unless that User manages the signal.
+Who publishes a computed signal from a node Job run stays open.
 
 ### 7. What stays as it is
 
@@ -257,15 +255,16 @@ sequenceDiagram
     par independent nodes
         C->>J: start run: price bars
         C->>J: start run: calendar events
+        C->>J: start run: computed signals
     end
     J->>API: start, insert, end
+    J->>M: publish computed signals (decision 6)
     C->>API: read the graph
     C->>J: start run: InterpolatedPrices
     par one rebalance per portfolio
         C->>J: start run: rebalance A
         C->>J: start run: rebalance B
     end
-    J->>M: publish computed signals (decision 6)
     par one ledger per portfolio
         C->>J: start run: ledger A
         C->>J: start run: ledger B
@@ -282,15 +281,17 @@ sequenceDiagram
 | Preflight, `Portfolio` rows, nodes | caller | caller (orchestrator) |
 | Check that every node rebuilds | not needed | caller, before anything starts |
 | Price bars, prices, calendar events | caller, one after another | one Job run each, at the same time when independent |
-| Rebalance (and computed signal) | caller | one Job run per portfolio |
+| Computed signal | caller | one Job run per signal |
+| Rebalance | caller | one Job run per portfolio |
 | Ledger | caller | one Job run per portfolio |
 | Weights and values | caller | caller, reading each ledger's table |
 | Per-run savings (#137, #139, #140) | whole run | inside each Job run only |
 
 ## Worked Example
 
-Two portfolios, A and B, share the interpolated prices and the calendar events. The producer
-also has an updater X that reads the prices.
+Two portfolios, A and B, share the interpolated prices and the calendar events. Their
+signals are published ones, so they add no node. The producer also has an updater X that
+reads the prices.
 
 - **Today.** `run_portfolios([A, B])` runs 7 nodes one after another: bars, prices, calendar
   events, rebalance A, rebalance B, ledger A, ledger B. X needs its own `run_updaters` call,

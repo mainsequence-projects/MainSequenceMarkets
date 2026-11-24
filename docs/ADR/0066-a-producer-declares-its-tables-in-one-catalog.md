@@ -23,7 +23,9 @@ Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24.
 A producer writes its own instances of Markets' time-index contracts:
 - rebalance state, calendar events and the event ledger of its portfolios;
 - orders, order events and trades;
-- its price tables.
+- its price tables;
+- its computed signals' table, which each signal node writes as it publishes the same rows
+  to Markets (ADR 0060, amended on 2026-11-24).
 
 Each is declared on the producer's own base, in its namespace. It is created by a committed
 revision of the producer's migration provider (ADR 0060, #95).
