@@ -76,7 +76,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # shared dependency once (run_updaters, MetaTables#156), which run_portfolios uses,
     # 0.1.81 names the constraint and value that refused a time-index row
     # (MetaTables#157), and 0.1.82 exports the dtype tokens, sqlalchemy_type_to_token
-    # and use_runtime_context, which ms-markets imports from metatables (MetaTables#160).
+    # and use_runtime_context, which ms-markets imports from metatables (MetaTables#160),
+    # and 0.1.83 registers a run's updates and edges with one request each (MetaTables#162).
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -94,7 +95,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.79") not in requirement.specifier
     assert Version("0.1.80") not in requirement.specifier
     assert Version("0.1.81") not in requirement.specifier
-    assert Version("0.1.82") in requirement.specifier
+    assert Version("0.1.82") not in requirement.specifier
+    assert Version("0.1.83") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

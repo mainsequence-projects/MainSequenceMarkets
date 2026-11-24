@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-11-24
+
 Minor release 6.1.0, with breaking changes. Every portfolio keeps a ledger
 ([ADR 0065](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0065-every-portfolio-keeps-a-ledger/)):
 `PortfolioEngine` books every portfolio, and its published weights and values are
@@ -98,8 +100,9 @@ what they share once
   updaters and tables the signal's `dependencies()` names, as `signal.<name>`, so they
   join the run. A signal whose weights arrive by publication (`ApplicationWeights`) is only
   read, and a retired portfolio's run, whose window is empty, reads nothing.
-- **Requires `mainsequence-metatable` 0.1.82** (`>=0.1.82,<0.2`), for `run_updaters`
-  (MetaTables#156). A time-index write a constraint refuses now raises
+- **Requires `mainsequence-metatable` 0.1.83** (`>=0.1.83,<0.2`), for `run_updaters`
+  (MetaTables#156), which registers a run's updates and their edges with one request each
+  (MetaTables#162). A time-index write a constraint refuses now raises
   `TransferConstraintError`, code `time_index_constraint_violation`, naming the kind,
   constraint, columns and value (MetaTables#157), so a ledger whose currency is not an
   `Asset` says which key refused it. MetaTables' modules moved into packages in 0.1.80
@@ -110,7 +113,7 @@ what they share once
   `metatables` (`import metatables as dc` where it imported `dtype_codec`). The tests give
   the client their runtime with `metatables.use_runtime_context`. It also requires
   `mainsequence` 9.0.41 and OpenTelemetry 1.45.2. `.agents/skills/metatables` was copied
-  again from 0.1.82, whose skills link MetaTables' documentation site instead of shipping
+  again from 0.1.83, whose skills link MetaTables' documentation site instead of shipping
   copies of its guides.
 - **Breaking: one size, the ledger's `initial_nav`.** It is the unit of the rebalance's book
   for every strategy. The strategies sized in money or volume take it from the book
