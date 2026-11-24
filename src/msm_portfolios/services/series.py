@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import and_, delete, func, insert, select
+from sqlalchemy import and_, delete, func, insert, select, true
 
 import metatables as dc
 from msm.api.managers import require_manager
@@ -210,8 +210,16 @@ def publish_series(
     *,
     key: str,
     rows: Sequence[Mapping[str, Any]],
+    new_only: bool = False,
 ) -> SeriesPublication:
-    """Write one key's ``rows`` in one transaction; see the module docstring."""
+    """Write one key's ``rows`` in one transaction; see the module docstring.
+
+    Before the write it reads once: the key's registry row, its series' bounds and
+    whether the rows' assets are registered, in one statement. The stored rows are read
+    only where an incoming row is at or before the key's last stored time. With
+    ``new_only`` those rows are left out instead, without being compared: a node that
+    recomputes its series publishes only what is new.
+    """
 
     key = _required_key(series, key)
     if len(rows) > PUBLISH_MAX_ROWS:
@@ -219,12 +227,20 @@ def publish_series(
             f"publish takes at most {PUBLISH_MAX_ROWS} rows per call; got {len(rows)}. "
             "Publish a longer history in several calls, oldest first."
         )
-    registry = _registry_row(context, series, key)
-    require_manager(f"{series.label} {key!r}", registry.get("managed_by"))
     incoming = _validated_rows(series, key, rows)
+    assets = {row[series.asset] for row in incoming} if series.asset else set()
+    state = _publish_state(context, series, key, assets=assets)
+    require_manager(f"{series.label} {key!r}", state.get("managed_by"))
+    before = SeriesBounds(
+        key=key,
+        first_time=_optional_time(state.get("first_time")),
+        last_time=_optional_time(state.get("last_time")),
+        row_count=int(state.get("row_count") or 0),
+    )
+    if new_only and before.last_time is not None:
+        incoming = [row for row in incoming if row[TIME_INDEX] > before.last_time]
     if series.registry is PortfolioTable:
-        _refuse_rows_after_retirement(key, incoming, registry.get("retired_at"))
-    before = series_bounds(context, series, keys=[key])[0]
+        _refuse_rows_after_retirement(key, incoming, state.get("retired_at"))
     if not incoming:
         return SeriesPublication(
             key=key,
@@ -234,9 +250,14 @@ def publish_series(
             last_time=before.last_time,
             row_count=before.row_count,
         )
-    if series.asset:
+    if series.asset and int(state.get("known_assets") or 0) != len(assets):
         _require_registered_assets(context, {row[series.asset] for row in incoming})
-    stored = _stored_rows(context, series, key=key, rows=incoming)
+    restated = [
+        row
+        for row in incoming
+        if before.last_time is not None and row[TIME_INDEX] <= before.last_time
+    ]
+    stored = _stored_rows(context, series, key=key, rows=restated) if restated else {}
     new_rows: list[dict[str, Any]] = []
     skipped = 0
     conflicts: list[tuple] = []
@@ -670,17 +691,70 @@ def _count_after(
 # Helpers -------------------------------------------------------------------------------
 
 
-def _registry_row(context: MarketsRepositoryContext, series: Series, key: str) -> dict[str, Any]:
+def _registry_columns(series: Series) -> list[Any]:
     registry = series.registry
     columns = [registry.uid, registry.managed_by]
     if registry is PortfolioTable:
         columns.append(registry.retired_at)
-    statement = select(*columns).where(getattr(registry, series.registry_key) == key).limit(1)
+    return columns
+
+
+def _registry_row(context: MarketsRepositoryContext, series: Series, key: str) -> dict[str, Any]:
+    registry = series.registry
+    statement = (
+        select(*_registry_columns(series))
+        .where(getattr(registry, series.registry_key) == key)
+        .limit(1)
+    )
     rows = _select(context, statement, max_rows=1)
     if not rows:
-        what = "SignalMetadata row" if registry is SignalMetadataTable else "Portfolio"
-        raise LookupError(f"No {what} has {series.registry_key} {key!r}.")
+        raise LookupError(_missing_registry_row(series, key))
     return rows[0]
+
+
+def _publish_state(
+    context: MarketsRepositoryContext, series: Series, key: str, *, assets: set[str]
+) -> dict[str, Any]:
+    """The key's registry row, its series' bounds and how many of ``assets`` are registered.
+
+    One statement, so a publish reads once before it writes.
+    """
+
+    registry = series.registry
+    table = series.table
+    bounds = (
+        select(
+            func.min(table.c[TIME_INDEX]).label("first_time"),
+            func.max(table.c[TIME_INDEX]).label("last_time"),
+            func.count().label("row_count"),
+        )
+        .where(table.c[series.key] == key)
+        .subquery("key_bounds")
+    )
+    columns = [*_registry_columns(series), *bounds.c]
+    if assets:
+        columns.append(
+            select(func.count())
+            .select_from(AssetTable.__table__)
+            .where(AssetTable.unique_identifier.in_(sorted(assets)))
+            .scalar_subquery()
+            .label("known_assets")
+        )
+    statement = (
+        select(*columns)
+        .select_from(registry.__table__.join(bounds, true()))
+        .where(getattr(registry, series.registry_key) == key)
+        .limit(1)
+    )
+    rows = _select(context, statement, max_rows=1)
+    if not rows:
+        raise LookupError(_missing_registry_row(series, key))
+    return rows[0]
+
+
+def _missing_registry_row(series: Series, key: str) -> str:
+    what = "SignalMetadata row" if series.registry is SignalMetadataTable else "Portfolio"
+    return f"No {what} has {series.registry_key} {key!r}."
 
 
 def _require_registered_assets(context: MarketsRepositoryContext, assets: set[str]) -> None:

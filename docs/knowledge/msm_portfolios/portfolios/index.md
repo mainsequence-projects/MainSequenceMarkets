@@ -558,8 +558,10 @@ timezone, weights are finite numbers, assets are registered, an asset the
 signal held and an observation leaves out is written at `0`, and an
 observation at or before the signal's last stored time is refused unless it
 equals what is stored. `publish` on the two portfolio series refuses rows at or
-after the portfolio's retirement. `SeriesRows.frame()` gives a DataFrame
-indexed like the table.
+after the portfolio's retirement. With `new_only=True`, `publish` leaves out the
+rows at or before the key's last stored time without comparing them. Before it
+writes, it reads once: the key's row, its bounds and its rows' assets.
+`SeriesRows.frame()` gives a DataFrame indexed like the table.
 
 ### Managers
 
@@ -587,7 +589,8 @@ keeps no update record of them (`msm_portfolios.series_nodes`).
 `run()` computes `update()` and publishes the rows through the series row
 class; it runs nothing else. A node's progress is the series itself
 (`bounds` and `last`). A row at or before the key's last stored time is not
-published again, so running the same window twice writes nothing. The same
+published again (`publish(new_only=True)`), so running the same window twice
+writes nothing. The same
 code runs in an application under the `remote` backend and in the Markets
 deployment under `runtime`.
 

@@ -122,7 +122,7 @@ Markets reads no application's table: no operation takes a table uid.
 
 | Operation | Writes | Arguments | Result |
 |---|---|---|---|
-| `publish` | yes | `key`, `rows` | Rows written and skipped; the key's first time, last time and row count |
+| `publish` | yes | `key`, `rows`, `new_only` | Rows written and skipped; the key's first time, last time and row count |
 | `window` | no | `keys`, `start`, `end`, `columns`, `assets` (weights only), `limit` (default 5,000, at most 9,000), `offset`, `newest_first` | One page of rows; `next_offset` when the page was full |
 | `last` | no | `keys`, `at`, `by` (`key` or `asset`, weights only), `inclusive`, `assets` (weights only) | The last rows at or before `at`, at most 9,000 |
 | `bounds` | no | `keys` | First time, last time and row count per key |
@@ -136,7 +136,10 @@ again writes nothing. On `signal-weights` times must carry a timezone, weights
 must be finite numbers, assets must be registered (`404` otherwise), an asset
 the signal held and an observation leaves out is written at `0`, and an
 observation at or before the signal's last stored time is refused. On the two
-portfolio series, rows at or after the portfolio's retirement are refused.
+portfolio series, rows at or after the portfolio's retirement are refused. With
+`new_only`, the rows at or before the key's last stored time are left out
+without being compared. Before it writes, `publish` reads once: the key's row,
+its bounds and its rows' assets.
 
 `Portfolio` and `SignalMetadata` rows carry `managed_by`, recorded by this API
 from the acting identity of the create call: `branch:<uid>` for a workload of

@@ -252,9 +252,11 @@ class PublishedSeriesNode:
     def publish_frame(self, frame: pd.DataFrame | None) -> Any:
         """Publish ``frame``'s rows after the key's last stored time, oldest first.
 
-        A long frame goes in several calls, each holding whole timestamps. Answers the
-        last call's ``SeriesPublication`` with the written and skipped rows of all of
-        them, or ``None`` when there is nothing to publish.
+        Markets leaves out the rows at or before that time (``publish(new_only=True)``),
+        so the node reads nothing before it publishes. A long frame goes in several
+        calls, each holding whole timestamps. Answers the last call's
+        ``SeriesPublication`` with the written and skipped rows of all of them, or
+        ``None`` when nothing was new.
         """
 
         from msm_portfolios.services.series import PUBLISH_MAX_ROWS
@@ -265,18 +267,19 @@ class PublishedSeriesNode:
         key = str(rows[0][self.key_column])
         if any(str(row[self.key_column]) != key for row in rows):
             raise ValueError(f"{self.__class__.__name__} publishes one {self.key_column} per run.")
-        last = self.reader.bounds(key).last_time
-        if last is not None:
-            rows = [row for row in rows if row[TIME_INDEX] > last]
-        if not rows:
-            self.logger.info(f"{self.__class__.__name__}: nothing after {last} to publish.")
-            return None
         written = skipped = 0
         publication = None
-        for batch in whole_time_batches(rows, PUBLISH_MAX_ROWS):
-            publication = self.reader.rows.publish(key, batch)
+        while rows:
+            batch = next(iter(whole_time_batches(rows, PUBLISH_MAX_ROWS)))
+            publication = self.reader.rows.publish(key, batch, new_only=True)
             written += publication.written
             skipped += publication.skipped
+            rows = rows[len(batch) :]
+            if publication.last_time is not None:
+                rows = [row for row in rows if row[TIME_INDEX] > publication.last_time]
+        if not written:
+            self.logger.info(f"{self.__class__.__name__}: nothing new to publish for {key}.")
+            return None
         self.logger.info(f"{self.__class__.__name__}: published {written} rows for {key}.")
         return publication.model_copy(update={"written": written, "skipped": skipped})
 

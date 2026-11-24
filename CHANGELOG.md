@@ -27,8 +27,9 @@ what they share once
   `PortfolioRuns`: `ran`, a `PortfolioRun` for each portfolio that ran, in the order given,
   and `failed`, a `PortfolioRunFailure` (position, identifier, reason, error) for each one
   the preflight refused, whose node or a dependency it needs failed, or whose publication
-  failed; a failure never stops the others. It reads the signals' and the weights' bounds
-  in one call each.
+  failed; a failure never stops the others. It reads the signals' bounds in one call, and
+  a portfolio's first rebalance is what its weights' publication says
+  ([#135](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/135)).
 
 - **Asset types list their events.** `AssetType.event_types` (column `event_types` of
   `ms_markets__assettype`, revision `0038`) names the events an asset of the type can have.
@@ -124,6 +125,14 @@ what they share once
   identity of every portfolio built on one. The equal-weights example states its weights
   after its first close and now publishes its weights and values, and so does the account
   workflow built on it.
+- **A publish reads once before it writes**
+  ([#135](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/135)).
+  `publish` reads the key's registry row, its series' bounds and whether its rows' assets
+  are registered in one statement, and reads the stored rows only where a row is at or
+  before the key's last stored time. `publish(new_only=True)` leaves those rows out without
+  comparing them; the published nodes (`PublishedSeriesNode.publish_frame`) publish that
+  way and read no bounds of their own. A run of the equal-weights example made 163
+  requests instead of 189.
 
 ### Removed
 

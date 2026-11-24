@@ -399,7 +399,7 @@ def _run_portfolios(
     namespace: str | None,
     portfolio_resolver: Any,
 ) -> PortfolioRuns:
-    from msm_portfolios.api import PortfolioWeightsSeries, SignalWeightsSeries
+    from msm_portfolios.api import SignalWeightsSeries
     from msm_portfolios.time_index import PortfolioValues
 
     failed: dict[int, PortfolioRunFailure] = {}
@@ -441,8 +441,6 @@ def _run_portfolios(
         except Exception as error:
             fail(position, identifier, error)
 
-    identifiers = list(dict.fromkeys(item.identifier for item in prepared))
-    before = _weights_row_counts(PortfolioWeightsSeries, identifiers)
     errors = _run_ledgers([item.engine for item in prepared])
     published: dict[int, tuple[Any, Any, Any]] = {}
     for item in prepared:
@@ -457,10 +455,6 @@ def _run_portfolios(
             fail(item.position, item.identifier, error)
             continue
         published[item.position] = (result["portfolio"], weights, result["portfolio_values"])
-    after = _weights_row_counts(
-        PortfolioWeightsSeries,
-        list(dict.fromkeys(item.identifier for item in prepared if item.position in published)),
-    )
     ran = []
     for item in prepared:
         if item.position not in published:
@@ -471,7 +465,8 @@ def _run_portfolios(
                 portfolio=portfolio,
                 weights=weights,
                 values=values,
-                first_rebalance=before[item.identifier] == 0 and after[item.identifier] > 0,
+                # The run wrote the portfolio's first weights: every row it has is new.
+                first_rebalance=weights is not None and weights.row_count == weights.written,
             )
         )
     return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
@@ -503,12 +498,6 @@ def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
         )
         for engine, outcome in zip(engines, outcomes)
     }
-
-
-def _weights_row_counts(series: Any, identifiers: Sequence[str]) -> dict[str, int]:
-    if not identifiers:
-        return {}
-    return {item.key: item.row_count for item in series.bounds(list(identifiers))}
 
 
 # Private rows --------------------------------------------------------------------------
