@@ -43,8 +43,10 @@ had to keep their identity and history. The owner said on 2026-11-18 that there 
 portfolios yet. The code calls `PortfoliosUpdater` "the legacy weight-only valuation path"
 (`src/msm_portfolios/time_index/portfolios/__init__.py:105`).
 
-Both kinds hide the same error. A valuation source's prices are at the level its producer
-chose, adjusted for events or not. With unadjusted prices:
+A valuation source's prices are at the level its producer chose, adjusted for events or not.
+Adjusted prices are the common case (owner). They already carry dividends, as if
+reinvested, and splits, so nothing has to book those events. With unadjusted prices, both
+kinds hide the same error:
 
 - **Without a ledger,** nothing books a dividend. The price falls by it, and so does the
   value, with no error.
@@ -93,9 +95,10 @@ type registry (`AssetTypeTable`) carries them.
 
 - The run refuses an asset whose type has an event type nothing books.
 - It needs no event data, so a missing row can't hide an event.
-- It also refuses a stock that never pays, until a dividend model or `events_in_price`
-  covers dividends. A dividend model whose source has no rows for that stock books nothing,
-  which is right.
+- On adjusted prices, the default (decision 4), the price books an equity's dividends and
+  splits. An equity then needs no dividend model, and the run doesn't refuse it.
+- On unadjusted prices, an equity needs a dividend model even if it never pays. A dividend
+  model whose source has no rows for that stock books nothing, which is right.
 
 ### 3. Prices stay at their source's level (owner)
 
@@ -103,13 +106,16 @@ A valuation source's prices are at the level its producer chose, adjusted or una
 A price source never adjusts the prices it takes: `InterpolatedPrices` uses them as they
 are.
 
-### 4. The valuation model says which events its prices include
+### 4. The price source says which events its prices include
 
-The portfolio states which event types its prices already include, as a setting of its
-valuation model: `MarketPriceValuationModel.events_in_price`, empty by default (unadjusted
-prices).
+The level is a fact of the prices, so the source states it, not the portfolio. It is a
+setting of the valuation source, `events_in_price`. Its default, `("split", "dividend")`,
+means adjusted prices. A source of unadjusted prices states `()`.
 
-- An event type is booked when a lifecycle model books it or `events_in_price` names it.
+- For `InterpolatedPrices`, the setting describes the bars it reads. It passes the setting
+  on and still adjusts nothing (decision 3).
+- An event type is booked when a lifecycle model books it or the source's
+  `events_in_price` names it.
 - A configuration that does both for one event type is refused, because the event would be
   counted twice.
 
@@ -174,16 +180,15 @@ A new Alembic revision drops `PortfolioWeightsTS.held_shares` and `book_cash`, w
 ## Worked Example
 
 A portfolio of $1,000,000 holds half AAPL and half MSFT. AAPL is at $200, so the portfolio
-holds 2,500 shares. AAPL pays a dividend of $0.25 a share, and its unadjusted close falls by
-about $0.25.
+holds 2,500 shares. AAPL pays a dividend of $0.25 a share. An adjusted price carries it,
+reinvested. An unadjusted close falls by about $0.25.
 
-| Configuration | Today | Under this ADR |
+| Prices and models | Today | Under this ADR |
 | --- | --- | --- |
-| No ledger | The value falls about $625 (0.000625 of the book), with no error. | Not possible. |
-| Ledger, no dividend model, `events_in_price` empty | The same. | Refused: AAPL and MSFT, dividend. Both are equities, whether or not MSFT paid in the window. |
-| Ledger with `DividendCashFlowModel` | A $625 receivable at entitlement, then the cash at payment. The NAV doesn't fall. | The same. |
-| Ledger, adjusted prices, `events_in_price=("dividend",)` | No such setting. | The price carries the dividend, and nothing books it. |
-| Ledger, `DividendCashFlowModel` and `events_in_price=("dividend",)` | No such setting. | Refused: the dividend would be counted twice. |
+| Adjusted (the default), no dividend model | The price carries the dividend, in both kinds. | Runs. The price carries the dividend, and nothing else books it. |
+| Unadjusted (`events_in_price=()`), no dividend model | The value falls about $625 (0.000625 of the book) with no error, in both kinds. | Refused: AAPL and MSFT, dividend. Both are equities, whether or not MSFT paid in the window. |
+| Unadjusted, with `DividendCashFlowModel` | With a ledger: a $625 receivable at entitlement, then the cash at payment. The NAV doesn't fall. | The same. |
+| Adjusted, with `DividendCashFlowModel` | With a ledger: the dividend is counted twice, with no error. | Refused: the dividend would be counted twice. |
 
 ## Alternatives Considered
 
@@ -216,6 +221,8 @@ missing model hides it today. The owner chose the asset type instead (decision 2
 
 - Which event types each asset type lists, how they are named, and how a provider registers
   them for an asset type of its own.
+- How a valuation source that is a `TimeIndexTableRef`, with no configuration of its own,
+  states `events_in_price`.
 - Whether `PortfolioStateTS` and `PortfolioCashFlowsTS` (positions, cash in each currency,
   completed cash flows) are published. Both tables exist in Markets, and nothing writes them.
 - The rebalance's book doesn't see income the ledger books. The ledger sizes its own orders
@@ -231,6 +238,6 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   0059, decision 5, and `project_portfolio_values`), not two runs.
 - Whether real portfolios exist now. The owner said there were none on 2026-11-18.
 - Whether the ledger's replay accepts a back-adjusted price source, which rewrites its past
-  prices at each event.
+  prices at each event. Adjusted prices are the default, so this concerns most portfolios.
 - What the engine's update execution costs in the hosted Production Environment. It was not
   measured.
