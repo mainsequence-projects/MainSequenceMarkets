@@ -86,7 +86,16 @@ Every event that asset can have must be booked, either by a lifecycle model or b
 (decision 4). Otherwise the run refuses, names each asset and event type that nothing books,
 and writes nothing.
 
-Where the run learns which events an asset can have is open (see "Open Question").
+The run learns which events an asset can have from the asset's type (owner). Each asset
+type states the event types its assets can have: for example dividends and splits for an
+equity, coupons and redemption for a bond, exercise and expiry for an option. Markets' asset
+type registry (`AssetTypeTable`) carries them.
+
+- The run refuses an asset whose type has an event type nothing books.
+- It needs no event data, so a missing row can't hide an event.
+- It also refuses a stock that never pays, until a dividend model or `events_in_price`
+  covers dividends. A dividend model whose source has no rows for that stock books nothing,
+  which is right.
 
 ### 3. Prices stay at their source's level (owner)
 
@@ -171,30 +180,23 @@ about $0.25.
 | Configuration | Today | Under this ADR |
 | --- | --- | --- |
 | No ledger | The value falls about $625 (0.000625 of the book), with no error. | Not possible. |
-| Ledger, no dividend model, `events_in_price` empty | The same. | Refused: AAPL, dividend. |
+| Ledger, no dividend model, `events_in_price` empty | The same. | Refused: AAPL and MSFT, dividend. Both are equities, whether or not MSFT paid in the window. |
 | Ledger with `DividendCashFlowModel` | A $625 receivable at entitlement, then the cash at payment. The NAV doesn't fall. | The same. |
 | Ledger, adjusted prices, `events_in_price=("dividend",)` | No such setting. | The price carries the dividend, and nothing books it. |
 | Ledger, `DividendCashFlowModel` and `events_in_price=("dividend",)` | No such setting. | Refused: the dividend would be counted twice. |
 
-## Open Question
+## Alternatives Considered
 
-Where does the run learn which events an asset can have (decision 2)? Markets has no table
-of asset events. Bonds' coupons and maturities are in `BondAssetDetailsTable`, and
-`DividendCashFlowModel` reads a dividend source the producer declares.
+### Dated events in Markets
 
-- **A. Dated events in Markets.** Markets keeps each asset's events: dividends, coupons,
-  redemptions, splits and expiries. The run checks the events of its held assets in its
-  window. This is exact, but it needs a new Markets dataset that providers fill. An event a
-  provider never recorded passes unnoticed.
-- **B. Event types per asset type.** Each asset type states the event types its assets can
-  have: an equity, dividends and splits; a bond, coupons and redemption; an option, exercise
-  and expiry. The run refuses an asset whose type has an event type nothing books. This needs
-  no event data, and a missing row can't fool it. It also refuses a stock that never pays,
-  until a dividend model or `events_in_price` covers it. In the example, B names MSFT as
-  well. Markets' asset type registry (`AssetTypeTable`) would carry the event types.
+Markets would keep each asset's events: dividends, coupons, redemptions, splits and
+expiries. The run would check the events of its held assets in its window. Markets has no
+such table today. Bonds' coupons and maturities are in `BondAssetDetailsTable`, and
+`DividendCashFlowModel` reads a dividend source that the producer declares.
 
-The recommendation is B. Under A, a missing row hides an event exactly as a missing model
-hides it today.
+It is exact, but it needs a new Markets dataset that providers fill. An event that no
+provider recorded would pass unnoticed: a missing row would hide an event the same way a
+missing model hides it today. The owner chose the asset type instead (decision 2).
 
 ## Consequences
 
@@ -212,6 +214,8 @@ hides it today.
 
 ## Not Decided Here
 
+- Which event types each asset type lists, how they are named, and how a provider registers
+  them for an asset type of its own.
 - Whether `PortfolioStateTS` and `PortfolioCashFlowsTS` (positions, cash in each currency,
   completed cash flows) are published. Both tables exist in Markets, and nothing writes them.
 - The rebalance's book doesn't see income the ledger books. The ledger sizes its own orders
