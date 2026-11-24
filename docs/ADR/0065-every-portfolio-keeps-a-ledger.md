@@ -44,9 +44,10 @@ portfolios yet. The code calls `PortfoliosUpdater` "the legacy weight-only valua
 (`src/msm_portfolios/time_index/portfolios/__init__.py:105`).
 
 A valuation source's prices are at the level its producer chose, adjusted for events or not.
-Adjusted prices are the common case (owner). They already carry dividends, as if
-reinvested, and splits, so nothing has to book those events. With unadjusted prices, both
-kinds hide the same error:
+Adjusted prices are the common case, and any asset can have them (owner). They already
+carry every cash flow the asset pays, as if reinvested, and its splits: a stock's dividends,
+a bond's coupons. Nothing else has to book those events. With unadjusted prices, both kinds
+hide the same error:
 
 - **Without a ledger,** nothing books a dividend. The price falls by it, and so does the
   value, with no error.
@@ -95,10 +96,14 @@ type registry (`AssetTypeTable`) carries them.
 
 - The run refuses an asset whose type has an event type nothing books.
 - It needs no event data, so a missing row can't hide an event.
-- On adjusted prices, the default (decision 4), the price books an equity's dividends and
-  splits. An equity then needs no dividend model, and the run doesn't refuse it.
-- On unadjusted prices, an equity needs a dividend model even if it never pays. A dividend
-  model whose source has no rows for that stock books nothing, which is right.
+- On adjusted prices, the default (decision 4), the price books every cash flow and split,
+  whatever the asset type. A stock needs no dividend model and a bond no coupon model, and
+  the run doesn't refuse them.
+- On unadjusted prices, an asset needs a model for each cash flow its type lists, even if it
+  never pays. A dividend model whose source has no rows for a stock books nothing, which is
+  right.
+- An event that ends a position always needs a model, at either price level: a bond's
+  redemption, an option's exercise or expiry. No price turns the position into cash.
 
 ### 3. Prices stay at their source's level (owner)
 
@@ -109,13 +114,21 @@ are.
 ### 4. The price source says which events its prices include
 
 The level is a fact of the prices, so the source states it, not the portfolio. It is a
-setting of the valuation source, `events_in_price`. Its default, `("split", "dividend")`,
-means adjusted prices. A source of unadjusted prices states `()`.
+setting of the valuation source, `events_in_price`:
+
+- `"adjusted"`, the default, means the prices carry every cash flow and split of the asset,
+  for any asset type.
+- A tuple names exactly the event types the prices carry: `("split",)` for prices adjusted
+  for splits only, and `()` for unadjusted prices.
+
+How the setting applies:
 
 - For `InterpolatedPrices`, the setting describes the bars it reads. It passes the setting
   on and still adjusts nothing (decision 3).
+- An event that ends a position is never in a price (decision 2), so `"adjusted"` doesn't
+  cover it, and a tuple that names one is refused.
 - An event type is booked when a lifecycle model books it or the source's
-  `events_in_price` names it.
+  `events_in_price` covers it.
 - A configuration that does both for one event type is refused, because the event would be
   counted twice.
 
@@ -190,6 +203,9 @@ reinvested. An unadjusted close falls by about $0.25.
 | Unadjusted, with `DividendCashFlowModel` | With a ledger: a $625 receivable at entitlement, then the cash at payment. The NAV doesn't fall. | The same. |
 | Adjusted, with `DividendCashFlowModel` | With a ledger: the dividend is counted twice, with no error. | Refused: the dividend would be counted twice. |
 
+A bond works the same way with its coupons: on adjusted prices the price carries them, and
+on unadjusted prices a lifecycle model books them. Its redemption needs a model at either level.
+
 ## Alternatives Considered
 
 ### Dated events in Markets
@@ -219,8 +235,9 @@ missing model hides it today. The owner chose the asset type instead (decision 2
 
 ## Not Decided Here
 
-- Which event types each asset type lists, how they are named, and how a provider registers
-  them for an asset type of its own.
+- Which event types each asset type lists, how they are named, how each is marked as a cash
+  flow, a split or the end of a position, and how a provider registers them for an asset
+  type of its own.
 - How a valuation source that is a `TimeIndexTableRef`, with no configuration of its own,
   states `events_in_price`.
 - Whether `PortfolioStateTS` and `PortfolioCashFlowsTS` (positions, cash in each currency,
