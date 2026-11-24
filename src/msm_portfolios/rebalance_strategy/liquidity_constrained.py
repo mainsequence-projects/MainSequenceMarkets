@@ -22,8 +22,8 @@ class LiquidityConstrained(SizedBarStrategy):
 
     The order is fixed at the decision (#90). An observation's slice is at most
     ``max_liquidity_fraction`` of its available liquidity: an amount in the portfolio's
-    currency, or a quantity of the asset, turned into shares of the book with
-    ``total_notional``.
+    currency, or a quantity of the asset, turned into shares of the book with the book's
+    unit, the portfolio's initial NAV.
     """
 
     timing_mode: Literal["liquidity_constrained"] = "liquidity_constrained"
@@ -98,7 +98,7 @@ class LiquidityConstrained(SizedBarStrategy):
         bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
     ) -> dict[str, BarSlice]:
-        del event_time, book, bar_states, execution_context
+        del event_time, bar_states, execution_context
         observations = event_observations["available_liquidity"]
         rows_by_asset = {
             str(row[ASSET_IDENTIFIER_DIMENSION]): row
@@ -116,7 +116,7 @@ class LiquidityConstrained(SizedBarStrategy):
                 available_notional = liquidity * price
             capacity = available_notional * self.max_liquidity_fraction
             slices[asset] = BarSlice(
-                shares=self.shares_for_notional(capacity, price),
+                shares=self.shares_for_notional(capacity, price, book=book),
                 observed_available_liquidity=liquidity,
                 state={
                     "capacity_notional": capacity,

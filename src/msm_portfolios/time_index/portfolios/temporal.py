@@ -1,4 +1,4 @@
-"""Observation-driven temporal alignment for portfolio execution and valuation."""
+"""Observation-driven reads of a portfolio's asset inputs, with each asset's last row before."""
 
 from __future__ import annotations
 
@@ -9,12 +9,6 @@ from typing import Any
 import pandas as pd
 
 from ..constants import ASSET_IDENTIFIER
-
-
-def utc_index(values: Iterable[Any], *, name: str = "time_index") -> pd.DatetimeIndex:
-    """Return sorted, unique UTC timestamps without manufacturing observations."""
-    index = pd.DatetimeIndex(pd.to_datetime(list(values), utc=True), name=name)
-    return index.unique().sort_values()
 
 
 def normalize_asset_observations(frame: pd.DataFrame | None) -> pd.DataFrame:
@@ -127,112 +121,6 @@ def fetch_asset_observations(
     return window, seed
 
 
-def align_asset_observations(
-    observations: pd.DataFrame,
-    *,
-    target_index: pd.DatetimeIndex,
-    asset_identifiers: Iterable[str],
-    value_columns: Iterable[str],
-    maximum_staleness: Any,
-    required_coordinates: pd.DataFrame | None = None,
-    fail_on_missing_values: bool = False,
-) -> pd.DataFrame:
-    """Select each asset's last observation at or before explicit target times.
-
-    By default a held asset is valued at its last observed price, however old, and
-    an observation older than ``maximum_staleness`` is marked in the ``stale``
-    column. With ``fail_on_missing_values`` a required stale observation raises
-    instead. A required asset with no observation at or before a target always
-    raises (ADR 0058).
-    """
-    targets = utc_index(target_index)
-    assets = list(dict.fromkeys(str(value) for value in asset_identifiers))
-    columns = list(value_columns)
-    if len(targets) == 0 or not assets:
-        return pd.DataFrame()
-
-    required = (
-        pd.DataFrame(True, index=targets, columns=assets)
-        if required_coordinates is None
-        else required_coordinates.reindex(index=targets, columns=assets).fillna(False).astype(bool)
-    )
-
-    normalized = normalize_asset_observations(observations)
-    missing_columns = sorted(set(columns) - set(normalized.columns))
-    if missing_columns:
-        raise ValueError(
-            "Valuation source is missing required columns: " + ", ".join(missing_columns)
-        )
-
-    available_assets = set(normalized.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique())
-    absent_assets = sorted(set(assets) - available_assets)
-    absent_required_assets = [asset for asset in absent_assets if required[asset].any()]
-    if absent_required_assets:
-        raise ValueError(
-            "Valuation source is missing required assets: " + ", ".join(absent_required_assets)
-        )
-
-    flat = normalized.reset_index()
-    result_parts: dict[str, pd.DataFrame] = {}
-    observation_times: pd.DataFrame | None = None
-    for column in columns:
-        pivot = flat.pivot_table(
-            index="time_index",
-            columns=ASSET_IDENTIFIER,
-            values=column,
-            aggfunc="last",
-        ).reindex(columns=assets)
-        source_times = pd.DataFrame(
-            {asset: pivot.index.where(pivot[asset].notna()) for asset in pivot.columns},
-            index=pivot.index,
-        )
-        combined = pivot.index.union(targets).sort_values()
-        result_parts[column] = pivot.reindex(combined).ffill().reindex(targets)
-        if observation_times is None:
-            observation_times = source_times.reindex(combined).ffill().reindex(targets)
-
-    assert observation_times is not None
-    target_matrix = pd.DataFrame(
-        {asset: targets for asset in assets},
-        index=targets,
-    )
-    never_observed = observation_times.isna()
-    missing_required = never_observed & required
-    if missing_required.any().any():
-        details = [
-            f"{asset}@{timestamp.isoformat()}"
-            for timestamp, row in missing_required.iterrows()
-            for asset, is_missing in row.items()
-            if bool(is_missing)
-        ]
-        raise ValueError(
-            "No observed valuation at or before the target for " + ", ".join(details[:10])
-        )
-    stale = (target_matrix - observation_times) > pd.Timedelta(maximum_staleness)
-    stale_required = stale & required
-    if fail_on_missing_values and stale_required.any().any():
-        details = [
-            f"{asset}@{timestamp.isoformat()}"
-            for timestamp, row in stale_required.iterrows()
-            for asset, is_stale in row.items()
-            if bool(is_stale)
-        ]
-        raise ValueError(
-            "No sufficiently fresh valuation observation for " + ", ".join(details[:10])
-        )
-
-    stacked_parts = []
-    for column, values in result_parts.items():
-        series = values.stack(future_stack=True).rename(column)
-        stacked_parts.append(series)
-    stacked_parts.append((stale & ~never_observed).stack(future_stack=True).rename("stale"))
-    aligned = pd.concat(stacked_parts, axis=1)
-    aligned.index.names = ["time_index", ASSET_IDENTIFIER]
-    aligned = aligned[aligned[columns].notna().any(axis=1)]
-    aligned["stale"] = aligned["stale"].astype(bool)
-    return aligned.sort_index()
-
-
 def _latest_per_asset(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         return frame
@@ -246,9 +134,7 @@ def _latest_per_asset(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 __all__ = [
-    "align_asset_observations",
     "fetch_asset_observations",
     "normalize_asset_observations",
     "strictly_before",
-    "utc_index",
 ]

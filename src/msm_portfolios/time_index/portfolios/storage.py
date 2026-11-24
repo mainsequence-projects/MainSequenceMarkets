@@ -36,7 +36,8 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Timestamped portfolio weight storage keyed by time_index, "
         "portfolio_identifier, and asset_identifier. Stores "
-        "executed asset allocation weights and supporting price/volume facts."
+        "the weights of the assets each ledger event changed, with their prices and "
+        "volumes (ADR 0065)."
     )
     # The unique index leads with time, so it cannot find one portfolio's rows or
     # its last time without walking other portfolios' rows. This one can (issue 77).
@@ -88,7 +89,9 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Weight",
-            "description": "Executed/current allocation weight for this asset.",
+            "description": (
+                "The asset's position value over the NAV after the ledger event (ADR 0065)."
+            ),
         },
     )
     weight_before: Mapped[float | None] = mapped_column(
@@ -96,7 +99,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Weight Before",
-            "description": "Allocation weight before the rebalance execution.",
+            "description": "The asset's position value over the NAV before the ledger event.",
         },
     )
     price_current: Mapped[float | None] = mapped_column(
@@ -104,7 +107,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Price Current",
-            "description": "Asset price used for the current rebalance calculation.",
+            "description": "The price the ledger booked the asset at, in its own currency.",
         },
     )
     price_before: Mapped[float | None] = mapped_column(
@@ -112,7 +115,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Price Before",
-            "description": "Asset price from the previous rebalance reference.",
+            "description": "The asset's price on its previous weights row.",
         },
     )
     volume_current: Mapped[float | None] = mapped_column(
@@ -120,7 +123,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Volume Current",
-            "description": "Asset volume used for the current rebalance calculation.",
+            "description": "The bar volume the rebalance observed at the fill, if its strategy reads one.",
         },
     )
     volume_before: Mapped[float | None] = mapped_column(
@@ -128,30 +131,7 @@ class PortfolioWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         nullable=True,
         info={
             "label": "Volume Before",
-            "description": "Asset volume from the previous rebalance reference.",
-        },
-    )
-    held_shares: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Held Shares",
-            "description": (
-                "Shares of the asset after this row, in the rebalance book's unit (the NAV "
-                "at the portfolio's first rebalance). Null for strategies that record no "
-                "book (ADR 0059)."
-            ),
-        },
-    )
-    book_cash: Mapped[float | None] = mapped_column(
-        Float,
-        nullable=True,
-        info={
-            "label": "Book Cash",
-            "description": (
-                "The rebalance book's cash after this row's instant, in the portfolio's "
-                "currency and the book's unit. Null for strategies that record no book."
-            ),
+            "description": "The asset's volume on its previous weights row.",
         },
     )
 
@@ -478,8 +458,8 @@ class PortfoliosStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         info={
             "label": "Valuation Stale",
             "description": (
-                "True when a held asset was valued at its last observed price and that "
-                "price was older than ValuationAlignmentPolicy.maximum_staleness (ADR "
+                "True when the ledger valued a held asset at its last observed price and "
+                "that price was older than the valuation model's maximum_staleness (ADR "
                 "0058). A held asset is always valued, however old its price; null on "
                 "rows written before the marking existed."
             ),

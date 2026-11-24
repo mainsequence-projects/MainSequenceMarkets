@@ -92,7 +92,7 @@ def _portfolio_configuration_payload(portfolio_configuration: Any) -> dict[str, 
 
     raise TypeError(
         "portfolio_configuration must be a PortfolioConfiguration-like Pydantic "
-        "model, a PortfoliosUpdater-like object "
+        "model, a PortfolioValues-like object "
         "with build_configuration, or a dict payload."
     )
 

@@ -27,17 +27,22 @@ from msm_portfolios.api import (
     SignalWeightsSeries,
 )
 from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
+from msm_portfolios.accounting import (
+    MarketPriceValuationModel,
+    PortfolioAccountingConfiguration,
+)
 from msm_portfolios.configuration import (
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
-    PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
 )
+from msm_portfolios.time_index.portfolios.accounting import PortfolioEngine
 from msm_portfolios.time_index.portfolios.rebalance import (
     PortfolioRebalance,
     PortfolioRebalanceStateStorage,
 )
+from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_portfolios.rebalance_strategy import ImmediateSignal
 from tests.support.pinned_identities import _bound
 from tests.support.rebalance import PublishedTable
@@ -271,12 +276,16 @@ def _configuration(signal: ApplicationWeights) -> PortfolioConfiguration:
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=_prices(),
             valuation_asset_identifier="USD",
-            execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.0),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal,
                 rebalance_strategy_instance=ImmediateSignal(
                     calendar_events_instance=_prices(), calendar_identifier="XNYS"
                 ),
+            ),
+            accounting_configuration=PortfolioAccountingConfiguration(
+                initial_nav=1_000.0,
+                initial_state_time_index=T0,
+                position_valuation_model_instance=MarketPriceValuationModel(),
             ),
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="model-a-portfolio"),
@@ -285,7 +294,11 @@ def _configuration(signal: ApplicationWeights) -> PortfolioConfiguration:
 
 @pytest.fixture
 def rebalance_state(monkeypatch):
-    """The producer's private rebalance state: filled at T1, read by the weights node."""
+    """The producer's private rebalance state and ledger: filled at T1, booked by the run.
+
+    The ledger's run computes its rows (``PortfolioEngine.update``) and keeps them in
+    memory, where the weights and values nodes read them.
+    """
 
     state = pd.DataFrame(
         [
@@ -310,6 +323,7 @@ def rebalance_state(monkeypatch):
         ]
     )
     runs: list[str] = []
+    ledger: list[pd.DataFrame] = []
     monkeypatch.setattr(PortfolioRebalance, "run", lambda self, **_kwargs: runs.append("run"))
     monkeypatch.setattr(
         PortfolioRebalance,
@@ -318,7 +332,24 @@ def rebalance_state(monkeypatch):
             ["time_index", "portfolio_identifier", "rebalance_intent_id", "asset_identifier"]
         ),
     )
-    with _bound(PortfolioRebalanceStateStorage, "a0000000-0000-4000-8000-0000000000aa"):
+
+    def booked(self, **_kwargs):
+        return pd.concat(ledger) if ledger else pd.DataFrame()
+
+    def run(self, **_kwargs):
+        # A MetaTables run of the ledger runs its dependencies first.
+        for dependency in self.dependencies().values():
+            dependency.run()
+        frame = self.update()
+        if not frame.empty:
+            ledger.append(frame)
+
+    monkeypatch.setattr(PortfolioEngine, "get_df_between_dates", booked)
+    monkeypatch.setattr(PortfolioEngine, "run", run)
+    with (
+        _bound(PortfolioRebalanceStateStorage, "a0000000-0000-4000-8000-0000000000aa"),
+        _bound(PortfolioEventLedgerStorage, "a0000000-0000-4000-8000-0000000000bb"),
+    ):
         yield runs
 
 
@@ -335,17 +366,20 @@ def test_run_portfolio_publishes_weights_and_values_once(markets, rebalance_stat
 
     assert first.first_rebalance is True
     assert first.weights.written == 2
-    assert first.values.written == 2
+    assert first.values.written == 3
     assert first.portfolio.signal_uid == signal.signal_uid
     assert (second.first_rebalance, second.weights, second.values) == (False, None, None)
     assert rebalance_state == ["run", "run"]
     values = recipes.portfolio_history("model-a-portfolio")
-    assert values.count == 2
+    assert values.count == 3
+    # The ledger opens with its initial NAV in cash at T0, buys 6 AAA at 100 and 8 BBB
+    # at 50 at T1, and AAA is at 110 at T2: 660 + 400 = 1,060.
     assert list(values.values.index.get_level_values("time_index")) == [
         pd.Timestamp(T2),
         pd.Timestamp(T1),
+        pd.Timestamp(T0),
     ]
-    assert values.values["close"].tolist() == pytest.approx([1.06, 1.0])
+    assert values.values["close"].tolist() == pytest.approx([1.06, 1.0, 1.0])
     weights = recipes.weights_as_of(["model-a-portfolio"], at=T2)
     assert weights["weight"].to_dict() == {
         (pd.Timestamp(T1), "model-a-portfolio", "AAA"): 0.6,

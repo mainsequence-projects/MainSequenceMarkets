@@ -182,11 +182,12 @@ class SignalWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
 
 
 class PortfolioWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
-    """A portfolio's executed weights, keyed by ``Portfolio.unique_identifier`` and asset.
+    """A portfolio's weights, keyed by ``Portfolio.unique_identifier`` and asset.
 
     Rows: ``time_index``, ``asset_identifier``, ``weight``, ``weight_before``,
-    ``price_current``, ``price_before``, ``volume_current``, ``volume_before``,
-    ``held_shares`` and ``book_cash``; values other than the time and asset may be null.
+    ``price_current``, ``price_before``, ``volume_current`` and ``volume_before``; values
+    other than the time and asset may be null. ``PortfolioWeights`` publishes them from
+    the portfolio's ledger (ADR 0065).
     """
 
     __resource__: ClassVar[str] = "portfolio-weights"

@@ -235,9 +235,9 @@ def portfolio_preflight(
 
     A signal whose weights arrive through ``publish_signal_weights`` (an
     ``ApplicationWeights`` signal) must have a published observation; a signal that
-    computes its weights is computed by the run. A portfolio with a ledger runs through
-    ``PortfolioEngine``. With ``portfolio_identifier``, a retired portfolio is reported
-    too: it publishes nothing dated at or after its retirement.
+    computes its weights is computed by the run. With ``portfolio_identifier``, a
+    retired portfolio is reported too: it publishes nothing dated at or after its
+    retirement.
     """
 
     from msm_portfolios.api import SignalWeightsSeries
@@ -245,11 +245,6 @@ def portfolio_preflight(
     build = portfolio_configuration.portfolio_build_configuration
     signal = build.backtesting_weights_configuration.signal_weights_instance
     reasons: list[str] = []
-    if getattr(build, "accounting_configuration", None) is not None:
-        reasons.append(
-            "The portfolio keeps a ledger (accounting_configuration); it runs through "
-            "PortfolioEngine, not run_portfolio."
-        )
     signal_uid = str(signal.signal_uid)
     (bounds,) = SignalWeightsSeries.bounds([signal_uid])
     if bounds.row_count == 0 and not signal.computes_weights:
@@ -291,6 +286,7 @@ def run_portfolio(
     portfolio_configuration: Any,
     *,
     rebalance_output_table: Any = None,
+    event_ledger_output_table: Any = None,
     namespace: str | None = None,
     portfolio_resolver: Any = None,
     portfolio_description: str | None = None,
@@ -301,32 +297,36 @@ def run_portfolio(
     Runs, in order, the signal, the valuation source and the rebalance strategy's
     declared inputs (prices, calendar events), the rebalance state (into
     ``rebalance_output_table``, the producer's private ``PortfolioRebalanceStateTS``
-    instance), the executed weights and the values. A first run starts at the signal's
-    first observation. Creates the ``Portfolio`` row when it does not exist (its
-    manager is the caller) and records its signal on it.
+    instance), the ledger (into ``event_ledger_output_table``, its private
+    ``PortfolioEventLedgerTS`` instance), then publishes the weights and values the
+    ledger projects (ADR 0065). A first run starts at the signal's first observation.
+    Creates the ``Portfolio`` row when it does not exist (its manager is the caller)
+    and records its signal on it.
     """
 
     from msm_portfolios.api import PortfolioWeightsSeries
-    from msm_portfolios.time_index import PortfoliosUpdater
+    from msm_portfolios.time_index import PortfolioValues
 
     preflight = portfolio_preflight(portfolio_configuration)
     if not preflight.ready:
         raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
-    values_node = PortfoliosUpdater(
+    values_node = PortfolioValues(
         portfolio_configuration=portfolio_configuration,
         portfolio_resolver=portfolio_resolver,
         portfolio_description=portfolio_description,
         rebalance_output_table=rebalance_output_table,
+        event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
     )
+    portfolio = values_node._resolve_portfolio_identity()
+    identifier = str(portfolio.unique_identifier)
+    values_node._resolved_unique_identifier = identifier
     weights_node = values_node._ensure_portfolio_weights_node()
     if preflight.signal_first_time is not None:
         for node in (values_node, weights_node, weights_node.portfolio_rebalance):
             node.OFFSET_START = preflight.signal_first_time
-    portfolio = values_node._resolve_portfolio_identity()
-    identifier = str(portfolio.unique_identifier)
     (before,) = PortfolioWeightsSeries.bounds([identifier])
-    weights_publication = _run_capturing_weights(values_node, weights_node)
+    weights_publication = weights_node.run(update_tree=True)
     result = values_node.run(update_tree=False)
     (after,) = PortfolioWeightsSeries.bounds([identifier])
     return PortfolioRun(
@@ -335,19 +335,6 @@ def run_portfolio(
         values=result["portfolio_values"],
         first_rebalance=before.row_count == 0 and after.row_count > 0,
     )
-
-
-def _run_capturing_weights(values_node: Any, weights_node: Any) -> SeriesPublication | None:
-    """Run the chain up to the executed weights; answer the weights' publication."""
-
-    valuation_source = values_node.valuation_source
-    weights = weights_node.run(update_tree=True)
-    if valuation_source is not None and hasattr(valuation_source, "run"):
-        from metatables import TimeIndexTableRef
-
-        if not isinstance(valuation_source, TimeIndexTableRef):
-            valuation_source.run()
-    return weights
 
 
 # Private rows --------------------------------------------------------------------------

@@ -117,8 +117,8 @@ class ExecutionPolicy(BaseModel):
             return self.negative_cash_limit * nav
         if unit_value is None:
             raise ValueError(
-                "A fixed-amount negative cash limit needs a portfolio with a ledger: its "
-                "initial NAV gives the rebalance's book a currency (ADR 0059)."
+                "A fixed-amount negative cash limit needs the book's unit, the portfolio's "
+                "initial NAV, which gives the book a currency (ADR 0059, ADR 0065)."
             )
         return self.negative_cash_limit / unit_value
 

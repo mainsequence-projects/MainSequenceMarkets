@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-11-24). Drafted at the owner's request on 2026-11-24, from the analysis of
+Accepted (2026-11-24), implemented on `development` for 6.1.0. Drafted at the owner's
+request on 2026-11-24, from the analysis of
 [issue #133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133). The
 owner asked for it to be implemented the same day.
 
@@ -287,11 +288,58 @@ missing model hides it today. The owner chose the asset type instead (decision 2
 - Income in accounts and funds ([ADR 0062](0062-capital-given-to-a-virtual-fund.md),
   decision 15) is unchanged.
 
+## Implementation Notes
+
+### 2026-11-24: 6.1.0
+
+- **The ledger and its projections.** `PortfolioEngine` reads the build's valuation source
+  (`portfolio_valuations`); `PortfolioEngineConfiguration` gains `valuation_source_instance`
+  and `valuation_column`, and the engine depends on the source as `valuation_source`. An
+  event that changes a position records each asset's value before and after it in its
+  valuation summary's `extension_payload` (`position_values_before`, `position_values`),
+  so the weights are a projection of the ledger alone (`project_portfolio_weights`).
+  `project_portfolio_values` also gives `valuation_stale`. The values start at the ledger's
+  opening, `initial_state_time_index`, at 1. Before the first fill the ledger books nothing:
+  it reads prices only for the assets the portfolio trades.
+- **The nodes.** `PortfolioValues` replaces `PortfoliosUpdater`. `PortfolioWeights`
+  builds the portfolio's `PortfolioEngine`, and its `PortfolioRebalance`, once the
+  portfolio's identity is known. Both nodes take `rebalance_output_table` and
+  `event_ledger_output_table`. The ledger's update hash names the rebalance it reads, and so
+  the table that rebalance writes.
+- **The default execution model.** `default_execution_model` builds one
+  `InstrumentExecutionSpec` per traded asset. `quantity_step` may be `None`, which keeps
+  fractional quantities: a tiny lot step left rounding errors in the weights.
+- **The price level.** `InterpolatedPricesConfig.events_in_price` carries MetaTables'
+  `hash_excluded` marker: it changes no row the updater writes, so existing price tables
+  keep their update hash. `msm_portfolios.accounting.events` reads it from any source's
+  configuration; a source without it is adjusted.
+- **The refusal.** `require_booked_events` runs in `PortfolioEngine.update`, before
+  anything is booked, on the assets of the recorded fills. On adjusted prices it reads
+  nothing. Otherwise it reads the assets and their types from Markets in two requests, and
+  refuses an asset Markets does not know, whose events are unknown. The build configuration
+  refuses a lifecycle model that books an event the prices include.
+- **Event types.** `AssetType.event_types` is a nullable JSON column that the row reads as
+  a list. Revision `0038` sets every existing row, the built-in ones to their events and the
+  others to none. `AccountRegistrationAssetType.event_types` creates a new type with its
+  events.
+- **Removed with the plain kind.** Besides decision 9: `ValuationAlignmentPolicy` (the
+  valuation model holds the staleness setting), `align_asset_observations` and `utc_index`,
+  `PortfolioWeights.set_weights_frame`, `MarketPriceValuationModel.price_column`, and
+  `RebalanceStrategyBase.book_unit_value`; the strategies sized in money or volume take the
+  unit from the book (`SizedBarStrategy.book_unit`), and `bar_state` receives the book.
+- **Revision 0038** was run up, down and up again on SQLite and on PostgreSQL (TimescaleDB
+  2.22, PostgreSQL 17), where the account registration tests also wrote a type's events.
+- **Tests.** The recipe test runs `run_portfolio` through the ledger under both row backends:
+  6 AAA at 100 and 8 BBB at 50 on 1,000 USD, then AAA at 110, give a close of 1.06, the
+  value the weights path gave. Identities pinned in `tests/identity` rotate for the
+  portfolio configurations (they keep a ledger) and the strategies that had
+  `total_notional`; `InterpolatedPrices` keeps its hash.
+
 ## Not Verified
 
 - Whether a ledger with no lifecycle models, priced at market and charged a proportional
-  cost, gives the values `PortfoliosUpdater` gives today. The formulas were compared (ADR
-  0059, decision 5, and `project_portfolio_values`), not two runs.
+  cost, gives the values `PortfoliosUpdater` gave in every case. One case was run (see
+  "Implementation Notes"), with no cost.
 - Whether real portfolios exist now. The owner said there were none on 2026-11-18.
 - Whether the ledger's replay accepts a back-adjusted price source, which rewrites its past
   prices at each event. Adjusted prices are the default, so this concerns most portfolios.

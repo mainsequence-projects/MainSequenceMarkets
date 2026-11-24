@@ -18,7 +18,7 @@ from msm_portfolios.contrib.prices.updaters import (
 from msm_portfolios.time_index.portfolios.calendar_events import PortfolioCalendarEvents
 from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalance
 from msm_portfolios.time_index.portfolios.weights import PortfolioWeights
-from msm_portfolios.time_index.portfolios import PortfoliosUpdater
+from msm_portfolios.time_index.portfolios import PortfolioValues
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCalendarEventsStorage,
     PortfolioRebalanceStateStorage,
@@ -72,7 +72,7 @@ def test_published_nodes_validate_against_their_markets_storage() -> None:
     """ADR 0060: the nodes of the three series publish; their storage is Markets' own."""
 
     registered = set(portfolio_sqlalchemy_models())
-    for node_cls in (PortfolioWeights, PortfoliosUpdater, SignalWeights):
+    for node_cls in (PortfolioWeights, PortfolioValues, SignalWeights):
         output_table = node_cls._required_output_table()
         assert output_table in registered
         assert node_cls._column_dtypes_map_for_storage() == storage_column_dtypes_map(output_table)

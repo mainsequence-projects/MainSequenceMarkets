@@ -77,6 +77,20 @@ class AssetTypeTable(MarketsMetaTableMixin, MarketsBase):
             "description": "Structured metadata JSON for provider, application, or workflow-specific attributes.",
         },
     )
+    event_types: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+        default=list,
+        info={
+            "label": "Event Types",
+            "description": (
+                "The events an asset of this type can have, such as dividend, split, coupon, "
+                "redemption or expiry (ADR 0065). On unadjusted prices a portfolio's ledger "
+                "must book each of them; a portfolio holding an asset with an event nothing "
+                "books refuses to run."
+            ),
+        },
+    )
 
 
 __all__ = ["AssetTypeTable"]

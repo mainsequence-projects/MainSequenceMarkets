@@ -10,15 +10,12 @@ from pydantic import ValidationError
 
 from metatables import TimeIndexMetaTable, TimeIndexTableUpdater
 from metatables.updaters.configuration import (
-    ConfigRebuilder,
-    Serializer,
     hash_signature,
 )
 from msm.time_index.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, PortfolioTable
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
-    ValuationAlignmentPolicy,
     canonical_rebalance_strategy_configuration,
     canonical_valuation_source_configuration,
 )
@@ -29,8 +26,8 @@ from msm_portfolios.time_index import (
     PortfolioCalendarEventsConfiguration,
     PortfolioCanonicalUpdaterConfiguration,
     PortfolioRebalance,
+    PortfolioValues,
     PortfolioWeights,
-    PortfoliosUpdater,
     SignalWeights,
     SignalWeightsConfiguration,
 )
@@ -43,10 +40,7 @@ from msm_portfolios.time_index.portfolios.storage import (
     PortfoliosStorage,
 )
 from msm_portfolios.time_index.portfolios.rebalance import normalize_rebalance_input
-from msm_portfolios.time_index.portfolios.temporal import (
-    align_asset_observations,
-    fetch_asset_observations,
-)
+from msm_portfolios.time_index.portfolios.temporal import fetch_asset_observations
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
 from msm_portfolios.models import portfolio_sqlalchemy_models
 from msm_portfolios.rebalance_strategy import (
@@ -58,11 +52,6 @@ from msm_portfolios.rebalance_strategy import (
     TimeWeighted,
     TrailingAverageDailyVolumeParticipation,
     VolumeParticipation,
-)
-from tests.support.portfolio_values import (
-    FrameSource,
-    asset_frame,
-    portfolio_values_node_for_frames,
 )
 
 
@@ -109,7 +98,7 @@ def test_portfolio_nodes_source_schema_from_storage(node_cls, storage_cls) -> No
     [
         (PortfolioWeights, PortfolioWeightsStorage),
         (SignalWeights, SignalWeightsStorage),
-        (PortfoliosUpdater, PortfoliosStorage),
+        (PortfolioValues, PortfoliosStorage),
     ],
 )
 def test_published_nodes_validate_against_the_markets_contract(node_cls, storage_cls) -> None:
@@ -121,7 +110,7 @@ def test_published_nodes_validate_against_the_markets_contract(node_cls, storage
 
 
 def test_portfolio_run_controls() -> None:
-    parameters = inspect.signature(PortfoliosUpdater.run).parameters
+    parameters = inspect.signature(PortfolioValues.run).parameters
     assert {"update_tree", "update_only_tree", "update_pointers"} <= set(parameters)
     assert "force_update" not in parameters
     assert "override_update_stats" not in parameters
@@ -213,10 +202,7 @@ def test_analytics_configuration_declares_full_sampling_semantics() -> None:
 def test_portfolio_build_configuration_is_observation_driven() -> None:
     assert "valuation_source_instance" in PortfolioBuildConfiguration.model_fields
     assert "valuation_column" in PortfolioBuildConfiguration.model_fields
-    assert "valuation_alignment_policy" in PortfolioBuildConfiguration.model_fields
-    assert "portfolio_prices_frequency" not in PortfolioBuildConfiguration.model_fields
-    assert "price_alignment_policy" not in PortfolioBuildConfiguration.model_fields
-    assert ValuationAlignmentPolicy().fail_on_missing_values is False
+    assert PortfolioBuildConfiguration.model_fields["accounting_configuration"].is_required()
 
 
 def test_valuation_source_configuration_uses_sdk_identity() -> None:
@@ -251,32 +237,12 @@ def test_rebalance_strategy_serialization_distinguishes_temporal_owners() -> Non
     assert "calendar_event" in str(close)
 
 
-@pytest.mark.parametrize(
-    "build",
-    [
-        lambda: VolumeParticipation(execution_bars_instance=valuation_source("bars")),
-        lambda: LiquidityConstrained(liquidity_source_instance=valuation_source("liquidity")),
-        lambda: TrailingAverageDailyVolumeParticipation(
-            daily_liquidity_instance=valuation_source("daily"),
-            execution_bars_instance=valuation_source("bars"),
-        ),
-    ],
-    ids=["volume participation", "liquidity constrained", "trailing ADV"],
-)
-def test_a_sized_strategy_without_a_size_is_refused(build) -> None:
-    # The size is never a constant of the strategy: whoever runs it gives it (#113).
-    with pytest.raises(ValidationError) as refused:
-        build()
-
-    assert [error["loc"] for error in refused.value.errors()] == [("total_notional",)]
-
-
 def test_rebalance_strategy_serialization_includes_declared_dependency_identity() -> None:
     first = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"), total_notional=1_000.0)
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-a"))
     )
     second = canonical_rebalance_strategy_configuration(
-        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"), total_notional=1_000.0)
+        VolumeParticipation(execution_bars_instance=valuation_source("bars-b"))
     )
 
     assert first != second
@@ -325,20 +291,6 @@ def test_calendar_strategy_offset_changes_execution_and_hash() -> None:
     assert base_configuration["config"]["event_offset"] == "PT0S"
     assert shifted_configuration["config"]["event_offset"] == "PT5M"
     assert hash_signature(base_configuration)[0] != hash_signature(shifted_configuration)[0]
-
-
-def test_valuation_staleness_is_sdk_hash_serializable_and_reversible() -> None:
-    serialized = Serializer().serialize_init_kwargs(
-        {
-            "policy": ValuationAlignmentPolicy(
-                maximum_staleness=timedelta(days=2),
-            )
-        }
-    )
-
-    assert serialized["policy"]["serialized_model"]["maximum_staleness"] == "P2D"
-    assert hash_signature(serialized)[0]
-    assert ConfigRebuilder().rebuild(serialized)["policy"].maximum_staleness == timedelta(days=2)
 
 
 def always_open_event_frame(first: str, last: str) -> pd.DataFrame:
@@ -549,27 +501,21 @@ def test_calendar_strategy_weekly_cadence_produces_sparse_execution_events() -> 
     assert result["time_index"].tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
 
 
-def test_portfolio_values_depend_on_executed_weights_not_signal_directly() -> None:
-    node = object.__new__(PortfoliosUpdater)
+def test_portfolio_values_depend_on_the_weights() -> None:
+    node = object.__new__(PortfolioValues)
     node.portfolio_configuration = object()
     weights = object()
-    valuations = object()
-    node.valuation_source = valuations
     node._ensure_portfolio_weights_node = lambda: weights
-    assert node.dependencies() == {
-        "portfolio_weights": weights,
-        "valuation_source": valuations,
-    }
+    assert node.dependencies() == {"portfolio_weights": weights}
 
 
-def test_portfolio_weights_runs_the_signal_then_projects_rebalance_state() -> None:
+def test_portfolio_weights_depend_on_the_ledger() -> None:
+    """The weights project the ledger, which runs the rebalance and prices (ADR 0065)."""
     node = object.__new__(PortfolioWeights)
     node._portfolio_configuration = object()
-    node.portfolio_rebalance = SimpleNamespace(signal_weights=object())
-    assert node.dependencies() == {
-        "signal_weights": node.portfolio_rebalance.signal_weights,
-        "portfolio_rebalance": node.portfolio_rebalance,
-    }
+    engine = object()
+    node.ensure_portfolio_engine = lambda: engine
+    assert node.dependencies() == {"portfolio_engine": engine}
 
 
 def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:
@@ -579,7 +525,7 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
     node._portfolio_configuration = object()
     node.signal_weights = signal
     node.rebalance_strategy = LiquidityConstrained(
-        liquidity_source_instance=liquidity, total_notional=1_000.0
+        liquidity_source_instance=liquidity
     )
 
     # The signal is a published series (ADR 0060): read by the rebalance, never run by it.
@@ -665,66 +611,6 @@ def test_rebalance_input_contract_rejects_missing_strategy_fields() -> None:
             observations,
             dependency_name="execution_bars",
             contract=contract,
-        )
-
-
-def test_per_asset_asof_alignment_uses_distinct_seed_observations() -> None:
-    observations = asset_frame(
-        [
-            ("2026-01-01T20:00:00Z", "btc", 100.0),
-            ("2026-01-02T19:00:00Z", "eth", 200.0),
-            ("2026-01-03T20:00:00Z", "btc", 110.0),
-        ]
-    )
-    target = pd.DatetimeIndex(["2026-01-03T20:00:00Z"])
-    aligned = align_asset_observations(
-        observations,
-        target_index=target,
-        asset_identifiers=["btc", "eth"],
-        value_columns=["close"],
-        maximum_staleness=timedelta(days=2),
-    )
-    assert aligned.loc[(pd.Timestamp("2026-01-03T20:00:00Z"), "btc"), "close"] == 110.0
-    assert aligned.loc[(pd.Timestamp("2026-01-03T20:00:00Z"), "eth"), "close"] == 200.0
-
-
-def test_per_asset_asof_alignment_marks_an_old_price_stale_and_uses_it() -> None:
-    """A held asset is valued at its last observed price, however old (ADR 0058)."""
-    observations = asset_frame([("2026-01-01T20:00:00Z", "btc", 100.0)])
-    aligned = align_asset_observations(
-        observations,
-        target_index=pd.DatetimeIndex(["2026-01-02T08:00:00Z", "2026-01-03T20:00:00Z"]),
-        asset_identifiers=["btc"],
-        value_columns=["close"],
-        maximum_staleness=timedelta(hours=24),
-    )
-
-    assert aligned["close"].tolist() == [100.0, 100.0]
-    assert aligned["stale"].tolist() == [False, True]
-
-
-def test_per_asset_asof_alignment_can_refuse_a_stale_price_as_a_policy() -> None:
-    observations = asset_frame([("2026-01-01T20:00:00Z", "btc", 100.0)])
-    with pytest.raises(ValueError, match="No sufficiently fresh valuation"):
-        align_asset_observations(
-            observations,
-            target_index=pd.DatetimeIndex(["2026-01-03T20:00:00Z"]),
-            asset_identifiers=["btc"],
-            value_columns=["close"],
-            maximum_staleness=timedelta(hours=24),
-            fail_on_missing_values=True,
-        )
-
-
-def test_per_asset_asof_alignment_raises_only_without_any_observation() -> None:
-    observations = asset_frame([("2026-01-02T20:00:00Z", "btc", 100.0)])
-    with pytest.raises(ValueError, match="No observed valuation at or before the target"):
-        align_asset_observations(
-            observations,
-            target_index=pd.DatetimeIndex(["2026-01-01T20:00:00Z"]),
-            asset_identifiers=["btc"],
-            value_columns=["close"],
-            maximum_staleness=timedelta(hours=24),
         )
 
 
@@ -856,221 +742,6 @@ def executed_weights_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index(["time_index", PORTFOLIO_IDENTIFIER, ASSET_IDENTIFIER])
 
 
-def test_executed_weights_discard_out_of_range_seed_rows() -> None:
-    start = pd.Timestamp("2026-01-01T00:00:00Z")
-    current_time = pd.Timestamp("2026-01-02T00:00:00Z")
-    current = executed_weights_frame(
-        [
-            {
-                "time_index": current_time,
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-btc",
-                "weight": 0.6,
-                "weight_before": 0.5,
-            },
-            {
-                "time_index": current_time,
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-eth",
-                "weight": 0.4,
-                "weight_before": 0.5,
-            },
-        ]
-    )
-    source = ExecutedWeightsSource(window=current, seed=current)
-    node = object.__new__(PortfoliosUpdater)
-    node._unique_identifier = lambda: "portfolio-1"
-    node._ensure_portfolio_weights_node = lambda: source
-    node.signal_weights = SimpleNamespace(get_asset_list=lambda: ["asset-btc", "asset-eth"])
-
-    result = node._executed_weights_between(
-        start=start.to_pydatetime(),
-        end=current_time.to_pydatetime(),
-    )
-
-    assert len(result) == 2
-    assert not result.index.has_duplicates
-    assert set(result.index.get_level_values("time_index")) == {current_time}
-    assert len(source.seed_calls) == 1
-    assert source.seed_calls[0]["dimension_range_map"] == [
-        {
-            "coordinate": {
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-btc",
-            },
-            "end_date": start.to_pydatetime(),
-            "end_date_operand": "<",
-        },
-        {
-            "coordinate": {
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-eth",
-            },
-            "end_date": start.to_pydatetime(),
-            "end_date_operand": "<",
-        },
-    ]
-
-
-def test_executed_weights_reject_duplicate_current_window_coordinates() -> None:
-    current_time = pd.Timestamp("2026-01-02T00:00:00Z")
-    duplicate_window = executed_weights_frame(
-        [
-            {
-                "time_index": current_time,
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-btc",
-                "weight": 0.6,
-                "weight_before": 0.5,
-            },
-            {
-                "time_index": current_time,
-                PORTFOLIO_IDENTIFIER: "portfolio-1",
-                ASSET_IDENTIFIER: "asset-btc",
-                "weight": 0.7,
-                "weight_before": 0.6,
-            },
-        ]
-    )
-    source = ExecutedWeightsSource(
-        window=duplicate_window,
-        seed=duplicate_window.iloc[0:0],
-    )
-    node = object.__new__(PortfoliosUpdater)
-    node._unique_identifier = lambda: "portfolio-1"
-    node._ensure_portfolio_weights_node = lambda: source
-    node.signal_weights = SimpleNamespace(get_asset_list=lambda: ["asset-btc"])
-
-    with pytest.raises(
-        ValueError,
-        match="Persisted portfolio weight window contains duplicate canonical weight coordinates",
-    ):
-        node._executed_weights_between(
-            start=pd.Timestamp("2026-01-01T00:00:00Z").to_pydatetime(),
-            end=current_time.to_pydatetime(),
-        )
-
-
-def test_strict_portfolio_valuation_ignores_missing_zero_exposure_asset() -> None:
-    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
-    valuations = asset_frame(
-        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(days)]
-    )
-    weights = pd.DataFrame(
-        [
-            (days[0], "btc", 1.0, 0.0),
-            (days[0], "holx", 0.0, 0.0),
-            (days[1], "btc", 1.0, 1.0),
-            (days[1], "holx", 0.0, 0.0),
-        ],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-    node = portfolio_values_node_for_frames(
-        valuations=valuations,
-        weights=weights,
-        timestamps=days,
-    )
-
-    result = node._calculate_portfolio_workflow_values()
-
-    assert result.index.tolist() == days.tolist()
-    assert "holx" in weights.index.get_level_values(ASSET_IDENTIFIER)
-
-
-def test_strict_portfolio_valuation_requires_entry_price() -> None:
-    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
-    valuations = asset_frame(
-        [(timestamp.isoformat(), "btc", 100.0 + offset) for offset, timestamp in enumerate(days)]
-    )
-    weights = pd.DataFrame(
-        [
-            (days[0], "btc", 1.0, 0.0),
-            (days[0], "holx", 0.0, 0.0),
-            (days[1], "btc", 0.75, 1.0),
-            (days[1], "holx", 0.25, 0.0),
-        ],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-    node = portfolio_values_node_for_frames(
-        valuations=valuations,
-        weights=weights,
-        timestamps=days,
-    )
-
-    with pytest.raises(ValueError, match="missing required assets: holx"):
-        node._calculate_portfolio_workflow_values()
-
-
-def test_portfolio_valuation_uses_a_stale_exit_price_instead_of_raising() -> None:
-    """holx's last price is a day old at its exit; it is used, never refused."""
-    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
-    valuations = asset_frame(
-        [
-            *(
-                (timestamp.isoformat(), "btc", 100.0 + offset)
-                for offset, timestamp in enumerate(days)
-            ),
-            (days[0].isoformat(), "holx", 50.0),
-        ]
-    )
-    weights = pd.DataFrame(
-        [
-            (days[0], "btc", 0.75, 0.0),
-            (days[0], "holx", 0.25, 0.0),
-            (days[1], "btc", 1.0, 0.75),
-            (days[1], "holx", 0.0, 0.25),
-        ],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-    node = portfolio_values_node_for_frames(
-        valuations=valuations,
-        weights=weights,
-        timestamps=days,
-    )
-
-    result = node._calculate_portfolio_workflow_values()
-
-    assert result.index.tolist() == days.tolist()
-    # Day 1: btc rises 100 -> 101 and holx is held at its day-0 price, 50, a day old
-    # against a 12-hour maximum_staleness: the row is marked.
-    assert result.loc[days[1], "return"] == pytest.approx(0.75 * (101.0 / 100.0 - 1.0))
-    assert result["valuation_stale"].tolist() == [False, True, False]
-
-
-def test_strict_portfolio_valuation_stops_requiring_prices_after_exit() -> None:
-    days = pd.date_range("2026-01-01", periods=3, freq="D", tz="UTC")
-    valuations = asset_frame(
-        [
-            *(
-                (timestamp.isoformat(), "btc", 100.0 + offset)
-                for offset, timestamp in enumerate(days)
-            ),
-            (days[0].isoformat(), "holx", 50.0),
-            (days[1].isoformat(), "holx", 51.0),
-        ]
-    )
-    weights = pd.DataFrame(
-        [
-            (days[0], "btc", 0.75, 0.0),
-            (days[0], "holx", 0.25, 0.0),
-            (days[1], "btc", 1.0, 0.75),
-            (days[1], "holx", 0.0, 0.25),
-        ],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-    node = portfolio_values_node_for_frames(
-        valuations=valuations,
-        weights=weights,
-        timestamps=days,
-    )
-
-    result = node._calculate_portfolio_workflow_values()
-
-    assert result.index.tolist() == days.tolist()
-    assert result.loc[days[1], "return"] == pytest.approx(0.0125)
-    assert result.loc[days[2], "return"] == pytest.approx(102.0 / 101.0 - 1.0)
-
-
 def test_immediate_strategy_builds_complete_rebalance_state_at_the_next_prices() -> None:
     timestamps = pd.DatetimeIndex(
         ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],
@@ -1111,185 +782,12 @@ def test_immediate_strategy_builds_complete_rebalance_state_at_the_next_prices()
     assert btc["weight_before"] == pytest.approx(0.5)
 
 
-def test_portfolio_weights_projects_only_state_events_that_change_execution() -> None:
-    first_event = pd.Timestamp("2026-03-09T20:00:00Z")
-    next_event = pd.Timestamp("2026-03-10T17:00:00Z")
-    state = pd.DataFrame(
-        [
-            (
-                first_event,
-                "portfolio",
-                "intent-a",
-                "btc",
-                first_event,
-                "available_liquidity",
-                "pending",
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                100.0,
-                None,
-                0.0,
-                None,
-                0.0,
-                "{}",
-            ),
-            (
-                next_event,
-                "portfolio",
-                "intent-a",
-                "btc",
-                first_event,
-                "available_liquidity",
-                "partial",
-                1.0,
-                0.0,
-                0.25,
-                0.25,
-                0.75,
-                101.0,
-                1.0,
-                25.0,
-                None,
-                2500.0,
-                "{}",
-            ),
-        ],
-        columns=[
-            "time_index",
-            PORTFOLIO_IDENTIFIER,
-            "rebalance_intent_id",
-            ASSET_IDENTIFIER,
-            "target_signal_time_index",
-            "event_source",
-            "execution_status",
-            "target_weight",
-            "weight_before",
-            "weight_after",
-            "executed_weight_delta",
-            "remaining_weight_delta",
-            "execution_price",
-            "executed_quantity",
-            "executed_notional",
-            "observed_volume",
-            "observed_available_liquidity",
-            "strategy_state",
-        ],
-    ).set_index(["time_index", PORTFOLIO_IDENTIFIER, "rebalance_intent_id", ASSET_IDENTIFIER])
-    node = object.__new__(PortfolioWeights)
-    node.portfolio_rebalance = FrameSource(state)
-    node._latest_projection_time_index_value = lambda: None
-    node._retirement_boundary = lambda: None
-    node._resolve_portfolio_identifier = lambda: "portfolio"
-    node._projection_window = lambda _latest: (
-        first_event.to_pydatetime(),
-        next_event.to_pydatetime(),
-    )
-    node._last_projected_weights = lambda _latest: None
-    result = node._calculate_projected_weights()
-    assert result.index.get_level_values("time_index").unique().tolist() == [next_event]
-    assert result.index.get_level_values(ASSET_IDENTIFIER).tolist() == ["btc"]
-    assert result.loc[(next_event, "btc"), "weight"] == pytest.approx(0.25)
-
-
-def test_weekly_weights_can_drive_daily_canonical_valuations() -> None:
-    days = pd.date_range("2026-01-01", periods=10, freq="D", tz="UTC")
-    valuation_rows = [
-        (timestamp, asset, 100.0 + day_number)
-        for day_number, timestamp in enumerate(days)
-        for asset in ("btc", "eth")
-    ]
-    valuations = pd.DataFrame(
-        valuation_rows,
-        columns=["time_index", ASSET_IDENTIFIER, "close"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-    weight_times = [days[0], days[7]]
-    weights = pd.DataFrame(
-        [
-            (timestamp, asset, 0.5, 0.0 if timestamp == days[0] else 0.5)
-            for timestamp in weight_times
-            for asset in ("btc", "eth")
-        ],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-
-    node = object.__new__(PortfoliosUpdater)
-    node.valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_asset_identifier = "USD"
-    node.fx_source = None
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(maximum_staleness=timedelta(days=2))
-    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
-    node.commission_fee = 0.0
-    node._latest_portfolio_time_index_value = lambda: None
-    node._valuation_window = lambda _latest: (days[0].to_pydatetime(), days[-1].to_pydatetime())
-    node._executed_weights_between = lambda **_kwargs: weights
-    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
-        close=(frame["return"] + 1.0).cumprod()
-    )
-
-    result = node._calculate_portfolio_workflow_values()
-    assert result.index.tolist() == days.tolist()
-    assert len(weight_times) == 2
-    assert len(result) == 10
-
-
-def test_portfolio_values_preserve_persisted_close_timestamps_and_rerun_noop() -> None:
-    close_times = pd.DatetimeIndex(
-        calendar_schedule()["market_close"],
-        name="time_index",
-    )
-    valuations = asset_frame(
-        [
-            (timestamp.isoformat(), "btc", 100.0 + offset)
-            for offset, timestamp in enumerate(close_times)
-        ]
-    )
-    weights = pd.DataFrame(
-        [(close_times[0], "btc", 1.0, 0.0)],
-        columns=["time_index", ASSET_IDENTIFIER, "weight", "weight_before"],
-    ).set_index(["time_index", ASSET_IDENTIFIER])
-
-    node = object.__new__(PortfoliosUpdater)
-    node.valuation_source = FrameSource(valuations)
-    node.valuation_column = "close"
-    node.valuation_asset_identifier = "USD"
-    node.fx_source = None
-    node.valuation_alignment_policy = ValuationAlignmentPolicy(maximum_staleness=timedelta(days=4))
-    node.signal_weights = SimpleNamespace(get_asset_uid_to_override_portfolio_price=lambda: None)
-    node.commission_fee = 0.0
-    node._latest_portfolio_time_index_value = lambda: None
-    node._valuation_window = lambda _latest: (
-        close_times[0].to_pydatetime(),
-        close_times[-1].to_pydatetime(),
-    )
-    node._executed_weights_between = lambda **_kwargs: weights
-    node._apply_cumulative_portfolio_values = lambda frame: frame.assign(
-        close=(frame["return"] + 1.0).cumprod()
-    )
-
-    result = node._calculate_portfolio_workflow_values()
-
-    assert result.index.tolist() == close_times.tolist()
-    assert result["close_time"].tolist() == close_times.tolist()
-
-    latest = close_times[-1]
-    node._latest_portfolio_time_index_value = lambda: latest
-    node._valuation_window = lambda _latest: (
-        latest.to_pydatetime(),
-        (latest + pd.Timedelta(hours=1)).to_pydatetime(),
-    )
-    assert node._calculate_portfolio_workflow_values().empty
-
-
 def test_portfolio_core_contains_no_generic_date_range_or_resample() -> None:
     weights_source = inspect.getsource(PortfolioWeights)
-    values_source = inspect.getsource(PortfoliosUpdater)
+    values_source = inspect.getsource(PortfolioValues)
     assert "pd.date_range" not in weights_source + values_source
     assert ".resample(" not in values_source
-    assert not hasattr(PortfoliosUpdater, "_generate_new_index")
+    assert not hasattr(PortfolioValues, "_generate_new_index")
 
 
 def test_analytics_uses_actual_source_timestamp_not_bucket_label() -> None:
@@ -1347,7 +845,6 @@ def test_trailing_daily_volume_strategy_declares_both_observed_sources() -> None
     strategy = TrailingAverageDailyVolumeParticipation(
         daily_liquidity_instance=daily,
         execution_bars_instance=intraday,
-        total_notional=1_000.0,
     )
 
     assert strategy.declared_dependencies() == {
@@ -1402,7 +899,6 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
         rebalance_start="00:00",
         rebalance_end="23:59",
         max_percent_volume_in_bar=0.1,
-        total_notional=1_000.0,
     )
     signal_time = pd.Timestamp("2026-01-01T00:00:00Z")
     event_times = pd.DatetimeIndex(["2026-01-01T01:00:00Z", "2026-01-01T02:00:00Z"])
@@ -1417,6 +913,7 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
     first = strategy.build_transitions(
+        book_unit_value=1_000.0,
         start=event_times[0],
         end=event_times[0],
         signal_observations=signals,
@@ -1429,6 +926,7 @@ def test_volume_participation_persists_partial_progress_and_restarts() -> None:
     assert first.iloc[0]["weight_after"] == pytest.approx(0.02)
 
     resumed = strategy.build_transitions(
+        book_unit_value=1_000.0,
         start=event_times[1],
         end=event_times[1],
         signal_observations=pd.DataFrame(),
@@ -1445,7 +943,6 @@ def test_liquidity_strategy_writes_no_row_when_capacity_is_zero() -> None:
     liquidity_source = valuation_source("liquidity")
     strategy = LiquidityConstrained(
         liquidity_source_instance=liquidity_source,
-        total_notional=1_000.0,
     )
     signal_time = pd.Timestamp("2026-01-01T00:00:00Z")
     event_time = pd.Timestamp("2026-01-01T01:00:00Z")
@@ -1459,6 +956,7 @@ def test_liquidity_strategy_writes_no_row_when_capacity_is_zero() -> None:
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
     result = strategy.build_transitions(
+        book_unit_value=1_000.0,
         start=event_time,
         end=event_time,
         signal_observations=signals,
@@ -1475,7 +973,6 @@ def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> N
         rebalance_start="00:00",
         rebalance_end="23:59",
         max_percent_volume_in_bar=0.1,
-        total_notional=1_000.0,
     )
     first_event = pd.Timestamp("2026-01-01T01:00:00Z")
     second_event = pd.Timestamp("2026-01-01T02:00:00Z")
@@ -1489,6 +986,7 @@ def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> N
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
+        book_unit_value=1_000.0,
         start=first_event,
         end=first_event,
         signal_observations=first_signal,
@@ -1508,6 +1006,7 @@ def test_new_signal_supersedes_unfinished_intent_before_partial_execution() -> N
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     second = strategy.build_transitions(
+        book_unit_value=1_000.0,
         start=second_event,
         end=second_event,
         signal_observations=second_signal,
@@ -1534,7 +1033,6 @@ def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price(
         execution_end="23:59",
         max_daily_participation=0.10,
         max_bar_participation=0.20,
-        total_notional=10_000.0,
     )
     signal_time = pd.Timestamp("2025-12-31T22:00:00Z")
     event_times = pd.DatetimeIndex(
@@ -1569,6 +1067,7 @@ def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price(
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
     result = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=event_times[0],
         end=event_times[-1],
         signal_observations=signals,
@@ -1581,7 +1080,7 @@ def test_trailing_daily_volume_uses_prior_capacity_but_intraday_execution_price(
     assert result["time_index"].tolist() == list(event_times[:2])
     assert result["execution_price"].tolist() == [50.0, 60.0]
     # Shares of the $10,000 book: 20 and 500 / 60 shares of the asset.
-    assert (result["executed_quantity"] * strategy.total_notional).tolist() == pytest.approx(
+    assert (result["executed_quantity"] * 10_000.0).tolist() == pytest.approx(
         [20.0, 500.0 / 60.0]
     )
     # The weights come from the book's shares at each bar's price: 0.17 of a NAV of 1.02.
@@ -1605,7 +1104,6 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
         execution_end="23:59",
         max_daily_participation=0.10,
         max_bar_participation=1.0,
-        total_notional=10_000.0,
     )
     first_event = pd.Timestamp("2026-01-01T10:00:00Z")
     second_event = pd.Timestamp("2026-01-01T11:00:00Z")
@@ -1625,6 +1123,7 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=first_event,
         end=first_event,
         signal_observations=first_signal,
@@ -1644,6 +1143,7 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     resumed = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=second_event,
         end=second_event,
         signal_observations=second_signal,
@@ -1659,7 +1159,7 @@ def test_trailing_daily_volume_daily_cap_survives_restart_and_target_supersessio
     # The newer target replaces the running one and trades the $500 left of the cap.
     assert resumed["execution_status"].tolist() == ["partial"]
     assert resumed.iloc[-1]["target_weight"] == 0.5
-    assert resumed.iloc[-1]["executed_quantity"] * strategy.total_notional * 50.0 == (
+    assert resumed.iloc[-1]["executed_quantity"] * 10_000.0 * 50.0 == (
         pytest.approx(500.0)
     )
     assert resumed.iloc[-1]["weight_after"] == pytest.approx(0.15)
@@ -1675,7 +1175,6 @@ def test_trailing_daily_volume_waits_for_required_completed_history() -> None:
         history_lookback_days=10,
         execution_start="00:00",
         execution_end="23:59",
-        total_notional=10_000.0,
     )
     event_time = pd.Timestamp("2026-01-01T10:00:00Z")
     signals = pd.DataFrame(
@@ -1692,6 +1191,7 @@ def test_trailing_daily_volume_waits_for_required_completed_history() -> None:
     ).set_index(["time_index", ASSET_IDENTIFIER])
 
     result = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=event_time,
         end=event_time,
         signal_observations=signals,
@@ -1721,7 +1221,6 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
         execution_end="23:59",
         max_daily_participation=0.10,
         max_bar_participation=1.0,
-        total_notional=10_000.0,
     )
     first_event = pd.Timestamp("2026-01-01T10:00:00Z")
     next_event = pd.Timestamp("2026-01-02T10:00:00Z")
@@ -1741,6 +1240,7 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     first = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=first_event,
         end=first_event,
         signal_observations=signals,
@@ -1762,6 +1262,7 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
         columns=["time_index", ASSET_IDENTIFIER, "close", "volume"],
     ).set_index(["time_index", ASSET_IDENTIFIER])
     resumed = strategy.build_transitions(
+        book_unit_value=10_000.0,
         start=next_event,
         end=next_event,
         signal_observations=pd.DataFrame(),
@@ -1778,7 +1279,7 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
 
 
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
-    assert PortfoliosUpdater.asset_column is None
+    assert PortfolioValues.asset_column is None
     assert PortfolioWeights.asset_column == ASSET_IDENTIFIER
     assert SignalWeights.asset_column == ASSET_IDENTIFIER
 

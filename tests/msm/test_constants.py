@@ -70,11 +70,13 @@ def test_asset_type_definitions_build_upsert_payloads() -> None:
         "asset_type": "bond",
         "display_name": "Bond",
         "description": "Debt instruments represented as tradable assets.",
+        "event_types": ["coupon", "redemption"],
     }
     assert ASSET_TYPE_CRYPTO_DEFINITION.as_payload() == {
         "asset_type": "crypto",
         "display_name": "Crypto",
         "description": "Crypto spot and token assets used by the asset examples.",
+        "event_types": [],
     }
     assert [definition.asset_type for definition in BUILT_IN_ASSET_TYPE_DEFINITIONS] == [
         "currency",

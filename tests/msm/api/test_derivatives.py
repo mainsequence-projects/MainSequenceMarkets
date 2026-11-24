@@ -161,6 +161,7 @@ def test_future_upsert_owns_multitable_workflow(monkeypatch) -> None:
                 "asset_type": FUTURE_ASSET_TYPE,
                 "display_name": "Future",
                 "description": "Futures contracts represented as tradable assets.",
+                "event_types": ["expiry"],
             },
             ("asset_type",),
         ),

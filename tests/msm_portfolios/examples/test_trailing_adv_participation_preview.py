@@ -66,7 +66,6 @@ def test_preview_reads_only_bounded_target_asset_inputs() -> None:
         daily_liquidity_instance=PublishedTable.build("daily", frame, index=index),
         execution_bars_instance=PublishedTable.build("bars", frame, index=index),
         history_lookback_days=60,
-        total_notional=50_000_000,
     )
     start = pd.Timestamp("2026-01-05T14:30:00Z")
     end = pd.Timestamp("2026-01-05T21:00:00Z")
@@ -131,13 +130,14 @@ def test_preview_summary_exposes_capacity_and_execution_facts() -> None:
     )
     strategy = SimpleNamespace(
         parse_strategy_state=lambda row: json.loads(row["strategy_state"]),
-        total_notional=50_000_000.0,
     )
 
-    summary = transition_summary(strategy, transitions)  # type: ignore[arg-type]
+    summary = transition_summary(  # type: ignore[arg-type]
+        strategy, transitions, initial_nav=50_000_000.0
+    )
 
     assert summary.iloc[0]["execution_price"] == 50_000.0
-    # 1 share of the book is 50,000,000 shares of the asset.
+    # The book's unit is the initial NAV: 1 share of the book is 50,000,000 of the asset.
     assert summary.iloc[0]["quantity"] == 50_000_000.0
     assert summary.iloc[0]["history_observations"] == 20
     assert summary.iloc[0]["daily_notional_remaining"] == 450_000.0

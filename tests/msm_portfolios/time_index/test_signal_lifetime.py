@@ -113,12 +113,11 @@ def test_every_strategy_has_a_lifetime() -> None:
             **lifetime,
         ),
         TimeWeighted(execution_bars_instance=bars, **lifetime),
-        VolumeParticipation(execution_bars_instance=bars, total_notional=1.0, **lifetime),
-        LiquidityConstrained(liquidity_source_instance=bars, total_notional=1.0, **lifetime),
+        VolumeParticipation(execution_bars_instance=bars, **lifetime),
+        LiquidityConstrained(liquidity_source_instance=bars, **lifetime),
         TrailingAverageDailyVolumeParticipation(
             daily_liquidity_instance=bars,
             execution_bars_instance=bars,
-            total_notional=1.0,
             **lifetime,
         ),
     ]
@@ -426,7 +425,7 @@ def bar_strategy(strategy_class, bars: pd.DataFrame, **fields):
     source = PublishedTable.build("bars", bars, index=["time_index", ASSET_IDENTIFIER])
     if strategy_class is VolumeParticipation:
         # Each bar's capacity is 100 x 100 x 10% / 100,000: 1% of the portfolio.
-        fields = {"max_percent_volume_in_bar": 0.1, "total_notional": 100_000.0, **fields}
+        fields = {"max_percent_volume_in_bar": 0.1, **fields}
     return strategy_class(execution_bars_instance=source, **fields)
 
 
@@ -445,6 +444,8 @@ def run_bars(
         signal_observations=signals,
         observed_inputs={"execution_bars": bars},
         previous_state=previous_state,
+        # The book's unit, the ledger's initial NAV (ADR 0065).
+        book_unit_value=100_000.0,
     )
 
 

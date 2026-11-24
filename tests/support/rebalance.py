@@ -263,6 +263,7 @@ class IncrementalRebalance:
         prices: PublishedTable,
         storage,
         assets: tuple[str, ...] = ("AAPL", "ILLQ"),
+        unit_value: float = 10_000.0,
     ):
         self.strategy = strategy
         self.signals = signals
@@ -278,7 +279,8 @@ class IncrementalRebalance:
         node.valuation_column = "close"
         node.valuation_asset_identifier = "USD"
         node.fx_source = None
-        node.book_unit_value = None
+        # The book's unit, the ledger's initial NAV (ADR 0065).
+        node.book_unit_value = unit_value
         node.output_table = storage
         node._retirement_boundary = lambda: None
         node._required_asset_identifiers = lambda: list(assets)

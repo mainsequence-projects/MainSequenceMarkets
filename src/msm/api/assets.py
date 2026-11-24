@@ -285,6 +285,13 @@ class AssetType(MarketsMetaTableRow):
     display_name: str | None = None
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
+    event_types: list[str] = Field(default_factory=list)
+    """The events an asset of this type can have (ADR 0065)."""
+
+    @field_validator("event_types", mode="before")
+    @classmethod
+    def _stored_event_types(cls, value: Any) -> Any:
+        return [] if value is None else value
 
     @field_validator("asset_type", mode="before")
     @classmethod
@@ -329,6 +336,13 @@ class AssetTypeCreate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
+    event_types: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The events an asset of this type can have, such as dividend, split, coupon, "
+            "redemption or expiry (ADR 0065). None by default."
+        ),
+    )
 
     @field_validator("asset_type", mode="before")
     @classmethod
@@ -337,6 +351,11 @@ class AssetTypeCreate(BaseModel):
         if normalized is None:
             raise ValueError("asset_type cannot be empty.")
         return normalized
+
+    @field_validator("event_types")
+    @classmethod
+    def _distinct_event_types(cls, value: list[str]) -> list[str]:
+        return _distinct_event_types(value)
 
 
 class AssetTypeUpsert(AssetTypeCreate):
@@ -351,6 +370,23 @@ class AssetTypeUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     description: str | None = None
     metadata_json: dict[str, Any] | None = None
+    event_types: list[str] | None = None
+
+    @field_validator("event_types")
+    @classmethod
+    def _distinct_event_types(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else _distinct_event_types(value)
+
+
+def _distinct_event_types(value: list[str]) -> list[str]:
+    """Event type names, each a non-empty string, listed once (ADR 0065)."""
+
+    names = [str(item).strip() for item in value]
+    if any(not name for name in names):
+        raise ValueError("An event type cannot be empty.")
+    if len(set(names)) != len(names):
+        raise ValueError("An event type is listed twice.")
+    return names
 
 
 class CurrencySpot(RemoteRowOperations, BaseModel):

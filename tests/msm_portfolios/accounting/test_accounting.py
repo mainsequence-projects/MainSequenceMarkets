@@ -16,9 +16,12 @@ from msm_portfolios.accounting import (
     canonical_lifecycle_model_configuration,
     project_cash_flows,
     project_portfolio_values,
+    project_portfolio_weights,
     project_state,
 )
+from msm_portfolios.accounting.events import ADJUSTED, events_in_price, price_includes
 from msm_portfolios.configuration import (
+    PortfolioBuildConfiguration,
     PortfolioConfiguration,
     PortfolioMarketsConfig,
 )
@@ -29,6 +32,7 @@ from msm_portfolios.time_index.portfolios.accounting import (
     _new_ledger_tail,
     _validate_replay_against_existing,
     normalize_portfolio_event_ledger_frame,
+    portfolio_valuations,
 )
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioCashFlowsStorage,
@@ -56,7 +60,7 @@ from examples.msm_portfolios.portfolio_custom_cashflow_model_example import (
 from examples.msm_portfolios.portfolio_perpetual_funding_example import (
     build_example as build_perpetual_example,
 )
-from tests.support.accounting import _legacy_build_configuration, _source, always_open_strategy
+from tests.support.accounting import _source, always_open_strategy, build_configuration, ledger
 
 
 def recorded_fills_of(
@@ -82,24 +86,173 @@ def recorded_fills_of(
     )
 
 
-def test_legacy_build_configuration_omits_disabled_accounting_field() -> None:
-    omitted = _legacy_build_configuration()
-    explicit_none = _legacy_build_configuration()
-    explicit_none.accounting_configuration = None
+def test_a_portfolio_without_a_ledger_is_refused() -> None:
+    """Every portfolio keeps a ledger (ADR 0065, decision 1)."""
+    build = build_configuration()
 
-    assert "accounting_configuration" not in omitted.model_dump(mode="json")
-    assert omitted.model_dump(mode="json") == explicit_none.model_dump(mode="json")
+    with pytest.raises(ValidationError, match="accounting_configuration"):
+        PortfolioBuildConfiguration(
+            valuation_source_instance=build.valuation_source_instance,
+            valuation_asset_identifier="USD",
+            backtesting_weights_configuration=build.backtesting_weights_configuration,
+        )
 
 
-def test_enabled_accounting_configuration_is_hash_bearing() -> None:
-    build = _legacy_build_configuration()
-    build.accounting_configuration = PortfolioAccountingConfiguration(
-        initial_nav=1_000.0,
-        initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
-        position_valuation_model_instance=MarketPriceValuationModel(),
+def test_the_ledger_is_part_of_the_portfolio_identity() -> None:
+    def portfolio(initial_nav: float) -> PortfolioConfiguration:
+        return PortfolioConfiguration(
+            portfolio_build_configuration=build_configuration(
+                accounting_configuration=ledger(initial_nav=initial_nav)
+            ),
+            portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="ledger"),
+        )
+
+    assert compute_portfolio_configuration_hash(portfolio(1_000.0)) != (
+        compute_portfolio_configuration_hash(portfolio(2_000.0))
     )
 
-    assert "accounting_configuration" in build.model_dump(mode="json")
+
+def _stating(events: object):
+    source = _source("valuation")
+    source.config = type("Config", (), {"events_in_price": events})()
+    return source
+
+
+def test_a_source_states_the_events_its_prices_include() -> None:
+    """Adjusted prices, the default, include every event (ADR 0065, decisions 4 and 13)."""
+    assert events_in_price(_source("a-reference")) == ADJUSTED
+    assert events_in_price(_stating(("split",))) == ("split",)
+    assert price_includes(ADJUSTED, "coupon")
+    assert price_includes(("split",), "split") and not price_includes(("split",), "dividend")
+    assert not price_includes((), "dividend")
+
+
+def test_a_model_that_books_an_event_the_prices_include_is_refused() -> None:
+    """A dividend model on adjusted prices would count the dividend twice."""
+    with pytest.raises(ValidationError, match="counted twice: dividend"):
+        build_configuration(
+            accounting_configuration=ledger(
+                lifecycle_event_model_instances=(DividendCashFlowModel(),)
+            )
+        )
+
+    unadjusted = build_configuration(
+        valuation_source_instance=_stating(()),
+        accounting_configuration=ledger(
+            lifecycle_event_model_instances=(DividendCashFlowModel(),)
+        ),
+    )
+    assert unadjusted.accounting_configuration.lifecycle_event_model_instances
+
+
+def test_the_ledger_reads_the_portfolios_valuation_column() -> None:
+    """Prices in the portfolio's currency, with a revision computed from the row."""
+    source = PublishedPrices(
+        pd.DataFrame(
+            [
+                ("2026-01-02T00:00:00Z", "AAA", 100.0, 99.0),
+                ("2026-01-02T00:00:00Z", "BBB", 50.0, None),
+                ("2026-01-03T00:00:00Z", "AAA", 110.0, 109.0),
+            ],
+            columns=["time_index", "asset_identifier", "close", "open"],
+        )
+    )
+
+    prices = portfolio_valuations(
+        source,
+        valuation_column="close",
+        currency="USD",
+        start=pd.Timestamp("2026-01-01", tz="UTC"),
+        end=pd.Timestamp("2026-01-04", tz="UTC"),
+        assets=["AAA"],
+    )
+
+    assert prices["price"].tolist() == [100.0, 110.0]
+    assert set(prices["price_asset_identifier"]) == {"USD"}
+    assert prices["source_revision"].nunique() == 2
+    again = portfolio_valuations(
+        source,
+        valuation_column="close",
+        currency="USD",
+        start=pd.Timestamp("2026-01-01", tz="UTC"),
+        end=pd.Timestamp("2026-01-04", tz="UTC"),
+        assets=["AAA"],
+    )
+    assert prices["source_revision"].tolist() == again["source_revision"].tolist()
+
+
+class PublishedPrices:
+    """A price table read by window and asset."""
+
+    def __init__(self, rows: pd.DataFrame) -> None:
+        self.rows = rows.assign(time_index=pd.to_datetime(rows["time_index"], utc=True))
+
+    def get_df_between_dates(self, *, start_date, end_date, dimension_filters=None, **_kwargs):
+        rows = self.rows[
+            (self.rows["time_index"] >= start_date) & (self.rows["time_index"] <= end_date)
+        ]
+        for column, values in (dimension_filters or {}).items():
+            rows = rows[rows[column].isin(values)]
+        return rows.set_index(["time_index", "asset_identifier"])
+
+
+def _one_asset_ledger(*, price: float, later_price: float, weight: float) -> pd.DataFrame:
+    """A 1,000 USD ledger that buys ``weight`` of STOCK with the default execution model."""
+    signals = pd.DataFrame(
+        [("2026-01-01T23:00:00Z", "default-model", "STOCK", weight)],
+        columns=["time_index", "signal_uid", "asset_identifier", "signal_weight"],
+    ).set_index(["time_index", "signal_uid", "asset_identifier"])
+    prices = pd.DataFrame(
+        [
+            ("2026-01-01T22:00:00Z", "STOCK", price, "USD", "p0"),
+            ("2026-01-02T00:00:00Z", "STOCK", price, "USD", "p1"),
+            ("2026-01-03T00:00:00Z", "STOCK", later_price, "USD", "p2"),
+        ],
+        columns=["time_index", "asset_identifier", "price", "price_asset_identifier", "source_revision"],
+    )
+    strategy = always_open_strategy()
+    return PortfolioEngine.calculate_backtest(
+        portfolio_identifier="default-model",
+        accounting_configuration=ledger(),
+        valuation_asset_identifier="USD",
+        rebalance_strategy=strategy,
+        rebalance_state=recorded_fills_of(
+            strategy,
+            signals,
+            prices,
+            first="2026-01-01",
+            published_until="2026-01-03T00:00:00Z",
+        ),
+        valuation_observations=prices,
+        valuation_times=pd.to_datetime(prices["time_index"], utc=True),
+    ).ledger
+
+
+def test_a_strategy_without_an_execution_model_trades_fractional_units() -> None:
+    """The default execution model (ADR 0065, decision 11): 600 USD at 700 is 6/7 units."""
+    ledger_frame = _one_asset_ledger(price=700.0, later_price=700.0, weight=0.6)
+
+    positions = project_state(ledger_frame).reset_index()
+    held = positions[positions["state_kind"] == "position"]
+
+    assert held["quantity"].iloc[-1] == pytest.approx(600.0 / 700.0, rel=1e-12)
+
+
+def test_weights_and_values_are_projections_of_the_ledger() -> None:
+    """Weights are the position's value over the NAV after the fill (ADR 0065, decision 5)."""
+    ledger_frame = _one_asset_ledger(price=100.0, later_price=110.0, weight=0.5)
+
+    weights = project_portfolio_weights(ledger_frame).reset_index()
+    values = project_portfolio_values(ledger_frame, initial_nav=1_000.0).reset_index()
+
+    (fill,) = weights.to_dict(orient="records")
+    assert fill["asset_identifier"] == "STOCK"
+    assert (fill["weight_before"], fill["weight"], fill["price_current"]) == pytest.approx(
+        (0.0, 0.5, 100.0)
+    )
+    # 5 units at 110 and 500 in cash: 1,050.
+    assert values["close"].iloc[-1] == pytest.approx(1.05)
+    assert not values["valuation_stale"].any()
 
 
 def test_accounting_configuration_rejects_external_execution_ingress() -> None:
@@ -140,6 +293,8 @@ def test_portfolio_engine_configuration_serializes_its_runtime_dependencies() ->
     payload = PortfolioEngineConfiguration(
         portfolio_identifier="position-aware",
         valuation_asset_identifier="USD",
+        valuation_source_instance=_source("valuation"),
+        valuation_column="close",
         accounting_configuration=PortfolioAccountingConfiguration(
             initial_nav=1_000.0,
             initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
@@ -151,28 +306,13 @@ def test_portfolio_engine_configuration_serializes_its_runtime_dependencies() ->
 
     assert payload["portfolio_identifier"] == "position-aware"
     assert payload["portfolio_rebalance_instance"]["update_hash"] == "portfolio-rebalance"
+    assert payload["valuation_source_instance"]["update_hash"] == "valuation"
+    assert payload["valuation_column"] == "close"
     assert payload["rebalance_strategy_instance"]
     assert payload["rebalance_strategy_instance"]["config"]["execution_model_instance"]
     rebuilt = ConfigRebuilder().rebuild(payload["rebalance_strategy_instance"]["config"])
     assert isinstance(rebuilt["execution_model_instance"], TargetWeightExecutionModel)
     assert isinstance(rebuilt["execution_cost_model_instances"][0], ProportionalExecutionCostModel)
-
-
-def test_disabled_accounting_preserves_legacy_portfolio_hash() -> None:
-    omitted = PortfolioConfiguration(
-        portfolio_build_configuration=_legacy_build_configuration(),
-        portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="legacy"),
-    )
-    explicit_none_build = _legacy_build_configuration()
-    explicit_none_build.accounting_configuration = None
-    explicit_none = PortfolioConfiguration(
-        portfolio_build_configuration=explicit_none_build,
-        portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="legacy"),
-    )
-
-    assert compute_portfolio_configuration_hash(omitted) == compute_portfolio_configuration_hash(
-        explicit_none
-    )
 
 
 def test_dividend_entitlement_survives_sale_and_settles_once() -> None:

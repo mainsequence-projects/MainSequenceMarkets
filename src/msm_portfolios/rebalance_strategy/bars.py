@@ -7,9 +7,9 @@ earliest moment, the first of the strategy's bars after the signal. At every bar
 ``execution_policy`` books the slices on the rebalance's book of shares and cash
 (``RebalanceStrategyBase._transitions_at_own_bars``).
 
-The book's unit is the NAV at the portfolio's first rebalance. A strategy whose
-capacity is in money or volume needs that unit in the portfolio's currency:
-``total_notional`` is it.
+The book's unit is the NAV at the portfolio's first rebalance, the ledger's
+``initial_nav`` (ADR 0065, decision 7). A strategy whose capacity is in money or volume
+turns it into shares of the book with that unit, which the book carries.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from .base import RebalanceStrategyBase
-from .execution_policy import ExecutionPolicy
+from .execution_policy import ExecutionPolicy, RebalanceBook
 
 
 class BarStrategy(RebalanceStrategyBase):
@@ -38,31 +38,30 @@ class BarStrategy(RebalanceStrategyBase):
 
 
 class SizedBarStrategy(BarStrategy):
-    """A bar strategy whose capacity is in money or volume, with a size in money."""
+    """A bar strategy whose capacity is in money or volume.
 
-    total_notional: float = Field(
-        gt=0,
-        description=(
-            "The money one unit of the strategy's book stands for, in the portfolio's "
-            "currency: the portfolio's NAV at its first rebalance. It turns a bar's "
-            "volume or liquidity capacity into shares of the decided order, and a "
-            "fixed-amount negative cash limit into the book's unit. Required: whoever "
-            "runs the strategy gives it, and there is no default size (#113)."
-        ),
-    )
+    Its book's unit is the portfolio's initial NAV (ADR 0065, decision 7): a bar's
+    capacity of ``q`` shares is ``q / unit`` shares of the book, and an amount ``a`` at
+    price ``p`` is ``a / (unit x p)``.
+    """
 
-    def book_unit_value(self, ledger_unit_value: float | None) -> float:
-        """The book's unit is ``total_notional``, with or without a ledger."""
-        del ledger_unit_value
-        return self.total_notional
+    @staticmethod
+    def book_unit(book: RebalanceBook) -> float:
+        """One unit of ``book`` in the portfolio's currency: its initial NAV."""
+        if book.unit_value is None or book.unit_value <= 0:
+            raise ValueError(
+                "A strategy sized in money or volume needs the book's unit, the "
+                "portfolio's initial NAV (ADR 0065)."
+            )
+        return float(book.unit_value)
 
-    def shares_for_quantity(self, quantity: float) -> float:
+    def shares_for_quantity(self, quantity: float, *, book: RebalanceBook) -> float:
         """Return a quantity of the asset as shares of the book."""
-        return quantity / self.total_notional
+        return quantity / self.book_unit(book)
 
-    def shares_for_notional(self, notional: float, price: float) -> float:
+    def shares_for_notional(self, notional: float, price: float, *, book: RebalanceBook) -> float:
         """Return an amount in the portfolio's currency, at ``price``, as shares of the book."""
-        return notional / (self.total_notional * price)
+        return notional / (self.book_unit(book) * price)
 
 
 __all__ = ["BarStrategy", "SizedBarStrategy"]

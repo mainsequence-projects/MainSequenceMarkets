@@ -30,7 +30,6 @@ def build_trailing_adv_strategy(
         execution_end="16:00",
         max_daily_participation=0.05,
         max_bar_participation=0.10,
-        total_notional=50_000_000,
     )
 
 

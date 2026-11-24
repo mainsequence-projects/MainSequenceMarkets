@@ -202,9 +202,9 @@ provider migrates first (`portfolios/portfolio_workflow`), reuses the resulting
 `Portfolio` row, and assigns that portfolio UID as one of the account target
 positions. The portfolio's weights and values are published to Markets
 (`PortfolioWeightsSeries`, `PortfolioValuesSeries`; ADR 0060). That table is
-not portfolio core registration: `PortfoliosUpdater` must still consume an explicit
-`PortfolioBuildConfiguration.valuation_source_instance` and configured
-`valuation_column`. The same full workflow can be extended with a dry-run
+not portfolio core registration: the portfolio's ledger (`PortfolioEngine`) must
+still consume an explicit `PortfolioBuildConfiguration.valuation_source_instance` and
+configured `valuation_column`. The same full workflow can be extended with a dry-run
 account virtual-fund allocation plan using
 `--with-virtual-fund-allocation`; use `--apply-virtual-fund-allocation` only
 when the example should publish `VirtualFundHoldings` rows after printing the

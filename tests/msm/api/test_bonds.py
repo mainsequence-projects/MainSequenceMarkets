@@ -123,6 +123,7 @@ def test_bond_upsert_owns_multitable_workflow(monkeypatch) -> None:
                 "asset_type": BOND_ASSET_TYPE,
                 "display_name": "Bond",
                 "description": "Debt instruments represented as tradable assets.",
+                "event_types": ["coupon", "redemption"],
             },
             ("asset_type",),
         ),

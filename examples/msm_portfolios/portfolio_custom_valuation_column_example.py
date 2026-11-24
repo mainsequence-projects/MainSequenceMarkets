@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sys
 from pathlib import Path
@@ -16,11 +17,14 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     NAMESPACE,
 )
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
+from msm_portfolios.accounting import (  # noqa: E402
+    MarketPriceValuationModel,
+    PortfolioAccountingConfiguration,
+)
 from msm_portfolios.configuration import (  # noqa: E402
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
-    PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
 )
 from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
@@ -29,7 +33,10 @@ from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     FixedWeightsConfig,
 )
 from msm_portfolios.time_index import compute_portfolio_configuration_hash  # noqa: E402
-from msm_portfolios.rebalance_strategy import CalendarEventSignal  # noqa: E402
+from msm_portfolios.rebalance_strategy import (  # noqa: E402
+    CalendarEventSignal,
+    ProportionalExecutionCostModel,
+)
 
 FAIR_VALUE_SOURCE_UID_ENV = "MSM_EXAMPLE_FAIR_VALUE_TIME_INDEX_META_TABLE_UID"
 FAIR_VALUE_COLUMN = "fair_value"
@@ -62,7 +69,6 @@ def build_fair_value_portfolio_configuration(
             valuation_source_instance=valuation_source,
             valuation_asset_identifier="USD",
             valuation_column=FAIR_VALUE_COLUMN,
-            execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
@@ -70,7 +76,16 @@ def build_fair_value_portfolio_configuration(
                     calendar_identifier=CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
                     session_label="regular",
                     rebalance_event="market_close",
+                    execution_cost_model_instances=(
+                        ProportionalExecutionCostModel(rate=0.00018),
+                    ),
                 ),
+            ),
+            # The ledger values every position at the source's fair_value (ADR 0065).
+            accounting_configuration=PortfolioAccountingConfiguration(
+                initial_nav=1_000_000.0,
+                initial_state_time_index=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+                position_valuation_model_instance=MarketPriceValuationModel(),
             ),
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(

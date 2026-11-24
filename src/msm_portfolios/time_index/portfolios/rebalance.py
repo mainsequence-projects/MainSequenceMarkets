@@ -85,10 +85,9 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self.valuation_column = str(build.valuation_column)
         self.valuation_asset_identifier = str(build.valuation_asset_identifier)
         self.fx_source = build.fx_source_instance
-        accounting = build.accounting_configuration
-        # A ledger's initial NAV gives the book a currency (ADR 0059); a strategy with
-        # its own size uses that instead (RebalanceStrategyBase.book_unit_value).
-        self.book_unit_value = None if accounting is None else float(accounting.initial_nav)
+        # The ledger's initial NAV is the book's unit, in the portfolio's currency
+        # (ADR 0059, ADR 0065).
+        self.book_unit_value = float(build.accounting_configuration.initial_nav)
         return self
 
     def set_rebalance_state_frame(

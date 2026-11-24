@@ -4,29 +4,31 @@ The portfolios concept owns portfolio construction workflows. It connects
 assets, signals, rebalance strategies, portfolio weights,
 portfolio metadata, and portfolio value time series.
 
-## Position-aware cash flows and valuation
+## Every portfolio keeps a ledger
+
+Every portfolio keeps a position-aware ledger
+([ADR 0065](../../../ADR/0065-every-portfolio-keeps-a-ledger.md)).
+`PortfolioBuildConfiguration.accounting_configuration` is required: it states the
+ledger's `initial_nav`, its `initial_state_time_index`, its valuation model and its
+lifecycle models. `PortfolioEngine` books the fills `PortfolioRebalance` records and
+the events the lifecycle models book; the weights and values the portfolio publishes
+are projections of the ledger.
 
 For the complete engine contract, source schemas, configuration, ledger fields,
 restart semantics, extension hooks, and operational limitations, read
 [Position-Aware Portfolio Accounting](accounting.md).
 
-The existing `PortfoliosUpdater` remains the default weight-return engine.
-Omitting `PortfolioBuildConfiguration.accounting_configuration`, or setting it
-to `None`, does not add dependencies or change the serialized legacy
-configuration. Supplying accounting configuration selects a separate history;
-passing that configuration to `PortfoliosUpdater` is rejected instead of
-falling back to weight-only valuation.
-
-The opt-in implementation follows [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md):
+The design follows [ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md)
+and ADR 0065:
 
 ```text
 signal weights + execution-market observations
                          |
                          v
-        RebalanceStrategy + execution/cost models
+        PortfolioRebalance (the strategy's recorded fills)
                          |
                          v
-lifecycle observations -> PortfolioEngine <- price/FX observations
+lifecycle observations -> PortfolioEngine <- valuation source, FX
                          |
                          v
              PortfolioAccounting (pure reducer)
@@ -35,13 +37,14 @@ lifecycle observations -> PortfolioEngine <- price/FX observations
          PortfolioEventLedgerStorage (authority)
                          |
                          v
-      state, cash-flow, and portfolio-value projections
+      PortfolioWeights and PortfolioValues (published to Markets)
 ```
 
 `PortfolioAccounting` is intentionally usable in offline tests and examples.
-`PortfolioEngine` is the `TimeIndexTableUpdater` boundary: it declares the
-signal, strategy observation, lifecycle, valuation, and FX sources and publishes
-the long event ledger. Portfolio execution is simulated only by the configured
+`PortfolioEngine` is the `TimeIndexTableUpdater` boundary: it depends on the
+portfolio's `PortfolioRebalance`, its valuation source, its FX source and the
+inputs its valuation and lifecycle models declare, and publishes the long event
+ledger. Portfolio execution is simulated only by the configured
 `RebalanceStrategy`; no broker/account execution source is accepted. The ledger
 grain is `(time_index, portfolio_identifier,
 event_identifier, event_revision, record_identifier)`. The migration provider creates
@@ -56,7 +59,11 @@ cash. It therefore works when the originating shares have already been sold,
 and settlement does not recognize the dividend a second time.
 
 `MarketPriceValuationModel` values signed positions, cash, and obligations in
-the configured valuation Asset. Foreign values require an explicit observation
+the portfolio's currency, at the prices of the portfolio's valuation source:
+`PortfolioEngine` reads `valuation_source_instance` with the build's
+`valuation_column`. A price is in the portfolio's currency unless the source has a
+`price_asset_identifier` column, and a row without a `source_revision` gets one
+computed from its time, asset and price. Foreign values require an explicit observation
 with grain `(time_index, base_asset_identifier, quote_asset_identifier)` and a
 strictly positive `rate`; it does not infer an inverse pair or silently replace
 a missing rate. A held asset is always valued at its last observed price, and
@@ -64,6 +71,35 @@ FX at its last observed rate, however old: past `maximum_staleness` the price or
 rate is marked stale (`ValuationResult.stale_sources`, and `"stale": "true"` in
 the ledger's `valuation_references`), never refused. Only a held asset with no
 observed price at all raises.
+
+A strategy that states no `execution_model_instance` trades with a default one:
+every asset in fractional units, with multiplier 1 and cash settlement, priced in
+the currency of its valuation rows. Costs are the strategy's
+`execution_cost_model_instances`, for example
+`ProportionalExecutionCostModel(rate=0.00018)`.
+
+### Price level and asset events
+
+A valuation source's prices are at the level its producer chose, and the source
+states it in `events_in_price` (`InterpolatedPricesConfig.events_in_price`):
+
+- `"adjusted"`, the default, means the prices include every event of the asset: a
+  stock's dividends, as if reinvested, and splits; a bond's coupons and redemption.
+  Nothing else books them. A source given as a `TimeIndexTableRef` is adjusted.
+- A tuple names exactly the event types the prices include: `("split",)` for
+  prices adjusted for splits only, `()` for unadjusted prices.
+
+`InterpolatedPrices` adjusts nothing; the setting states the level of the bars it
+reads and is not part of its update hash. An asset type lists the events its
+assets can have (`AssetType.event_types`): `equity` dividend and split, `bond`
+coupon and redemption, `future` expiry. A lifecycle model states the event types
+it books (`booked_event_types`; `DividendCashFlowModel` books `dividend`).
+
+- On prices that do not include an event, a run refuses, before it books
+  anything, while the portfolio holds or buys an asset whose type lists that
+  event and no lifecycle model books it. The refusal names each asset and event.
+- A build configuration whose lifecycle model books an event its source's prices
+  include is refused: the event would be counted twice.
 
 Use the public extension boundary for unusual economics:
 
@@ -212,8 +248,8 @@ happens only at an observed price ([ADR 0058](../../../ADR/0058-trade-at-the-nex
   `execution_policy` (`ExecutionPolicy`, hash-bearing; every built-in strategy
   has it), whose defaults are the owner's decisions: shares sized at the decision
   (`sizing="at_decision"`, or `"at_fill"`), no negative cash
-  (`negative_cash`: `not_allowed`, `fraction_of_nav`, or `fixed_amount` with
-  a ledger), sells before buys, buys short of
+  (`negative_cash`: `not_allowed`, `fraction_of_nav`, or `fixed_amount`,
+  converted with the ledger's `initial_nav`), sells before buys, buys short of
   cash at one instant filling the same fraction (`pro_rata`), a buy cash cannot
   cover filling what it can and waiting for the rebalance's pending sells, then
   cut and cancelled with the reason `insufficient_cash` (`cut_and_cancel`), and
@@ -257,7 +293,7 @@ is open. Strategies with their own bars (`TimeWeighted`, `VolumeParticipation`,
 `LiquidityConstrained`, `TrailingAverageDailyVolumeParticipation`) trade at
 them, under the same conditions (see below). Event selection and state transitions
 occur in the strategy below `PortfolioRebalance`; neither `PortfolioWeights` nor
-`PortfoliosUpdater` builds a rebalance index.
+`PortfolioValues` builds a rebalance index.
 
 `calendar_identifier` and `calendar_events_instance` are required for
 `ImmediateSignal` and `CalendarEventSignal`. The event producer requires the stored
@@ -308,17 +344,14 @@ bars ([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/
   `cancelled` or `expired`, never `pending` or `superseded`. Each row's
   `strategy_state` holds the decision, the order and the book's shares and cash, as for
   `ImmediateSignal`, plus the strategy's facts about the bar under `"bar"` (volume,
-  liquidity, elapsed time, daily capacity). The weights path values the portfolio
-  from the book's shares, and a resumed run rebuilds the book from the stored rows.
-- **Size.** The book's unit is the NAV at the portfolio's first rebalance.
-  `VolumeParticipation`, `LiquidityConstrained` and
-  `TrailingAverageDailyVolumeParticipation` require `total_notional`, the money one unit
-  of the book stands for: a bar's capacity of `q` shares of the asset is
-  `q / total_notional` shares of the book, and a fixed-amount negative cash limit is
-  converted with it. `executed_quantity` and `executed_notional` are in the book's
-  unit. With a ledger, the ledger trades the same fraction of its own orders, sized at
-  its `initial_nav`; when that differs from `total_notional` it trades
-  `initial_nav / total_notional` times what a bar's capacity allowed.
+  liquidity, elapsed time, daily capacity). A resumed run rebuilds the book from the
+  stored rows, and the ledger books each recorded slice.
+- **Size.** The book's unit is the NAV at the portfolio's first rebalance, the
+  ledger's `initial_nav` (ADR 0065). For `VolumeParticipation`,
+  `LiquidityConstrained` and `TrailingAverageDailyVolumeParticipation`, a bar's
+  capacity of `q` shares of the asset is `q / initial_nav` shares of the book, and a
+  fixed-amount negative cash limit is converted with it. `executed_quantity` and
+  `executed_notional` are in the book's unit.
 
 ## General Rebalance Architecture
 
@@ -340,20 +373,19 @@ strategy-declared observed inputs ---------------------+--> PortfolioRebalance
                                                      remaining target, provenance
                                                                    |
                                                                    v
-                                                        PortfolioWeights
-                                                        executed-weight projection
-                                                                   |
-                                                                   v
-                                                        PortfolioWeightsStorage
-                                                                   |
-valuation observations --------------------------------------------+--> PortfoliosUpdater
-                                                                        valuation only
+valuation source, FX, lifecycle inputs ---------------------------+--> PortfolioEngine
+                                                                        event ledger
                                                                             |
-                                                                            v
-                                                                     PortfoliosStorage
-                                                                            |
-                                                                            v
-                                                                     PortfolioAnalytics
+                                                         +------------------+-----------------+
+                                                         v                                    v
+                                                 PortfolioWeights                      PortfolioValues
+                                                 weights projection                    values projection
+                                                         |                                    |
+                                                         v                                    v
+                                               PortfolioWeightsStorage                PortfoliosStorage
+                                                                                              |
+                                                                                              v
+                                                                                       PortfolioAnalytics
 ```
 
 The portfolio composes the rebalance strategy and includes its serialized
@@ -375,9 +407,10 @@ not gain calendar events merely because the portfolio has a reference
 calendar.
 
 `PortfolioRebalanceStateStorage` is a portfolio-level state ledger, not a
-broker order/fill ledger. `PortfolioWeights` projects only state transitions
-that actually changed executed weights, and `PortfoliosUpdater` continues to
-value those weights at independent valuation-source observations. Missing
+broker order/fill ledger. `PortfolioEngine` books its recorded fills and values the
+portfolio at the valuation source's observations; `PortfolioWeights` projects the
+events of the ledger that changed a position, and `PortfolioValues` the NAV at each
+ledger time. Missing
 future bars or liquidity leave an order open, `partial` or without a row yet;
 they do not create a completion timestamp.
 
@@ -406,7 +439,8 @@ must therefore represent the right edge/availability time of completed bars.
 The order is fixed at the decision. At each intraday bar its slice is, in the
 portfolio's currency, the lesser of the remaining per-session daily cap and the
 configured fraction of the current observed bar's notional, and never more than
-the order has open; `total_notional` turns it into shares of the book. The stored
+the order has open; the book's unit, the ledger's `initial_nav`, turns it into shares
+of the book. The stored
 `execution_price` is always the configured field from the intraday execution
 source, such as `close`, `mid_price`, or an arrival-price observation. It is never
 the historical daily VWAP. Daily capacity consumed counts what filled, after the
@@ -507,7 +541,7 @@ each operation is compiled SQL on Markets' table; under `remote` it is
 | Row class | Resource | Key | Rows |
 | --- | --- | --- | --- |
 | `SignalWeightsSeries` | `signal-weights` | `SignalMetadata.signal_uid` | `time_index`, `asset_identifier`, `signal_weight` |
-| `PortfolioWeightsSeries` | `portfolio-weights` | `Portfolio.unique_identifier` | `time_index`, `asset_identifier`, `weight`, `weight_before`, `price_current`, `price_before`, `volume_current`, `volume_before`, `held_shares`, `book_cash` |
+| `PortfolioWeightsSeries` | `portfolio-weights` | `Portfolio.unique_identifier` | `time_index`, `asset_identifier`, `weight`, `weight_before`, `price_current`, `price_before`, `volume_current`, `volume_before` |
 | `PortfolioValuesSeries` | `portfolio-values` | `Portfolio.unique_identifier` | `time_index`, `close`, `return`, `calculated_close`, `close_time`, `valuation_stale` |
 
 | Operation | What it does |
@@ -547,7 +581,7 @@ creates has no manager.
 
 ### The Engine Publishes
 
-`SignalWeights` and its subclasses, `PortfolioWeights` and `PortfoliosUpdater`
+`SignalWeights` and its subclasses, `PortfolioWeights` and `PortfolioValues`
 are not `TimeIndexTableUpdater`s: they are bound to no table and MetaTables
 keeps no update record of them (`msm_portfolios.series_nodes`).
 `run()` runs the node's dependencies, computes `update()` and publishes the
@@ -557,7 +591,15 @@ published again, so running the same window twice writes nothing. The same
 code runs in an application under the `remote` backend and in the Markets
 deployment under `runtime`.
 
-`PortfoliosUpdater.run()` answers `portfolio_weights`, `portfolio_values` (the
+`PortfolioWeights` publishes, for each event of the portfolio's ledger that changes a
+position, the weight of each asset it changed: the position's value over the NAV after
+the event (`weight`) and before it (`weight_before`), and the price the ledger booked
+it at (`price_current`). `PortfolioValues` publishes the NAV at each ledger time over
+the ledger's `initial_nav` (`close`, so a portfolio starts at 1), its change
+(`return`) and `valuation_stale`. Both depend on the portfolio's `PortfolioEngine`,
+which runs its `PortfolioRebalance`, prices and calendar events first.
+
+`PortfolioValues.run()` answers `portfolio_weights`, `portfolio_values` (the
 values' `SeriesPublication`, `None` when nothing was new) and `portfolio`.
 With `update_pointers=True`, the default, it records the portfolio's signal on
 its `Portfolio` row. The nodes do not fill the `*_table_update_uid` columns of
@@ -578,7 +620,7 @@ it calls one.
 | `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
 | `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
 | `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
-| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, ...)` | Runs the chain in order from the signal's first observation, creates the `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values, and answers what was written and whether a first rebalance happened. |
+| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | Runs the chain in order from the signal's first observation (signal, prices, calendar events, rebalance state, ledger), creates the `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values the ledger projects, and answers what was written and whether a first rebalance happened. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
 | `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
 | `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
@@ -598,8 +640,9 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm_portfolios.time_index import PortfoliosUpdater
+from msm_portfolios.time_index import PortfolioValues
 from msm_portfolios.time_index.contract_instances import (
+    configured_portfolio_event_ledger_storage,
     configured_portfolio_rebalance_state_storage,
 )
 
@@ -614,10 +657,17 @@ ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
     storage_app="my_provider",
     base=ProviderBase,
 )
+ProviderEventLedgerStorage = configured_portfolio_event_ledger_storage(
+    instance_key="main",
+    namespace="my-provider",
+    storage_app="my_provider",
+    base=ProviderBase,
+)
 
-updater = PortfoliosUpdater(
+values = PortfolioValues(
     portfolio_configuration=portfolio_configuration,
     rebalance_output_table=ProviderRebalanceStateStorage,
+    event_ledger_output_table=ProviderEventLedgerStorage,
 )
 ```
 
@@ -638,9 +688,9 @@ changes the application's tables only.
 of any other Markets storage, with the same three required arguments, and takes
 `cadence=` for a storage that declares none.
 
-Bind the engine to them with `rebalance_output_table=` on `PortfoliosUpdater`,
-`PortfolioWeights` and `run_portfolio`, and with `output_table=` on the
-calendar events and ledger updaters. `namespace=` on a node is the MetaTables
+Bind the engine to them with `rebalance_output_table=` and
+`event_ledger_output_table=` on `PortfolioValues`, `PortfolioWeights` and
+`run_portfolio`, and with `output_table=` on the calendar events updater. `namespace=` on a node is the MetaTables
 hash namespace of the chain, not a table's namespace; a private table's
 namespace comes from its factory. `InterpolatedPrices` requires `output_table=`,
 the application's own table of that interpolation configuration
@@ -918,9 +968,10 @@ declares and migrates:
 +-----------------------------+             writes             +--------------------------------------+
 | PortfolioCalendarEvents     |------------------------------->| PortfolioCalendarEventsStorage       |
 | PortfolioRebalance          |------------------------------->| PortfolioRebalanceStateStorage       |
+| PortfolioEngine             |------------------------------->| PortfolioEventLedgerStorage          |
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
 | SignalWeights               |------------------------------->| SignalWeightsStorage                 |
-| PortfoliosUpdater           |------------------------------->| PortfoliosStorage                    |
+| PortfolioValues             |------------------------------->| PortfoliosStorage                    |
 | PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
 | External price updaters     |------------------------------->| ExternalPricesStorage                |
 | InterpolatedPrices          |------------------------------->| producer's InterpolatedPricesTS      |
@@ -936,14 +987,14 @@ declares and migrates:
 +-----------------------------+                                +--------------------------------------+
 ```
 
-`PortfolioWeights`, `SignalWeights` and `PortfoliosUpdater` write through the
+`PortfolioWeights`, `SignalWeights` and `PortfolioValues` write through the
 series operations ([Published Series](#published-series)); the other nodes are
 `TimeIndexTableUpdater`s bound to their table.
 
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
 `PortfolioTable.signal_uid` is nullable because portfolio rows can be registered
-before a signal workflow runs. Once `PortfoliosUpdater.run(...,
+before a signal workflow runs. Once `PortfolioValues.run(...,
 update_pointers=True)` completes, the portfolio row should store the same
 `signal_uid` that identifies the signal metadata and signal-weight rows. API
 reads for portfolio signal weights must use this pointer; they must not infer a
@@ -956,16 +1007,17 @@ signal by scanning the shared `SignalWeightsStorage` table.
 written for a real portfolio identity. Rebalance state and portfolio weights
 also reference `AssetTable.unique_identifier`, so neither can point to unknown
 assets. `PortfolioCalendarEventsStorage.calendar_identifier` references
-`CalendarTable.unique_identifier`. `PortfoliosUpdater` resolves the portfolio identifier
+`CalendarTable.unique_identifier`. `PortfolioValues` resolves the portfolio identifier
 from the attached `PortfolioTable` row or from the explicit runtime identifier
 before normalizing rows.
 
 `PortfolioRebalanceStateStorage.time_index` is the strategy-selected observed
 event timestamp, including partial or pending events.
-`PortfolioWeightsStorage.time_index` is an execution timestamp copied from a
-state transition that changed executed weight.
-`PortfoliosStorage.time_index` is the valuation observation timestamp. They do
-not need to be equal: weekly execution can feed daily valuation. Optional
+`PortfolioWeightsStorage.time_index` is the time of a ledger event that changed a
+position: a recorded fill, or a lifecycle event that changes a position.
+`PortfoliosStorage.time_index` is a ledger time: a fill, a lifecycle event or a
+valuation observation. They do not need to be equal: weekly execution can feed
+daily valuation. Optional
 `PortfolioAnalyticsStorage.time_index` is the actual source observation chosen
 for an analytical period; `period_start` and `period_end` carry bucket
 boundaries without relabelling the source event.
@@ -1003,13 +1055,13 @@ strategy-declared observations ---------+--> PortfolioRebalance
                                   PortfolioRebalanceStateStorage
                                               |
                                               v
-                                      PortfolioWeights
+ValuationSource --------------------> PortfolioEngine
+  bars, fair value, NAV                       | event ledger
+                                              v
+                              PortfolioWeights, PortfolioValues
                                               |
                                               v
-ValuationSource --------------------> PortfoliosUpdater
-  bars, fair value, NAV                    |
-                                          v
-                                  canonical portfolio values
+                              published weights and values
 ```
 
 `PortfolioBuildConfiguration.valuation_source_instance` receives the valuation
@@ -1153,13 +1205,13 @@ Both write only to the local runtime; see
 portfolio code uses the registered table; it never creates or migrates one.
 
 `PortfolioBuildConfiguration.valuation_column` chooses which numeric column from
-the explicit valuation source drives portfolio returns. It is a string, not an
-OHLC enum. Bar-based workflows can use `valuation_column="close"`, while model
-or vendor workflows can use fields such as `fair_value`, `nav`, or
-`settlement_price`. Portfolio valuation performs bounded per-asset as-of
-selection under `ValuationAlignmentPolicy`; alignment targets only explicit
-valuation observations and never creates a timestamp. Execution-side event
-selection and capacity are owned by the configured rebalance strategy.
+the explicit valuation source the rebalance sizes with and the ledger values with.
+It is a string, not an OHLC enum. Bar-based workflows can use
+`valuation_column="close"`, while model or vendor workflows can use fields such as
+`fair_value`, `nav`, or `settlement_price`. The ledger values each held asset at its
+last observation at or before each ledger time and never creates a timestamp.
+Execution-side event selection and capacity are owned by the configured rebalance
+strategy.
 
 For a custom valuation source, register or migrate the source storage outside
 portfolio core, then pass the registered `TimeIndexMetaTable` UID through
@@ -1168,35 +1220,20 @@ value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
 `fair_value` configuration path.
-The portfolio update start is always the latest `PortfoliosStorage` timestamp
-for the resolved `PortfolioTable.unique_identifier`, stored as
-`PortfoliosStorage.portfolio_identifier`. It is not derived from signal progress,
-valuation-source progress, or the table-wide maximum of the shared
-`PortfoliosStorage` table.
+The values' start is always the latest `PortfoliosStorage` timestamp for the
+resolved `PortfolioTable.unique_identifier`, stored as
+`PortfoliosStorage.portfolio_identifier`, and the weights' the latest
+`PortfolioWeightsStorage` timestamp. Neither is derived from signal progress,
+valuation-source progress, or the table-wide maximum of a shared table.
 
-After resolving that portfolio-scoped start, `PortfoliosUpdater` reads
-canonical executed weights and actual valuation observations. It selects the
-latest weights as-of each eligible observation, validates per-asset staleness,
-and writes one canonical value row per eligible source timestamp. Before the
-window, it retrieves all required per-asset seed observations in one set-based
-request. Shared multidimensional sources use complete coordinates; for signal
-weights that means both `signal_uid` and `asset_identifier`. A rerun before new
-source data arrives is an empty update.
-
-Executed-weight seed rows are normalized and retained only when their
-`time_index` is strictly earlier than the calculation-window start, even if an
-upstream latest-observation response violates the requested `< start` bound.
-The current window, retained seed, and combined frame must each be unique on
-`(time_index, asset_identifier)`; a genuine duplicate fails with an explicit
-invariant error before weights are pivoted.
-
-Strict valuation coverage is exposure-aware at each asset and timestamp. A
-valuation is required when either the current or immediately preceding
-executed weight is nonzero: the current weight protects entries, and the
-preceding weight protects exits. A zero-to-zero asset is optional, and after a
-completed exit it becomes optional on the following valuation timestamp. The
-complete signal and executed-weight snapshots are not filtered, so explicit
-zero rows remain available for state reconstruction and auditing.
+`PortfolioEngine` replays the portfolio's ledger from its
+`initial_state_time_index`: it reads the fills `PortfolioRebalance` recorded, the
+valuation source's rows of the assets those fills trade, the FX source and the
+lifecycle inputs, books the events, and writes only the events the ledger does not
+hold yet. An exact replay writes nothing; a recorded event whose source changed is
+refused. `PortfolioWeights` and `PortfolioValues` then read the ledger from their
+last published time on, so a rerun before new source data arrives publishes
+nothing.
 
 In code, the important wiring is:
 
@@ -1227,14 +1264,21 @@ portfolio_configuration = PortfolioConfiguration(
         valuation_source_instance=price_source,
         valuation_column="close",
         valuation_asset_identifier="USD",
-        execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(
             signal_weights_instance=signal_weights,
             rebalance_strategy_instance=CalendarEventSignal(
                 calendar_events_instance=calendar_events,
                 calendar_identifier="CRYPTO_24_7",
                 rebalance_event="market_close",
+                execution_cost_model_instances=(
+                    ProportionalExecutionCostModel(rate=0.00018),
+                ),
             ),
+        ),
+        accounting_configuration=PortfolioAccountingConfiguration(
+            initial_nav=1_000_000.0,
+            initial_state_time_index="2026-05-22T00:00:00Z",
+            position_valuation_model_instance=MarketPriceValuationModel(),
         ),
     ),
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
@@ -1242,7 +1286,8 @@ portfolio_configuration = PortfolioConfiguration(
 ```
 
 For a user-owned fair-value source, the same portfolio configuration uses the
-source UID directly and keeps the valuation column explicit:
+source UID directly and keeps the valuation column explicit. A source given as a
+`TimeIndexTableRef` counts as adjusted ([Price level and asset events](#price-level-and-asset-events)):
 
 ```python
 valuation_source = TimeIndexTableRef.from_uid(fair_value_table_uid)
@@ -1252,34 +1297,32 @@ portfolio_configuration = PortfolioConfiguration(
         valuation_source_instance=valuation_source,
         valuation_column="fair_value",
         valuation_asset_identifier="USD",
-        execution_configuration=PortfolioExecutionConfiguration(...),
         backtesting_weights_configuration=BacktestingWeightsConfig(...),
+        accounting_configuration=PortfolioAccountingConfiguration(...),
     ),
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
 )
 ```
 
-`PortfolioRebalance.dependencies()` merges signal weights with arbitrary typed
-sources declared by the strategy, validates those observations against the
-strategy's required grain and fields, and persists the resulting state.
-`PortfolioWeights.dependencies()` exposes only that rebalance-state updater.
-`PortfoliosUpdater.dependencies()` continues to expose canonical
-executed weights and its independent valuation source. Valuation sources may
-contain extra assets; required holdings are aligned independently using the
-latest observation at or before the target, however old. Past
-`ValuationAlignmentPolicy.maximum_staleness` the observation is marked stale,
-never refused: the portfolio value row has `valuation_stale` set, and
-`PortfoliosUpdater` logs a warning naming those holdings. Only a held asset with
-no observation at all raises. A portfolio whose strategy records a rebalance book
-is valued from the book's shares and cash, which `PortfolioWeights` projects
-(`held_shares`, `book_cash`): its value is the cash plus each asset's shares at
-its price, so weights drift with prices between rebalances (ADR 0059). Weights
-without a book are valued from constant weights. `fail_on_missing_values` (default `False`) refuses a
-stale observation instead, as an option of the policy.
+`PortfolioRebalance.dependencies()` is the valuation source (and FX source) the
+strategy trades at, unless it has bars of its own, merged with the typed sources the
+strategy declares; it reads the signal, a published series, without running it. It
+validates those observations against the strategy's required grain and fields and
+persists the resulting state. `PortfolioEngine.dependencies()` is the rebalance
+state, the valuation source, the FX source and the inputs the valuation and
+lifecycle models declare. `PortfolioWeights.dependencies()` is the ledger, and
+`PortfolioValues.dependencies()` the weights node. Valuation sources may contain
+extra assets; each held asset is valued at its latest observation at or before the
+ledger time, however old. Past `MarketPriceValuationModel.maximum_staleness` the
+observation is marked stale, never refused: the portfolio value row has
+`valuation_stale` set. Only a held asset with no observation at all raises.
+`fail_on_missing_values` (default `False`) refuses a stale observation instead. The
+portfolio's value is its cash plus each position at its price, so weights drift with
+prices between rebalances (ADR 0059).
 
-`portfolio_prices_frequency` and `PriceAlignmentPolicy` were removed. Use
-`ValuationAlignmentPolicy` for source freshness and `PortfolioAnalytics` for
-daily, weekly, monthly, or other reporting frequency conversion.
+Use the valuation model's `maximum_staleness` for source freshness and
+`PortfolioAnalytics` for daily, weekly, monthly, or other reporting frequency
+conversion.
 
 Portfolio output progress is the portfolio's own series: `bounds` and `last`
 of `PortfolioValuesSeries` and `PortfolioWeightsSeries` under its
@@ -1362,8 +1405,8 @@ retired, an exclusive end, and is null while it is live
 - While retired, no target snapshot may name the portfolio, whatever its date;
   the API write and the SDK `TargetPositions` updater both refuse it. Applying a
   virtual-fund allocation at or after `retired_at` is refused.
-- `PortfoliosUpdater`, with its `PortfolioWeights` and `PortfolioRebalance`
-  updaters, and `PortfolioEngine` clamp their update window to the last instant
+- `PortfolioValues`, `PortfolioWeights`, `PortfolioRebalance` and
+  `PortfolioEngine` clamp their update window to the last instant
   before `retired_at` and drop any row dated at or after it
   (`msm_portfolios.retirement`). A run after the portfolio has caught up reads
   only the empty window up to the boundary; `PortfolioEngine` replays up to it.
@@ -1409,14 +1452,15 @@ virtual-fund allocation rows.
                              +--------------+--------------+
                                             |
                                             v
-                             +-----------------------------+
-                             | PortfolioWeights projection |
++---------------------+      +-----------------------------+
+| ValuationSource     |----->| PortfolioEngine             |
++---------------------+      | event ledger                |
                              +--------------+--------------+
                                             |
                                             v
-+---------------------+      +-----------------------------+
-| ValuationSource     |----->| PortfoliosUpdater           |
-+---------------------+      | valuation only              |
+                             +-----------------------------+
+                             | PortfolioWeights and        |
+                             | PortfolioValues projections |
                              +--------------+--------------+
                                             |
                                             v
@@ -1429,9 +1473,9 @@ virtual-fund allocation rows.
         +---------------------------------------------------------+
 ```
 
-`SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater` publish their rows
+`SignalWeights`, `PortfolioWeights` and `PortfolioValues` publish their rows
 to `SignalWeightsSeries`, `PortfolioWeightsSeries` and `PortfolioValuesSeries`.
-`PortfoliosUpdater.run(..., update_pointers=True)`, the default, records the
+`PortfolioValues.run(..., update_pointers=True)`, the default, records the
 portfolio's signal on its `PortfolioTable` row after the values are published,
 so callers do not re-upsert the portfolio row after execution. Pass
 `update_pointers=False` only when deliberately running the graph without
@@ -1504,7 +1548,7 @@ shared crypto `Asset` example rows, creates or reuses a `CRYPTO_24_7` calendar
 from `pandas_market_calendars`, publishes example OHLCV bars to
 `ExternalPricesStorage`, interpolates those prices, runs
 `PortfolioCalendarEvents`, `SignalWeights`, `PortfolioRebalance`,
-`PortfolioWeights`, and `PortfoliosUpdater`, and upserts the
+`PortfolioEngine`, `PortfolioWeights` and `PortfolioValues`, and upserts the
 `Portfolio` row with `calendar_uid` and its signal.
 The example narrates each setup, source-price
 publication, and portfolio step so terminal output explains what was created.

@@ -7,8 +7,7 @@ from typing import Any
 import pandas as pd
 import pytz
 
-from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
-
+from msm_portfolios.accounting.projections import project_portfolio_weights
 from msm_portfolios.retirement import (
     drop_retired_rows,
     end_before_retirement,
@@ -33,13 +32,19 @@ from ..portfolio_identity import (
     get_or_create_portfolio,
 )
 from msm_portfolios.series_nodes import PublishedSeriesNode
+from .accounting import PortfolioEngine
 from .rebalance import PortfolioRebalance
 from .storage import PortfolioWeightsStorage
 
 
 class PortfolioWeights(PublishedSeriesNode):
-    """Projection of rebalance state into executed weights, published as
-    ``PortfolioWeightsSeries`` (ADR 0060, decision 5)."""
+    """The weights of the assets each ledger event changed, published as
+    ``PortfolioWeightsSeries`` (ADR 0060, decision 5; ADR 0065, decision 5).
+
+    It depends on the portfolio's ``PortfolioEngine``, which books the fills
+    ``PortfolioRebalance`` records. An asset's weight is its position value over the
+    NAV after the event, as the ledger recorded them.
+    """
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
     series_resource = "portfolio-weights"
@@ -49,20 +54,22 @@ class PortfolioWeights(PublishedSeriesNode):
         self,
         *,
         portfolio_configuration: Any | None = None,
-        portfolio_rebalance: PortfolioRebalance | None = None,
         rebalance_output_table: OutputTable | None = None,
+        event_ledger_output_table: OutputTable | None = None,
         namespace: str | None = None,
     ):
-        """Create the executed-weights node.
+        """Create the weights node.
 
-        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to
-        the application's own ``PortfolioRebalanceStateTS`` instance: rebalance state is
-        private to the application that runs the portfolio. The weights themselves are
-        published to Markets.
+        ``rebalance_output_table`` and ``event_ledger_output_table`` bind the internally
+        built ``PortfolioRebalance`` and ``PortfolioEngine`` to the application's own
+        ``PortfolioRebalanceStateTS`` and ``PortfolioEventLedgerTS`` instances: both are
+        private to the application that runs the portfolio (ADR 0060, decision 7). The
+        weights themselves are published to Markets.
         """
         self._portfolio_configuration = portfolio_configuration
-        self.portfolio_rebalance = portfolio_rebalance
         self._rebalance_output_table = rebalance_output_table
+        self._event_ledger_output_table = event_ledger_output_table
+        self.portfolio_engine: PortfolioEngine | None = None
         super().__init__(None, namespace=namespace)
         if portfolio_configuration is not None:
             self.set_portfolio_configuration(portfolio_configuration)
@@ -76,84 +83,77 @@ class PortfolioWeights(PublishedSeriesNode):
         portfolio_resolver: Any | None = None,
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
-        portfolio_rebalance: PortfolioRebalance | None = None,
     ) -> PortfolioWeights:
-        """Attach the portfolio contract and its rebalance-state source."""
+        """Attach the portfolio contract; its ledger is built once its identity is known."""
+        if portfolio_configuration is not self._portfolio_configuration:
+            self.portfolio_engine = None
         self._portfolio_configuration = portfolio_configuration
         self._portfolio_identifier = portfolio_identifier
         self._portfolio = portfolio
         self._portfolio_resolver = portfolio_resolver
         self._portfolio_description = portfolio_description
         self._portfolio_metadata_updater = metadata_updater
-        if portfolio_rebalance is not None:
-            self.portfolio_rebalance = portfolio_rebalance
-        if self.portfolio_rebalance is None:
+        if (
+            self.portfolio_engine is not None
+            and portfolio_identifier is not None
+            and self.portfolio_engine.config.portfolio_identifier != str(portfolio_identifier)
+        ):
+            self.portfolio_engine = None
+        return self
+
+    def ensure_portfolio_engine(self) -> PortfolioEngine:
+        """The portfolio's ledger updater, built from its configuration and identity."""
+        if self.portfolio_engine is None:
+            configuration = self._portfolio_configuration
+            if configuration is None:
+                raise ValueError("PortfolioWeights requires a portfolio configuration.")
+            identifier = self._resolve_portfolio_identifier()
             rebalance_kwargs: dict[str, Any] = {}
             if self._rebalance_output_table is not None:
                 rebalance_kwargs["output_table"] = self._rebalance_output_table
-            self.portfolio_rebalance = PortfolioRebalance(
+            portfolio_rebalance = PortfolioRebalance(
                 namespace=self.hash_namespace,
                 **rebalance_kwargs,
             )
-        self.portfolio_rebalance.set_portfolio_configuration(
-            portfolio_configuration,
-            portfolio_identifier=portfolio_identifier,
-            portfolio=portfolio,
-            portfolio_resolver=portfolio_resolver,
-        )
-        return self
+            portfolio_rebalance.set_portfolio_configuration(
+                configuration,
+                portfolio_identifier=identifier,
+                portfolio=getattr(self, "_portfolio", None),
+                portfolio_resolver=getattr(self, "_portfolio_resolver", None),
+            )
+            engine_kwargs: dict[str, Any] = {}
+            if self._event_ledger_output_table is not None:
+                engine_kwargs["output_table"] = self._event_ledger_output_table
+            self.portfolio_engine = PortfolioEngine.from_portfolio_configuration(
+                configuration,
+                portfolio_identifier=identifier,
+                namespace=self.hash_namespace,
+                portfolio_rebalance=portfolio_rebalance,
+                **engine_kwargs,
+            )
+        return self.portfolio_engine
 
-    def set_weights_frame(
-        self,
-        weights_frame: pd.DataFrame,
-        *,
-        portfolio_identifier: str | None = None,
-        portfolio_configuration: Any | None = None,
-        portfolio: Any | None = None,
-        portfolio_resolver: Any | None = None,
-        portfolio_description: str | None = None,
-        metadata_updater: Any | None = None,
-    ) -> PortfolioWeights:
-        """Attach direct canonical rows for storage-only use."""
-        self._weights_frame = weights_frame
-        self._portfolio_identifier = portfolio_identifier
-        self._portfolio_configuration = portfolio_configuration
-        self._portfolio = portfolio
-        self._portfolio_resolver = portfolio_resolver
-        self._portfolio_description = portfolio_description
-        self._portfolio_metadata_updater = metadata_updater
-        return self
+    @property
+    def portfolio_rebalance(self) -> PortfolioRebalance:
+        """The portfolio's rebalance state, which its ledger books."""
+        return self.ensure_portfolio_engine().config.portfolio_rebalance_instance
 
     def dependencies(self) -> dict[str, Any]:
-        """The portfolio's signal, then its rebalance state, which this node projects."""
+        """The portfolio's ledger, which runs its rebalance state and prices first."""
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
-        if self.portfolio_rebalance is None:
-            raise ValueError("PortfolioWeights requires PortfolioRebalance.")
-        return {
-            "signal_weights": self.portfolio_rebalance.signal_weights,
-            "portfolio_rebalance": self.portfolio_rebalance,
-        }
+        return {"portfolio_engine": self.ensure_portfolio_engine()}
 
     def series_key(self) -> str:
         return self._resolve_portfolio_identifier()
 
     def update(self) -> pd.DataFrame:
-        if getattr(self, "_portfolio_configuration", None) is not None:
-            frame = normalize_portfolio_weights_frame(
-                self._calculate_projected_weights(),
-                portfolio_identifier=self._resolve_portfolio_identifier(),
-            )
-        else:
-            weights = getattr(self, "_weights_frame", None)
-            if weights is None:
-                raise ValueError(
-                    "PortfolioWeights needs a portfolio configuration or set_weights_frame()."
-                )
-            frame = normalize_portfolio_weights_frame(
-                weights,
-                portfolio_identifier=self._resolve_portfolio_identifier(),
-            )
+        if getattr(self, "_portfolio_configuration", None) is None:
+            raise ValueError("PortfolioWeights needs a portfolio configuration.")
+        frame = normalize_portfolio_weights_frame(
+            self._calculate_projected_weights(),
+            portfolio_identifier=self._resolve_portfolio_identifier(),
+        )
         frame = drop_retired_rows(frame, self._retirement_boundary())
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
@@ -174,73 +174,35 @@ class PortfolioWeights(PublishedSeriesNode):
         end = end_before_retirement(end, self._retirement_boundary())
         if window_is_empty(start, end):
             return pd.DataFrame()
-        state = self.portfolio_rebalance.get_df_between_dates(
+        identifier = self._resolve_portfolio_identifier()
+        engine = self.ensure_portfolio_engine()
+        ledger = engine.get_df_between_dates(
             start_date=start,
             end_date=end,
             great_or_equal=True,
             less_or_equal=True,
-            dimension_filters={PORTFOLIO_IDENTIFIER: [self._resolve_portfolio_identifier()]},
+            dimension_filters={PORTFOLIO_IDENTIFIER: [identifier]},
         )
-        if state is None or state.empty:
+        if ledger is None or ledger.empty:
             return pd.DataFrame()
-        flat = state.reset_index().copy()
-        flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
+        projected = project_portfolio_weights(ledger).reset_index()
+        if projected.empty:
+            return pd.DataFrame()
+        projected["time_index"] = pd.to_datetime(projected["time_index"], utc=True)
         if latest is not None:
-            flat = flat[flat["time_index"] > pd.Timestamp(latest)]
-        # A cancelled row can still have filled part of its order (ADR 0058); an
-        # expired one never trades: it keeps the weight its order reached (#114).
-        flat = flat[~flat["execution_status"].isin({"superseded", "expired", "rejected"})]
-        if flat.empty:
+            projected = projected[projected["time_index"] > pd.Timestamp(latest)]
+        if projected.empty:
             return pd.DataFrame()
-        flat = flat.sort_values(
-            ["time_index", "target_signal_time_index", "rebalance_intent_id"],
-            kind="stable",
-        ).drop_duplicates(
-            subset=["time_index", ASSET_IDENTIFIER],
-            keep="last",
-        )
-        changed_times = flat.groupby("time_index")["executed_weight_delta"].apply(
-            lambda values: values.abs().gt(0.0).any()
-        )
-        flat = flat[flat["time_index"].isin(changed_times[changed_times].index)]
-        if flat.empty:
-            return pd.DataFrame()
-
-        projected = flat.rename(
-            columns={
-                "weight_after": "weight",
-                "execution_price": "price_current",
-                "observed_volume": "volume_current",
-            }
-        )
-        # The rebalance book's shares and cash, which value a portfolio without a
-        # ledger (ADR 0059). Strategies that record no book leave them empty.
-        states = [
-            RebalanceStrategyBase.parse_strategy_state(row)
-            for row in projected.to_dict(orient="records")
-        ]
-        projected["held_shares"] = [state.get("held_shares") for state in states]
-        projected["book_cash"] = [state.get("cash") for state in states]
+        projected = projected.drop(columns=[PORTFOLIO_IDENTIFIER])
+        projected["volume_current"] = self._observed_volumes(projected, start=start, end=end)
         projected = projected[
-            [
-                "time_index",
-                ASSET_IDENTIFIER,
-                "weight",
-                "weight_before",
-                "price_current",
-                "volume_current",
-                "held_shares",
-                "book_cash",
-            ]
+            ["time_index", ASSET_IDENTIFIER, "weight", "weight_before", "price_current", "volume_current"]
         ].sort_values(["time_index", ASSET_IDENTIFIER], kind="stable")
 
         seed = self._last_projected_weights(latest)
         history = projected.copy()
         if seed is not None and not seed.empty:
-            seed_flat = seed.reset_index().rename(
-                columns={PORTFOLIO_IDENTIFIER: "_portfolio_identifier"}
-            )
-            seed_flat = seed_flat[
+            seed_flat = seed.reset_index()[
                 [
                     "time_index",
                     ASSET_IDENTIFIER,
@@ -257,6 +219,31 @@ class PortfolioWeights(PublishedSeriesNode):
         return history[history["time_index"].isin(projected["time_index"])].set_index(
             ["time_index", ASSET_IDENTIFIER]
         )
+
+    def _observed_volumes(self, projected: pd.DataFrame, *, start: Any, end: Any) -> pd.Series:
+        """The bar volume the rebalance observed at each fill, where its strategy reads one."""
+        state = self.portfolio_rebalance.get_df_between_dates(
+            start_date=start,
+            end_date=end,
+            great_or_equal=True,
+            less_or_equal=True,
+            dimension_filters={PORTFOLIO_IDENTIFIER: [self._resolve_portfolio_identifier()]},
+        )
+        if state is None or state.empty or "observed_volume" not in state.reset_index().columns:
+            return pd.Series(None, index=projected.index, dtype="float64")
+        flat = state.reset_index()
+        flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
+        flat[ASSET_IDENTIFIER] = flat[ASSET_IDENTIFIER].astype(str)
+        volumes = (
+            flat.dropna(subset=["observed_volume"])
+            .drop_duplicates(subset=["time_index", ASSET_IDENTIFIER], keep="last")
+            .set_index(["time_index", ASSET_IDENTIFIER])["observed_volume"]
+            .astype("float64")
+        )
+        keys = pd.MultiIndex.from_arrays(
+            [projected["time_index"], projected[ASSET_IDENTIFIER].astype(str)]
+        )
+        return pd.Series(volumes.reindex(keys).to_numpy(), index=projected.index, dtype="float64")
 
     def _projection_window(self, latest: Any | None) -> tuple[Any, Any]:
         start: Any = self.OFFSET_START if latest is None else pd.Timestamp(latest)
@@ -295,6 +282,7 @@ class PortfolioWeights(PublishedSeriesNode):
                 portfolio_resolver=getattr(self, "_portfolio_resolver", None),
             )
             if getattr(resolved, "unique_identifier", None):
+                self._portfolio = resolved
                 return str(resolved.unique_identifier)
         raise ValueError(
             "PortfolioWeights requires a portfolio identifier or resolvable "
@@ -332,17 +320,6 @@ class PortfolioWeights(PublishedSeriesNode):
     ) -> str:
         return compute_portfolio_configuration_hash(portfolio_configuration)
 
-    @staticmethod
-    def normalize_weights_frame(
-        weights_frame: pd.DataFrame,
-        *,
-        portfolio_identifier: str,
-    ) -> pd.DataFrame:
-        return normalize_portfolio_weights_frame(
-            weights_frame,
-            portfolio_identifier=portfolio_identifier,
-        )
-
     @classmethod
     def _required_output_table(cls) -> type[PortfolioWeightsStorage]:
         return PortfolioWeightsStorage
@@ -353,17 +330,13 @@ def normalize_portfolio_weights_frame(
     *,
     portfolio_identifier: str,
 ) -> pd.DataFrame:
-    """Normalize executed-weight projections into canonical PortfolioWeights rows."""
+    """Normalize projected weights into canonical ``PortfolioWeightsTS`` rows."""
     required_columns = list(PortfolioWeights._column_dtypes_map_for_storage())
     flat = _reset_frame_index(weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
     flat = flat.rename(columns=PORTFOLIO_WEIGHT_SOURCE_COLUMN_ALIASES)
     flat[PORTFOLIO_IDENTIFIER] = str(portfolio_identifier)
-    # Weights supplied without a rebalance book carry no shares (ADR 0059).
-    for column in ("held_shares", "book_cash"):
-        if column in required_columns and column not in flat.columns:
-            flat[column] = None
     _require_columns(
         flat,
         required_columns=required_columns,

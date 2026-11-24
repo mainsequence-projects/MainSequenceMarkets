@@ -84,7 +84,15 @@ class InstrumentExecutionSpec(BaseModel):
     quantity_unit: str = Field(min_length=1)
     target_measure: TargetMeasure
     contract_multiplier: float = Field(gt=0.0, allow_inf_nan=False)
-    quantity_step: float = Field(gt=0.0, allow_inf_nan=False)
+    quantity_step: float | None = Field(
+        default=None,
+        gt=0.0,
+        allow_inf_nan=False,
+        description=(
+            "The lot step quantities are rounded toward zero to; None trades fractional "
+            "quantities (ADR 0065, decision 11)."
+        ),
+    )
     price_asset_identifier: str = Field(min_length=1)
     settlement_style: SettlementStyle
     terms_version: str = Field(min_length=1)
@@ -939,15 +947,22 @@ def _execution_status(context: AccountingExecutionContext, asset: str) -> str:
 
 
 def _round_to_steps(raw_quantity: np.ndarray, steps: np.ndarray) -> np.ndarray:
-    """Round toward zero to whole lot steps, keeping a value already on a step."""
-    scaled_quantity = raw_quantity / steps
+    """Round toward zero to whole lot steps, keeping a value already on a step.
+
+    A step of NaN, an instrument without a lot step, keeps the fractional quantity.
+    """
+    raw_quantity = np.asarray(raw_quantity, dtype="float64")
+    steps = np.asarray(steps, dtype="float64")
+    fractional = np.isnan(steps)
+    lot = np.where(fractional, 1.0, steps)
+    scaled_quantity = raw_quantity / lot
     nearest_step = np.rint(scaled_quantity)
     rounded_steps = np.where(
         np.isclose(scaled_quantity, nearest_step, rtol=0.0, atol=1e-12),
         nearest_step,
         np.trunc(scaled_quantity),
     )
-    quantity = rounded_steps * steps
+    quantity = np.where(fractional, raw_quantity, rounded_steps * lot)
     quantity[np.isclose(quantity, 0.0, rtol=0.0, atol=1e-15)] = 0.0
     return quantity
 

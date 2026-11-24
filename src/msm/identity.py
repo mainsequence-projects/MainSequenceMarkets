@@ -55,7 +55,6 @@ PRE_RENAME_CLASS_NAMES: Mapping[str, str] = {
     "IndexValuesUpdater": "IndexValuesDataNode",
     "PortfolioCanonicalUpdater": "PortfolioCanonicalDataNode",
     "PortfolioCanonicalUpdaterConfiguration": "PortfolioCanonicalDataNodeConfiguration",
-    "PortfoliosUpdater": "PortfoliosDataNode",
     "StampedUpdater": "StampedDataNode",
     "StampedUpdaterConfiguration": "StampedDataNodeConfiguration",
     "TargetPositionsConfiguration": "TargetPositionsDataNodeConfiguration",

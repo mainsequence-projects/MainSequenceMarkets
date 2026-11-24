@@ -1,6 +1,6 @@
 """Engine nodes whose output is a published series (ADR 0060, decision 5).
 
-``SignalWeights`` and its subclasses, ``PortfolioWeights`` and ``PortfoliosUpdater``
+``SignalWeights`` and its subclasses, ``PortfolioWeights`` and ``PortfolioValues``
 are not ``TimeIndexTableUpdater``s: they are bound to no table and MetaTables keeps no
 update record of them. ``run()`` runs the node's dependencies, computes ``update()``
 and publishes the rows through the series row class (``SignalWeightsSeries``,

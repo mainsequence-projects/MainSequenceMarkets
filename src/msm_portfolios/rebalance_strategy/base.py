@@ -286,23 +286,15 @@ class RebalanceStrategyBase(BaseModel):
         *,
         bar_slice: BarSlice,
         entry: BookEntry,
+        book: RebalanceBook,
     ) -> dict[str, Any]:
         """Return the ``"bar"`` state recorded once ``entry`` traded at the bar.
 
         The default is the slice's own state. A strategy that counts what traded, as a
-        daily participation cap does, adds it here.
+        daily participation cap does, adds it here; ``book`` carries the book's unit.
         """
-        del entry
+        del entry, book
         return dict(bar_slice.state)
-
-    def book_unit_value(self, ledger_unit_value: float | None) -> float | None:
-        """Return one book unit in the portfolio's currency, or ``None`` without one.
-
-        The book's unit is the NAV at the portfolio's first rebalance. A ledger's
-        initial NAV, ``ledger_unit_value``, gives it a currency (ADR 0059); a strategy
-        with its own size returns that size instead.
-        """
-        return ledger_unit_value
 
     def simulate_recorded_fills(
         self,
@@ -316,6 +308,7 @@ class RebalanceStrategyBase(BaseModel):
         fx_observations: pd.DataFrame,
         strategy_revision: str,
         decided_quantities: dict[str, float] | None = None,
+        execution_model: Any | None = None,
     ):
         """Book the fills ``PortfolioRebalance`` recorded at one time.
 
@@ -325,14 +318,14 @@ class RebalanceStrategyBase(BaseModel):
         recorded as progress. The strategy decides nothing here.
         ``decided_quantities`` are the share counts the rebalance fixed at its
         decision; each fill trades to its count at the recorded price. Without them,
-        quantities are sized from the NAV now.
+        quantities are sized from the NAV now. ``execution_model`` is the model the
+        ledger resolved: the strategy's own, or the default (ADR 0065, decision 11).
         """
 
-        model = self.execution_model_instance
+        model = execution_model or self.execution_model_instance
         if model is None:
             raise ValueError(
-                f"{self.__class__.__name__} requires execution_model_instance for "
-                "position-aware accounting."
+                f"{self.__class__.__name__} has no execution model to book its fills with."
             )
         intents = fills["rebalance_intent_id"].astype(str).unique()
         if len(intents) != 1:
@@ -448,12 +441,10 @@ class RebalanceStrategyBase(BaseModel):
         ``price_conversion`` converts prices quoted in another currency into the
         portfolio's at the last observed FX rate (ADR 0059); without it every price is
         in the portfolio's currency, as the prices of a strategy's own bars always are.
-        ``book_unit_value`` is the ledger's initial NAV, which a fixed-amount negative
-        cash limit needs; ``book_unit_value()`` may replace it with the strategy's own
-        size.
+        ``book_unit_value`` is the ledger's initial NAV, the book's unit (ADR 0065): a
+        fixed-amount negative cash limit and a strategy sized in money or volume need it.
         """
         own_prices = self.own_execution_prices()
-        book_unit_value = self.book_unit_value(book_unit_value)
         if own_prices is None:
             if fill_prices is None:
                 raise ValueError(
@@ -1126,7 +1117,7 @@ class RebalanceStrategyBase(BaseModel):
             for entry in entries:
                 asset = entry.asset_identifier
                 bar_states[asset] = {
-                    **self.bar_state(bar_slice=slices[asset], entry=entry),
+                    **self.bar_state(bar_slice=slices[asset], entry=entry, book=book),
                     "slice_shares": slices[asset].shares,
                 }
                 rows.append(

@@ -39,17 +39,17 @@ Change one of them and the table is a new one, with a new revision to commit:
 autogenerate it with `metatables migrations revision` once the provider's earlier
 revisions are applied. The run script publishes example OHLCV source bars to
 `ExternalPricesStorage`, interpolates prices, runs `SignalWeights`,
-`PortfolioCalendarEvents`, `PortfolioRebalance`, `PortfolioWeights`, and
-`PortfoliosUpdater`, creates or reuses the crypto
-`CRYPTO_24_7` calendar, and stores the calendar and signal on the
-`Portfolio` row. `SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater`
+`PortfolioCalendarEvents`, `PortfolioRebalance`, the portfolio's ledger
+(`PortfolioEngine`), `PortfolioWeights` and `PortfolioValues`, creates or reuses the
+crypto `CRYPTO_24_7` calendar, and stores the calendar and signal on the
+`Portfolio` row. `SignalWeights`, `PortfolioWeights` and `PortfolioValues`
 publish their rows through the series operations
 ([Published Series](../knowledge/msm_portfolios/portfolios/index.md#published-series)).
 The price configuration holds the source bars updater, and `InterpolatedPrices`
 receives the example's table as `output_table=`. The portfolio configuration receives that
 `InterpolatedPrices` node as `valuation_source_instance` and sets
-`valuation_column="close"`; `PortfoliosUpdater` does not create interpolation
-storage internally. Real portfolio extensions can pass any compatible
+`valuation_column="close"`: the ledger values the portfolio at those closes, and
+nothing creates interpolation storage internally. Real portfolio extensions can pass any compatible
 asset-indexed valuation TimeIndexTableUpdater or TimeIndexTableRef and choose any numeric valuation
 column, such as `fair_value` or `nav`, without reshaping the source into OHLC
 bars. A focused configuration example is available at
@@ -91,12 +91,12 @@ FixedWeights signal
   + PortfolioCalendarEvents publishes persisted CRYPTO_24_7 session events
   -> CalendarEventSignal selects market_close observations
   -> PortfolioRebalance persists complete or unfinished strategy state
-  -> PortfolioWeights projects only executed-weight changes
-  -> PortfoliosUpdater values current holdings at valuation-source observations
+  -> PortfolioEngine books the fills and values the holdings at valuation-source observations
+  -> PortfolioWeights and PortfolioValues publish the ledger's weights and values
   -> optional PortfolioAnalytics samples canonical values for reporting
 ```
 
-`PortfoliosUpdater` never creates a calendar or frequency-based index. A
+The ledger never creates a calendar or frequency-based index. A
 weekly `CalendarEventSignal` can therefore produce sparse weight rows while a
 daily valuation source produces daily portfolio values. `ImmediateSignal`
 rebalances at every new signal.
@@ -123,9 +123,14 @@ The build configuration names the portfolio's currency
 (`valuation_asset_identifier`). A portfolio holding an asset quoted in another
 currency declares one `fx_source_instance`, and its valuation source names each
 price's currency in `price_asset_identifier`; prices convert at the last observed
-rate. Without a ledger, the portfolio is valued from the shares the rebalance
-records, so its weights drift with prices between rebalances
-([ADR 0059](../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
+rate. Every portfolio keeps a ledger
+([ADR 0065](../ADR/0065-every-portfolio-keeps-a-ledger.md)): the example's starts
+with 1,000,000 USD in cash (`initial_nav`) on 2026-05-22 and pays 0.018% of each
+trade's notional (`ProportionalExecutionCostModel`). The ledger values the
+portfolio from its positions at their prices, so its weights drift with prices
+between rebalances ([ADR 0059](../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
+The prices are adjusted unless the valuation source states otherwise
+(`events_in_price`), so the example needs no dividend or split model.
 
 Both strategies require an explicit persisted calendar identifier and an
 explicit calendar-event updater or table reference that publishes `market_open`
@@ -135,13 +140,10 @@ process-local calendar.
 Create the calendar with its session rules and exceptions before executing the
 graph; see [Calendars](02-calendars.md).
 
-Each execution or valuation window is seeded with the latest eligible row for
-every required asset using one set-based `get_last_observation(...)` request.
-For shared signal storage, each range coordinate includes both `signal_uid` and
-`asset_identifier`, preventing another signal's rows from entering the seed.
-Portfolio valuation also rechecks the response boundary: executed-weight seed
-rows are kept only when they are strictly earlier than the window start, and
-duplicate `(time_index, asset_identifier)` coordinates fail before pivoting.
+Each execution window is seeded with the latest eligible row for every required
+asset using one set-based `get_last_observation(...)` request. For shared signal
+storage, each range coordinate includes both `signal_uid` and `asset_identifier`,
+preventing another signal's rows from entering the seed.
 
 This example uses one concrete strategy; it does not define the architecture.
 Under [ADR 0040](../ADR/0040-portfolio-temporal-ownership.md), every strategy
@@ -156,10 +158,10 @@ Each sizes its order once, at the decision, as `ImmediateSignal` does, and fills
 it in slices, one per bar, under the same `execution_policy`; missing capacity
 leaves the order open until a later bar
 ([#90](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/90)).
-`total_notional` is the money one unit of the strategy's book stands for: it
-turns a bar's volume or liquidity into shares of the order. Adding a strategy
-does not add a branch or date generator to `PortfolioRebalance`,
-`PortfolioWeights`, or `PortfoliosUpdater`.
+The book's unit is the ledger's `initial_nav`: it turns a bar's volume or
+liquidity into shares of the order. Adding a strategy does not add a branch or
+date generator to `PortfolioRebalance`, `PortfolioEngine`, `PortfolioWeights` or
+`PortfolioValues`.
 
 For a bounded five-percent trailing daily participation policy:
 
@@ -183,7 +185,6 @@ strategy = TrailingAverageDailyVolumeParticipation(
     execution_end="16:00",
     max_daily_participation=0.05,
     max_bar_participation=0.10,
-    total_notional=50_000_000,
 )
 ```
 
@@ -224,14 +225,11 @@ portfolio while scheduled writers are paused, then immediately rerun the
 portfolio workflow to rebuild the scoped tail. A post-replay dry run must
 report no rollback.
 
-The core configuration uses `valuation_alignment_policy` to bound per-asset
-as-of freshness. In strict mode, freshness is required when the current or
-immediately preceding executed weight is nonzero. This keeps entry and exit
-prices mandatory without making an unchanged zero-weight row economically
-required or removing that row from the stored signal. It does not accept
-`portfolio_prices_frequency`; configure a
-separate `PortfolioAnalytics` node when a chart or analysis needs daily,
-weekly, or monthly sampling. Analytical rows keep the actual selected source
+The ledger's valuation model bounds per-asset as-of freshness: a held asset is
+valued at its last observed price, marked stale past `maximum_staleness`, and
+`fail_on_missing_values` refuses a stale one instead. The portfolio has no
+reporting frequency; configure a separate `PortfolioAnalytics` node when a chart
+or analysis needs daily, weekly, or monthly sampling. Analytical rows keep the actual selected source
 observation in both `time_index` and `source_time_index`, with bucket boundaries
 in `period_start` and `period_end`.
 
@@ -241,9 +239,8 @@ The full configuration, input-grain, ledger, restart, and extension contracts
 are documented in
 [Position-Aware Portfolio Accounting](../knowledge/msm_portfolios/portfolios/accounting.md).
 
-Position-aware accounting is opt-in and writes a separate canonical event
-ledger. The existing weight-only example and its identity do not change. Start
-with the offline fixture before wiring registered dependencies:
+Every portfolio writes a canonical event ledger, the equal-weights example's too.
+Start with the offline fixture to see what a ledger books:
 
 ```bash
 uv run --extra portfolios python \

@@ -62,14 +62,23 @@ class PositionValuationModel(BaseModel, ABC):
         """Value one immutable state snapshot at an explicit economic timestamp."""
 
 
+VALUATIONS_INPUT = "valuations"
+"""The input ``PortfolioEngine`` fills from the portfolio's valuation source (ADR 0065)."""
+
+PRICE_COLUMN = "price"
+"""The price column of that input: the build's ``valuation_column``."""
+
+
 class MarketPriceValuationModel(PositionValuationModel):
-    """Value positions from asset prices and convert every component with explicit FX."""
+    """Value positions from asset prices and convert every component with explicit FX.
+
+    The prices are the portfolio's valuation source, which ``PortfolioEngine`` reads with
+    the build's ``valuation_column`` and gives as the ``valuations`` input (ADR 0065).
+    """
 
     model_identifier: ClassVar[str] = "msm.market_price_valuation"
     model_version: ClassVar[str] = "1"
 
-    valuation_source: ValuationDependency | None = Field(default=None, exclude=True)
-    price_column: str = "price"
     maximum_staleness: dt.timedelta = Field(
         default=dt.timedelta(days=1),
         gt=dt.timedelta(0),
@@ -90,18 +99,12 @@ class MarketPriceValuationModel(PositionValuationModel):
         ),
     )
 
-    def declared_dependencies(self) -> dict[str, ValuationDependency]:
-        dependencies: dict[str, ValuationDependency] = {}
-        if self.valuation_source is not None:
-            dependencies["valuations"] = self.valuation_source
-        return dependencies
-
     def required_input_contracts(self) -> dict[str, LifecycleInputContract]:
         contracts = {
-            "valuations": LifecycleInputContract(
+            VALUATIONS_INPUT: LifecycleInputContract(
                 index_names=("time_index", "asset_identifier"),
                 required_columns=(
-                    self.price_column,
+                    PRICE_COLUMN,
                     "price_asset_identifier",
                     "source_revision",
                 ),
@@ -133,7 +136,7 @@ class MarketPriceValuationModel(PositionValuationModel):
                 timestamp=timestamp,
                 keys=("asset_identifier",),
                 required_values=positions["asset_identifier"].astype(str).unique(),
-                value_columns=(self.price_column, "price_asset_identifier"),
+                value_columns=(PRICE_COLUMN, "price_asset_identifier"),
                 maximum_staleness=self.maximum_staleness,
                 frame_name="valuation",
                 fail_on_stale=self.fail_on_missing_values,
@@ -142,7 +145,7 @@ class MarketPriceValuationModel(PositionValuationModel):
                 marks, on="asset_identifier", how="left", validate="many_to_one"
             )
             marked["native_value"] = marked["quantity"].to_numpy(dtype="float64") * marked[
-                self.price_column
+                PRICE_COLUMN
             ].to_numpy(dtype="float64")
             fx_rates, fx_refs = _fx_rates(
                 marked["price_asset_identifier"],
@@ -392,6 +395,8 @@ def _references_from_rows(frame: pd.DataFrame, source_kind: str) -> list[dict[st
 
 
 __all__ = [
+    "PRICE_COLUMN",
+    "VALUATIONS_INPUT",
     "MarketPriceValuationModel",
     "PositionValuationModel",
     "ValuationDependency",

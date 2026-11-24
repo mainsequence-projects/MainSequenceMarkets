@@ -1,22 +1,28 @@
 from __future__ import annotations
 
-from typing import Final, NamedTuple
+from typing import Any, Final, NamedTuple
 
 
 class AssetTypeDefinition(NamedTuple):
-    """Static definition for a built-in asset type key."""
+    """Static definition for a built-in asset type key.
+
+    ``event_types`` are the events an asset of the type can have (ADR 0065): on
+    unadjusted prices, a portfolio's ledger must book each of them.
+    """
 
     asset_type: str
     display_name: str
     description: str
+    event_types: tuple[str, ...] = ()
 
-    def as_payload(self) -> dict[str, str]:
+    def as_payload(self) -> dict[str, Any]:
         """Return a mutable payload suitable for ``AssetType.upsert(...)``."""
 
         return {
             "asset_type": self.asset_type,
             "display_name": self.display_name,
             "description": self.description,
+            "event_types": list(self.event_types),
         }
 
 
@@ -43,6 +49,14 @@ ASSET_TYPE_BOND: Final[str] = "bond"
 ASSET_TYPE_FUTURE: Final[str] = "future"
 ASSET_TYPE_CRYPTO: Final[str] = "crypto"
 ASSET_TYPE_EQUITY: Final[str] = "equity"
+
+# Events an asset can have (ADR 0065). An asset type lists those of its assets; a
+# portfolio's lifecycle models, or adjusted prices, book them.
+EVENT_TYPE_DIVIDEND: Final[str] = "dividend"
+EVENT_TYPE_SPLIT: Final[str] = "split"
+EVENT_TYPE_COUPON: Final[str] = "coupon"
+EVENT_TYPE_REDEMPTION: Final[str] = "redemption"
+EVENT_TYPE_EXPIRY: Final[str] = "expiry"
 INDEX_TYPE_INTEREST_RATE: Final[str] = "interest_rate"
 INDEX_TYPE_EQUITY: Final[str] = "equity"
 INDEX_TYPE_CRYPTO: Final[str] = "crypto"
@@ -70,11 +84,13 @@ ASSET_TYPE_BOND_DEFINITION: Final[AssetTypeDefinition] = AssetTypeDefinition(
     asset_type=ASSET_TYPE_BOND,
     display_name="Bond",
     description="Debt instruments represented as tradable assets.",
+    event_types=(EVENT_TYPE_COUPON, EVENT_TYPE_REDEMPTION),
 )
 ASSET_TYPE_FUTURE_DEFINITION: Final[AssetTypeDefinition] = AssetTypeDefinition(
     asset_type=ASSET_TYPE_FUTURE,
     display_name="Future",
     description="Futures contracts represented as tradable assets.",
+    event_types=(EVENT_TYPE_EXPIRY,),
 )
 ASSET_TYPE_CRYPTO_DEFINITION: Final[AssetTypeDefinition] = AssetTypeDefinition(
     asset_type=ASSET_TYPE_CRYPTO,
@@ -85,6 +101,7 @@ ASSET_TYPE_EQUITY_DEFINITION: Final[AssetTypeDefinition] = AssetTypeDefinition(
     asset_type=ASSET_TYPE_EQUITY,
     display_name="Equity",
     description="Listed equity assets resolved through OpenFIGI.",
+    event_types=(EVENT_TYPE_DIVIDEND, EVENT_TYPE_SPLIT),
 )
 INDEX_TYPE_INTEREST_RATE_DEFINITION: Final[IndexTypeDefinition] = IndexTypeDefinition(
     index_type=INDEX_TYPE_INTEREST_RATE,
@@ -146,6 +163,11 @@ __all__ = [
     "ASSET_TYPE_FUTURE",
     "ASSET_TYPE_FUTURE_DEFINITION",
     "AssetTypeDefinition",
+    "EVENT_TYPE_COUPON",
+    "EVENT_TYPE_DIVIDEND",
+    "EVENT_TYPE_EXPIRY",
+    "EVENT_TYPE_REDEMPTION",
+    "EVENT_TYPE_SPLIT",
     "BOND_ASSET_TYPE",
     "BUILT_IN_ASSET_TYPE_DEFINITIONS",
     "BUILT_IN_ASSET_TYPES",

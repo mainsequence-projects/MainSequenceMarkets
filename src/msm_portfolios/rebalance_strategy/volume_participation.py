@@ -22,7 +22,8 @@ class VolumeParticipation(SizedBarStrategy):
 
     The order is fixed at the decision (#90). A bar's slice is at most
     ``max_percent_volume_in_bar`` of its volume, in shares of the asset, which is that
-    quantity divided by ``total_notional`` in shares of the book.
+    quantity divided by the book's unit, the portfolio's initial NAV, in shares of the
+    book.
     """
 
     timing_mode: Literal["bar_participation"] = "bar_participation"
@@ -121,7 +122,7 @@ class VolumeParticipation(SizedBarStrategy):
         bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
     ) -> dict[str, BarSlice]:
-        del event_time, book, bar_states, execution_context
+        del event_time, bar_states, execution_context
         bars = event_observations["execution_bars"]
         bars_by_asset = {
             str(row[ASSET_IDENTIFIER_DIMENSION]): row for row in bars.to_dict(orient="records")
@@ -136,7 +137,7 @@ class VolumeParticipation(SizedBarStrategy):
                 else volume * self.max_percent_volume_in_bar
             )
             slices[asset] = BarSlice(
-                shares=self.shares_for_quantity(capacity),
+                shares=self.shares_for_quantity(capacity, book=book),
                 observed_volume=volume,
                 state={
                     "capacity_quantity": capacity,

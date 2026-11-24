@@ -147,9 +147,6 @@ class SignalWeights(PublishedSeriesNode):
     def get_update_asset_list(self) -> None | list:
         return self.get_asset_list()
 
-    def get_asset_uid_to_override_portfolio_price(self):
-        return None
-
     def _latest_signal_time_index_value(self) -> pd.Timestamp | None:
         """The signal's last published time, or ``None`` before its first observation."""
 

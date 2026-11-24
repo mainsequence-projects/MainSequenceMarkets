@@ -1,29 +1,29 @@
 # Position-Aware Portfolio Accounting
 
-Position-aware accounting is the opt-in `msm_portfolios` workflow for portfolios
-that must track instrument quantities, currency balances, receivables, payables,
-and position-driven cash flows. It is appropriate for dividends, funding,
-coupons, exercise, expiry, settlement, and user-defined lifecycle economics that
-cannot be represented truthfully as weighted asset returns.
-
-The existing `PortfoliosUpdater` remains the default weight-only engine. Enabling
-accounting creates a separate configuration identity and output history; it never
-converts or appends to a legacy weight-only portfolio.
+Every portfolio keeps a position-aware ledger
+([ADR 0065](../../../ADR/0065-every-portfolio-keeps-a-ledger.md)). The ledger
+tracks instrument quantities, currency balances, receivables, payables, and
+position-driven cash flows: dividends, funding, coupons, exercise, expiry,
+settlement, and user-defined lifecycle economics. `PortfolioEngine` books every
+portfolio, and the weights and values a portfolio publishes are projections of its
+ledger (`PortfolioWeights`, `PortfolioValues`).
 
 !!! note "Current implementation status"
 
     The canonical ledger, reference reducer, coordinated signal-to-strategy
     execution simulation, explicit instrument sizing and settlement terms,
     strategy-owned execution costs, dividend recognition and settlement,
-    explicit price/FX valuation, ledger restart, read projections, storage
-    schemas, and their migrations are implemented. Issue #11 removed the
-    erroneous external execution ingress; there is no replay lane or fallback.
-    Correction-tail publication, optimized reducer parity, projection publishers,
-    and option/bond acceptance fixtures remain implementation work inside
+    explicit price/FX valuation, ledger restart, read projections, the published
+    weights and values projections, storage schemas, and their migrations are
+    implemented. Issue #11 removed the erroneous external execution ingress;
+    there is no replay lane or fallback. Correction-tail publication, optimized
+    reducer parity, publication of the state and cash-flow projections, and
+    option/bond acceptance fixtures remain implementation work inside
     `msm_portfolios`. There is no `mainsequence-sdk` blocker.
 
 The architectural contract is recorded in
-[ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md).
+[ADR 0042](../../../ADR/0042-position-cash-flow-portfolio-accounting.md),
+[ADR 0058](../../../ADR/0058-trade-at-the-next-observed-price.md) and ADR 0065.
 
 ## Architecture And Ownership
 
@@ -38,7 +38,7 @@ flowchart LR
     PA["PortfolioAccounting<br/>pure state reducer"]
     PE["PortfolioEngine<br/>TimeIndexTableUpdater"]
     EL["PortfolioEventLedgerStorage<br/>authoritative TimeIndexMetaTable"]
-    RP["Ledger-derived projections<br/>state, cash flows, NAV/returns"]
+    RP["Published projections<br/>PortfolioWeights, PortfolioValues"]
 
     SW --> RS
     MO --> RS
@@ -69,24 +69,20 @@ The responsibilities are strict:
   `msm_portfolios`. The existing `metatables` updater, MetaTable, and migration
   contracts are sufficient.
 
-## Selecting The Correct Portfolio Path
+## What A Portfolio Books
 
-| Requirement | Engine |
+| Requirement | How |
 | --- | --- |
-| Weighted asset-return portfolio with turnover commission | Existing `PortfoliosUpdater` |
-| Existing saved portfolio with no accounting configuration | Existing `PortfoliosUpdater` |
-| Quantities, currency cash, receivables, payables, or lifecycle cash flows | `PortfolioEngine` |
-| Signal targets converted into simulated quantities and costs | `PortfolioEngine` coordinated `RebalanceStrategy` path |
-| User-defined position-dependent economics | Inject a `LifecycleEventModel` into `PortfolioEngine` |
+| Quantities, currency cash, receivables, payables, or lifecycle cash flows | `PortfolioEngine`, for every portfolio |
+| Signal targets converted into simulated quantities and costs | The strategy's recorded fills, booked by `PortfolioEngine` |
+| Execution costs | The strategy's `execution_cost_model_instances` |
+| User-defined position-dependent economics | Inject a `LifecycleEventModel` |
 
 Broker executions, account trades, custody holdings, and actual cash are not a
 Portfolio path. They belong to the account domain even when an Account uses a
 Portfolio as allocation intent.
 
-An omitted `PortfolioBuildConfiguration.accounting_configuration` and an
-explicit `None` both preserve the legacy serialized configuration and hash. An
-enabled accounting configuration passed to `PortfoliosUpdater` is rejected;
-there is no silent downgrade to weight-only valuation.
+`PortfolioBuildConfiguration.accounting_configuration` is required.
 
 ## Target Configuration
 
@@ -96,7 +92,8 @@ versioned model configuration.
 
 ```text
 PortfolioBuildConfiguration
-  valuation_source_instance        prices the rebalance fills at
+  valuation_source_instance        prices the rebalance fills at and the ledger values at
+  valuation_column                 the source column that holds the price
   valuation_asset_identifier       the portfolio's currency (ADR 0059)
   fx_source_instance               optional; prices in another currency
   backtesting_weights_configuration
@@ -115,8 +112,12 @@ not accept an execution source, Account, broker, order, trade, fill, or holdings
 dependency. The removed external-execution field is rejected as an unknown
 configuration key; it has no alias or compatibility fallback.
 
-Configure position sizing, settlement, and execution-time costs on the existing
-rebalance strategy:
+Configure position sizing, settlement, and execution-time costs on the rebalance
+strategy. A strategy that states no `execution_model_instance` trades with the
+default model (ADR 0065, decision 11): every asset its fills trade, in fractional
+units (`quantity_step=None`), with multiplier 1, `market_value_weight` and cash
+settlement, quoted in the currency of the asset's valuation rows. State an
+execution model to change that:
 
 ```python
 from msm_portfolios.rebalance_strategy import (
@@ -172,15 +173,17 @@ execution policy's floor (no negative cash, a fraction of NAV, or a fixed amount
 pro rata; the progress record carries `ledger_cut` (`quantity`, `reason`)
 ([ADR 0059](../../../ADR/0059-portfolio-currency-fx-and-drifting-weights.md)).
 
-The ledger reads the portfolio's FX source from the build configuration
-(`fx_source_instance`); `MarketPriceValuationModel` declares none of its own.
+The ledger reads the portfolio's valuation source and FX source from the build
+configuration (`valuation_source_instance` with `valuation_column`, and
+`fx_source_instance`); `MarketPriceValuationModel` declares neither of its own.
 
 `TargetWeightExecutionModel` sizes every compatible Asset in one vectorized
 timestamp batch from the immutable post-lifecycle state and NAV. Every Asset
 with nonzero desired exposure or a position to close requires an
 `InstrumentExecutionSpec`; an unchanged zero target is not economically
-required. The engine never guesses its unit,
-multiplier, lot step, quote Asset, target measure, or settlement style.
+required. An explicit model's unit, multiplier, lot step, quote Asset, target
+measure, and settlement style are never guessed; `quantity_step=None` trades
+fractional quantities.
 For each rebalance timestamp the strategy receives the signal targets, desired
 and current exposures, immutable positions, free settled balances by currency,
 post-lifecycle NAV, price/FX observations, canonical valuation references, and
@@ -245,21 +248,46 @@ from an Asset type or ticker.
 
 ### Price Observations
 
-`MarketPriceValuationModel` expects grain
+`PortfolioEngine` reads the portfolio's valuation source, for the assets its fills
+trade, and gives `MarketPriceValuationModel` rows of grain
 `(time_index, asset_identifier)` with:
 
 | Field | Meaning |
 | --- | --- |
-| `price` | Finite price selected by `price_column` |
-| `price_asset_identifier` | Quote Asset of that price |
-| `source_revision` | Reproducible observation revision |
+| `price` | The source's `valuation_column` |
+| `price_asset_identifier` | The source's column of that name; without one, the portfolio's currency |
+| `source_revision` | The source's column of that name; without one, computed from the row's time, asset and price |
 
 The most recent observation at or before the accounting timestamp is selected,
 however old. Past `maximum_staleness` it is marked stale: the valuation reference
 carries `"stale": "true"`, `ValuationResult.stale_sources` lists it, and the event's
-`valuation_summary` row names it in its `extension_payload` as
-`{"stale_sources": [...]}`. A held position with no observation at all at or before
-the timestamp fails the event. FX rates follow the same rule.
+`valuation_summary` row names it in its `extension_payload` under
+`"stale_sources"`. A held position with no observation at all at or before the
+timestamp fails the event. FX rates follow the same rule.
+
+An event that changes a position also records, in its summary's
+`extension_payload`, each asset's position value before and after the event
+(`"position_values_before"`, `"position_values"`, in the portfolio's currency).
+The published weights are those values over the NAV.
+
+### Price Level And Asset Events
+
+The source states which events its prices include: `events_in_price` on its
+configuration (`InterpolatedPricesConfig.events_in_price`). `"adjusted"`, the
+default, includes every event of the asset; a tuple names exactly the event types
+the prices include, `()` for unadjusted prices. A source given as a
+`TimeIndexTableRef` is adjusted (`msm_portfolios.accounting.events`).
+
+An asset type lists the events its assets can have (`AssetType.event_types`), and
+a lifecycle model the event types it books (`booked_event_types`):
+
+- On prices that do not include an event, `PortfolioEngine` refuses to book a
+  portfolio that holds or buys an asset whose type lists that event while no model
+  books it. The error names each asset and event. An asset Markets does not know is
+  refused too. On adjusted prices nothing is read.
+- A build configuration whose lifecycle model books an event its source's prices
+  include is refused: the event would be counted twice. `DividendCashFlowModel`
+  therefore needs a source that states its prices exclude dividends.
 
 ### FX Observations
 
@@ -448,12 +476,14 @@ The public pure projections consume only the ledger:
 from msm_portfolios.accounting import (
     project_cash_flows,
     project_portfolio_values,
+    project_portfolio_weights,
     project_state,
 )
 
 state = project_state(ledger)
 cash_flows = project_cash_flows(ledger)
 values = project_portfolio_values(ledger, initial_nav=1_000_000.0)
+weights = project_portfolio_weights(ledger)
 ```
 
 - `project_state` returns end-of-timestamp position, cash, and obligation
@@ -462,12 +492,18 @@ values = project_portfolio_values(ledger, initial_nav=1_000_000.0)
 - `project_cash_flows` returns completed `cash_delta` and `cost` records only.
   Future payments remain obligations and do not appear as cash.
 - `project_portfolio_values` selects the final summary per economic timestamp and
-  derives normalized `close = nav_after / initial_nav` and linked returns.
+  derives normalized `close = nav_after / initial_nav`, linked returns, and
+  `valuation_stale` from the summary's stale sources. `PortfolioValues` publishes
+  it to `PortfolioValuesSeries`.
+- `project_portfolio_weights` returns, for each event that changed a position, the
+  weight of each asset it changed: its value over the NAV after the event, before
+  it, and the price the event booked it at. When several events at one time change
+  an asset, the weight is the last one's and `weight_before` the first one's.
+  `PortfolioWeights` publishes it to `PortfolioWeightsSeries`.
 
 `PortfolioStateStorage` and `PortfolioCashFlowsStorage` are additive schemas
-installed by the ms-markets migration provider. Dedicated projection publisher updaters are not
-yet implemented; callers must not describe the schemas as independent accounting
-authorities.
+installed by the ms-markets migration provider. Nothing writes them yet; callers
+must not describe the schemas as independent accounting authorities.
 
 ## User-Defined Cash Flows And Lifecycle Events
 
@@ -521,10 +557,11 @@ Accounting mode is strict. Common failures mean:
 | Observation would cause look-ahead | `observed_at` is later than the economic event in `as_known` mode |
 | Broken event digest or state chain | Ledger records are incomplete, modified, or incorrectly ordered |
 | Corrected source revision requires tail replay | A source changed and correction publication is not yet implemented |
-| Enabled accounting rejected by `PortfoliosUpdater` | The accounting configuration was sent to the legacy weight-only engine |
+| Assets with events nothing books | On prices that do not include an event, a held or bought asset's type lists it and no lifecycle model books it |
+| An event would be counted twice | A lifecycle model books an event the valuation source's prices include |
 
 The engine does not convert any of these conditions into a zero cash flow,
-stale valuation, inverse FX guess, or weight-only fallback.
+stale valuation, or inverse FX guess.
 
 ## Migration And Validation
 
@@ -560,5 +597,4 @@ uv run --extra portfolios --extra dev mkdocs build --strict \
   --site-dir /private/tmp/msmarkets-docs-site
 ```
 
-Before a release, also run the complete repository test suite and the
-backward-compatibility acceptance matrix defined in ADR 0042.
+CI runs the complete repository test suite on every push.

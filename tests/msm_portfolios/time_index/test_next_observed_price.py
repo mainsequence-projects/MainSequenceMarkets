@@ -375,6 +375,8 @@ def run_bar_strategy(strategy, bars: pd.DataFrame, signals: pd.DataFrame) -> pd.
         signal_observations=signals,
         observed_inputs={"execution_bars": bars},
         previous_state=None,
+        # The book's unit, the ledger's initial NAV (ADR 0065).
+        book_unit_value=100_000.0,
     )
 
 
@@ -400,7 +402,6 @@ def test_a_bar_strategy_skips_the_signals_own_bar_and_interpolated_bars() -> Non
             "bars", bars, index=["time_index", ASSET_IDENTIFIER]
         ),
         max_percent_volume_in_bar=1.0,
-        total_notional=100_000.0,
     )
     result = run_bar_strategy(
         strategy,
@@ -956,7 +957,8 @@ def test_the_ledger_shows_a_stale_valuation_in_its_references() -> None:
         (ledger["record_kind"] == "valuation_summary")
         & (pd.to_datetime(ledger["time_index"], utc=True) == utc("2026-11-19T14:31Z"))
     ].iloc[0]
-    assert pd.isna(fresh["extension_payload"])
+    # The fill's summary records the position's value, and no stale price (ADR 0065).
+    assert "stale_sources" not in json.loads(fresh["extension_payload"])
 
 
 def test_the_ledger_refuses_a_price_observed_at_another_time_than_its_fill() -> None:
@@ -1042,6 +1044,48 @@ def test_the_ledger_replays_unchanged_and_adds_only_new_fills() -> None:
     assert executions(tail) == [(utc("2026-11-20T14:31Z"), "AAPL", -80.0, 50.0)]
 
 
+def test_the_ledger_books_nothing_before_the_first_fill() -> None:
+    """A signal waiting for its rebalance: no fill, so no price is needed yet (ADR 0065)."""
+    rebalance = PublishedTable.build(
+        "portfolio-rebalance",
+        pd.DataFrame(
+            columns=[
+                "time_index",
+                "portfolio_identifier",
+                "rebalance_intent_id",
+                ASSET_IDENTIFIER,
+            ]
+        ),
+        index=["time_index", "portfolio_identifier", "rebalance_intent_id", ASSET_IDENTIFIER],
+    )
+    valuations = PublishedTable.build(
+        "valuations",
+        pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "price"]),
+        index=["time_index", ASSET_IDENTIFIER],
+    )
+    node = object.__new__(PortfolioEngine)
+    node.config = PortfolioEngineConfiguration(
+        portfolio_identifier="waiting",
+        valuation_asset_identifier="USD",
+        valuation_source_instance=valuations,
+        valuation_column="price",
+        accounting_configuration=PortfolioAccountingConfiguration(
+            initial_nav=10_000.0,
+            initial_state_time_index="2026-11-11T00:00:00Z",
+            position_valuation_model_instance=MarketPriceValuationModel(),
+        ),
+        portfolio_rebalance_instance=rebalance,
+        rebalance_strategy_instance=stock_strategy(calendar()),
+    )
+    node._retirement_boundary = lambda _portfolio_identifier: None
+
+    with _bound(PortfolioEventLedgerStorage, str(uuid.uuid4())) as storage:
+        node.output_table = storage
+        ledger = node.update()
+
+    assert ledger.empty
+
+
 def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
     events = calendar()
     strategy = stock_strategy(events)
@@ -1067,12 +1111,12 @@ def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
     node.config = PortfolioEngineConfiguration(
         portfolio_identifier="recorded-fills",
         valuation_asset_identifier="USD",
+        valuation_source_instance=valuations,
+        valuation_column="price",
         accounting_configuration=PortfolioAccountingConfiguration(
             initial_nav=10_000.0,
             initial_state_time_index="2026-11-11T00:00:00Z",
-            position_valuation_model_instance=MarketPriceValuationModel(
-                valuation_source=valuations
-            ),
+            position_valuation_model_instance=MarketPriceValuationModel(),
         ),
         portfolio_rebalance_instance=rebalance,
         rebalance_strategy_instance=strategy,
@@ -1080,9 +1124,10 @@ def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
     node._retirement_boundary = lambda _portfolio_identifier: None
     node.get_df_between_dates = lambda **_kwargs: pd.DataFrame()
 
+    # The ledger values with the portfolio's own valuation source (ADR 0065).
     assert node.dependencies() == {
         "portfolio_rebalance": rebalance,
-        "valuation.valuations": valuations,
+        "valuation_source": valuations,
     }
     with _bound(PortfolioEventLedgerStorage, str(uuid.uuid4())) as storage:
         node.output_table = storage

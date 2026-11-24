@@ -7,6 +7,85 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+Minor release 6.1.0, with breaking changes. Every portfolio keeps a ledger
+([ADR 0065](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0065-every-portfolio-keeps-a-ledger/)):
+`PortfolioEngine` books every portfolio, and its published weights and values are
+projections of the ledger. A portfolio refuses to run while it holds an asset with an
+event nothing books.
+
+### Added
+
+- **Asset types list their events.** `AssetType.event_types` (column `event_types` of
+  `ms_markets__assettype`, revision `0038`) names the events an asset of the type can have.
+  The built-in types list them (`msm.EVENT_TYPE_*`): `equity` dividend and split, `bond`
+  coupon and redemption, `future` expiry; `currency`, `currency_spot` and `crypto` none.
+  Revision `0038` sets them on the built-in rows that exist; other rows list none. An asset
+  type of a provider's own states its events when it is created, with `AssetType.create`
+  or `upsert` or in an account registration (`AccountRegistrationAssetType.event_types`).
+- **A price source states which events its prices include.** `events_in_price` on the
+  valuation source's configuration (`InterpolatedPricesConfig.events_in_price`):
+  `"adjusted"`, the default, means the prices include every event of the asset, whatever
+  its type; a tuple names exactly the event types they include, `()` for unadjusted prices.
+  `InterpolatedPrices` adjusts nothing, and the setting is not part of its update hash. A
+  `TimeIndexTableRef` source counts as adjusted (`msm_portfolios.accounting.events`).
+- **A lifecycle model states the events it books** (`LifecycleEventModel.booked_event_types`;
+  `DividendCashFlowModel` books `dividend`).
+- **A portfolio refuses to run while it holds an asset with an event nothing books.** On
+  prices that are not adjusted, `PortfolioEngine` reads the types of the assets the
+  portfolio trades and refuses, naming each asset and event type, an event that neither a
+  lifecycle model books nor the prices include (`require_booked_events`). The build
+  configuration refuses a lifecycle model that books an event the prices already include,
+  which would count it twice.
+- **`PortfolioValues`** publishes a portfolio's values from its ledger: `close` is the NAV
+  over the ledger's `initial_nav`, so a portfolio starts at 1, and `valuation_stale` is set
+  when the ledger valued a held asset at a price older than the valuation model's
+  `maximum_staleness`. `project_portfolio_weights` and `project_portfolio_values`
+  (`msm_portfolios.accounting`) project the ledger.
+- **A default execution model.** A strategy without `execution_model_instance` trades every
+  asset in fractional units, with multiplier 1 and cash settlement, priced in its source's
+  currency (`default_execution_model`). `InstrumentExecutionSpec.quantity_step` may be
+  `None` for fractional quantities.
+
+### Changed
+
+- **Breaking: every portfolio keeps a ledger.** `PortfolioBuildConfiguration.accounting_configuration`
+  is required: every portfolio states its `initial_nav`, `initial_state_time_index` and
+  `position_valuation_model_instance`, and the lifecycle models its assets need. Every
+  portfolio's identity changes.
+- **Breaking: the ledger reads the portfolio's valuation source.** `PortfolioEngine` values
+  every position with the build's `valuation_source_instance` and `valuation_column`. A price
+  is in the portfolio's currency unless the source has `price_asset_identifier`, and a row's
+  revision is computed from it when the source has no `source_revision`.
+  `PortfolioEngineConfiguration` gains `valuation_source_instance` and `valuation_column`.
+- **Breaking: the weights are a projection of the ledger.** `PortfolioWeights` depends on the
+  portfolio's `PortfolioEngine` and publishes, at each ledger event that changes a position,
+  the weight of each asset it changed: its value over the NAV after the event. An event that
+  changes a position records each asset's value before and after it in its valuation
+  summary. `PortfolioWeights` and `PortfolioValues` take `rebalance_output_table` and
+  `event_ledger_output_table`, the producer's private rebalance state and ledger.
+- **Breaking: `run_portfolio` runs the ledger.** It runs the signal, the prices and calendar
+  events, the rebalance state, `PortfolioEngine` (into `event_ledger_output_table`), then
+  publishes the weights and values. `portfolio_preflight` no longer refuses a portfolio with
+  a ledger. The valuation source is no longer run a second time.
+- **Breaking: one size, the ledger's `initial_nav`.** It is the unit of the rebalance's book
+  for every strategy. The strategies sized in money or volume take it from the book
+  (`SizedBarStrategy.book_unit`), and `RebalanceStrategyBase.bar_state` receives the book.
+  A fixed-amount negative cash limit is allowed for every portfolio.
+
+### Removed
+
+- **Breaking: the portfolio without a ledger.** `PortfoliosUpdater` is removed, with its
+  valuation from the rebalance book or from constant weights.
+  `PortfolioBuildConfiguration.execution_configuration` (`PortfolioExecutionConfiguration`,
+  `commission_fee`) and `valuation_alignment_policy` (`ValuationAlignmentPolicy`) are
+  removed: costs come from the strategy's `execution_cost_model_instances`, such as
+  `ProportionalExecutionCostModel(rate=0.00018)`, and staleness from the valuation model.
+  `SizedBarStrategy.total_notional`, `RebalanceStrategyBase.book_unit_value`,
+  `MarketPriceValuationModel.valuation_source` and `price_column`, and the signal's
+  `get_asset_uid_to_override_portfolio_price` are removed.
+- **Breaking: the weights lose the book's columns.** Revision `0038` drops `held_shares` and
+  `book_cash` from `ms_markets__portfolioweightsts`; the ledger holds the quantities.
+
 ## [6.0.0] - 2026-11-23
 
 Major release 6.0.0. An order has its own row, and a batch's orders, their states, events

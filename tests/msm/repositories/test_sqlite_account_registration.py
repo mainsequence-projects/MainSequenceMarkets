@@ -393,3 +393,31 @@ def test_currency_get_or_create_creates_once_and_refuses_another_type(sqlite_mar
     assert _rows(engine, "SELECT asset_type FROM ms_markets__asset WHERE unique_identifier = 'BTC'") == [
         {"asset_type": "crypto"}
     ]
+
+
+def test_a_new_asset_type_is_created_with_its_events(sqlite_markets) -> None:
+    """An asset type of a provider's own states its events when it is created (ADR 0065)."""
+    request = _request(
+        assets=[
+            {
+                "unique_identifier": "venue::AAPL",
+                "asset_type": {
+                    "asset_type": "venue_equity",
+                    "display_name": "Venue equity",
+                    "event_types": ["dividend", "split"],
+                },
+            }
+        ],
+        positions=[{"asset_identifier": "venue::AAPL", "quantity": "3"}],
+    )
+
+    register_account(sqlite_markets.context, request)
+
+    rows = _rows(
+        sqlite_markets.engine,
+        "SELECT asset_type, event_types FROM ms_markets__assettype ORDER BY asset_type",
+    )
+    assert {row["asset_type"]: json.loads(row["event_types"]) for row in rows} == {
+        "currency": [],
+        "venue_equity": ["dividend", "split"],
+    }

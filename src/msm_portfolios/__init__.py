@@ -23,7 +23,7 @@ _EXPORTS = {
     "PortfolioCalendarEventsConfiguration": ".time_index",
     "PortfolioRebalance": ".time_index",
     "PortfolioWeights": ".time_index",
-    "PortfoliosUpdater": ".time_index",
+    "PortfolioValues": ".time_index",
     "SignalWeights": ".time_index",
     "SignalWeightsConfiguration": ".time_index",
     "attach_schemas": ".bootstrap",
