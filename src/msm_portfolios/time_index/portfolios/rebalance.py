@@ -35,6 +35,7 @@ from ..base import (
 )
 from ..constants import PORTFOLIO_IDENTIFIER
 from ..portfolio_identity import get_or_create_portfolio
+from .run_rows import ValuationRows, held_rows, rows_between, window_bound
 from .storage import PortfolioRebalanceStateStorage
 from .temporal import (
     fetch_asset_observations,
@@ -88,6 +89,7 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         # The ledger's initial NAV is the book's unit, in the portfolio's currency
         # (ADR 0059, ADR 0065).
         self.book_unit_value = float(build.accounting_configuration.initial_nav)
+        self.ledger_initial_state = build.accounting_configuration.initial_state_time_index
         return self
 
     def set_rebalance_state_frame(
@@ -361,21 +363,41 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         FX source, prices in another currency are converted at the last observed rate
         (ADR 0059); the rates are read from ``start``, with each currency's last rate
         before it.
+
+        In a portfolio run (``run_rows``) the source is read once for the rebalance and
+        its ledger (#139): from the ledger's initial state when that is earlier, and to the
+        source's last row unless ``MAX_TD_FROM_LATEST_VALUE`` bounds the window. The rows
+        before ``start`` give each asset's last row; an asset with none there is read.
         """
+        held = held_rows()
+        read_start = start
+        read_end = end
+        initial = getattr(self, "ledger_initial_state", None)
+        if held is not None:
+            if initial is not None and window_bound(initial) < window_bound(start):
+                read_start = initial
+            if not os.getenv("MAX_TD_FROM_LATEST_VALUE"):
+                read_end = None
         kwargs: dict[str, Any] = {
-            "start_date": start,
-            "end_date": end,
+            "start_date": read_start,
+            "end_date": read_end,
             "great_or_equal": True,
             "less_or_equal": True,
         }
         if assets:
             kwargs["dimension_filters"] = {ASSET_IDENTIFIER_DIMENSION: assets}
-        frame = self.valuation_source.get_df_between_dates(**kwargs)
-        seeds = _last_rows_before(
-            self.valuation_source,
-            coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in assets),
-            before=start,
-        )
+        read = self.valuation_source.get_df_between_dates(**kwargs)
+        read = pd.DataFrame() if read is None else read
+        frame = rows_between(read, start=start, end=end)
+        seeds = self._last_prices_before(read, start=start, read_start=read_start, assets=assets)
+        if held is not None:
+            held.valuations[self._resolve_portfolio_identifier()] = ValuationRows(
+                source=self.valuation_source,
+                start=window_bound(read_start),
+                end=None if read_end is None else window_bound(read_end),
+                assets=frozenset(assets) if assets else None,
+                frame=read,
+            )
         flat_frames = [
             _flat_frame(item) for item in (seeds, frame) if item is not None and not item.empty
         ]
@@ -402,6 +424,43 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             observed_prices(frame, price_column=self.valuation_column),
             valuation_prices(combined, price_column=self.valuation_column),
             conversion,
+        )
+
+    def _last_prices_before(
+        self, read: pd.DataFrame, *, start: Any, read_start: Any, assets: list[str]
+    ) -> pd.DataFrame:
+        """Each asset's last valuation row strictly before ``start``.
+
+        Taken from ``read`` (the source from ``read_start`` on); an asset with no row there
+        before ``start`` has its last row before ``read_start`` read.
+        """
+        if not assets:
+            return pd.DataFrame()
+        earlier = pd.DataFrame()
+        if not read.empty:
+            flat = _flat_frame(read)
+            flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
+            flat = flat[flat["time_index"] < pd.Timestamp(start)]
+            earlier = (
+                flat.sort_values("time_index", kind="stable")
+                .groupby(ASSET_IDENTIFIER_DIMENSION, sort=False)
+                .tail(1)
+                .reset_index(drop=True)
+            )
+        found = set() if earlier.empty else set(earlier[ASSET_IDENTIFIER_DIMENSION].astype(str))
+        missing = [asset for asset in assets if asset not in found]
+        before = _last_rows_before(
+            self.valuation_source,
+            coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in missing),
+            before=read_start,
+        )
+        frames = [item for item in (earlier, before) if not item.empty]
+        if not frames:
+            return pd.DataFrame()
+        return (
+            pd.concat(frames, ignore_index=True)
+            .sort_values("time_index", kind="stable")
+            .reset_index(drop=True)
         )
 
     def _previous_state(self, latest: Any | None) -> pd.DataFrame | None:

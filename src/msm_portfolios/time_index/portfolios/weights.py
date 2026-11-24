@@ -170,15 +170,7 @@ class PortfolioWeights(PublishedSeriesNode):
         end = end_before_retirement(end, self._retirement_boundary())
         if window_is_empty(start, end):
             return pd.DataFrame()
-        identifier = self._resolve_portfolio_identifier()
-        engine = self.ensure_portfolio_engine()
-        ledger = engine.get_df_between_dates(
-            start_date=start,
-            end_date=end,
-            great_or_equal=True,
-            less_or_equal=True,
-            dimension_filters={PORTFOLIO_IDENTIFIER: [identifier]},
-        )
+        ledger = self.ensure_portfolio_engine().ledger_rows(start=start, end=end)
         if ledger is None or ledger.empty:
             return pd.DataFrame()
         projected = project_portfolio_weights(ledger).reset_index()
@@ -218,13 +210,7 @@ class PortfolioWeights(PublishedSeriesNode):
 
     def _observed_volumes(self, projected: pd.DataFrame, *, start: Any, end: Any) -> pd.Series:
         """The bar volume the rebalance observed at each fill, where its strategy reads one."""
-        state = self.portfolio_rebalance.get_df_between_dates(
-            start_date=start,
-            end_date=end,
-            great_or_equal=True,
-            less_or_equal=True,
-            dimension_filters={PORTFOLIO_IDENTIFIER: [self._resolve_portfolio_identifier()]},
-        )
+        state = self.ensure_portfolio_engine().rebalance_state_rows(start=start, end=end)
         if state is None or state.empty or "observed_volume" not in state.reset_index().columns:
             return pd.Series(None, index=projected.index, dtype="float64")
         flat = state.reset_index()

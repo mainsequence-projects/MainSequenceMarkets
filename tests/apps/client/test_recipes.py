@@ -371,6 +371,21 @@ def rebalance_state(monkeypatch):
         yield runs
 
 
+def _count_reads(monkeypatch, *updaters) -> dict[str, int]:
+    """Count the window reads of each updater class from now on."""
+
+    reads = {updater.__name__: 0 for updater in updaters}
+    for updater in updaters:
+        original = updater.get_df_between_dates
+
+        def counted(self, *args, _original=original, _name=updater.__name__, **kwargs):
+            reads[_name] += 1
+            return _original(self, *args, **kwargs)
+
+        monkeypatch.setattr(updater, "get_df_between_dates", counted)
+    return reads
+
+
 def _spy_registry_writes(monkeypatch) -> list[str]:
     """Record every write of a ``Portfolio`` or ``SignalMetadata`` row from now on."""
 
@@ -399,6 +414,7 @@ def test_run_portfolio_publishes_weights_and_values_once(
     with pytest.raises(ValueError, match="has no published observation"):
         recipes.run_portfolio(configuration, portfolio_resolver=resolver)
     recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
+    reads = _count_reads(monkeypatch, PortfolioEngine, PortfolioRebalance, Prices)
     first = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
     writes = _spy_registry_writes(monkeypatch)
     second = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
@@ -406,6 +422,10 @@ def test_run_portfolio_publishes_weights_and_values_once(
     # Nothing changed, so the second run writes neither the Portfolio row nor the
     # signal's metadata (#136).
     assert writes == []
+    # Each run reads the ledger, the rebalance state and the prices once, in the ledger's
+    # update (this rebalance computes nothing, so it read no prices to share); the weights
+    # and values use the rows the ledger kept (#139).
+    assert reads == {"PortfolioEngine": 2, "PortfolioRebalance": 2, "Prices": 2}
     assert first.first_rebalance is True
     assert first.weights.written == 2
     assert first.values.written == 3

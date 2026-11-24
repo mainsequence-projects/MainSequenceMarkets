@@ -37,6 +37,7 @@ from msm_portfolios.retirement import (
     window_is_empty,
 )
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
+from .run_rows import held_rows, rows_between
 from .storage import PortfolioEventLedgerStorage
 
 
@@ -184,8 +185,53 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 dependencies[key] = dependency
         return dependencies
 
+    def ledger_rows(self, *, start: Any, end: Any) -> pd.DataFrame:
+        """This portfolio's ledger rows from ``start`` to ``end``, both included.
+
+        In a portfolio run (``run_rows``) after this ledger's update, they are the rows the
+        update kept: the stored ledger it replayed and the tail it wrote, so the run's
+        weights and values read nothing (#139). Otherwise they are read.
+        """
+
+        identifier = self._engine_config().portfolio_identifier
+        held = held_rows()
+        if held is not None and identifier in held.ledgers:
+            return rows_between(held.ledgers[identifier], start=start, end=end)
+        return self.get_df_between_dates(
+            start_date=start,
+            end_date=end,
+            great_or_equal=True,
+            less_or_equal=True,
+            dimension_filters={"portfolio_identifier": [identifier]},
+        )
+
+    def rebalance_state_rows(self, *, start: Any, end: Any) -> pd.DataFrame:
+        """This portfolio's rebalance state from ``start`` to ``end``, both included.
+
+        In a portfolio run after this ledger's update, they are the rows the update read,
+        from the ledger's initial state on (the ledger books nothing earlier). Otherwise
+        they are read.
+        """
+
+        config = self._engine_config()
+        held = held_rows()
+        if held is not None and config.portfolio_identifier in held.rebalance_states:
+            return rows_between(
+                held.rebalance_states[config.portfolio_identifier], start=start, end=end
+            )
+        return _read_dependency(
+            config.portfolio_rebalance_instance,
+            start=start,
+            end=end,
+            dimension_filters={"portfolio_identifier": [config.portfolio_identifier]},
+        )
+
     def update(self) -> pd.DataFrame:
         config = self._engine_config()
+        held = held_rows()
+        if held is not None:
+            held.ledgers.pop(config.portfolio_identifier, None)
+            held.rebalance_states.pop(config.portfolio_identifier, None)
         accounting_config = config.accounting_configuration
         start = pd.Timestamp(accounting_config.initial_state_time_index)
         if start.tzinfo is None:
@@ -213,10 +259,12 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         fills = recorded_fills(rebalance_state)
         if fills.empty:
             # Nothing traded yet: the ledger opens at its first fill's run.
-            return normalize_portfolio_event_ledger_frame(
+            written = normalize_portfolio_event_ledger_frame(
                 pd.DataFrame(),
                 output_table=self.output_table,
             )
+            self._keep(written, rebalance_state)
+            return written
         assets = sorted(fills[ASSET_IDENTIFIER_DIMENSION].astype(str).unique())
         require_booked_events(
             assets,
@@ -224,6 +272,7 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             lifecycle_models=accounting_config.lifecycle_event_model_instances,
         )
         valuation_model = accounting_config.position_valuation_model_instance
+        read = held.valuations.get(config.portfolio_identifier) if held is not None else None
         frames: dict[str, pd.DataFrame] = {
             f"valuation.{VALUATIONS_INPUT}": portfolio_valuations(
                 config.valuation_source_instance,
@@ -232,6 +281,13 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 start=start,
                 end=end,
                 assets=assets,
+                rows=(
+                    None
+                    if read is None
+                    else read.rows(
+                        config.valuation_source_instance, start=start, end=end, assets=assets
+                    )
+                ),
             )
         }
         for name, dependency in sorted(valuation_model.declared_dependencies().items()):
@@ -316,21 +372,39 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         )
         _validate_replay_against_existing(existing, ledger)
         ledger = _new_ledger_tail(existing, ledger)
-        return drop_retired_rows(
+        written = drop_retired_rows(
             normalize_portfolio_event_ledger_frame(
                 ledger,
                 output_table=self.output_table,
             ),
             boundary,
         )
+        self._keep(_appended(existing, written), rebalance_state)
+        return written
 
-    @staticmethod
-    def _retirement_boundary(portfolio_identifier: str) -> pd.Timestamp | None:
-        """Read the portfolio row once per run for its ``retired_at`` (ADR 0049)."""
+    def _keep(self, ledger: pd.DataFrame, rebalance_state: pd.DataFrame) -> None:
+        """Keep the ledger and the state it read for the run's weights and values."""
 
-        from msm.api.portfolios import Portfolio
+        held = held_rows()
+        if held is not None:
+            identifier = self._engine_config().portfolio_identifier
+            held.ledgers[identifier] = ledger
+            held.rebalance_states[identifier] = rebalance_state
 
-        return retirement_boundary(Portfolio.get_by_unique_identifier(portfolio_identifier))
+    def _retirement_boundary(self, portfolio_identifier: str) -> pd.Timestamp | None:
+        """The portfolio's ``retired_at`` (ADR 0049), from the row the run resolved.
+
+        The rebalance carries the ``Portfolio`` row its run prepared (#139); a ledger
+        built without one reads it.
+        """
+
+        rebalance = self._engine_config().portfolio_rebalance_instance
+        portfolio = getattr(rebalance, "_portfolio", None)
+        if portfolio is None:
+            from msm.api.portfolios import Portfolio
+
+            portfolio = Portfolio.get_by_unique_identifier(portfolio_identifier)
+        return retirement_boundary(portfolio)
 
     @classmethod
     def calculate_backtest(
@@ -453,6 +527,21 @@ FX_INPUT_CONTRACT = LifecycleInputContract(
     index_names=("time_index", "base_asset_identifier", "quote_asset_identifier"),
     required_columns=("rate", "source_revision"),
 )
+
+
+def _appended(existing: pd.DataFrame | None, written: pd.DataFrame) -> pd.DataFrame:
+    """The stored ledger with the tail the update wrote, indexed as the table is."""
+
+    if existing is None or existing.empty:
+        return written
+    if written.empty:
+        return existing
+    index = list(written.index.names)
+    return (
+        pd.concat([existing.reset_index(), written.reset_index()], ignore_index=True)
+        .set_index(index)
+        .sort_index()
+    )
 
 
 def _read_dependency(
@@ -701,9 +790,12 @@ def portfolio_valuations(
     start: pd.Timestamp,
     end: pd.Timestamp,
     assets: Any,
+    rows: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """The portfolio's prices, read from its valuation source (ADR 0065, decision 10).
 
+    ``rows`` are the source's rows of ``assets`` from ``start`` to ``end`` when the run
+    has read them already (the rebalance did, #139); without them the source is read.
     The price is the source's ``valuation_column``. It is in ``currency``, the
     portfolio's, unless the source has ``price_asset_identifier``. A row's
     ``source_revision`` is the source's own when it has one; otherwise it is computed
@@ -716,11 +808,15 @@ def portfolio_valuations(
             columns=[PRICE_COLUMN, "price_asset_identifier", "source_revision"],
             index=pd.MultiIndex.from_arrays([[], []], names=["time_index", "asset_identifier"]),
         )
-    frame = _read_dependency(
-        source,
-        start=start,
-        end=end,
-        dimension_filters={ASSET_IDENTIFIER_DIMENSION: assets},
+    frame = (
+        rows
+        if rows is not None
+        else _read_dependency(
+            source,
+            start=start,
+            end=end,
+            dimension_filters={ASSET_IDENTIFIER_DIMENSION: assets},
+        )
     )
     flat = frame.reset_index()
     if flat.empty:

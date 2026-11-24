@@ -97,11 +97,11 @@ def test_values_node_reads_the_ledger_up_to_the_boundary(quiet_logger) -> None:
     node._valuation_window = lambda latest: (start, pd.Timestamp.now(tz="UTC").to_pydatetime())
     window: dict[str, object] = {}
 
-    def ledger_between(*, start_date, end_date, **_kwargs):
-        window.update(start=start_date, end=end_date)
+    def ledger_rows(*, start, end):
+        window.update(start=start, end=end)
         return pd.DataFrame()
 
-    engine = SimpleNamespace(get_df_between_dates=ledger_between)
+    engine = SimpleNamespace(ledger_rows=ledger_rows)
     node._ensure_portfolio_weights_node = lambda: SimpleNamespace(
         ensure_portfolio_engine=lambda: engine
     )
@@ -144,7 +144,7 @@ def test_rebalance_writes_no_transition_after_the_boundary() -> None:
         assert node.update().empty
 
 
-def test_engine_reads_its_portfolio_row_once_for_the_boundary(monkeypatch) -> None:
+def test_engine_takes_the_boundary_from_the_row_its_run_resolved(monkeypatch) -> None:
     from msm.api.portfolios import Portfolio
 
     asked: list[str] = []
@@ -156,6 +156,13 @@ def test_engine_reads_its_portfolio_row_once_for_the_boundary(monkeypatch) -> No
     monkeypatch.setattr(
         Portfolio, "get_by_unique_identifier", classmethod(get_by_unique_identifier)
     )
+    rebalance = SimpleNamespace(_portfolio=SimpleNamespace(retired_at=RETIRED_AT))
+    node = object.__new__(PortfolioEngine)
+    node._engine_config = lambda: SimpleNamespace(portfolio_rebalance_instance=rebalance)
 
-    assert PortfolioEngine._retirement_boundary("retired-sleeve") == RETIRED_AT
+    # The rebalance carries the row the run prepared (#139): nothing is read.
+    assert node._retirement_boundary("retired-sleeve") == RETIRED_AT
+    assert asked == []
+    rebalance._portfolio = None
+    assert node._retirement_boundary("retired-sleeve") == RETIRED_AT
     assert asked == ["retired-sleeve"]

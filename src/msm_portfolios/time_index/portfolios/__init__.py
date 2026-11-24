@@ -185,13 +185,7 @@ class PortfolioValues(PublishedSeriesNode):
             self.logger.info("The portfolio is retired and valued up to its retirement.")
             return pd.DataFrame()
         engine = self._ensure_portfolio_weights_node().ensure_portfolio_engine()
-        ledger = engine.get_df_between_dates(
-            start_date=start,
-            end_date=end,
-            great_or_equal=True,
-            less_or_equal=True,
-            dimension_filters={PORTFOLIO_IDENTIFIER: [self._unique_identifier()]},
-        )
+        ledger = engine.ledger_rows(start=start, end=end)
         if ledger is None or ledger.empty:
             self.logger.info("The portfolio's ledger has nothing to value yet.")
             return pd.DataFrame()

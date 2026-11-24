@@ -404,10 +404,12 @@ def _run_portfolios(
     from msm.repositories.base import one_runtime_lookup
     from msm_portfolios.api import SignalWeightsSeries
     from msm_portfolios.time_index import PortfolioValues
+    from msm_portfolios.time_index.portfolios.run_rows import run_rows
 
-    # One lookup of the MetaTables runtime for the run's statements (#140), and one read
-    # of each calendar's row, rules and exceptions (#137).
-    with one_runtime_lookup(), calendar_reads():
+    # One lookup of the MetaTables runtime for the run's statements (#140), one read of
+    # each calendar's row, rules and exceptions (#137), and the rows a node read kept for
+    # the nodes after it (#139).
+    with one_runtime_lookup(), calendar_reads(), run_rows():
         failed: dict[int, PortfolioRunFailure] = {}
 
         def fail(position: int, identifier: str | None, error: BaseException) -> None:

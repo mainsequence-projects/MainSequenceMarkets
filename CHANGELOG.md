@@ -171,6 +171,21 @@ what they share once
   equal-weights example sent 20 runtime lookups instead of 37 (59 before #135), one of
   them from Markets inside the run; the rest are MetaTables' own (MetaTables#162) and the
   example's setup before the run.
+- **A portfolio run reads each table's rows once**
+  ([#139](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/139)).
+  `run_portfolios` runs inside `msm_portfolios.time_index.portfolios.run_rows.run_rows()`,
+  in which a node keeps the rows it read for the nodes after it. The rebalance reads the
+  valuation source once, from the ledger's initial state to the source's last row (to its
+  window's end under `MAX_TD_FROM_LATEST_VALUE`). Each asset's last price before the window
+  comes from those rows, and the ledger books with them. `PortfolioEngine.ledger_rows` and
+  `rebalance_state_rows` answer the weights and values with the ledger and the rebalance
+  state the ledger's update kept. A node that finds no rows kept reads them itself, as
+  outside a run: a ledger whose rebalance read no prices or read fewer than it needs, and
+  every node run on its own. The ledger takes `retired_at` from the `Portfolio` row its
+  run resolved, and `FixedWeights` no longer reads its own series: publishing its one
+  observation again writes nothing. The ledger books the same rows. A second run of the
+  equal-weights example reads the ledger once instead of three times and the prices once
+  instead of three times plus a seed read: 71 requests instead of 76.
 
 ### Removed
 
