@@ -330,8 +330,8 @@ class IncrementalRebalance:
             source.published_until = run_time
         node = self.node
         node.update_statistics = self._statistics()
-        node._execution_window = lambda latest: (
-            PortfolioRebalance._execution_window(node, latest)[0],
+        node._execution_window = lambda latest, **kwargs: (
+            PortfolioRebalance._execution_window(node, latest, **kwargs)[0],
             run_time,
         )
         written = node.update()

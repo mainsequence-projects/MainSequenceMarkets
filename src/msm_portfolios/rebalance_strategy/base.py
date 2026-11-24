@@ -207,12 +207,14 @@ class RebalanceStrategyBase(BaseModel):
         self,
         dependency_name: str,
     ) -> tuple[dict[str, str], ...]:
-        """Return coordinates whose last observation before the window is also read.
+        """Return the coordinates the strategy follows in the dependency.
 
         Each coordinate names every non-time index dimension of the dependency.
-        The reader adds, for each coordinate, the latest row strictly before the
-        start of ``dependency_window``, so a strategy can know the state in force
-        when the window opens without guessing a lookback.
+        The reader reads the window at these coordinates only, and adds, for each
+        coordinate, the latest row strictly before the start of
+        ``dependency_window``, so a strategy can know the state in force when the
+        window opens without guessing a lookback. Without coordinates the whole
+        window is read.
         """
         del dependency_name
         return ()

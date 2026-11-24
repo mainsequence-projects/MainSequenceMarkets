@@ -150,6 +150,17 @@ what they share once
   so `resolve_asset_schedules` makes one read instead of three. A calendar's exceptions
   are read in pages of 9,000 rows instead of 1,000. A second run of the equal-weights
   example made 87 requests instead of 101, 4 of them for the calendar instead of 11.
+- **A first run with a computed signal starts where the signal does, and reads only its
+  calendar's events**
+  ([#138](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/138)). A
+  signal that computes its weights publishes in the rebalance's update, so on a first run
+  the preflight found no observation and the rebalance started at `OFFSET_START`
+  (2018-01-01). `PortfolioRebalance` now starts a first run at the first observation the
+  signal's publication reports. A strategy input is read at the coordinates the strategy
+  follows (`dependency_seed_coordinates`), so the calendar events' window is read for the
+  strategy's calendar, session label and event types only. The first run of the
+  equal-weights example made 135 requests instead of 147: its calendar events took one
+  read instead of 13 pages of 6,499 rows.
 
 ### Removed
 

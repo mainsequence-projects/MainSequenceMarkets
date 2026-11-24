@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import uuid
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -732,6 +733,45 @@ def test_the_rebalance_publishes_a_computed_signal_before_it_reads_it() -> None:
         written = runner.run("2026-11-19T14:50:00Z")
 
     assert calls[0] == "published" and "read" in calls[1:]
+    assert not written.empty
+
+
+def test_a_first_run_reads_from_the_computed_signals_first_observation() -> None:
+    """A computed signal has no observation until the rebalance publishes it (#138).
+
+    The first run then starts where the signal does, not at ``OFFSET_START``, and the
+    calendar events are read for the strategy's calendar only.
+    """
+
+    first = "2026-11-18T21:30:00Z"
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([(first, {"AAPL": 0.5})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build("prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER])
+    events = calendar()
+    other = calendar("XLON")
+    events.rows = pd.concat([events.rows, other.rows], ignore_index=True)
+    windows: list[dict] = []
+    read = events.get_df_between_dates
+    events.get_df_between_dates = lambda **kwargs: windows.append(kwargs) or read(**kwargs)
+    strategy = ImmediateSignal(calendar_events_instance=events, calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        signals.computes_weights = True
+        signals.run = lambda: SimpleNamespace(first_time=utc(first))
+        written = runner.run("2026-11-19T14:50:00Z")
+
+    (window,) = windows
+    assert pd.Timestamp(window["start_date"]) == utc(first)
+    assert window["dimension_filters"] == {
+        "calendar_identifier": ["XNYS"],
+        "event_type": ["market_close", "market_open"],
+        "session_label": ["regular"],
+    }
     assert not written.empty
 
 
