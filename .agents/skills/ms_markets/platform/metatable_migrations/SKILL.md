@@ -48,8 +48,8 @@ Do not add project table specs when the project does not define project tables.
 
 Before changing project extension migration wiring, inspect:
 
-1. `.agents/skills/metatables/metatables-migrations/SKILL.md` and its
-   `references/docs/client/define-and-migrate-tables.md`
+1. `.agents/skills/metatables/metatables-migrations/SKILL.md` and the guide it
+   links, [Define and migrate managed tables](https://potential-doodle-wn39mnm.pages.github.io/client/define-and-migrate-tables/)
 2. `.agents/skills/mainsequence/maintenance/metatables_transition/SKILL.md` when the
    project still imports `mainsequence.meta_tables` or calls
    `mainsequence migrations`
@@ -77,8 +77,7 @@ history when upgrading the client.
 ## MetaTables Access
 
 Access to the ms-markets tables follows the MetaTables namespace and table roles
-(MetaTables ADR 0024, copied with the MetaTables skills under
-`.agents/skills/metatables/metatables-migrations/references/docs/adr/api/0024-namespace-and-table-access-roles.md`).
+([MetaTables ADR 0024](https://potential-doodle-wn39mnm.pages.github.io/adr/api/0024-namespace-and-table-access-roles/)).
 Every ms-markets table is in the `mainsequence.markets` namespace, and a role on the
 namespace covers every table in it, including tables registered later. Workloads run
 as their own workload Users: they never grant roles, are never `owner`, and get no

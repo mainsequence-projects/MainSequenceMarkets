@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from metatables import dtype_codec as dc
+import metatables as dc
 from metatables import TimeIndexTableUpdater
 from msm.time_index.assets.asset_indexed import (
     AssetIndexedUpdater,

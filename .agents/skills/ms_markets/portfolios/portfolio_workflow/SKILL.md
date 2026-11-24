@@ -474,12 +474,18 @@ Rules:
   computed from the stored calendar and the historical `close_time`, prove the
   inspection reaches the latest stored row, and apply one portfolio at a time.
   Never update indexed coordinates in place or use raw SQL.
-- `PortfolioValues.run(..., update_pointers=True)` is the default portfolio
-  workflow behavior: after it publishes, it upserts the resolved `PortfolioTable`
-  row with its `signal_uid`. The three `*_table_update_uid` pointers name update
+- Run portfolios with `msm_portfolios.recipes.run_portfolios` (every portfolio of a
+  tick in one call) or `run_portfolio` (one). Their ledgers (`PortfolioEngine`) are
+  the heads of one joined MetaTables run (`run_updaters`), so a dependency several
+  portfolios share (prices, calendar events, a strategy's or a signal's input) runs
+  once, before every node that reads it (issue #133). The rebalance computes and
+  publishes a signal that computes its weights before it reads it; the signal's
+  `dependencies()` are the rebalance's `signal.<name>` dependencies. Then each
+  portfolio publishes its weights and values and records its `signal_uid` on its
+  `PortfolioTable` row. `PortfolioValues.run()` and `PortfolioWeights.run()` only
+  publish what the ledger holds. The three `*_table_update_uid` pointers name update
   records of bound tables, which a publishing node does not have; they are left as
-  they are (ADR 0060 leaves their replacement undecided). Prefer
-  `msm_portfolios.recipes.run_portfolio`, which runs the chain in order.
+  they are (ADR 0060 leaves their replacement undecided).
 - Rerunning before a new execution event or valuation observation must return an
   empty incremental update. Job run time is never an economic timestamp.
 - API reads for a portfolio's signal weights must filter by

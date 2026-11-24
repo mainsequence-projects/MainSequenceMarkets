@@ -18,20 +18,20 @@ from types import SimpleNamespace
 
 import sqlalchemy as sa
 
-import metatables.runtime_context
 from metatables import (
     MetaTable,
     MetaTableCompiledSQLOperation,
     MetaTableCompiledSQLTransaction,
     MetaTableTransactionGuardError,
+    RuntimeContext,
 )
-from metatables.runtime_contract import RuntimeContext
 
 from msm.repositories.accounts import (
     replace_account_holdings_snapshot,
     replace_account_target_positions_snapshot,
 )
 from msm.repositories.base import MarketsRepositoryContext
+from tests.support.markets_runtime import use_runtime_context
 
 WHEN = dt.datetime(2026, 11, 10, 15, 30, tzinfo=dt.UTC)
 
@@ -90,7 +90,7 @@ def make_sqlite_markets(tmp_path, monkeypatch, *, template, prepare=None):
         data_source={"uid": str(source.uid)},
         default_schema="main",
     )
-    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
+    use_runtime_context(runtime)
 
     statements: list[str] = []
     index_stats: dict[str, dict] = {}

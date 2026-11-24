@@ -710,8 +710,34 @@ def test_a_new_target_that_repeats_a_weight_still_fills_at_the_next_price() -> N
     assert priced["executed_weight_delta"].tolist() == pytest.approx([0.5, 0.0])
 
 
+def test_the_rebalance_publishes_a_computed_signal_before_it_reads_it() -> None:
+    """The signal is no MetaTables node: the rebalance computes it, then reads it (#133)."""
+
+    calls: list[str] = []
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([("2026-11-18T21:30:00Z", {"AAPL": 0.5})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build("prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER])
+    strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        read = signals.get_last_observation
+        signals.computes_weights = True
+        signals.run = lambda: calls.append("published")
+        signals.get_last_observation = lambda **kwargs: calls.append("read") or read(**kwargs)
+        written = runner.run("2026-11-19T14:50:00Z")
+
+    assert calls[0] == "published" and "read" in calls[1:]
+    assert not written.empty
+
+
 def test_portfolio_rebalance_depends_on_the_valuation_source_it_trades_at() -> None:
     signal = PublishedTable.build("signal", signal_frame([]), index=["time_index"])
+    signal.computes_weights = False
     prices = PublishedTable.build("prices", AAPL_DAILY, index=["time_index", ASSET_IDENTIFIER])
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()

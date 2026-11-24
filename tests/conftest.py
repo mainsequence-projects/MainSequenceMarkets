@@ -8,6 +8,16 @@ OFFLINE_RUNTIME_DATA_SOURCE_UID = "00000000-0000-0000-0000-000000000001"
 
 
 @pytest.fixture(autouse=True)
+def runtime_context_blocks():
+    """Close the MetaTables runtime blocks a test opened (`tests/support/markets_runtime.py`)."""
+
+    yield
+    from tests.support.markets_runtime import close_runtime_contexts
+
+    close_runtime_contexts()
+
+
+@pytest.fixture(autouse=True)
 def fresh_delete_rows_impacts():
     """Each test asks MetaTables for its own delete impacts (`msm.services.table_impact`
     reuses one per table for a while)."""
@@ -23,7 +33,7 @@ def fresh_delete_rows_impacts():
 
 
 @pytest.fixture
-def offline_postgresql_runtime(monkeypatch):
+def offline_postgresql_runtime():
     """Serve a hosted PostgreSQL MetaTables runtime without resolving or calling an API.
 
     When a repository context leaves `data_source_uid` as `None`, as product code
@@ -35,8 +45,9 @@ def offline_postgresql_runtime(monkeypatch):
     so statement tests compile through the same automatic path.
     """
 
-    import metatables.runtime_context
-    from metatables.runtime_contract import RuntimeContext
+    from metatables import RuntimeContext
+
+    from tests.support.markets_runtime import use_runtime_context
 
     runtime = RuntimeContext(
         git_source=None,
@@ -48,11 +59,7 @@ def offline_postgresql_runtime(monkeypatch):
     assert runtime.require_data_source_uid() == OFFLINE_RUNTIME_DATA_SOURCE_UID
     assert runtime.require_sql_dialect() == ("postgresql", "pyformat")
 
-    def get_runtime_context() -> RuntimeContext:
-        runtime.require_data_source_uid()
-        return runtime
-
-    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", get_runtime_context)
+    use_runtime_context(runtime)
     return runtime
 
 

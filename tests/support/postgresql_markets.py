@@ -21,15 +21,15 @@ import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.engine import make_url
 
-import metatables.runtime_context
 from metatables import (
     MetaTable,
     MetaTableCompiledSQLOperation,
     MetaTableCompiledSQLTransaction,
     MetaTableTransactionGuardError,
+    RuntimeContext,
 )
-from metatables.runtime_contract import RuntimeContext
 from msm.repositories.base import MarketsRepositoryContext
+from tests.support.markets_runtime import use_runtime_context
 from tests.support.migrations import _config
 from tests.support.postgresql_databases import worker_database
 
@@ -70,7 +70,7 @@ def postgresql_markets(monkeypatch):
         data_source={"uid": "00000000-0000-0000-0000-000000000063"},
         default_schema="public",
     )
-    monkeypatch.setattr(metatables.runtime_context, "get_runtime_context", lambda: runtime)
+    use_runtime_context(runtime)
     dsn = parsed.set(drivername="postgresql").render_as_string(hide_password=False)
     operations: list[str] = []
 

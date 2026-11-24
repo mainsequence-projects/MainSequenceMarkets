@@ -37,6 +37,11 @@ class SignalWeights(PublishedSeriesNode):
     them under the signal's ``signal_uid``, after creating its ``SignalMetadata`` row.
     Its progress is the published series: ``_latest_signal_time_index_value()`` is the
     signal's last stored time and ``_signal_asset_start_date(asset)`` an asset's.
+
+    ``dependencies()`` names the updaters and tables the calculation reads. The
+    portfolio's ``PortfolioRebalance`` declares them as its own and computes the signal
+    before it reads it, so one joined run refreshes them once for every portfolio that
+    needs them (issue #133).
     """
 
     series_resource = "signal-weights"
@@ -79,13 +84,18 @@ class SignalWeights(PublishedSeriesNode):
     def series_key(self) -> str:
         return self.signal_uid
 
-    def run(self, *, update_tree: bool = True) -> Any:
+    def dependencies(self) -> dict[str, Any]:
+        """The updaters and tables the calculation reads; none by default."""
+
+        return {}
+
+    def run(self) -> Any:
         """Create the signal's metadata, then compute and publish its new weights."""
 
         self._progress_by_asset = None
         self._upsert_signal_metadata_if_available()
         try:
-            return super().run(update_tree=update_tree)
+            return super().run()
         finally:
             self._progress_by_asset = None
 

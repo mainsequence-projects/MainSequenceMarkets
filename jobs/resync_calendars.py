@@ -20,7 +20,7 @@ the calendars before it are written and the ones after it are still tried.
 import argparse
 import sys
 
-from metatables.endpoint import api_endpoint_scope
+from metatables import api_endpoint_scope
 
 CALENDAR_MODELS = ("Calendar", "CalendarSessionRule", "CalendarException")
 

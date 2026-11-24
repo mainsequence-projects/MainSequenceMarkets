@@ -35,10 +35,12 @@ class PortfolioValues(PublishedSeriesNode):
     """The portfolio's values, a projection of its ledger, published as
     ``PortfolioValuesSeries`` (ADR 0060, decision 5; ADR 0065, decision 5).
 
-    Bound to no table: ``run()`` runs the portfolio's chain (signal, prices, calendar
-    events, rebalance state, ledger, weights), publishes the values and records the
-    portfolio's signal on its ``Portfolio`` row. ``close`` is the NAV over the ledger's
-    ``initial_nav``, so a portfolio starts at 1.
+    Bound to no table: ``run()`` publishes the values of the ledger as it is and records
+    the portfolio's signal on its ``Portfolio`` row. ``close`` is the NAV over the
+    ledger's ``initial_nav``, so a portfolio starts at 1. The ledger and what it reads
+    (signal, prices, calendar events, rebalance state) run first, in one joined
+    MetaTables run of every portfolio's ledger (``msm_portfolios.recipes.run_portfolios``,
+    issue #133).
     """
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
@@ -121,47 +123,45 @@ class PortfolioValues(PublishedSeriesNode):
         )
         return self.portfolio_weights
 
-    def dependencies(self) -> dict[str, Any]:
-        if self.portfolio_configuration is None:
-            return {}
-        return {"portfolio_weights": self._ensure_portfolio_weights_node()}
-
     def series_key(self) -> str:
         return self._unique_identifier()
 
-    def run(
-        self,
-        *,
-        update_tree: bool = True,
-        update_only_tree: bool = False,
-        update_pointers: bool = True,
-    ):
-        """Run the chain, publish the values and record the portfolio's signal.
+    def run(self):
+        """Publish the ledger's new values and record the portfolio's signal.
 
-        With ``update_tree`` the weights run first, and with them the ledger, the
-        rebalance state, the signal and the prices. ``update_only_tree`` runs them and
-        publishes no values. Answers ``{"portfolio_weights", "portfolio_values",
-        "portfolio"}``, where ``portfolio_values`` is the values' ``SeriesPublication``
-        (``None`` when nothing was new).
+        Runs nothing: the ledger is as its last run left it. Prepares the portfolio
+        (``prepare_portfolio``) unless that was done. Answers
+        ``{"portfolio_weights", "portfolio_values", "portfolio"}``, where
+        ``portfolio_values`` is the values' ``SeriesPublication`` (``None`` when nothing
+        was new).
+        """
+        if self.portfolio_configuration is None:
+            raise ValueError("PortfolioValues requires a portfolio configuration.")
+        if self._resolved_unique_identifier is None:
+            self.prepare_portfolio()
+        portfolio = self._resolve_portfolio_identity()
+        portfolio_weights = self._ensure_portfolio_weights_node()
+        portfolio_values = self.publish_frame(self.update())
+        portfolio = self._update_portfolio_pointers(portfolio=portfolio)
+        return {
+            "portfolio_weights": portfolio_weights,
+            "portfolio_values": portfolio_values,
+            "portfolio": portfolio,
+        }
+
+    def prepare_portfolio(self) -> Any:
+        """Resolve the ``Portfolio`` row, check its calendar and bind the weights to it.
+
+        Refuses a strategy that reads another calendar than the portfolio's. Answers the
+        row; the weights node, its ledger and its rebalance then carry its identifier.
         """
         if self.portfolio_configuration is None:
             raise ValueError("PortfolioValues requires a portfolio configuration.")
         portfolio = self._resolve_portfolio_identity()
         self._require_strategy_calendar(portfolio)
         self._resolved_unique_identifier = str(portfolio.unique_identifier)
-        portfolio_weights = self._ensure_portfolio_weights_node()
-        if update_tree:
-            self.run_dependencies()
-        if update_only_tree:
-            return {"portfolio_weights": portfolio_weights, "portfolio_values": None, "portfolio": portfolio}
-        portfolio_values = self.publish_frame(self.update())
-        if update_pointers:
-            portfolio = self._update_portfolio_pointers(portfolio=portfolio)
-        return {
-            "portfolio_weights": portfolio_weights,
-            "portfolio_values": portfolio_values,
-            "portfolio": portfolio,
-        }
+        self._ensure_portfolio_weights_node()
+        return portfolio
 
     def update(self) -> pd.DataFrame:
         frame = normalize_portfolio_values_frame(

@@ -112,16 +112,32 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self._initialize_configuration(init_kwargs=build_configuration)
 
     def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+        """The prices, the strategy's declared inputs and the signal's own inputs.
+
+        The signal is a published series (ADR 0060), not a MetaTables node: a signal
+        that computes its weights is computed by ``update()`` before it is read, so the
+        updaters and tables it reads are declared here, as ``signal.<name>``. In one
+        joined run a dependency several portfolios share runs once (issue #133).
+        """
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
-        # The signal is a published series (ADR 0060): it is read, never run, here.
         declared = self.rebalance_strategy.declared_dependencies()
         for reserved in ("signal_weights", "valuation_source", "fx_source"):
             if reserved in declared:
                 raise ValueError(f"{reserved!r} is reserved by PortfolioRebalance.")
+        signal_inputs = {
+            f"signal.{name}": dependency
+            for name, dependency in sorted(self._signal_dependencies().items())
+        }
+        clashing = sorted(set(signal_inputs) & set(declared))
+        if clashing:
+            raise ValueError(
+                "PortfolioRebalance names the signal's inputs "
+                f"{', '.join(clashing)}; the strategy declares them too."
+            )
         invalid = {
             name: dependency
-            for name, dependency in declared.items()
+            for name, dependency in {**declared, **signal_inputs}.items()
             if not isinstance(dependency, (TimeIndexTableUpdater, TimeIndexTableRef))
         }
         if invalid:
@@ -135,7 +151,23 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             dependencies["valuation_source"] = self.valuation_source
             if self.fx_source is not None:
                 dependencies["fx_source"] = self.fx_source
-        return {**dependencies, **dict(sorted(declared.items()))}
+        return {**dependencies, **dict(sorted(declared.items())), **signal_inputs}
+
+    def _signal_dependencies(self) -> dict[str, Any]:
+        """What a signal that computes its weights reads; nothing for a published one."""
+        if not self.signal_weights.computes_weights:
+            return {}
+        return self.signal_weights.dependencies() or {}
+
+    def _publish_signal(self) -> None:
+        """Compute and publish a signal that computes its weights, before it is read.
+
+        Its inputs are this node's dependencies, so they ran before it. A signal whose
+        weights arrive by publication (``ApplicationWeights``) is only read, and a retired
+        portfolio's run, whose window is empty, reads nothing.
+        """
+        if self.signal_weights.computes_weights:
+            self.signal_weights.run()
 
     def update(self) -> pd.DataFrame:
         if getattr(self, "_portfolio_configuration", None) is None:
@@ -157,6 +189,7 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 portfolio_identifier=self._resolve_portfolio_identifier(),
                 output_table=self.output_table,
             )
+        self._publish_signal()
         assets = self._required_asset_identifiers()
         signals = self._signal_observations(start=start, end=end, assets=assets)
         if not assets and not signals.empty:

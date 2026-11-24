@@ -40,7 +40,7 @@ should list only its own tables in `__required_tables__`.
 ## Finding The Markets API
 
 `MarketsClient.from_environment()` finds the deployment the way
-`metatables.endpoint` finds MetaTables: the FastAPI release named `api` (from
+MetaTables' `api_endpoint_scope` finds MetaTables: the FastAPI release named `api` (from
 `source_path: api/main.py`) of the `MainSequenceMarkets` CodeRepository in the
 caller's Environment, authenticated with the release token that
 `ResourceRelease.resolve_runtime_access` returns. A 401 refreshes the token
@@ -372,7 +372,7 @@ frame = page.frame()
 
 `msm_portfolios.recipes` builds on them: `publish_signal_weights`,
 `signal_history`, `portfolio_history`, `weights_as_of`, `portfolio_preflight`,
-`run_portfolio`, `end_signal`, `end_signals` and `delete_private_series`. Only a row's
+`run_portfolios`, `run_portfolio`, `end_signal`, `end_signals` and `delete_private_series`. Only a row's
 manager publishes to it (`managed_by`, recorded by Markets; any other caller
 gets `MarketsAccessError`, HTTP 403). See
 [Published Series](../../msm_portfolios/portfolios/index.md#published-series).

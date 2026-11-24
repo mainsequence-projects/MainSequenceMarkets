@@ -8,8 +8,7 @@ previous release keeps serving.
 import logging
 import sys
 
-from metatables import upgrade_application
-from metatables.endpoint import api_endpoint_scope
+from metatables import api_endpoint_scope, upgrade_application
 
 PROVIDERS = ("msm_migrations:migration",)
 

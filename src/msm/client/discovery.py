@@ -1,6 +1,6 @@
 """Find the Markets API deployment and its access credential (ADR 0047, decision 2).
 
-Discovery works as ``metatables.endpoint`` does for MetaTables: the Markets API
+Discovery works as ``metatables.api_endpoint_scope`` does for MetaTables: the Markets API
 is the FastAPI release of the ``MainSequenceMarkets`` CodeRepository in the
 caller's Environment, and ``ResourceRelease.resolve_runtime_access`` returns
 its URL and a short-lived release token. A caller sees the release when its

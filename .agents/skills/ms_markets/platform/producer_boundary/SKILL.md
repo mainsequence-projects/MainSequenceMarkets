@@ -53,7 +53,8 @@ under the `runtime` and the `remote` row backend:
 | `portfolio_history` | `(portfolio_identifier, *, limit=100, offset=0) -> PortfolioHistory` | A portfolio's values newest first, with the total count |
 | `weights_as_of` | `(portfolio_identifiers, at=None) -> DataFrame` | Each portfolio's latest executed weights at or before `at` |
 | `portfolio_preflight` | `(portfolio_configuration, *, portfolio_identifier=None) -> PortfolioPreflight` | Why a portfolio cannot run yet (a published signal with no observation, a retired portfolio) |
-| `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None) -> PortfolioRun` | Runs the chain in order (signal, prices and calendar events, rebalance state, ledger, weights, values) from the signal's first observation, creates or updates the `Portfolio` row, publishes the weights and values the ledger projects, answers what was written and whether a first rebalance happened |
+| `run_portfolios` | `(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None) -> PortfolioRuns` | Runs every portfolio's ledger in one joined MetaTables run (`run_updaters`): a dependency several portfolios share (prices, calendar events, a strategy's or signal's input) runs once, each rebalance publishes a signal that computes its weights before it reads it, then each portfolio publishes the weights and values its ledger projects and creates or updates its `Portfolio` row. Answers `ran` (a `PortfolioRun` each, in the order given) and `failed` (position, identifier, reason, error); a refused or failed portfolio never stops the others. The per-tick call |
+| `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None) -> PortfolioRun` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it |
 | `end_signal` | `(signal_uid) -> dict` | Deletes a signal's weights and its metadata in one Markets call |
 | `end_signals` | `(signal_uids) -> dict` | Ends several signals in one Markets call and one transaction; answers `ended`, and `failed` with each refused or missing signal's reason, which never stops the others |
 | `delete_private_series` | `(tables, *, portfolios=(), calendars=(), accounts=()) -> dict[str, int]` | Deletes the producer's private rows of the given keys, a table before the tables it references, before the registry delete |
@@ -106,7 +107,24 @@ history = recipes.portfolio_history(run.portfolio.unique_identifier)
 
 `ApplicationWeights.publish(observations)` is the same as `publish_signal_weights` for
 that signal. A signal that computes its weights (`MarketCap`, `FixedWeights`, ...)
-is published by `run_portfolio`, or by its own `run()`.
+is published inside the run, by the rebalance that reads it, after the updaters its
+`dependencies()` names; its own `run()` publishes it without running those.
+
+Every portfolio of a tick goes in one call, so what they share runs once (issue #133):
+
+```python
+runs = recipes.run_portfolios(
+    [configuration_a, configuration_b],
+    rebalance_output_table=MyRebalanceState,
+    event_ledger_output_table=MyEventLedger,
+    portfolio_resolver=my_resolver,
+)
+for failure in runs.failed:
+    print(failure.position, failure.portfolio_identifier, failure.detail)
+```
+
+`PortfolioWeights.run()` and `PortfolioValues.run()` publish what the ledger holds and
+run nothing; the recipes are the way to run a portfolio.
 
 ## Managers
 
@@ -151,7 +169,7 @@ and its provider targets `MyBase.metadata` (`platform/metatable_migrations` has 
 template).
 
 Bind the engine to them: `rebalance_output_table=` and `event_ledger_output_table=` on
-`PortfolioValues`, `PortfolioWeights` and `run_portfolio`, and `output_table=` on the
+`run_portfolios`, `run_portfolio`, `PortfolioValues` and `PortfolioWeights`, and `output_table=` on the
 calendar events updater. `configured_time_index_instance` builds an instance of any other
 Markets storage. Every one of these factories requires `namespace`, `storage_app` and
 `base`: none builds in Markets' own by default. An interpolated-price table is such an

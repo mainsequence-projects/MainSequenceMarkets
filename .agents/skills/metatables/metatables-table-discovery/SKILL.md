@@ -9,15 +9,12 @@ Table search ranks the tables you can read using one document per table, built
 from the table's own metadata: identifier, description, labels, namespace, time
 index and cadence, and every column's name, type, label, description and logical
 name. What you write on a model is exactly what search reads. The decision is
-`docs/adr/api/0018-table-search.md`.
+[ADR 0018: Table search by meaning and columns](https://potential-doodle-wn39mnm.pages.github.io/adr/api/0018-table-search/).
 
 This skill is authoritative for descriptions, labels and column metadata. Other
 MetaTables skills defer to it. Storage design (physical names, grain, foreign
 keys, indexes) stays with the [table skill](../metatables-meta-tables/SKILL.md);
 schema evolution with the [migrations skill](../metatables-migrations/SKILL.md).
-
-In a copied skill, resolve `docs/` paths relative to this skill's `references/`
-directory.
 
 ## Part 1: Find a table
 

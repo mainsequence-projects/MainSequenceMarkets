@@ -1,6 +1,6 @@
 ---
 name: metatables-time-index-table-updates
-description: "Build or review TimeIndexTableUpdater producers, configuration hashing, dependencies, incremental frames and table readers in applications using the MetaTables Python client. Excludes client-library implementation, API routes, scheduling and runtime administration."
+description: "Build or review TimeIndexTableUpdater producers, configuration hashing, dependencies, incremental frames and table readers in applications using the MetaTables Python client. Covers the node Job that runs a producer graph in parallel Job runs. Excludes client-library implementation, API routes, other scheduling and runtime administration."
 ---
 
 # MetaTables client time-index producers
@@ -12,27 +12,25 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
-this skill's `references/` directory. The client CLI bundles the matching version's
-guides and examples there, including their linked documents. In the MetaTables
-source checkout, read the same paths from the repository root.
+The `metatables/examples/` files named in this skill ship inside the installed package;
+`python -c "import metatables.examples as e; print(e.__path__[0])"` prints their folder.
 
 For application development and mutation tests, use the
 [local development skill](../metatables-local-development/SKILL.md) to select and
 verify local SQLite before writing, then return to the intended environment after
 verification within the requested scope.
 
-Read `docs/client/build-an-updater.md`,
-`docs/concepts/time-index-tables-and-updates.md`, and the tested
-`src/metatables/examples/updater.py`. Use `docs/client/read-existing-time-index-tables.md` and
-`src/metatables/examples/reader.py` for consumers that only need existing output.
+Read [Build an updater](https://potential-doodle-wn39mnm.pages.github.io/client/build-an-updater/),
+[Time-index tables and updates](https://potential-doodle-wn39mnm.pages.github.io/concepts/time-index-tables-and-updates/), and the tested
+`metatables/examples/updater.py`. Use [Read existing time-index tables](https://potential-doodle-wn39mnm.pages.github.io/client/read-existing-time-index-tables/) and
+`metatables/examples/reader.py` for consumers that only need existing output.
 
 The storage contract is a `PlatformTimeIndexMetaTable` SQLAlchemy class. The
 producer is a `TimeIndexTableUpdater`; the API record is `TimeIndexTableUpdate`.
 Use the [table skill](../metatables-meta-tables/SKILL.md) for storage design and the
 [migrations skill](../metatables-migrations/SKILL.md) for table evolution. API
-route behavior is documented in `docs/api/time-index-and-updates.md` and supported
-capabilities in `docs/reference/capabilities.md`.
+route behavior is documented in [Time-index data and update operations](https://potential-doodle-wn39mnm.pages.github.io/api/time-index-and-updates/) and supported
+capabilities in [Supported capabilities](https://potential-doodle-wn39mnm.pages.github.io/reference/capabilities/).
 
 ## Establish the contract
 
@@ -43,7 +41,7 @@ published contract. Keep storage description, namespace, identifier, cadence,
 columns, and FK/index metadata on the authoring model, not the updater config.
 Write table and column descriptions by the rules in the
 [table discovery skill](../metatables-table-discovery/SKILL.md); see
-`src/metatables/examples/tables.py`.
+`metatables/examples/tables.py`.
 
 Migrate and bind the output class before constructing the producer. Pass explicit
 `config` and `output_table`; do not create/register tables inside `update()`.
@@ -89,6 +87,131 @@ other updater instances; read-only dependencies are `TimeIndexTableRef` objects.
 References contribute lineage and reads without executing a producer. Do not
 construct a changing dependency graph inside `update()`.
 
+## Running several producers together
+
+`updater.run()` runs one producer after its dependencies. When a Job runs several
+producers that share dependencies, do not call `run()` on each in turn: every call
+runs the shared dependencies again. Pass them together:
+
+```python
+from metatables import UpdatersFailedError, run_updaters
+
+try:
+    outcomes = run_updaters([producer_a, producer_b, producer_c])
+except UpdatersFailedError as failure:
+    for outcome in failure.outcomes:
+        print(outcome.updater.update_hash, outcome.state, outcome.error)
+    raise
+```
+
+- Their dependency graphs are joined into one run, so a shared dependency runs once.
+- A producer that is passed and is also another's dependency runs once, in order.
+- A failure stops only the producers that need the failed node; the others finish.
+- `run_updaters` raises `UpdatersFailedError` after everything that could run has
+  run. Let it fail the Job, and read `outcomes` for each producer's `state`:
+  `succeeded`, `failed`, `blocked`, `skipped` or `not_run`.
+- One run holds at most 500 graph nodes, counting producers and tables. Split a
+  larger set into several calls.
+
+## Running a graph in parallel Job runs
+
+On a hosted runtime, `run(node_job="...")` and `run_updaters([...], node_job="...")`
+execute every producer in its own run of one Main Sequence Job, the repository's
+**node Job**. Independent producers run at the same time, each in its own container.
+Read [Run a graph in parallel](https://potential-doodle-wn39mnm.pages.github.io/client/run-updaters-in-parallel/)
+and the tested scripts `metatables/examples/tutorial/jobs/run_updater_node.py` and
+`metatables/examples/tutorial/jobs/update_together.py`.
+
+A run is whole: with `node_job` every producer runs in a Job run, without it every
+producer runs in the calling process. There is no setting that keeps one producer in
+the calling process.
+
+**A project that runs producers** declares two Jobs in its workflow file:
+
+```yaml
+resources:
+  - key: updater-node              # the node Job: one run executes one producer
+    kind: job
+    spec:
+      name: Updater node
+      execution_path: jobs/run_updater_node.py
+      cpu_request: "1"             # the size of every producer that declares none
+      memory_request: "2"
+      max_runtime_seconds: 3600    # one limit for every producer
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+
+  - key: update-market             # the orchestrator: the Job that calls run()
+    kind: job
+    spec:
+      name: Market update
+      execution_path: jobs/update_market.py
+      cpu_request: "1"
+      memory_request: "2"
+      max_runtime_seconds: 7200
+      automatic_redeployment:
+        enabled: true
+        tag_regex: null
+    access:
+      resources:
+        - key: updater-node
+          policy: sized_runner     # runner is enough when no producer declares a size
+```
+
+```python
+# jobs/run_updater_node.py: the same two lines in every repository
+from metatables import run_updater_node
+
+if __name__ == "__main__":
+    run_updater_node()
+```
+
+- Declare one node Job per repository. Do not declare a Job per producer or per size.
+- `node_job` is the node Job's `spec.name`. It is found on the branch the process runs
+  on, so every branch uses its own node Job on its own image.
+- The node Job and the orchestrator are separate resources: a workflow resource cannot
+  declare access to itself.
+- `max_parallel_nodes` is the most node Job runs at one time. The default, `-1`, is no
+  limit.
+- A Job-mode call returns no frame: `run()` returns `(False, None)`. Read the table.
+- `node_job` is refused on a local runtime. Develop and test in-process, without it.
+
+**A library whose producers other projects run** declares no Job. Its producers must
+rebuild in another process from their saved configuration:
+
+- Define the producer and its table class at the top level of an importable module.
+- Keep typed values (dates, times, Enums) inside the pydantic config. As separate
+  constructor arguments they are saved as text and the run is refused before it starts.
+- Read another producer's result only from its table. A Job run shares no memory with
+  any other: no module-level cache, no attribute set after construction.
+- Do not combine `override_update_stats` with `node_job`.
+
+A producer that needs more than the node Job declares says so in code, outside the
+configuration hash:
+
+```python
+from metatables import NodeResources
+
+
+class RiskModel(TimeIndexTableUpdater):
+    def node_resources(self) -> NodeResources:
+        return NodeResources(cpu_request="16", memory_request="64")
+```
+
+- `cpu_request` is vCPU from 0.25 to 30; `memory_request` is GiB from 0.5 to 110 and
+  from 1 to 6.5 times the CPU. Use plain decimal numbers, not `500m` or `1Gi`.
+- A field left out takes the node Job's value. On a node Job of 1 vCPU, memory alone
+  can go only to 6.5 GiB, so a larger producer names both.
+- The platform checks the size when that producer's Job run is started. A refused size
+  fails that producer; it is not found before the run.
+- A sized run needs `policy: sized_runner` on the node Job. With `runner` the error
+  names the policy to declare.
+
+When a Job-mode run is refused, the error names what to fix: the producer and the
+argument that does not rebuild, the missing or duplicate node Job, the image that is not
+ready, the local runtime, or the missing `sized_runner` policy.
+
 ## Incremental output
 
 Use `UpdateStatistics` to determine the next interval, including a first-run
@@ -120,7 +243,7 @@ cutoff must fail. Do not replace this workflow with direct connections, SQL,
 truncation, or private endpoints.
 
 The API route is `/time-index-meta-tables/{uid}/delete-after-date/`; deployment
-prefixes belong in `METATABLES_API_URL`. See `docs/client/query-and-mutate.md`.
+prefixes belong in `METATABLES_API_URL`. See [Query and mutate](https://potential-doodle-wn39mnm.pages.github.io/client/query-and-mutate/).
 
 ## Review and verification
 
@@ -134,7 +257,7 @@ independent authorized work.
 
 ## Bounded transfers and recovery
 
-Read `docs/client/bounded-transfers.md` for transfer contract v1. Prefer
+Read [Bounded reads, uploads, and recovery](https://potential-doodle-wn39mnm.pages.github.io/client/bounded-transfers/) for transfer contract v1. Prefer
 `MetaTable.iter_rows()` for structured relation batches and
 `TimeIndexTableRef.iter_batches()` for typed time-index frames. Existing complete
 DataFrame readers have row, serialized-byte, and elapsed-time budgets; increase

@@ -106,19 +106,6 @@ class ExtensionAssetDetails(MarketsMetaTableRow):
     internal_asset_class: str
 
 
-def _install_fake_session_data_source(monkeypatch) -> None:
-    import metatables.models
-
-    monkeypatch.setattr(
-        metatables.models,
-        "get_session_data_source",
-        lambda: SimpleNamespace(
-            uid=str(uuid.uuid4()),
-            related_resource=SimpleNamespace(status="AVAILABLE"),
-        ),
-    )
-
-
 def test_markets_models_use_package_owned_table_names() -> None:
     table_names: dict[str, type] = {}
 
@@ -945,8 +932,9 @@ def test_bond_asset_details_uses_asset_uid_as_one_to_one_primary_key() -> None:
 
 def test_markets_models_build_platform_registration_requests_in_dependency_order(
     monkeypatch,
+    offline_postgresql_runtime,
 ) -> None:
-    _install_fake_session_data_source(monkeypatch)
+    # The session DataSource of the time-index requests is the offline runtime's.
     pairs = []
 
     for model in markets_sqlalchemy_models():
@@ -1022,8 +1010,9 @@ def test_markets_registration_builders_do_not_force_default_schema(monkeypatch) 
 
 def test_markets_models_build_external_registration_requests_in_dependency_order(
     monkeypatch,
+    offline_postgresql_runtime,
 ) -> None:
-    _install_fake_session_data_source(monkeypatch)
+    # The session DataSource of the time-index requests is the offline runtime's.
     pairs = []
 
     for model in markets_sqlalchemy_models():

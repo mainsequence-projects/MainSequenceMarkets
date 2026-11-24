@@ -273,6 +273,8 @@ class IncrementalRebalance:
         node._portfolio_configuration = SimpleNamespace()
         node._portfolio_identifier = "portfolio"
         signals.signal_uid = SIGNAL_UID
+        # A published signal: the rebalance reads it and never computes it.
+        signals.computes_weights = False
         node.signal_weights = signals
         node.rebalance_strategy = strategy
         node.valuation_source = prices

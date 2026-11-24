@@ -2,11 +2,13 @@
 
 ``SignalWeights`` and its subclasses, ``PortfolioWeights`` and ``PortfolioValues``
 are not ``TimeIndexTableUpdater``s: they are bound to no table and MetaTables keeps no
-update record of them. ``run()`` runs the node's dependencies, computes ``update()``
-and publishes the rows through the series row class (``SignalWeightsSeries``,
-``PortfolioWeightsSeries`` or ``PortfolioValuesSeries``). A node's progress is the
-series itself (``bounds`` and ``last``), and a row at or before the key's last stored
-time is not published again, so running the same window twice writes nothing.
+update record of them. ``run()`` computes ``update()`` and publishes the rows through
+the series row class (``SignalWeightsSeries``, ``PortfolioWeightsSeries`` or
+``PortfolioValuesSeries``); it runs nothing else. The updaters a node reads are run
+by one joined MetaTables run (``msm_portfolios.recipes.run_portfolios``, issue #133). A
+node's progress is the series itself (``bounds`` and ``last``), and a row at or before
+the key's last stored time is not published again, so running the same window twice
+writes nothing.
 
 The same code runs in a producer under the ``remote`` backend and in the Markets
 deployment under ``runtime``.
@@ -25,7 +27,6 @@ from typing import Any, ClassVar
 import numpy as np
 import pandas as pd
 
-from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.settings import markets_namespace
 from msm.time_index.assets.asset_indexed import asset_scope_identifier
 
@@ -197,7 +198,7 @@ class PublishedSeriesNode:
 
     A subclass names its storage contract (``_required_output_table``), its series
     resource (``series_resource``), its key column (``key_column``) and the key it
-    publishes (``series_key``), and implements ``update()`` and ``dependencies()``.
+    publishes (``series_key``), and implements ``update()``.
     """
 
     OFFSET_START = dt.datetime(2018, 1, 1, tzinfo=dt.UTC)
@@ -223,11 +224,6 @@ class PublishedSeriesNode:
     def _required_output_table(cls) -> type[Any]:
         raise NotImplementedError(f"{cls.__name__} must define _required_output_table().")
 
-    def dependencies(self) -> dict[str, Any]:
-        """The updaters and nodes ``run()`` runs first; table references are only read."""
-
-        return {}
-
     def update(self) -> pd.DataFrame:
         raise NotImplementedError(f"{self.__class__.__name__} must implement update().")
 
@@ -248,19 +244,10 @@ class PublishedSeriesNode:
             self.series_resource, key_column=self.key_column, asset_column=self.asset_column
         )
 
-    def run(self, *, update_tree: bool = True) -> Any:
-        """Run the dependencies (with ``update_tree``), then compute and publish the rows."""
+    def run(self) -> Any:
+        """Compute and publish the rows; the updaters the node reads are not run here."""
 
-        if update_tree:
-            self.run_dependencies()
         return self.publish_frame(self.update())
-
-    def run_dependencies(self) -> None:
-        for dependency in self.dependencies().values():
-            if isinstance(dependency, TimeIndexTableRef) or dependency is None:
-                continue
-            if isinstance(dependency, (TimeIndexTableUpdater, PublishedSeriesNode)):
-                dependency.run()
 
     def publish_frame(self, frame: pd.DataFrame | None) -> Any:
         """Publish ``frame``'s rows after the key's last stored time, oldest first.

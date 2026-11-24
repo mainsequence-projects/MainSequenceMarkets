@@ -11,7 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from mainsequence.server.fastapi import install_request_identity
 from mainsequence.client.exceptions import ServerError
-from metatables.endpoint import ApiResolutionError, api_endpoint_scope
+from metatables import ApiResolutionError, api_endpoint_scope
 from msm.distribution import package_version
 
 from apps.v1.routers.accounts import router as accounts_router

@@ -11,9 +11,24 @@ Minor release 6.1.0, with breaking changes. Every portfolio keeps a ledger
 ([ADR 0065](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0065-every-portfolio-keeps-a-ledger/)):
 `PortfolioEngine` books every portfolio, and its published weights and values are
 projections of the ledger. A portfolio refuses to run while it holds an asset with an
-event nothing books.
+event nothing books. Every portfolio of a tick runs in one MetaTables invocation, which runs
+what they share once
+([#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)).
 
 ### Added
+
+- **`run_portfolios`: every portfolio of a tick in one MetaTables run**
+  (`msm_portfolios.recipes`,
+  [#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)). The
+  portfolios' `PortfolioEngine`s are the heads of one `run_updaters` call (MetaTables ADR
+  0031), so a dependency several of them share (prices, calendar events, a strategy's or a
+  signal's input) runs once, before every node that reads it. Then each portfolio publishes
+  its weights and values and records its signal on its `Portfolio` row. It answers
+  `PortfolioRuns`: `ran`, a `PortfolioRun` for each portfolio that ran, in the order given,
+  and `failed`, a `PortfolioRunFailure` (position, identifier, reason, error) for each one
+  the preflight refused, whose node or a dependency it needs failed, or whose publication
+  failed; a failure never stops the others. It reads the signals' and the weights' bounds
+  in one call each.
 
 - **Asset types list their events.** `AssetType.event_types` (column `event_types` of
   `ms_markets__assettype`, revision `0038`) names the events an asset of the type can have.
@@ -67,6 +82,35 @@ event nothing books.
   events, the rebalance state, `PortfolioEngine` (into `event_ledger_output_table`), then
   publishes the weights and values. `portfolio_preflight` no longer refuses a portfolio with
   a ledger. The valuation source is no longer run a second time.
+- **Breaking: `run_portfolio` is `run_portfolios` for one portfolio** (#133). Its graph is
+  one MetaTables invocation, every node once. It raises what stopped the portfolio: the
+  preflight's `ValueError`, its own node's error or a dependency's. It checks the
+  strategy's calendar before anything runs.
+- **Breaking: a published node runs nothing.** `SignalWeights.run()`,
+  `PortfolioWeights.run()` and `PortfolioValues.run()` compute and publish their rows and
+  take no `update_tree`; `PortfolioValues.run()` takes no `update_only_tree` or
+  `update_pointers` and always records the portfolio's signal. A portfolio's chain runs
+  only through `run_portfolios` or `run_portfolio`.
+- **Breaking: the rebalance runs a signal that computes its weights.**
+  `PortfolioRebalance.update()` computes and publishes such a signal (`FixedWeights`,
+  `MarketCap`, ...) before it reads it, and `PortfolioRebalance.dependencies()` declares the
+  updaters and tables the signal's `dependencies()` names, as `signal.<name>`, so they
+  join the run. A signal whose weights arrive by publication (`ApplicationWeights`) is only
+  read, and a retired portfolio's run, whose window is empty, reads nothing.
+- **Requires `mainsequence-metatable` 0.1.82** (`>=0.1.82,<0.2`), for `run_updaters`
+  (MetaTables#156). A time-index write a constraint refuses now raises
+  `TransferConstraintError`, code `time_index_constraint_violation`, naming the kind,
+  constraint, columns and value (MetaTables#157), so a ledger whose currency is not an
+  `Asset` says which key refused it. MetaTables' modules moved into packages in 0.1.80
+  (MetaTables ADR 0030), and 0.1.82 exports the dtype tokens and `sqlalchemy_type_to_token`
+  (MetaTables#160): ms-markets imports them, `api_endpoint_scope`, `ApiResolutionError`,
+  `RuntimeContext`, `DataSourceResolutionError`, `MetaTableWriteOperation`,
+  `get_runtime_context` and `time_indexed_registration_request_from_sqlalchemy_model` from
+  `metatables` (`import metatables as dc` where it imported `dtype_codec`). The tests give
+  the client their runtime with `metatables.use_runtime_context`. It also requires
+  `mainsequence` 9.0.41 and OpenTelemetry 1.45.2. `.agents/skills/metatables` was copied
+  again from 0.1.82, whose skills link MetaTables' documentation site instead of shipping
+  copies of its guides.
 - **Breaking: one size, the ledger's `initial_nav`.** It is the unit of the rebalance's book
   for every strategy. The strategies sized in money or volume take it from the book
   (`SizedBarStrategy.book_unit`), and `RebalanceStrategyBase.bar_state` receives the book.
@@ -94,6 +138,9 @@ event nothing books.
   `get_asset_uid_to_override_portfolio_price` are removed.
 - **Breaking: the weights lose the book's columns.** Revision `0038` drops `held_shares` and
   `book_cash` from `ms_markets__portfolioweightsts`; the ledger holds the quantities.
+- **Breaking: the published nodes' dependencies.** `PortfolioWeights.dependencies()`,
+  `PortfolioValues.dependencies()` and `PublishedSeriesNode.run_dependencies()` are
+  removed; `dependencies()` stays on `SignalWeights`, where it names the signal's inputs.
 
 ## [6.0.0] - 2026-11-23
 

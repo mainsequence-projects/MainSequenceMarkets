@@ -584,8 +584,8 @@ creates has no manager.
 `SignalWeights` and its subclasses, `PortfolioWeights` and `PortfolioValues`
 are not `TimeIndexTableUpdater`s: they are bound to no table and MetaTables
 keeps no update record of them (`msm_portfolios.series_nodes`).
-`run()` runs the node's dependencies, computes `update()` and publishes the
-rows through the series row class. A node's progress is the series itself
+`run()` computes `update()` and publishes the rows through the series row
+class; it runs nothing else. A node's progress is the series itself
 (`bounds` and `last`). A row at or before the key's last stored time is not
 published again, so running the same window twice writes nothing. The same
 code runs in an application under the `remote` backend and in the Markets
@@ -596,14 +596,39 @@ position, the weight of each asset it changed: the position's value over the NAV
 the event (`weight`) and before it (`weight_before`), and the price the ledger booked
 it at (`price_current`). `PortfolioValues` publishes the NAV at each ledger time over
 the ledger's `initial_nav` (`close`, so a portfolio starts at 1), its change
-(`return`) and `valuation_stale`. Both depend on the portfolio's `PortfolioEngine`,
-which runs its `PortfolioRebalance`, prices and calendar events first.
+(`return`) and `valuation_stale`. Both project the portfolio's `PortfolioEngine`.
 
-`PortfolioValues.run()` answers `portfolio_weights`, `portfolio_values` (the
-values' `SeriesPublication`, `None` when nothing was new) and `portfolio`.
-With `update_pointers=True`, the default, it records the portfolio's signal on
-its `Portfolio` row. The nodes do not fill the `*_table_update_uid` columns of
-`PortfolioTable`.
+### Running portfolios
+
+`run_portfolios` runs every portfolio of a tick in one MetaTables invocation
+(`run_updaters`, MetaTables ADR 0031, issue #133). The heads are the portfolios'
+`PortfolioEngine`s. MetaTables joins their graphs by update uid, so a node
+several portfolios share runs once, and every node runs after what it reads:
+
+```text
+prices, calendar events, strategy and signal inputs   (each shared node once)
+        -> PortfolioRebalance of each portfolio        (publishes a computed signal, then reads it)
+        -> PortfolioEngine of each portfolio           (the heads)
+then, per portfolio: PortfolioWeights.run(), PortfolioValues.run()
+```
+
+A signal is a published series, not a MetaTables node. A signal that computes
+its weights is computed and published by the rebalance that reads it, before it
+reads it, and the updaters its `dependencies()` names are the rebalance's
+`signal.<name>` dependencies, so they join the graph too. A signal whose weights
+arrive by publication (`ApplicationWeights`) is only read.
+
+A failed node stops only the portfolios that need it. `run_portfolios` answers
+`ran`, a `PortfolioRun` for each portfolio that ran, and `failed`, each portfolio
+the preflight refused, whose node or a dependency failed, or whose publication
+failed, with its position, identifier and reason. `run_portfolio` is the same
+for one portfolio and raises what stopped it.
+
+`PortfolioWeights.run()` and `PortfolioValues.run()` publish what the ledger holds
+and run nothing. `PortfolioValues.run()` answers `portfolio_weights`,
+`portfolio_values` (the values' `SeriesPublication`, `None` when nothing was new)
+and `portfolio`, and records the portfolio's signal on its `Portfolio` row. The
+nodes do not fill the `*_table_update_uid` columns of `PortfolioTable`.
 
 ### Recipes
 
@@ -620,7 +645,8 @@ it calls one.
 | `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
 | `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
 | `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
-| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | Runs the chain in order from the signal's first observation (signal, prices, calendar events, rebalance state, ledger), creates the `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values the ledger projects, and answers what was written and whether a first rebalance happened. |
+| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None)` | Runs every portfolio's ledger in one joined MetaTables run from each signal's first observation (shared prices, calendar events and inputs once, each rebalance, each ledger), creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran` and `failed` (see "Running portfolios"). |
+| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
 | `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
 | `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
@@ -997,8 +1023,8 @@ series operations ([Published Series](#published-series)); the other nodes are
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
 `PortfolioTable.signal_uid` is nullable because portfolio rows can be registered
-before a signal workflow runs. Once `PortfolioValues.run(...,
-update_pointers=True)` completes, the portfolio row should store the same
+before a signal workflow runs. Once a portfolio run (`run_portfolios`, or
+`PortfolioValues.run()`) completes, the portfolio row should store the same
 `signal_uid` that identifies the signal metadata and signal-weight rows. API
 reads for portfolio signal weights must use this pointer; they must not infer a
 signal by scanning the shared `SignalWeightsStorage` table.
@@ -1242,7 +1268,6 @@ In code, the important wiring is:
 
 ```python
 source_bars_node = ExampleDailyBars(asset_identifiers=["asset-btc", "asset-eth"])
-source_bars_node.run(update_tree=False)
 
 price_source = InterpolatedPrices(
     interpolation_config=InterpolatedPricesConfig(
@@ -1286,6 +1311,10 @@ portfolio_configuration = PortfolioConfiguration(
     ),
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
 )
+
+# One joined MetaTables run: the source bars, the interpolated prices and the
+# calendar events once, then the rebalance and the ledger; then weights and values.
+run = recipes.run_portfolio(portfolio_configuration, portfolio_resolver=resolver)
 ```
 
 For a user-owned fair-value source, the same portfolio configuration uses the
@@ -1309,12 +1338,14 @@ portfolio_configuration = PortfolioConfiguration(
 
 `PortfolioRebalance.dependencies()` is the valuation source (and FX source) the
 strategy trades at, unless it has bars of its own, merged with the typed sources the
-strategy declares; it reads the signal, a published series, without running it. It
+strategy declares and, for a signal that computes its weights, the signal's own
+inputs as `signal.<name>`. It computes and publishes such a signal before it reads
+it, and only reads a signal whose weights arrive by publication. It
 validates those observations against the strategy's required grain and fields and
 persists the resulting state. `PortfolioEngine.dependencies()` is the rebalance
 state, the valuation source, the FX source and the inputs the valuation and
-lifecycle models declare. `PortfolioWeights.dependencies()` is the ledger, and
-`PortfolioValues.dependencies()` the weights node. Valuation sources may contain
+lifecycle models declare. `PortfolioWeights` and `PortfolioValues` project the
+ledger after the run ([Running portfolios](#running-portfolios)). Valuation sources may contain
 extra assets; each held asset is valued at its latest observation at or before the
 ledger time, however old. Past `MarketPriceValuationModel.maximum_staleness` the
 observation is marked stale, never refused: the portfolio value row has
@@ -1478,11 +1509,9 @@ virtual-fund allocation rows.
 
 `SignalWeights`, `PortfolioWeights` and `PortfolioValues` publish their rows
 to `SignalWeightsSeries`, `PortfolioWeightsSeries` and `PortfolioValuesSeries`.
-`PortfolioValues.run(..., update_pointers=True)`, the default, records the
-portfolio's signal on its `PortfolioTable` row after the values are published,
-so callers do not re-upsert the portfolio row after execution. Pass
-`update_pointers=False` only when deliberately running the graph without
-updating the portfolio row.
+`PortfolioValues.run()` records the portfolio's signal on its `PortfolioTable` row
+after the values are published, so callers do not re-upsert the portfolio row after
+execution.
 
 Virtual-fund allocation is a separate relationship over account holdings and a
 target portfolio:

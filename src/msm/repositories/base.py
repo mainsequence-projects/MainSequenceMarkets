@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from metatables import (
+    DataSourceResolutionError,
     MetaTable,
     MetaTableCompiledSQLDialect,
     MetaTableCompiledSQLOperation,
@@ -12,14 +13,13 @@ from metatables import (
     MetaTableOperation,
     MetaTableOperationLimits,
     MetaTableTransactionGuardError,
+    MetaTableWriteOperation,
 )
 from metatables.compiled_sql.v1 import (
     GuardedStatement,
     compile_sqlalchemy_statement,
     compile_sqlalchemy_statements,
 )
-from metatables.models import MetaTableWriteOperation
-from metatables.runtime_contract import DataSourceResolutionError
 
 from msm.base import MarketsBase
 
@@ -165,9 +165,9 @@ def resolve_markets_sql_target(
     if context.data_source_uid is not None and dialect is not None:
         return str(context.data_source_uid), dialect
 
-    import metatables.runtime_context as runtime_context
+    import metatables
 
-    runtime = runtime_context.get_runtime_context()
+    runtime = metatables.get_runtime_context()
     runtime_uid = runtime.require_data_source_uid()
     runtime_dialect, _paramstyle = runtime.require_sql_dialect()
     if context.data_source_uid is not None and str(context.data_source_uid) != runtime_uid:

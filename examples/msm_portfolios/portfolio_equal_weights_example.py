@@ -70,10 +70,10 @@ from msm_portfolios.contrib.prices.updaters import (  # noqa: E402
 from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
 )
+from msm_portfolios.recipes import run_portfolio  # noqa: E402
 from msm_portfolios.time_index import (  # noqa: E402
     PortfolioCalendarEvents,
     PortfolioCalendarEventsConfiguration,
-    PortfolioValues,
     compute_portfolio_configuration_hash,
 )
 from msm_portfolios.rebalance_strategy import (  # noqa: E402
@@ -292,19 +292,6 @@ def build_interpolated_prices_node(
     )
 
 
-def build_portfolio_values_node(
-    portfolio_configuration: PortfolioConfiguration,
-    *,
-    portfolio_resolver: ExamplePortfolioResolver,
-) -> PortfolioValues:
-    return PortfolioValues(
-        namespace=NAMESPACE,
-        portfolio_configuration=portfolio_configuration,
-        portfolio_resolver=portfolio_resolver,
-        portfolio_description="Published portfolio value series.",
-    )
-
-
 def build_source_bars_node() -> ExampleDailyBars:
     return ExampleDailyBars(
         asset_identifiers=ASSET_UNIQUE_IDENTIFIERS,
@@ -400,8 +387,6 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
     print_detail("source_prices_table_update_uid", result["source_prices_table_update_uid"])
     print_detail("interpolated_prices_table_update_uid", result["interpolated_prices_table_update_uid"])
     print_detail("calendar_events_table_update_uid", result["calendar_events_table_update_uid"])
-    print_detail("portfolio_rebalance_table_update_uid", result["portfolio_rebalance_table_update_uid"])
-    print_detail("portfolio_ledger_table_update_uid", result["portfolio_ledger_table_update_uid"])
     print_detail("published_signal_weights_rows", result["published_signal_weights_rows"])
     print_detail("published_portfolio_weights_rows", result["published_portfolio_weights_rows"])
     print_detail("published_portfolio_values_rows", result["published_portfolio_values_rows"])
@@ -450,10 +435,6 @@ def build_equal_weight_portfolio(
     portfolio_resolver = ExamplePortfolioResolver(
         portfolio=portfolio,
     )
-    portfolio_values_node = build_portfolio_values_node(
-        portfolio_configuration,
-        portfolio_resolver=portfolio_resolver,
-    )
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
     print_detail("signal_uid", signal_weights_node.signal_uid)
@@ -482,31 +463,25 @@ def build_equal_weight_portfolio(
 
     print_step(5, "Running the portfolio and publishing its series to Markets (ADR 0060).")
     if run_updaters:
-        source_bars_node.run(update_tree=False)
+        # One joined MetaTables run (issue #133): the source bars, the interpolated
+        # prices and the calendar events run once, then the rebalance (which publishes
+        # the signal first) and the ledger; the weights and values are published after.
+        portfolio_run = run_portfolio(
+            portfolio_configuration,
+            namespace=NAMESPACE,
+            portfolio_resolver=portfolio_resolver,
+            portfolio_description="Published portfolio value series.",
+        )
+        portfolio = portfolio_run.portfolio
+        print_detail("first_rebalance", portfolio_run.first_rebalance)
+
         source_prices_table_update_uid = str(source_bars_node.table_update.uid)
         print_detail("source_prices_table_update_uid", source_prices_table_update_uid)
-
-        portfolio_run_result = portfolio_values_node.run(
-            update_tree=True,
-            update_pointers=True,
-        )
-        portfolio = portfolio_run_result["portfolio"]
-
         interpolated_prices_table_update_uid = str(interpolated_prices_node.table_update.uid)
         print_detail("interpolated_prices_table_update_uid", interpolated_prices_table_update_uid)
 
         calendar_events_table_update_uid = str(calendar_events_node.table_update.uid)
         print_detail("calendar_events_table_update_uid", calendar_events_table_update_uid)
-
-        portfolio_weights_node = portfolio_run_result["portfolio_weights"]
-        portfolio_rebalance_table_update_uid = str(
-            portfolio_weights_node.portfolio_rebalance.table_update.uid
-        )
-        print_detail("portfolio_rebalance_table_update_uid", portfolio_rebalance_table_update_uid)
-        portfolio_ledger_table_update_uid = str(
-            portfolio_weights_node.portfolio_engine.table_update.uid
-        )
-        print_detail("portfolio_ledger_table_update_uid", portfolio_ledger_table_update_uid)
 
         from msm_portfolios.api import (
             PortfolioValuesSeries,
@@ -530,14 +505,10 @@ def build_equal_weight_portfolio(
         print_detail("source_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("interpolated_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("calendar_events_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_rebalance_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_ledger_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("published series", "skipped (--no-run-updaters)")
         source_prices_table_update_uid = None
         interpolated_prices_table_update_uid = None
         calendar_events_table_update_uid = None
-        portfolio_rebalance_table_update_uid = None
-        portfolio_ledger_table_update_uid = None
         published_signal_weights_rows = None
         published_portfolio_weights_rows = None
         published_portfolio_values_rows = None
@@ -561,8 +532,6 @@ def build_equal_weight_portfolio(
         "source_prices_table_update_uid": source_prices_table_update_uid,
         "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
         "calendar_events_table_update_uid": calendar_events_table_update_uid,
-        "portfolio_rebalance_table_update_uid": portfolio_rebalance_table_update_uid,
-        "portfolio_ledger_table_update_uid": portfolio_ledger_table_update_uid,
         "published_signal_weights_rows": published_signal_weights_rows,
         "published_portfolio_weights_rows": published_portfolio_weights_rows,
         "published_portfolio_values_rows": published_portfolio_values_rows,

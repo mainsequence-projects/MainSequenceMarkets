@@ -29,7 +29,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import and_, delete, func, insert, select
 
-from metatables import dtype_codec as dc
+import metatables as dc
 from msm.api.managers import require_manager
 from msm.models import AssetTable, PortfolioTable, SignalMetadataTable
 from msm.repositories.base import (

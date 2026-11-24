@@ -348,6 +348,24 @@ missing model hides it today. The owner chose the asset type instead (decision 2
   portfolio configurations (they keep a ledger) and the strategies that had
   `total_notional`; `InterpolatedPrices` keeps its hash.
 
+### 2026-11-24: one joined run (#133)
+
+- `run_portfolios` runs every portfolio's `PortfolioEngine` as the heads of one MetaTables
+  `run_updaters` call (MetaTables ADR 0031, mainsequence-metatable 0.1.80; ms-markets
+  requires 0.1.82: 0.1.81 names the key that refuses a ledger write, MetaTables#157, and
+  0.1.82 exports the dtype tokens ms-markets imports, MetaTables#160),
+  and `run_portfolio` is the same for one portfolio. A node several portfolios share runs
+  once.
+- The weights no longer run the signal. `PortfolioWeights` and `PortfolioValues` are not
+  MetaTables nodes, so they publish after the run and run nothing. The rebalance computes
+  and publishes a signal that computes its weights before it reads it, and declares the
+  signal's own inputs as `signal.<name>`, so they join the graph.
+- The equal-weights example, run twice on a disposable local runtime: 5 update executions
+  per run (source bars, interpolated prices, calendar events, rebalance, ledger), against 6
+  before; 200 requests on the first run and 121 on the second, against 244 and 156 on
+  MetaTables 0.1.78 (the same on 0.1.80 and 0.1.82). The stored rows are the same, and the
+  second run writes nothing.
+
 ## Not Verified
 
 - Whether a ledger with no lifecycle models, priced at market and charged a proportional

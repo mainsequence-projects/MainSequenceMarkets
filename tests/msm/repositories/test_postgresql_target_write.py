@@ -102,13 +102,12 @@ def _admitted_by_metatables(monkeypatch) -> list[int]:
     import json
 
     from metatables.api.app.routes.table_sql import CompiledOperation, CompiledTransaction
-    from metatables.models import _payload_json
 
     sizes: list[int] = []
     operation, transaction = MetaTable.execute_operation, MetaTable.execute_transaction
 
     def admitted(model, value):
-        body = _payload_json(value)
+        body = value.model_dump(mode="json", by_alias=True, exclude_none=True)
         model.model_validate(body)  # refuses a statement over 1,000,000 characters
         sizes.append(len(json.dumps(body, separators=(",", ":")).encode()))
         assert sizes[-1] <= 12_100_000

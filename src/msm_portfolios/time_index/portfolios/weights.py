@@ -41,9 +41,11 @@ class PortfolioWeights(PublishedSeriesNode):
     """The weights of the assets each ledger event changed, published as
     ``PortfolioWeightsSeries`` (ADR 0060, decision 5; ADR 0065, decision 5).
 
-    It depends on the portfolio's ``PortfolioEngine``, which books the fills
+    It projects the portfolio's ``PortfolioEngine``, which books the fills
     ``PortfolioRebalance`` records. An asset's weight is its position value over the
-    NAV after the event, as the ledger recorded them.
+    NAV after the event, as the ledger recorded them. ``run()`` publishes the weights of
+    the ledger as it is; ``msm_portfolios.recipes.run_portfolios`` runs the ledger, with
+    every portfolio's in one joined MetaTables run, first (issue #133).
     """
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
@@ -137,20 +139,6 @@ class PortfolioWeights(PublishedSeriesNode):
     def portfolio_rebalance(self) -> PortfolioRebalance:
         """The portfolio's rebalance state, which its ledger books."""
         return self.ensure_portfolio_engine().config.portfolio_rebalance_instance
-
-    def dependencies(self) -> dict[str, Any]:
-        """The portfolio's signal, then its ledger, which runs its rebalance state and prices.
-
-        The signal is a published series: the rebalance reads it and never runs it, so a
-        signal that computes its weights is computed here, before the ledger's run.
-        """
-        if getattr(self, "_portfolio_configuration", None) is None:
-            return {}
-        engine = self.ensure_portfolio_engine()
-        return {
-            "signal_weights": engine.config.portfolio_rebalance_instance.signal_weights,
-            "portfolio_engine": engine,
-        }
 
     def series_key(self) -> str:
         return self._resolve_portfolio_identifier()

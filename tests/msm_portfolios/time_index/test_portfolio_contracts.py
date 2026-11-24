@@ -109,13 +109,6 @@ def test_published_nodes_validate_against_the_markets_contract(node_cls, storage
     assert not issubclass(node_cls, TimeIndexTableUpdater)
 
 
-def test_portfolio_run_controls() -> None:
-    parameters = inspect.signature(PortfolioValues.run).parameters
-    assert {"update_tree", "update_only_tree", "update_pointers"} <= set(parameters)
-    assert "force_update" not in parameters
-    assert "override_update_stats" not in parameters
-
-
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
     assert "index_names" not in PortfolioCanonicalUpdaterConfiguration.model_fields
     assert "index_names" not in SignalWeightsConfiguration.model_fields
@@ -501,37 +494,40 @@ def test_calendar_strategy_weekly_cadence_produces_sparse_execution_events() -> 
     assert result["time_index"].tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
 
 
-def test_portfolio_values_depend_on_the_weights() -> None:
-    node = object.__new__(PortfolioValues)
-    node.portfolio_configuration = object()
-    weights = object()
-    node._ensure_portfolio_weights_node = lambda: weights
-    assert node.dependencies() == {"portfolio_weights": weights}
+def test_the_rebalance_declares_the_inputs_of_a_signal_that_computes_its_weights() -> None:
+    """A computed signal's inputs join the rebalance's graph as ``signal.<name>`` (#133).
 
-
-def test_portfolio_weights_run_the_signal_then_the_ledger() -> None:
-    """The weights project the ledger, which runs the rebalance and prices (ADR 0065).
-
-    The rebalance reads the signal, a published series, and never runs it: the weights
-    run it first, so a signal that computes its weights publishes them.
+    The signal is a published series, not a MetaTables node. In one joined run its
+    inputs run once, before every rebalance that computes it; a signal whose weights
+    arrive by publication is only read.
     """
-    node = object.__new__(PortfolioWeights)
+    prices = valuation_source("signal-prices")
+    events = valuation_source("calendar-events")
+    node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
-    signal = object()
-    engine = SimpleNamespace(
-        config=SimpleNamespace(
-            portfolio_rebalance_instance=SimpleNamespace(signal_weights=signal)
-        )
+    node.valuation_source = valuation_source()
+    node.fx_source = None
+    node.rebalance_strategy = ImmediateSignal(
+        calendar_events_instance=events, calendar_identifier="XNYS"
     )
-    node.ensure_portfolio_engine = lambda: engine
-    assert list(node.dependencies().items()) == [
-        ("signal_weights", signal),
-        ("portfolio_engine", engine),
-    ]
+    node.signal_weights = SimpleNamespace(
+        computes_weights=True, dependencies=lambda: {"price_source": prices}
+    )
+    assert node.dependencies() == {
+        "valuation_source": node.valuation_source,
+        "calendar_events": events,
+        "signal.price_source": prices,
+    }
+
+    node.signal_weights = SimpleNamespace(
+        computes_weights=False, dependencies=lambda: {"price_source": prices}
+    )
+    assert "signal.price_source" not in node.dependencies()
 
 
 def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:
     signal = valuation_source("signal")
+    signal.computes_weights = False
     liquidity = valuation_source("liquidity")
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
@@ -540,7 +536,7 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
         liquidity_source_instance=liquidity
     )
 
-    # The signal is a published series (ADR 0060): read by the rebalance, never run by it.
+    # A published signal (ADR 0060) is read by the rebalance; it declares no input.
     assert node.dependencies() == {"available_liquidity": liquidity}
     source = inspect.getsource(PortfolioRebalance)
     assert "timing_mode" not in source

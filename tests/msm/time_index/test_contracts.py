@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from metatables import dtype_codec as dc
+import metatables as dc
 
 import msm.time_index.accounts as accounts_module
 import msm.services.holdings as holdings_service_module

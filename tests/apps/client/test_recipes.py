@@ -44,6 +44,8 @@ from msm_portfolios.time_index.portfolios.rebalance import (
 )
 from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_portfolios.rebalance_strategy import ImmediateSignal
+from msm_portfolios.time_index import compute_portfolio_configuration_hash
+from tests.support.metatables_runs import serve_joined_runs
 from tests.support.pinned_identities import _bound
 from tests.support.rebalance import PublishedTable
 from tests.support.sqlite_markets import (
@@ -83,9 +85,9 @@ def markets(request, tmp_path, monkeypatch, sqlite_revisions):
         use_runtime_backend()
 
 
-def _signal() -> ApplicationWeights:
+def _signal(key: str = "model-a") -> ApplicationWeights:
     return ApplicationWeights.from_signal_configuration(
-        ApplicationWeightsConfig(provider="an-application", key="model-a")
+        ApplicationWeightsConfig(provider="an-application", key=key)
     )
 
 
@@ -246,40 +248,51 @@ class Prices(PublishedTable):
 
 
 class Resolver:
-    """The producer's portfolio resolver: one Portfolio row per configuration."""
+    """The producer's portfolio resolver: one Portfolio row per configuration.
 
-    def __init__(self, calendar_uid: str) -> None:
+    ``identifiers`` maps a configuration hash to its portfolio; without it every
+    configuration is ``model-a-portfolio``.
+    """
+
+    def __init__(self, calendar_uid: str, identifiers: dict[str, str] | None = None) -> None:
         self.calendar_uid = uuid.UUID(calendar_uid)
+        self.identifiers = identifiers or {}
 
-    def get_or_create_from_configuration_hash(self, **_kwargs):
+    def get_or_create_from_configuration_hash(self, *, portfolio_configuration_hash, **_kwargs):
         from msm.api.portfolios import Portfolio
 
-        existing = Portfolio.get_by_unique_identifier("model-a-portfolio")
+        identifier = self.identifiers.get(portfolio_configuration_hash, "model-a-portfolio")
+        existing = Portfolio.get_by_unique_identifier(identifier)
         if existing is not None:
             return existing
-        return Portfolio.create(
-            unique_identifier="model-a-portfolio", calendar_uid=self.calendar_uid
-        )
+        return Portfolio.create(unique_identifier=identifier, calendar_uid=self.calendar_uid)
 
 
-def _prices() -> Prices:
+def _prices(name: str = "prices") -> Prices:
     rows = [
         {"time_index": time, "asset_identifier": asset, "close": price}
         for time, prices in ((T1, {"AAA": 100.0, "BBB": 50.0}), (T2, {"AAA": 110.0, "BBB": 50.0}))
         for asset, price in prices.items()
     ]
-    return Prices.build("prices", pd.DataFrame(rows), index=["time_index", "asset_identifier"])
+    return Prices.build(name, pd.DataFrame(rows), index=["time_index", "asset_identifier"])
 
 
-def _configuration(signal: ApplicationWeights) -> PortfolioConfiguration:
+def _configuration(
+    signal: ApplicationWeights,
+    *,
+    prices: Prices | None = None,
+    calendar_events: Prices | None = None,
+    name: str = "model-a-portfolio",
+) -> PortfolioConfiguration:
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
-            valuation_source_instance=_prices(),
+            valuation_source_instance=prices or _prices(),
             valuation_asset_identifier="USD",
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal,
                 rebalance_strategy_instance=ImmediateSignal(
-                    calendar_events_instance=_prices(), calendar_identifier="XNYS"
+                    calendar_events_instance=calendar_events or _prices("calendar-events"),
+                    calendar_identifier="XNYS",
                 ),
             ),
             accounting_configuration=PortfolioAccountingConfiguration(
@@ -288,23 +301,18 @@ def _configuration(signal: ApplicationWeights) -> PortfolioConfiguration:
                 position_valuation_model_instance=MarketPriceValuationModel(),
             ),
         ),
-        portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="model-a-portfolio"),
+        portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name=name),
     )
 
 
-@pytest.fixture
-def rebalance_state(monkeypatch):
-    """The producer's private rebalance state and ledger: filled at T1, booked by the run.
+def _filled_state(portfolio_identifier: str) -> pd.DataFrame:
+    """The rebalance state of a portfolio filled at T1: 0.6 AAA at 100, 0.4 BBB at 50."""
 
-    The ledger's run computes its rows (``PortfolioEngine.update``) and keeps them in
-    memory, where the weights and values nodes read them.
-    """
-
-    state = pd.DataFrame(
+    return pd.DataFrame(
         [
             {
                 "time_index": T1,
-                "portfolio_identifier": "model-a-portfolio",
+                "portfolio_identifier": portfolio_identifier,
                 "rebalance_intent_id": "intent-1",
                 "asset_identifier": asset,
                 "target_signal_time_index": T0,
@@ -321,31 +329,41 @@ def rebalance_state(monkeypatch):
             }
             for asset, weight, price in (("AAA", 0.6, 100.0), ("BBB", 0.4, 50.0))
         ]
-    )
-    runs: list[str] = []
-    ledger: list[pd.DataFrame] = []
-    monkeypatch.setattr(PortfolioRebalance, "run", lambda self, **_kwargs: runs.append("run"))
+    ).set_index(["time_index", "portfolio_identifier", "rebalance_intent_id", "asset_identifier"])
+
+
+@pytest.fixture
+def rebalance_state(monkeypatch):
+    """The producer's private rebalance state and ledger, run by MetaTables' joined run.
+
+    Each portfolio's rebalance state is filled at T1. The run is MetaTables' own
+    ``run_updaters`` (``tests/support/metatables_runs.py``): its graph and order are
+    MetaTables'. A ledger node computes its rows (``PortfolioEngine.update``) and keeps
+    them in memory, where the weights and values nodes read them; the other nodes write
+    nothing. Answers the invocations, each the update hashes of the nodes it ran.
+    """
+
+    ledger: dict[str, list[pd.DataFrame]] = {}
+
+    def calculate(updater):
+        if isinstance(updater, PortfolioEngine):
+            frame = updater.update()
+            if not frame.empty:
+                ledger.setdefault(updater.config.portfolio_identifier, []).append(frame)
+            return frame
+        return None
+
+    def booked(self, **_kwargs):
+        frames = ledger.get(self.config.portfolio_identifier)
+        return pd.concat(frames) if frames else pd.DataFrame()
+
     monkeypatch.setattr(
         PortfolioRebalance,
         "get_df_between_dates",
-        lambda self, **_kwargs: state.set_index(
-            ["time_index", "portfolio_identifier", "rebalance_intent_id", "asset_identifier"]
-        ),
+        lambda self, **_kwargs: _filled_state(self._portfolio_identifier),
     )
-
-    def booked(self, **_kwargs):
-        return pd.concat(ledger) if ledger else pd.DataFrame()
-
-    def run(self, **_kwargs):
-        # A MetaTables run of the ledger runs its dependencies first.
-        for dependency in self.dependencies().values():
-            dependency.run()
-        frame = self.update()
-        if not frame.empty:
-            ledger.append(frame)
-
     monkeypatch.setattr(PortfolioEngine, "get_df_between_dates", booked)
-    monkeypatch.setattr(PortfolioEngine, "run", run)
+    runs = serve_joined_runs(monkeypatch, calculate)
     with (
         _bound(PortfolioRebalanceStateStorage, "a0000000-0000-4000-8000-0000000000aa"),
         _bound(PortfolioEventLedgerStorage, "a0000000-0000-4000-8000-0000000000bb"),
@@ -369,7 +387,10 @@ def test_run_portfolio_publishes_weights_and_values_once(markets, rebalance_stat
     assert first.values.written == 3
     assert first.portfolio.signal_uid == signal.signal_uid
     assert (second.first_rebalance, second.weights, second.values) == (False, None, None)
-    assert rebalance_state == ["run", "run"]
+    # One invocation per run: the prices and calendar events, the rebalance, the ledger.
+    assert len(rebalance_state.invocations) == 2
+    assert rebalance_state.kinds_of(0) == ["Prices", "Prices", "PortfolioRebalance", "PortfolioEngine"]
+    assert set(rebalance_state.invocations[0][:2]) == {"prices", "calendar-events"}
     values = recipes.portfolio_history("model-a-portfolio")
     assert values.count == 3
     # The ledger opens with its initial NAV in cash at T0, buys 6 AAA at 100 and 8 BBB
@@ -387,6 +408,86 @@ def test_run_portfolio_publishes_weights_and_values_once(markets, rebalance_stat
     }
     (row,) = _rows(markets.engine, "SELECT managed_by FROM ms_markets__portfolio")
     assert row["managed_by"] == (f"branch:{BRANCH}" if markets.backend == "remote" else None)
+
+
+def test_run_portfolios_runs_a_shared_dependency_once_in_one_invocation(
+    markets, rebalance_state
+) -> None:
+    """Two portfolios on the same prices and calendar events run in one invocation (#133).
+
+    Each portfolio has its own signal, rebalance and ledger; the prices and the
+    calendar events they share run once, before both rebalances, and both ledgers run
+    after their own rebalance.
+    """
+
+    prices, events = _prices(), _prices("calendar-events")
+    signals = {name: _signal(name) for name in ("model-a", "model-b")}
+    configurations = {
+        name: _configuration(
+            signal, prices=prices, calendar_events=events, name=f"{name}-portfolio"
+        )
+        for name, signal in signals.items()
+    }
+    resolver = Resolver(
+        markets.calendar["uid"],
+        {
+            compute_portfolio_configuration_hash(configuration): f"{name}-portfolio"
+            for name, configuration in configurations.items()
+        },
+    )
+    for signal in signals.values():
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
+
+    runs = recipes.run_portfolios(list(configurations.values()), portfolio_resolver=resolver)
+
+    assert runs.failed == ()
+    assert [run.portfolio.unique_identifier for run in runs.ran] == [
+        "model-a-portfolio",
+        "model-b-portfolio",
+    ]
+    assert all(run.first_rebalance and run.values.written == 3 for run in runs.ran)
+    (invocation,) = rebalance_state.invocations
+    assert invocation.count("prices") == 1
+    assert invocation.count("calendar-events") == 1
+    assert set(invocation[:2]) == {"prices", "calendar-events"}
+    # Every node after what it reads, and the ledgers, the heads, last.
+    assert rebalance_state.kinds_of(0) == [
+        "Prices",
+        "Prices",
+        "PortfolioRebalance",
+        "PortfolioRebalance",
+        "PortfolioEngine",
+        "PortfolioEngine",
+    ]
+    for run in runs.ran:
+        values = recipes.portfolio_history(run.portfolio.unique_identifier)
+        assert values.values["close"].tolist() == pytest.approx([1.06, 1.0, 1.0])
+
+
+def test_run_portfolios_lists_a_portfolio_that_cannot_run_and_runs_the_others(
+    markets, rebalance_state
+) -> None:
+    ready, unpublished = _signal("model-a"), _signal("model-b")
+    configurations = [
+        _configuration(ready, name="model-a-portfolio"),
+        _configuration(unpublished, name="model-b-portfolio"),
+    ]
+    resolver = Resolver(
+        markets.calendar["uid"],
+        {
+            compute_portfolio_configuration_hash(configurations[0]): "model-a-portfolio",
+            compute_portfolio_configuration_hash(configurations[1]): "model-b-portfolio",
+        },
+    )
+    recipes.publish_signal_weights(ready.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
+
+    runs = recipes.run_portfolios(configurations, portfolio_resolver=resolver)
+
+    assert [run.portfolio.unique_identifier for run in runs.ran] == ["model-a-portfolio"]
+    (failure,) = runs.failed
+    assert failure.position == 1 and failure.portfolio_identifier is None
+    assert "has no published observation" in failure.detail
+    assert len(rebalance_state.invocations) == 1
 
 
 def test_portfolio_preflight_reports_why_a_portfolio_cannot_run(markets) -> None:
