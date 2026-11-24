@@ -29,9 +29,10 @@ the signal, the portfolio's weights and its values. A second run writes nothing 
 `--no-run-updaters` builds the frames without publishing them.
 
 Every asset the portfolio prices must be linked to a stored calendar with
-`AssetCalendar` before interpolation runs. The run script links the example
-assets to the `CRYPTO_24_7` calendar. An asset with no link fails the price
-update, and the error names it; see
+`AssetCalendar` before interpolation runs. The run script creates the `CRYPTO_24_7`
+calendar first, then registers the asset types and the assets with one `upsert_many`
+each. Each crypto asset's payload names the calendar, so the upsert links it. An asset
+with no link fails the price update, and the error names it; see
 [An asset that gets price bars needs a trading calendar](01-assets.md#an-asset-that-gets-price-bars-needs-a-trading-calendar).
 
 The example is a producer. It declares the interpolated-price table on its own base,

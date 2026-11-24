@@ -20,6 +20,7 @@ if __name__ == "__main__":
 from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,
     EXAMPLE_CRYPTO_ASSET_TYPE,
+    EXAMPLE_CURRENCY_ASSET_TYPE,
 )
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     ASSET_UNIQUE_IDENTIFIERS,
@@ -39,8 +40,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 import msm_portfolios  # noqa: E402
 from metatables import TimeIndexMetaTable  # noqa: E402
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
-from msm.api.assets import Asset, AssetCalendar, AssetType  # noqa: E402
-from msm.constants import ASSET_TYPE_CURRENCY, ASSET_TYPE_CURRENCY_DEFINITION  # noqa: E402
+from msm.api.assets import Asset, AssetType  # noqa: E402
+from msm.constants import ASSET_TYPE_CURRENCY  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.time_index.assets.asset_indexed import (  # noqa: E402
     AssetIndexedUpdater,
@@ -159,35 +160,30 @@ def start_portfolio_example_runtime(
     )
 
 
-def register_assets() -> list[Asset]:
-    asset_type = AssetType.upsert(**EXAMPLE_CRYPTO_ASSET_TYPE)
-    assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
-    # The portfolio's currency is an asset too: the ledger's cash is in it (ADR 0065).
-    AssetType.upsert(**ASSET_TYPE_CURRENCY_DEFINITION.as_payload())
-    currency = Asset.upsert(
-        unique_identifier=PORTFOLIO_CURRENCY,
-        asset_type=ASSET_TYPE_CURRENCY,
-    )
-    print_detail("asset_type", asset_type.asset_type)
-    print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
-    print_detail("portfolio_currency", currency.unique_identifier)
-    return assets
+def register_assets(calendar: Calendar) -> list[Asset]:
+    """Register the asset types, then the assets: one upsert of each.
 
-
-def link_assets_to_calendar(assets: Sequence[Asset], calendar: Calendar) -> None:
-    """Link each asset to the stored calendar whose sessions decide its price bars.
-
-    An asset without this link has no trading calendar, and the price update
-    refuses it. There is no default calendar.
+    Each crypto asset names the stored calendar whose sessions decide its price bars,
+    so the upsert links it (ADR 0057). An asset with no link fails the price update;
+    there is no default calendar. The portfolio's currency is an asset too, since the
+    ledger's cash is in it (ADR 0065). It gets no price bars and needs no calendar.
+    Returns the crypto assets.
     """
 
-    result = AssetCalendar.link_many(
-        [asset.unique_identifier for asset in assets],
-        calendar_uid=calendar.uid,
+    asset_types = AssetType.upsert_many(
+        [EXAMPLE_CRYPTO_ASSET_TYPE, EXAMPLE_CURRENCY_ASSET_TYPE]
     )
-    if result.unknown:
-        raise LookupError(f"Assets {result.unknown} were not found.")
+    *assets, currency = Asset.upsert_many(
+        [
+            *({**payload, "calendar_uid": calendar.uid} for payload in EXAMPLE_CRYPTO_ASSETS),
+            {"unique_identifier": PORTFOLIO_CURRENCY, "asset_type": ASSET_TYPE_CURRENCY},
+        ]
+    )
+    print_detail("asset_types", ", ".join(asset_type.asset_type for asset_type in asset_types))
+    print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
     print_detail("asset_calendar", f"{len(assets)} assets -> {calendar.unique_identifier}")
+    print_detail("portfolio_currency", currency.unique_identifier)
+    return assets
 
 
 def create_crypto_calendar_from_pandas() -> Calendar:
@@ -281,7 +277,7 @@ def build_interpolated_prices_node(
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
             # The scope names the assets. Each asset's trading calendar is its
-            # stored AssetCalendar link, written by link_assets_to_calendar().
+            # stored AssetCalendar link, written by register_assets().
             asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
             intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
             source_price_instance=source_price_instance,
@@ -406,12 +402,11 @@ def build_equal_weight_portfolio(
     print_step(1, "Starting the portfolio example runtime.")
     runtime = start_portfolio_example_runtime(models=runtime_models)
 
-    print_step(2, "Registering the crypto asset universe.")
-    assets = register_assets()
-
-    print_step(3, "Creating or reusing the crypto 24/7 calendar with sessions.")
+    print_step(2, "Creating or reusing the crypto 24/7 calendar with sessions.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
-    link_assets_to_calendar(assets, portfolio_calendar)
+
+    print_step(3, "Registering the crypto assets on that calendar, and the portfolio currency.")
+    assets = register_assets(portfolio_calendar)
 
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
     source_prices_storage_uid = resolve_source_prices_storage(runtime)
