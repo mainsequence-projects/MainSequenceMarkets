@@ -217,9 +217,11 @@ missing model hides it today. The owner chose the asset type instead (decision 2
 
 ## Consequences
 
-- It breaks every portfolio configuration, so it ships in a major release. Every portfolio
-  states `initial_nav`, `initial_state_time_index`, `position_valuation_model_instance` and
-  the lifecycle models its assets need. Every portfolio's identity changes.
+- It breaks every portfolio configuration. No one uses ms-markets yet, so it needs no major
+  release (owner, 2026-11-24).
+- Every portfolio states `initial_nav`, `initial_state_time_index`,
+  `position_valuation_model_instance` and the lifecycle models its assets need. Every
+  portfolio's identity changes.
 - A portfolio that holds an asset with an event nothing books ran before, and now refuses.
 - Readers of `PortfoliosTS` and `PortfolioWeightsTS`, such as the Markets API's portfolio
   routes (`apps/v1/routers/portfolios.py`), see the same columns, without `held_shares` and
