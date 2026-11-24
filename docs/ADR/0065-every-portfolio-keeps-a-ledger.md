@@ -2,12 +2,14 @@
 
 ## Status
 
-Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24, from the analysis of
-[issue #133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133).
-Nothing in it is implemented.
+Accepted (2026-11-24). Drafted at the owner's request on 2026-11-24, from the analysis of
+[issue #133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133). The
+owner asked for it to be implemented the same day.
 
-- The decisions marked (owner) were made by the owner on 2026-11-24. Everything else is a
-  proposal.
+- The decisions marked (owner) were made by the owner on 2026-11-24. The others were
+  proposed the same day and accepted when the owner asked for the implementation.
+  Decisions 10 to 13 are the owner's answers to what a survey of the code found before
+  the implementation.
 - It would supersede two sections of
   [ADR 0042](0042-position-cash-flow-portfolio-accounting.md), "Backward Compatibility:
   Mandatory Release Contract" and "Disabled Accounting Preserves Configuration And
@@ -186,6 +188,50 @@ fee states `ProportionalExecutionCostModel(rate=0.00018)`.
 A new Alembic revision drops `PortfolioWeightsTS.held_shares` and `book_cash`, which revision
 0030 added.
 
+### 10. The ledger reads the portfolio's valuation source (owner)
+
+The ledger's valuation model expected price rows with a `price`, a `price_asset_identifier`
+and a `source_revision`. `InterpolatedPrices` has `close` and neither of the other two, so a
+ledger had only run in tests, on prices built by hand.
+
+- `PortfolioEngine` reads the build's `valuation_source_instance` and its `valuation_column`,
+  as `PortfolioRebalance` does.
+- A price is in the portfolio's currency unless the source has `price_asset_identifier`
+  (ADR 0059). A row's revision is its own `source_revision` if the source has one;
+  otherwise it is computed from the row.
+- `MarketPriceValuationModel.valuation_source` is retired. The build already names the
+  source.
+
+### 11. A portfolio that states no execution model gets a default one (owner)
+
+The ledger sizes each asset with an `InstrumentExecutionSpec` (unit, lot step, multiplier,
+price currency, settlement), and it refused a strategy without `execution_model_instance`.
+A strategy that states none gets a default: every asset trades in fractional units, with
+multiplier 1 and cash settlement, priced in its source's currency, as the book of a plain
+portfolio did. A portfolio states an execution model only to change that.
+
+### 12. The built-in asset types list these events (owner)
+
+| Asset type | Events |
+| --- | --- |
+| `equity` | `dividend`, `split` |
+| `bond` | `coupon`, `redemption` |
+| `future` | `expiry` |
+| `currency`, `currency_spot`, `crypto` | none |
+
+- `AssetType.event_types` carries the list. An asset type of a provider's own states its
+  events when it is created; it has none by default.
+- The revision that adds the column sets these events on the built-in rows that already
+  exist.
+- A lifecycle model states the event types it books. `DividendCashFlowModel` books
+  `dividend`.
+
+### 13. A table reference is adjusted (owner)
+
+A valuation source given as a `TimeIndexTableRef` has no settings of its own. Its prices
+count as adjusted, the default. Unadjusted prices come through a configured source that
+states `events_in_price=()`.
+
 ## Worked Example
 
 A portfolio of $1,000,000 holds half AAPL and half MSFT. AAPL is at $200, so the portfolio
@@ -233,10 +279,6 @@ missing model hides it today. The owner chose the asset type instead (decision 2
 
 ## Not Decided Here
 
-- Which event types each asset type lists, how they are named, and how a provider registers
-  them for an asset type of its own.
-- How a valuation source that is a `TimeIndexTableRef`, with no configuration of its own,
-  states `events_in_price`.
 - Whether `PortfolioStateTS` and `PortfolioCashFlowsTS` (positions, cash in each currency,
   completed cash flows) are published. Both tables exist in Markets, and nothing writes them.
 - The rebalance's book doesn't see income the ledger books. The ledger sizes its own orders
