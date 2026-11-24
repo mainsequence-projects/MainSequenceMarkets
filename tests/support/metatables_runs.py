@@ -1,8 +1,8 @@
 """MetaTables' own joined run (``run_updaters``, MetaTables ADR 0031), in process.
 
 The graph, its order, which node runs and each updater's outcome are MetaTables' code
-(``UpdateRunner``). Only what a node asks the MetaTables API is stood in: an updater's
-update record, and the start, calculation and end of a node's run. The runtime is the
+(``UpdateRunner``). Only what a node asks the MetaTables API is stood in: finding or
+registering an updater's update record, and the start, calculation and end of a node's run. The runtime is the
 test's own (``metatables.use_runtime_context``, opened by the row fixtures). Nothing
 leaves the process.
 
@@ -31,6 +31,9 @@ class _UpdateRecord:
 
     def ensure_table_update(self, **_kwargs) -> None:
         return None
+
+    def set_table_update(self, table_update: Any) -> None:
+        self.table_update = table_update
 
     def is_local_relation_tree_set(self) -> bool:
         return True
@@ -82,6 +85,8 @@ def serve_joined_runs(monkeypatch, calculate: Callable[[Any], Any]) -> JoinedRun
         return False, calculate(self.updater)
 
     monkeypatch.setattr(TimeIndexTableUpdater, "update_manager", property(update_manager))
+    # MetaTables 0.1.83 finds or registers each update of the plan before the run (#162).
+    monkeypatch.setattr(TimeIndexTableUpdater, "verify_and_build_remote_objects", lambda self: None)
     monkeypatch.setattr(runner.UpdateRunner, "run", run)
     monkeypatch.setattr(runner.UpdateRunner, "_start_update", start_update)
     return runs

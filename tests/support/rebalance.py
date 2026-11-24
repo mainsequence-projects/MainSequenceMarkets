@@ -44,6 +44,7 @@ def output_table_stub(name: str) -> SimpleNamespace:
             data_source_uid="source",
         ),
         get_data_source_uid=lambda: "source",
+        get_meta_table_uid=lambda: f"{name}-table",
     )
 
 
@@ -85,6 +86,7 @@ class PublishedCalendarEvents(TimeIndexTableUpdater):
         source = object.__new__(cls)
         source.update_hash = f"calendar-events-{calendar_identifier}"
         source._output_table = output_table_stub("calendar-events")
+        source.update_statistics = None
         source.rows = pd.DataFrame(
             [
                 {
@@ -164,6 +166,7 @@ class PublishedTable(TimeIndexTableUpdater):
         source = object.__new__(cls)
         source.update_hash = name
         source._output_table = output_table_stub(name)
+        source.update_statistics = None
         source.rows = frame.reset_index() if "time_index" not in frame.columns else frame.copy()
         source.rows["time_index"] = pd.to_datetime(source.rows["time_index"], utc=True)
         source.index = index

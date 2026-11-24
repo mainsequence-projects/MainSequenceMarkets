@@ -81,12 +81,14 @@ class _Source(TimeIndexTableUpdater):
 def _source(update_hash: str) -> _Source:
     source = object.__new__(_Source)
     source.update_hash = update_hash
+    source.update_statistics = None
     source._output_table = SimpleNamespace(
         get_time_index_meta_table=lambda: TimeIndexMetaTable.model_construct(
             uid=f"{update_hash}-table",
             data_source_uid="source",
         ),
         get_data_source_uid=lambda: "source",
+        get_meta_table_uid=lambda: f"{update_hash}-table",
     )
     return source
 
