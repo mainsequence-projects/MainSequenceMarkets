@@ -401,11 +401,13 @@ def _run_portfolios(
     portfolio_resolver: Any,
 ) -> PortfolioRuns:
     from msm.api.calendars import calendar_reads
+    from msm.repositories.base import one_runtime_lookup
     from msm_portfolios.api import SignalWeightsSeries
     from msm_portfolios.time_index import PortfolioValues
 
-    # One read of each calendar's row, rules and exceptions for the run (#137).
-    with calendar_reads():
+    # One lookup of the MetaTables runtime for the run's statements (#140), and one read
+    # of each calendar's row, rules and exceptions (#137).
+    with one_runtime_lookup(), calendar_reads():
         failed: dict[int, PortfolioRunFailure] = {}
 
         def fail(position: int, identifier: str | None, error: BaseException) -> None:

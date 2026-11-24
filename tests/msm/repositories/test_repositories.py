@@ -184,6 +184,47 @@ def test_explicit_data_source_must_match_runtime_unless_dialect_is_supplied(
     assert offline.dialect == "postgresql"
 
 
+def test_a_block_looks_the_runtime_up_once_for_all_its_statements(
+    offline_postgresql_runtime, monkeypatch
+) -> None:
+    import metatables
+
+    from msm.repositories.base import one_runtime_lookup, resolve_markets_sql_target
+
+    lookups: list[object] = []
+    lookup = metatables.get_runtime_context
+
+    def counted(**kwargs):
+        lookups.append(kwargs)
+        return lookup(**kwargs)
+
+    monkeypatch.setattr(metatables, "get_runtime_context", counted)
+    statement = select(AssetTable.uid)
+    runtime_data_source_uid = offline_postgresql_runtime.require_data_source_uid()
+
+    with one_runtime_lookup():
+        compiled = [
+            compile_markets_statement(statement, context=_repository_context(), operation="select")
+            for _ in range(3)
+        ]
+        write_target = resolve_markets_sql_target(_repository_context())
+        with one_runtime_lookup():
+            compile_markets_statement(statement, context=_repository_context(), operation="select")
+        with pytest.raises(DataSourceResolutionError):
+            compile_markets_statement(
+                statement, context=_repository_context(OTHER_DATA_SOURCE_UID), operation="select"
+            )
+
+    # One lookup for the block (#140); its statements compile offline with the answer.
+    assert len(lookups) == 1
+    assert {(item.data_source_uid, item.dialect) for item in compiled} == {
+        (runtime_data_source_uid, "postgresql")
+    }
+    assert write_target == (runtime_data_source_uid, "postgresql")
+    resolve_markets_sql_target(_repository_context())
+    assert len(lookups) == 2
+
+
 def test_generic_count_operation_compiles_for_filtered_model() -> None:
     context = _repository_context()
 

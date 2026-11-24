@@ -161,6 +161,16 @@ what they share once
   strategy's calendar, session label and event types only. The first run of the
   equal-weights example made 135 requests instead of 147: its calendar events took one
   read instead of 13 pages of 6,499 rows.
+- **A portfolio run looks its MetaTables runtime up once**
+  ([#140](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/140)).
+  Every Markets statement asked MetaTables for its runtime, to compile for its DataSource
+  and SQL dialect; a local API answers each time. `run_portfolios` runs inside
+  `msm.repositories.base.one_runtime_lookup()`: the first statement asks, and every later
+  one compiles offline with that answer (`compile_markets_statement`,
+  `resolve_markets_sql_target`). Outside a block nothing changes. The first run of the
+  equal-weights example sent 20 runtime lookups instead of 37 (59 before #135), one of
+  them from Markets inside the run; the rest are MetaTables' own (MetaTables#162) and the
+  example's setup before the run.
 
 ### Removed
 
