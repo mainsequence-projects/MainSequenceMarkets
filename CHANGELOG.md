@@ -140,6 +140,16 @@ what they share once
   `publish_signal_weights` uses too). `PortfolioValues` no longer writes the signal's
   metadata again, and writes the `Portfolio` row only when its signal or price column
   changes. A second run of the equal-weights example made 101 requests instead of 108.
+- **A portfolio run reads each calendar once**
+  ([#137](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/137)).
+  `run_portfolios` runs inside `msm.api.calendars.calendar_reads()`: in it a calendar's
+  row, session rules and exceptions are each read once, and `Calendar.sessions`, `dates`
+  and `is_business_day` compute from that one definition, every exception included.
+  `Calendar.get_by_unique_identifier` and `get_by_uid` keep what they read for the block.
+  `AssetCalendar.calendars_of(identifiers)` reads each asset's calendar row in one read,
+  so `resolve_asset_schedules` makes one read instead of three. A calendar's exceptions
+  are read in pages of 9,000 rows instead of 1,000. A second run of the equal-weights
+  example made 87 requests instead of 101, 4 of them for the calendar instead of 11.
 
 ### Removed
 

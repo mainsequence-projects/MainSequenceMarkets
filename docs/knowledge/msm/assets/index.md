@@ -530,7 +530,9 @@ result = AssetCalendar.link_many(["example-asset-eth"], calendar_uid=calendar.ui
   asset. A payload that names none leaves the asset's link as it is.
 - `AssetCalendar.link_many` returns `linked`, `moved`, `unchanged`, `kept` and
   `unknown`; `AssetCalendar.unlinked_assets()` lists the assets that have no
-  trading calendar. See
+  trading calendar. `AssetCalendar.calendars_of(identifiers)` reads each asset's
+  calendar row in one read: `None` for an asset with no link, and an identifier
+  that names no asset is left out. See
   [ADR 0057](../../../ADR/0057-asset-calendar-links-in-bulk-and-at-registration.md).
 
 - `InterpolatedPrices` computes each asset's bars from the sessions of its

@@ -291,6 +291,11 @@ known holiday would read as a business day. An unknown `calendar_uid` raises
 `LookupError`.
 
 One read loads the calendar's rules and the exceptions of the requested window.
+Inside `msm.api.calendars.calendar_reads()`, a block that computes the same
+calendars many times (a portfolio run enters one), each calendar's row, rules
+and exceptions are read once: the first computation reads every exception the
+calendar has, and `Calendar.get_by_unique_identifier`, `Calendar.get_by_uid`
+and `AssetCalendar.calendars_of` keep the rows they read for the block.
 The same three calls work under the remote backend; see
 [Client](../client/index.md). The Markets API serves the same computation on
 its [calendar routes](../../../fast_api/v1/calendars.md).

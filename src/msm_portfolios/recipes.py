@@ -400,77 +400,80 @@ def _run_portfolios(
     namespace: str | None,
     portfolio_resolver: Any,
 ) -> PortfolioRuns:
+    from msm.api.calendars import calendar_reads
     from msm_portfolios.api import SignalWeightsSeries
     from msm_portfolios.time_index import PortfolioValues
 
-    failed: dict[int, PortfolioRunFailure] = {}
+    # One read of each calendar's row, rules and exceptions for the run (#137).
+    with calendar_reads():
+        failed: dict[int, PortfolioRunFailure] = {}
 
-    def fail(position: int, identifier: str | None, error: BaseException) -> None:
-        failed[position] = PortfolioRunFailure(
-            position=position, portfolio_identifier=identifier, detail=str(error), error=error
-        )
-
-    signals = [_signal_of(configuration) for configuration, _description in entries]
-    signal_uids = list(dict.fromkeys(str(signal.signal_uid) for signal in signals))
-    bounds = (
-        {item.key: item for item in SignalWeightsSeries.bounds(signal_uids)}
-        if signal_uids
-        else {}
-    )
-    prepared: list[_Prepared] = []
-    for position, ((configuration, description), signal) in enumerate(zip(entries, signals)):
-        identifier: str | None = None
-        try:
-            preflight = _preflight(signal, bounds[str(signal.signal_uid)], None)
-            if not preflight.ready:
-                raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
-            values_node = PortfolioValues(
-                portfolio_configuration=configuration,
-                portfolio_resolver=portfolio_resolver,
-                portfolio_description=description,
-                rebalance_output_table=rebalance_output_table,
-                event_ledger_output_table=event_ledger_output_table,
-                namespace=namespace,
+        def fail(position: int, identifier: str | None, error: BaseException) -> None:
+            failed[position] = PortfolioRunFailure(
+                position=position, portfolio_identifier=identifier, detail=str(error), error=error
             )
-            identifier = str(values_node.prepare_portfolio().unique_identifier)
-            weights_node = values_node._ensure_portfolio_weights_node()
-            engine = weights_node.ensure_portfolio_engine()
-            if preflight.signal_first_time is not None:
-                for node in (values_node, weights_node, weights_node.portfolio_rebalance):
-                    node.OFFSET_START = preflight.signal_first_time
-            prepared.append(_Prepared(position, identifier, values_node, weights_node, engine))
-        except Exception as error:
-            fail(position, identifier, error)
 
-    errors = _run_ledgers([item.engine for item in prepared])
-    published: dict[int, tuple[Any, Any, Any]] = {}
-    for item in prepared:
-        error = errors[id(item.engine)]
-        if error is not None:
-            fail(item.position, item.identifier, error)
-            continue
-        try:
-            weights = item.weights.run()
-            result = item.values.run()
-        except Exception as error:
-            fail(item.position, item.identifier, error)
-            continue
-        published[item.position] = (result["portfolio"], weights, result["portfolio_values"])
-    ran = []
-    for item in prepared:
-        if item.position not in published:
-            continue
-        portfolio, weights, values = published[item.position]
-        ran.append(
-            PortfolioRun(
-                portfolio=portfolio,
-                weights=weights,
-                values=values,
-                # The run wrote the portfolio's first weights: every row it has is new.
-                first_rebalance=weights is not None and weights.row_count == weights.written,
-            )
+        signals = [_signal_of(configuration) for configuration, _description in entries]
+        signal_uids = list(dict.fromkeys(str(signal.signal_uid) for signal in signals))
+        bounds = (
+            {item.key: item for item in SignalWeightsSeries.bounds(signal_uids)}
+            if signal_uids
+            else {}
         )
-    return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
+        prepared: list[_Prepared] = []
+        for position, ((configuration, description), signal) in enumerate(zip(entries, signals)):
+            identifier: str | None = None
+            try:
+                preflight = _preflight(signal, bounds[str(signal.signal_uid)], None)
+                if not preflight.ready:
+                    raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
+                values_node = PortfolioValues(
+                    portfolio_configuration=configuration,
+                    portfolio_resolver=portfolio_resolver,
+                    portfolio_description=description,
+                    rebalance_output_table=rebalance_output_table,
+                    event_ledger_output_table=event_ledger_output_table,
+                    namespace=namespace,
+                )
+                identifier = str(values_node.prepare_portfolio().unique_identifier)
+                weights_node = values_node._ensure_portfolio_weights_node()
+                engine = weights_node.ensure_portfolio_engine()
+                if preflight.signal_first_time is not None:
+                    for node in (values_node, weights_node, weights_node.portfolio_rebalance):
+                        node.OFFSET_START = preflight.signal_first_time
+                prepared.append(_Prepared(position, identifier, values_node, weights_node, engine))
+            except Exception as error:
+                fail(position, identifier, error)
+
+        errors = _run_ledgers([item.engine for item in prepared])
+        published: dict[int, tuple[Any, Any, Any]] = {}
+        for item in prepared:
+            error = errors[id(item.engine)]
+            if error is not None:
+                fail(item.position, item.identifier, error)
+                continue
+            try:
+                weights = item.weights.run()
+                result = item.values.run()
+            except Exception as error:
+                fail(item.position, item.identifier, error)
+                continue
+            published[item.position] = (result["portfolio"], weights, result["portfolio_values"])
+        ran = []
+        for item in prepared:
+            if item.position not in published:
+                continue
+            portfolio, weights, values = published[item.position]
+            ran.append(
+                PortfolioRun(
+                    portfolio=portfolio,
+                    weights=weights,
+                    values=values,
+                    # The run wrote the portfolio's first weights: every row it has is new.
+                    first_rebalance=weights is not None and weights.row_count == weights.written,
+                )
+            )
+        return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
 
 
 def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:

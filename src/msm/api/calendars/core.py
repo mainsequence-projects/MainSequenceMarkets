@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar
 
@@ -26,6 +29,54 @@ class CalendarType(str, Enum):
     HOLIDAY = "HOLIDAY"
     EVENT = "EVENT"
     CUSTOM = "CUSTOM"
+
+
+@dataclass
+class _CalendarReads:
+    """What one ``calendar_reads`` block read: rows by uid and identifier, and definitions."""
+
+    rows: dict[str, Calendar] = field(default_factory=dict)
+    uids: dict[str, str | None] = field(default_factory=dict)
+    definitions: dict[str, Any] = field(default_factory=dict)
+
+    def keep(self, calendar: Calendar) -> Calendar:
+        self.rows[str(calendar.uid)] = calendar
+        self.uids[calendar.unique_identifier] = str(calendar.uid)
+        return calendar
+
+
+_reads: ContextVar[_CalendarReads | None] = ContextVar("msm_calendar_reads", default=None)
+
+
+@contextmanager
+def calendar_reads() -> Iterator[None]:
+    """Read each calendar's row, session rules and exceptions at most once in the block.
+
+    For a run whose nodes look up and compute the same calendars (issue #137). Inside the
+    block, ``Calendar.get_by_unique_identifier``, ``Calendar.get_by_uid`` and
+    ``AssetCalendar.calendars_of`` keep the rows they read, and ``sessions``, ``dates``
+    and ``is_business_day`` compute from one definition per calendar: its rules and every
+    exception it has, read the first time it is needed (in one read of up to 9,000 rows).
+    A calendar written inside the block is not read again. Under the ``remote`` backend
+    each call is still one request. A block inside another shares its reads.
+    """
+
+    if _reads.get() is not None:
+        yield
+        return
+    token = _reads.set(_CalendarReads())
+    try:
+        yield
+    finally:
+        _reads.reset(token)
+
+
+def keep_calendar_read(calendar: Calendar | None) -> None:
+    """Keep ``calendar`` for the ``calendar_reads`` block in force, if any."""
+
+    reads = _reads.get()
+    if reads is not None and calendar is not None:
+        reads.keep(calendar)
 
 
 class Calendar(MarketsMetaTableRow):
@@ -76,6 +127,31 @@ class Calendar(MarketsMetaTableRow):
         **kwargs: Any,
     ) -> Calendar:
         return super().update(uid, validate_payload(CalendarUpdate, payload, kwargs))
+
+    @classmethod
+    def get_by_uid(cls, uid: uuid.UUID | str) -> Calendar | None:
+        """Return one calendar by UID; inside ``calendar_reads`` each is read once."""
+
+        reads = _reads.get()
+        if reads is not None and str(uid) in reads.rows:
+            return reads.rows[str(uid)]
+        calendar = super().get_by_uid(uid)
+        keep_calendar_read(calendar)
+        return calendar
+
+    @classmethod
+    def get_by_unique_identifier(cls, unique_identifier: str) -> Calendar | None:
+        """Return one calendar by ``unique_identifier``; inside ``calendar_reads`` once."""
+
+        reads = _reads.get()
+        if reads is not None and unique_identifier in reads.uids:
+            uid = reads.uids[unique_identifier]
+            return None if uid is None else reads.rows[uid]
+        calendar = super().get_by_unique_identifier(unique_identifier)
+        if reads is not None and calendar is None:
+            reads.uids[unique_identifier] = None
+        keep_calendar_read(calendar)
+        return calendar
 
     @classmethod
     def create_from_pandas_calendar(
@@ -182,6 +258,11 @@ class Calendar(MarketsMetaTableRow):
         start_date: dt.date,
         end_date: dt.date,
     ) -> Any:
+        """The calendar's rules and exceptions from ``start_date`` to ``end_date``.
+
+        Inside ``calendar_reads`` it is the calendar's whole definition, read once.
+        """
+
         from msm.bootstrap import resolve_runtime
         from msm.services.calendars import (
             coerce_local_date,
@@ -190,15 +271,26 @@ class Calendar(MarketsMetaTableRow):
         )
 
         runtime = resolve_runtime(models=CALENDAR_DEFINITION_TABLES, row_model_name=cls.__name__)
-        calendar = get_calendar_record(runtime.context, uid=str(calendar_uid))
-        if calendar is None:
-            raise LookupError(f"Calendar {calendar_uid} was not found.")
-        return load_calendar_definition(
-            runtime.context,
-            calendar=calendar,
-            start_date=coerce_local_date(start_date),
-            end_date=coerce_local_date(end_date),
-        )
+        reads = _reads.get()
+        if reads is None:
+            calendar = get_calendar_record(runtime.context, uid=str(calendar_uid))
+            if calendar is None:
+                raise LookupError(f"Calendar {calendar_uid} was not found.")
+            return load_calendar_definition(
+                runtime.context,
+                calendar=calendar,
+                start_date=coerce_local_date(start_date),
+                end_date=coerce_local_date(end_date),
+            )
+        key = str(calendar_uid)
+        if key not in reads.definitions:
+            row = cls.get_by_uid(key)
+            if row is None:
+                raise LookupError(f"Calendar {calendar_uid} was not found.")
+            reads.definitions[key] = load_calendar_definition(
+                runtime.context, calendar={**row.model_dump(), "uid": key}
+            )
+        return reads.definitions[key]
 
 
 class CalendarCreate(BaseModel):
@@ -269,6 +361,8 @@ class CalendarUpdate(BaseModel):
 __all__ = [
     "CALENDAR_DEFINITION_TABLES",
     "Calendar",
+    "calendar_reads",
+    "keep_calendar_read",
     "CalendarCreate",
     "CalendarType",
     "CalendarUpdate",

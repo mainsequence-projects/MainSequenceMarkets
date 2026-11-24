@@ -66,42 +66,27 @@ def test_rebalance_calendar_is_found_by_unique_identifier_only(monkeypatch) -> N
         calendars.resolve_rebalance_calendar("XNYS")
 
 
-def _asset(identifier: str, uid: str):
-    return SimpleNamespace(unique_identifier=identifier, uid=uid)
+def _stub_calendars_of(monkeypatch, calendars_by_asset) -> list[list[str]]:
+    calls: list[list[str]] = []
 
+    def calendars_of(identifiers):
+        calls.append(list(identifiers))
+        return {
+            identifier: calendars_by_asset[identifier]
+            for identifier in identifiers
+            if identifier in calendars_by_asset
+        }
 
-def _stub_rows(monkeypatch, *, assets, links, stored) -> list[tuple[str, dict]]:
-    calls: list[tuple[str, dict]] = []
-
-    def reader(name, rows, column):
-        def read(**filters):
-            calls.append((name, filters))
-            wanted = filters[f"{column}__in"]
-            return [row for row in rows if getattr(row, column) in wanted]
-
-        return read
-
-    monkeypatch.setattr(calendars.Asset, "filter", reader("Asset", assets, "unique_identifier"))
-    monkeypatch.setattr(calendars.AssetCalendar, "filter", reader("AssetCalendar", links, "asset_uid"))
-    monkeypatch.setattr(calendars.Calendar, "filter", reader("Calendar", stored, "uid"))
+    monkeypatch.setattr(calendars.AssetCalendar, "calendars_of", calendars_of)
     return calls
 
 
-def test_asset_schedules_come_from_the_stored_links_in_three_reads(monkeypatch) -> None:
+def test_asset_schedules_come_from_the_stored_links_in_one_read(monkeypatch) -> None:
     nyse = calendar_row("NYSE")
     nyse.uid = "nyse-uid"
     crypto = calendar_row("CRYPTO_24_7")
     crypto.uid = "crypto-uid"
-    calls = _stub_rows(
-        monkeypatch,
-        assets=[_asset("ACME", "a1"), _asset("BOLT", "a2"), _asset("BTC", "a3")],
-        links=[
-            SimpleNamespace(asset_uid="a1", calendar_uid="nyse-uid"),
-            SimpleNamespace(asset_uid="a2", calendar_uid="nyse-uid"),
-            SimpleNamespace(asset_uid="a3", calendar_uid="crypto-uid"),
-        ],
-        stored=[nyse, crypto],
-    )
+    calls = _stub_calendars_of(monkeypatch, {"ACME": nyse, "BOLT": nyse, "BTC": crypto})
 
     schedules = calendars.resolve_asset_schedules(["ACME", "BOLT", "BTC", "ACME"])
 
@@ -112,19 +97,13 @@ def test_asset_schedules_come_from_the_stored_links_in_three_reads(monkeypatch) 
     }
     # Two assets on one calendar share one schedule, so its sessions are read once.
     assert schedules["ACME"] is schedules["BOLT"]
-    assert [name for name, _filters in calls] == ["Asset", "AssetCalendar", "Calendar"]
-    assert calls[2][1]["uid__in"] == ["nyse-uid", "crypto-uid"]
+    assert calls == [["ACME", "BOLT", "BTC"]]
 
 
 def test_an_asset_with_no_calendar_fails_the_whole_scope(monkeypatch) -> None:
     nyse = calendar_row("NYSE")
     nyse.uid = "nyse-uid"
-    calls = _stub_rows(
-        monkeypatch,
-        assets=[_asset("ACME", "a1"), _asset("BOLT", "a2"), _asset("CASH", "a3")],
-        links=[SimpleNamespace(asset_uid="a1", calendar_uid="nyse-uid")],
-        stored=[nyse],
-    )
+    calls = _stub_calendars_of(monkeypatch, {"ACME": nyse, "BOLT": None, "CASH": None})
 
     with pytest.raises(calendars.AssetCalendarMissingError) as raised:
         calendars.resolve_asset_schedules(["ACME", "BOLT", "CASH", "GHOST"])
@@ -135,12 +114,11 @@ def test_an_asset_with_no_calendar_fails_the_whole_scope(monkeypatch) -> None:
     message = str(raised.value)
     assert "No trading calendar is linked to: BOLT, CASH." in message
     assert "Not an Asset row, so it has no trading calendar: GHOST." in message
-    # The linked asset gets no schedule either: no calendar is read.
-    assert [name for name, _filters in calls] == ["Asset", "AssetCalendar"]
+    assert len(calls) == 1
 
 
 def test_an_empty_scope_reads_nothing(monkeypatch) -> None:
-    calls = _stub_rows(monkeypatch, assets=[], links=[], stored=[])
+    calls = _stub_calendars_of(monkeypatch, {})
 
     assert calendars.resolve_asset_schedules([]) == {}
     assert calls == []

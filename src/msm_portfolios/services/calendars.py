@@ -7,13 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from msm.api.assets import Asset, AssetCalendar
+from msm.api.assets import AssetCalendar
 from msm.api.calendars import Calendar
 from msm.services.calendars import ensure_date_range
-
-# One governed read returns at most 1,000 rows; stay well inside it.
-_IN_FILTER_ROWS = 500
-
 
 @dataclass(frozen=True)
 class PersistedCalendarSchedule:
@@ -110,48 +106,34 @@ def resolve_asset_schedules(
 ) -> dict[str, PersistedCalendarSchedule]:
     """The stored trading calendar of each asset, as a schedule.
 
-    Reads the ``Asset`` rows by ``unique_identifier``, their ``AssetCalendar``
-    links, and each distinct ``Calendar`` once. There is no default calendar: when
-    any asset has no link, or is not an ``Asset`` row, nothing is returned and
-    ``AssetCalendarMissingError`` names every such asset.
+    Reads each asset with the row of its calendar in one read
+    (``AssetCalendar.calendars_of``). There is no default calendar: when any asset has
+    no link, or is not an ``Asset`` row, nothing is returned and
+    ``AssetCalendarMissingError`` names every such asset. Assets on one calendar share
+    its schedule.
     """
 
     identifiers = list(dict.fromkeys(str(identifier) for identifier in asset_identifiers))
     if not identifiers:
         return {}
 
-    assets = _filter_in(Asset, "unique_identifier", identifiers)
-    asset_uid_by_identifier = {asset.unique_identifier: asset.uid for asset in assets}
-    links = _filter_in(AssetCalendar, "asset_uid", list(asset_uid_by_identifier.values()))
-    calendar_uid_by_asset_uid = {link.asset_uid: link.calendar_uid for link in links}
-
-    unknown = [i for i in identifiers if i not in asset_uid_by_identifier]
+    calendars = AssetCalendar.calendars_of(identifiers)
+    unknown = [identifier for identifier in identifiers if identifier not in calendars]
     unlinked = [
-        i
-        for i in identifiers
-        if i in asset_uid_by_identifier
-        and asset_uid_by_identifier[i] not in calendar_uid_by_asset_uid
+        identifier
+        for identifier in identifiers
+        if identifier in calendars and calendars[identifier] is None
     ]
     if unknown or unlinked:
         raise AssetCalendarMissingError(unlinked=unlinked, unknown=unknown)
 
-    calendar_uids = list(dict.fromkeys(calendar_uid_by_asset_uid.values()))
-    schedules = {
-        calendar.uid: PersistedCalendarSchedule(calendar=calendar)
-        for calendar in _filter_in(Calendar, "uid", calendar_uids)
-    }
+    schedules: dict[str, PersistedCalendarSchedule] = {}
+    for identifier in identifiers:
+        calendar = calendars[identifier]
+        schedules.setdefault(str(calendar.uid), PersistedCalendarSchedule(calendar=calendar))
     return {
-        identifier: schedules[calendar_uid_by_asset_uid[asset_uid_by_identifier[identifier]]]
-        for identifier in identifiers
+        identifier: schedules[str(calendars[identifier].uid)] for identifier in identifiers
     }
-
-
-def _filter_in(row_model: Any, column: str, values: Sequence[Any]) -> list[Any]:
-    rows: list[Any] = []
-    for start in range(0, len(values), _IN_FILTER_ROWS):
-        chunk = list(values[start : start + _IN_FILTER_ROWS])
-        rows.extend(row_model.filter(**{f"{column}__in": chunk}, limit=len(chunk)))
-    return rows
 
 
 __all__ = [

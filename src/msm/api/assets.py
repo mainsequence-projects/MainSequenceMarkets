@@ -47,6 +47,7 @@ from msm.models import (
 from msm.repositories.crud import bulk_upsert_model, get_model_by_uid, search_model, upsert_model
 
 if TYPE_CHECKING:
+    from msm.api.calendars import Calendar
     from msm.services.indices import RelatedMetaTable
 
 _operation_result_rows = operation_result_rows
@@ -1081,6 +1082,28 @@ class AssetCalendar(MarketsMetaTableRow):
                 relink=relink,
             )
         )
+
+    @classmethod
+    def calendars_of(cls, asset_identifiers: list[str]) -> dict[str, Calendar | None]:
+        """Each asset's trading calendar, by ``unique_identifier``, in one read (ADR 0056).
+
+        One read per 1,000 assets. An asset with no trading calendar answers ``None``;
+        an identifier that names no asset is left out. Inside
+        ``msm.api.calendars.calendar_reads`` the calendars are kept for the block.
+        """
+
+        from msm.api.calendars.core import Calendar, keep_calendar_read
+        from msm.repositories.asset_calendars import read_asset_trading_calendars
+
+        rows = read_asset_trading_calendars(
+            cls._active_context(), asset_identifiers=list(asset_identifiers)
+        )
+        calendars: dict[str, Calendar | None] = {}
+        for identifier, row in rows.items():
+            calendar = None if row is None else Calendar.model_validate(row)
+            keep_calendar_read(calendar)
+            calendars[identifier] = calendar
+        return calendars
 
     @classmethod
     def unlinked_assets(

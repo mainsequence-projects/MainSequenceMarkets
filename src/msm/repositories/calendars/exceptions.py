@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from msm.models import CalendarExceptionTable
-from msm.repositories.base import MarketsRepositoryContext
+from msm.repositories.base import MarketsRepositoryContext, with_max_rows
 from msm.repositories.crud import bulk_upsert_model, search_model
 
 CALENDAR_EXCEPTION_KEYS = (
@@ -17,8 +17,9 @@ CALENDAR_EXCEPTION_KEYS = (
     "source",
 )
 
-EXCEPTION_READ_PAGE = 1000
-"""Rows per read. A governed MetaTable read returns at most 1,000 rows."""
+EXCEPTION_READ_PAGE = 9_000
+"""Rows per read; MetaTables answers at most 10,000 rows per statement. A calendar's
+exceptions to the library's horizon (2200 for NYSE, about 2,500 rows) are one read."""
 
 
 def bulk_upsert_calendar_exceptions(
@@ -43,7 +44,7 @@ def read_calendar_exceptions(
 ) -> list[dict[str, Any]]:
     """The exceptions of one calendar in a date range, read page by page.
 
-    An exchange has about 12 exceptions a year, so one page covers about 80 years.
+    An exchange has about 12 exceptions a year, so one page covers centuries.
     """
 
     filters: dict[str, Any] = {"calendar_uid": calendar_uid}
@@ -58,7 +59,7 @@ def read_calendar_exceptions(
     rows: list[dict[str, Any]] = []
     while True:
         result = search_model(
-            context,
+            with_max_rows(context, EXCEPTION_READ_PAGE),
             model=CalendarExceptionTable,
             filters=filters,
             range_filters={"local_date": window} if window else None,
