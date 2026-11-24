@@ -1,4 +1,4 @@
-# 0066. Portfolio Runs In Parallel
+# 0067. Portfolio Runs In Parallel
 
 ## Status
 
@@ -9,6 +9,9 @@ MetaTables 0.1.83 runs several updaters in one graph and in parallel. Nothing in
   ADR 0032 (each node of an invocation runs in its own run of a node Job).
 - It would extend `run_portfolios` as [ADR 0065](0065-every-portfolio-keeps-a-ledger.md)
   left it (decision 6 and the implementation note "one joined run").
+- Decision 3 rests on [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md):
+  a producer declares its tables in one catalog, and a run looks them up and never builds
+  one.
 - Decision 6 needs the owner: it touches the manager rule of
   [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md).
 
@@ -122,11 +125,12 @@ request:
 
 The rest of what blocks it:
 
-- **Configured instance tables can't be imported.** `configured_time_index_instance` builds each
-  instance with `type()`. It gives the class the module `msm.storage_instances` and a generated
-  name that isn't an attribute of that module (`src/msm/storage_instances.py`). Every node that
-  writes a configured instance is refused. That covers interpolated prices and any table a
-  producer configures.
+- **Configured instance tables can't be found by address.**
+  `configured_time_index_instance` makes each instance's Python class with `type()`, under the
+  module `msm.storage_instances` and a generated name that isn't an attribute of that module.
+  So every node that writes a configured instance is refused. The table itself is predefined
+  and migrated by its producer. [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md)
+  decides how producers declare such tables and how a run finds them.
 - **`run_portfolios` has no way to ask for node Jobs.** A producer that calls
   `run_updaters(engines, node_job=...)` itself has to redo the preflight, the start date and the
   publications, from private functions.
@@ -177,30 +181,18 @@ flowchart TB
     G --> PUB["publish A and B<br/>PortfolioRuns.updaters holds X's outcome"]
 ```
 
-### 3. A configured instance table is importable where it is declared
+### 3. A node Job run finds its output table in the producer's catalog
 
-`configured_time_index_instance` takes the declaring module and the name the module gives the
-instance:
+Per [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md), a producer declares
+every table it writes in one catalog, and a run looks a table up by its settings.
 
-```python
-INTERPOLATED_PRICES_STORAGE = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=...,
-    namespace=PROVIDER_NAMESPACE,
-    storage_app=PROVIDER_STORAGE_APP,
-    base=ProviderBase,
-    module=__name__,
-    name="INTERPOLATED_PRICES_STORAGE",
-)
-```
-
-- **Importable.** The class gets them as `__module__` and `__qualname__`, so
-  `module:name` imports to the same class in a node Job run.
-- **Required, everywhere.** Both are required, since an instance without them can't run in a
-  node Job. Every call in ms-markets, its examples, docs and skills passes them, with no
-  default and no second form.
-- **Identity unchanged.** A table's identity comes from its storage, instance key, namespace
-  and app, not from its class name. This is expected; the implementation verifies it.
+- **How the node finds its table.** The node Job's entry point (decision 5) imports the
+  producer's catalog and looks up the node's output table from the settings in the node's
+  saved configuration. That works for a table per price configuration as well as for a
+  fixed one, with no constant per table.
+- **This depends on MetaTables.** MetaTables' node Job mode today finds an output table only
+  by its import address (`module:qualname`). It has to accept a table that the producer's
+  entry point looks up instead.
 
 ### 4. Every node a portfolio run builds rebuilds in a node Job run
 
@@ -219,9 +211,9 @@ is fixed under this decision.
 
 ### 5. ms-markets ships the node Job's entry point
 
-A producer's node Job script calls one ms-markets function. It attaches the Markets runtime
-the nodes need, then runs MetaTables' `run_updater_node()`. If a bare `run_updater_node()`
-turns out to be enough, this decision is documentation only.
+A producer's node Job script calls one ms-markets function and passes it the producer's
+catalog (decision 3). The function attaches the Markets runtime the nodes need, finds the
+node's output table in the catalog, then runs MetaTables' `run_updater_node()`.
 
 ### 6. A computed signal published from a node Job (owner)
 
@@ -321,19 +313,12 @@ also has an updater X that reads the prices.
   - MetaTables runs one process's nodes one after another, so threads would be MetaTables'
     to add.
   - ms-markets' per-run savings are context variables, which a new thread doesn't inherit.
-- **A registry of instance tables in `msm.storage_instances`.** A module `__getattr__` would
-  answer an instance by its generated name. A node Job run only finds an instance after its
-  declaring module has been imported, and nothing in the run imports it, so the lookup can
-  fail.
-- **Producers call `run_updaters` themselves.** Each would redo the preflight, the start date
-  and the publications from private functions of `run_portfolios`.
 
 ## Consequences
 
 - **The default doesn't change.** Without `node_job`, a run is what it is today. No
   configuration or update identity changes.
-- **Every caller of `configured_time_index_instance` changes** (decision 3). This is a breaking
-  change in a minor release, since no one uses ms-markets yet.
+- **Producers declare their tables in a catalog** (ADR 0066), which a node Job run imports.
 - **A producer that uses node Jobs needs deployment work:**
   - a hosted runtime;
   - a node Job declared in its workflow file and deployed;
