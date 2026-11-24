@@ -15,7 +15,9 @@ and never sends Markets a table uid.
 ``portfolio_history``       a portfolio's values newest first, with the total count
 ``weights_as_of``           each portfolio's latest weights at or before a time
 ``portfolio_preflight``     why a portfolio cannot run yet
-``run_portfolio``           run one portfolio's chain and publish its weights and values
+``run_portfolios``          run many portfolios' chains in one joined MetaTables run and
+                            publish their weights and values; list what failed
+``run_portfolio``           the same for one portfolio
 ``end_signal``              delete a signal's weights and metadata in one Markets call
 ``delete_private_series``   delete a producer's private rows of portfolios, calendars or
                             accounts, in the order their keys demand
@@ -79,9 +81,10 @@ def publish_signal_weights(
 
     from msm_portfolios.api import SignalMetadata, SignalWeightsSeries
     from msm_portfolios.series_nodes import whole_time_batches
+    from msm_portfolios.time_index.metadata import ensure_signal_metadata
 
     pending = _validated_observations(observations)
-    created = _ensure_signal_metadata(SignalMetadata, signal_uid, description)
+    created = ensure_signal_metadata(SignalMetadata, signal_uid, description)
     rows: list[dict[str, Any]] = []
     for time, weights in pending:
         if not weights:
@@ -235,33 +238,36 @@ def portfolio_preflight(
 
     A signal whose weights arrive through ``publish_signal_weights`` (an
     ``ApplicationWeights`` signal) must have a published observation; a signal that
-    computes its weights is computed by the run. A portfolio with a ledger runs through
-    ``PortfolioEngine``. With ``portfolio_identifier``, a retired portfolio is reported
-    too: it publishes nothing dated at or after its retirement.
+    computes its weights is computed by the run. With ``portfolio_identifier``, a
+    retired portfolio is reported too: it publishes nothing dated at or after its
+    retirement.
     """
 
     from msm_portfolios.api import SignalWeightsSeries
 
-    build = portfolio_configuration.portfolio_build_configuration
-    signal = build.backtesting_weights_configuration.signal_weights_instance
-    reasons: list[str] = []
-    if getattr(build, "accounting_configuration", None) is not None:
-        reasons.append(
-            "The portfolio keeps a ledger (accounting_configuration); it runs through "
-            "PortfolioEngine, not run_portfolio."
-        )
-    signal_uid = str(signal.signal_uid)
-    (bounds,) = SignalWeightsSeries.bounds([signal_uid])
-    if bounds.row_count == 0 and not signal.computes_weights:
-        reasons.append(
-            f"Signal {signal_uid} has no published observation; publish its weights with "
-            "publish_signal_weights first."
-        )
+    signal = _signal_of(portfolio_configuration)
+    (bounds,) = SignalWeightsSeries.bounds([str(signal.signal_uid)])
     portfolio = None
     if portfolio_identifier is not None:
         from msm.api.portfolios import Portfolio
 
         portfolio = Portfolio.get_by_unique_identifier(portfolio_identifier)
+    return _preflight(signal, bounds, portfolio)
+
+
+def _signal_of(portfolio_configuration: Any) -> Any:
+    build = portfolio_configuration.portfolio_build_configuration
+    return build.backtesting_weights_configuration.signal_weights_instance
+
+
+def _preflight(signal: Any, bounds: SeriesBounds, portfolio: Any | None) -> PortfolioPreflight:
+    reasons: list[str] = []
+    signal_uid = str(signal.signal_uid)
+    if bounds.row_count == 0 and not signal.computes_weights:
+        reasons.append(
+            f"Signal {signal_uid} has no published observation; publish its weights with "
+            "publish_signal_weights first."
+        )
     if portfolio is not None and getattr(portfolio, "retired_at", None) is not None:
         reasons.append(
             f"Portfolio {portfolio.unique_identifier!r} is retired from "
@@ -278,8 +284,9 @@ def portfolio_preflight(
 
 @dataclass(frozen=True)
 class PortfolioRun:
-    """What ``run_portfolio`` wrote: the portfolio row, the weights and values it published
-    (``None`` when nothing was new) and whether this run made the first rebalance."""
+    """What a run of one portfolio wrote: the portfolio row, the weights and values it
+    published (``None`` when nothing was new) and whether this run made the first
+    rebalance."""
 
     portfolio: Any
     weights: SeriesPublication | None
@@ -287,67 +294,218 @@ class PortfolioRun:
     first_rebalance: bool
 
 
+@dataclass(frozen=True)
+class PortfolioRunFailure:
+    """A portfolio ``run_portfolios`` could not run or publish, and why.
+
+    ``portfolio_identifier`` is ``None`` when the portfolio's row could not be resolved;
+    ``position`` is the configuration's place in the call. ``error`` is what stopped it:
+    the preflight's refusal, its own node's error, or that of a dependency it needs.
+    """
+
+    position: int
+    portfolio_identifier: str | None
+    detail: str
+    error: BaseException
+
+
+@dataclass(frozen=True)
+class PortfolioRuns:
+    """What ``run_portfolios`` did: each portfolio that ran, in the order given, and
+    each one that failed, with its reason."""
+
+    ran: tuple[PortfolioRun, ...]
+    failed: tuple[PortfolioRunFailure, ...]
+
+
+def run_portfolios(
+    portfolio_configurations: Sequence[Any],
+    *,
+    rebalance_output_table: Any = None,
+    event_ledger_output_table: Any = None,
+    namespace: str | None = None,
+    portfolio_resolver: Any = None,
+) -> PortfolioRuns:
+    """Run many portfolios' chains in one MetaTables run and publish their weights and values.
+
+    The heads of the run are the portfolios' ledgers (``PortfolioEngine``, into
+    ``event_ledger_output_table``, the producer's private ``PortfolioEventLedgerTS``
+    instance). MetaTables joins their graphs by update uid (``run_updaters``, MetaTables
+    ADR 0031), so a dependency several portfolios share, such as their valuation source,
+    their calendar events or a strategy's declared input, runs once, before every node
+    that reads it. Each ledger's graph holds its rebalance state (into
+    ``rebalance_output_table``, the private ``PortfolioRebalanceStateTS`` instance),
+    which computes and publishes a signal that computes its weights before it reads it,
+    and the signal's own inputs. After the run each portfolio publishes the weights and values its
+    ledger projects (ADR 0065), creates its ``Portfolio`` row when it does not exist
+    (its manager is the caller) and records its signal on it. A first run starts at the
+    signal's first observation.
+
+    A portfolio the preflight refuses, whose row cannot be resolved, whose ledger or a
+    dependency it needs fails, or whose publication fails is listed in ``failed`` with
+    the reason; it never stops the others.
+    """
+
+    return _run_portfolios(
+        [(configuration, None) for configuration in portfolio_configurations],
+        rebalance_output_table=rebalance_output_table,
+        event_ledger_output_table=event_ledger_output_table,
+        namespace=namespace,
+        portfolio_resolver=portfolio_resolver,
+    )
+
+
 def run_portfolio(
     portfolio_configuration: Any,
     *,
     rebalance_output_table: Any = None,
+    event_ledger_output_table: Any = None,
     namespace: str | None = None,
     portfolio_resolver: Any = None,
     portfolio_description: str | None = None,
 ) -> PortfolioRun:
-    """Run one portfolio's chain and publish its weights and values.
+    """Run one portfolio's chain and publish its weights and values, as ``run_portfolios``.
 
-    Refuses, with ``ValueError``, a portfolio ``portfolio_preflight`` finds not ready.
-    Runs, in order, the signal, the valuation source and the rebalance strategy's
-    declared inputs (prices, calendar events), the rebalance state (into
-    ``rebalance_output_table``, the producer's private ``PortfolioRebalanceStateTS``
-    instance), the executed weights and the values. A first run starts at the signal's
-    first observation. Creates the ``Portfolio`` row when it does not exist (its
-    manager is the caller) and records its signal on it.
+    Raises what stopped it: ``ValueError`` for a portfolio ``portfolio_preflight`` finds
+    not ready, otherwise its own error or a dependency's. ``portfolio_description``
+    replaces the description the configuration gives.
     """
 
-    from msm_portfolios.api import PortfolioWeightsSeries
-    from msm_portfolios.time_index import PortfoliosUpdater
-
-    preflight = portfolio_preflight(portfolio_configuration)
-    if not preflight.ready:
-        raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
-    values_node = PortfoliosUpdater(
-        portfolio_configuration=portfolio_configuration,
-        portfolio_resolver=portfolio_resolver,
-        portfolio_description=portfolio_description,
+    runs = _run_portfolios(
+        [(portfolio_configuration, portfolio_description)],
         rebalance_output_table=rebalance_output_table,
+        event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
+        portfolio_resolver=portfolio_resolver,
     )
-    weights_node = values_node._ensure_portfolio_weights_node()
-    if preflight.signal_first_time is not None:
-        for node in (values_node, weights_node, weights_node.portfolio_rebalance):
-            node.OFFSET_START = preflight.signal_first_time
-    portfolio = values_node._resolve_portfolio_identity()
-    identifier = str(portfolio.unique_identifier)
-    (before,) = PortfolioWeightsSeries.bounds([identifier])
-    weights_publication = _run_capturing_weights(values_node, weights_node)
-    result = values_node.run(update_tree=False)
-    (after,) = PortfolioWeightsSeries.bounds([identifier])
-    return PortfolioRun(
-        portfolio=result["portfolio"],
-        weights=weights_publication,
-        values=result["portfolio_values"],
-        first_rebalance=before.row_count == 0 and after.row_count > 0,
-    )
+    if runs.failed:
+        raise runs.failed[0].error
+    return runs.ran[0]
 
 
-def _run_capturing_weights(values_node: Any, weights_node: Any) -> SeriesPublication | None:
-    """Run the chain up to the executed weights; answer the weights' publication."""
+@dataclass
+class _Prepared:
+    position: int
+    identifier: str
+    values: Any
+    weights: Any
+    engine: Any
 
-    valuation_source = values_node.valuation_source
-    weights = weights_node.run(update_tree=True)
-    if valuation_source is not None and hasattr(valuation_source, "run"):
-        from metatables import TimeIndexTableRef
 
-        if not isinstance(valuation_source, TimeIndexTableRef):
-            valuation_source.run()
-    return weights
+def _run_portfolios(
+    entries: Sequence[tuple[Any, str | None]],
+    *,
+    rebalance_output_table: Any,
+    event_ledger_output_table: Any,
+    namespace: str | None,
+    portfolio_resolver: Any,
+) -> PortfolioRuns:
+    from msm.api.calendars import calendar_reads
+    from msm.repositories.base import one_runtime_lookup
+    from msm_portfolios.api import SignalWeightsSeries
+    from msm_portfolios.time_index import PortfolioValues
+    from msm_portfolios.time_index.portfolios.run_rows import run_rows
+
+    # One lookup of the MetaTables runtime for the run's statements (#140), one read of
+    # each calendar's row, rules and exceptions (#137), and the rows a node read kept for
+    # the nodes after it (#139).
+    with one_runtime_lookup(), calendar_reads(), run_rows():
+        failed: dict[int, PortfolioRunFailure] = {}
+
+        def fail(position: int, identifier: str | None, error: BaseException) -> None:
+            failed[position] = PortfolioRunFailure(
+                position=position, portfolio_identifier=identifier, detail=str(error), error=error
+            )
+
+        signals = [_signal_of(configuration) for configuration, _description in entries]
+        signal_uids = list(dict.fromkeys(str(signal.signal_uid) for signal in signals))
+        bounds = (
+            {item.key: item for item in SignalWeightsSeries.bounds(signal_uids)}
+            if signal_uids
+            else {}
+        )
+        prepared: list[_Prepared] = []
+        for position, ((configuration, description), signal) in enumerate(zip(entries, signals)):
+            identifier: str | None = None
+            try:
+                preflight = _preflight(signal, bounds[str(signal.signal_uid)], None)
+                if not preflight.ready:
+                    raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
+                values_node = PortfolioValues(
+                    portfolio_configuration=configuration,
+                    portfolio_resolver=portfolio_resolver,
+                    portfolio_description=description,
+                    rebalance_output_table=rebalance_output_table,
+                    event_ledger_output_table=event_ledger_output_table,
+                    namespace=namespace,
+                )
+                identifier = str(values_node.prepare_portfolio().unique_identifier)
+                weights_node = values_node._ensure_portfolio_weights_node()
+                engine = weights_node.ensure_portfolio_engine()
+                if preflight.signal_first_time is not None:
+                    for node in (values_node, weights_node, weights_node.portfolio_rebalance):
+                        node.OFFSET_START = preflight.signal_first_time
+                prepared.append(_Prepared(position, identifier, values_node, weights_node, engine))
+            except Exception as error:
+                fail(position, identifier, error)
+
+        errors = _run_ledgers([item.engine for item in prepared])
+        published: dict[int, tuple[Any, Any, Any]] = {}
+        for item in prepared:
+            error = errors[id(item.engine)]
+            if error is not None:
+                fail(item.position, item.identifier, error)
+                continue
+            try:
+                weights = item.weights.run()
+                result = item.values.run()
+            except Exception as error:
+                fail(item.position, item.identifier, error)
+                continue
+            published[item.position] = (result["portfolio"], weights, result["portfolio_values"])
+        ran = []
+        for item in prepared:
+            if item.position not in published:
+                continue
+            portfolio, weights, values = published[item.position]
+            ran.append(
+                PortfolioRun(
+                    portfolio=portfolio,
+                    weights=weights,
+                    values=values,
+                    # The run wrote the portfolio's first weights: every row it has is new.
+                    first_rebalance=weights is not None and weights.row_count == weights.written,
+                )
+            )
+        return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
+
+
+def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
+    """Run every ledger in one joined MetaTables run; each one's error, ``None`` if it ran.
+
+    A node that fails stops only the ledgers that need it (MetaTables ADR 0031). An
+    error raised before any node started stops them all.
+    """
+
+    from metatables import UpdatersFailedError, run_updaters
+
+    if not engines:
+        return {}
+    try:
+        outcomes = run_updaters(list(engines))
+    except UpdatersFailedError as error:
+        outcomes = error.outcomes
+    except Exception as error:
+        return {id(engine): error for engine in engines}
+    return {
+        id(engine): (
+            None
+            if outcome.state == "succeeded"
+            else outcome.error
+            or RuntimeError(f"The ledger {engine.update_hash} did not run ({outcome.state}).")
+        )
+        for engine, outcome in zip(engines, outcomes)
+    }
 
 
 # Private rows --------------------------------------------------------------------------
@@ -445,16 +603,6 @@ def delete_private_series(
 # Helpers -------------------------------------------------------------------------------
 
 
-def _ensure_signal_metadata(rows: Any, signal_uid: str, description: str | None) -> bool:
-    existing = rows.filter(signal_uid=signal_uid, limit=1)
-    if not existing:
-        rows.create(signal_uid=signal_uid, signal_description=description)
-        return True
-    if description is not None and existing[0].signal_description != description:
-        rows.update(existing[0].uid, signal_description=description)
-    return False
-
-
 def _held_assets(series: Any, signal_uid: str) -> list[str]:
     latest = series.last([signal_uid], by="asset").rows
     return sorted(str(row[ASSET]) for row in latest if row.get("signal_weight") not in (None, 0.0))
@@ -531,6 +679,8 @@ __all__ = [
     "PortfolioHistory",
     "PortfolioPreflight",
     "PortfolioRun",
+    "PortfolioRunFailure",
+    "PortfolioRuns",
     "SignalHistory",
     "SignalPublication",
     "delete_private_series",
@@ -539,6 +689,7 @@ __all__ = [
     "portfolio_preflight",
     "publish_signal_weights",
     "run_portfolio",
+    "run_portfolios",
     "signal_history",
     "weights_as_of",
 ]

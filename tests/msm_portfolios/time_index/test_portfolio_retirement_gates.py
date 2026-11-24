@@ -16,7 +16,7 @@ from msm_portfolios.retirement import (
     retirement_boundary,
     window_is_empty,
 )
-from msm_portfolios.time_index.portfolios import PortfoliosUpdater
+from msm_portfolios.time_index.portfolios import PortfolioValues
 from msm_portfolios.time_index.portfolios.accounting import PortfolioEngine
 from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalance
 from msm_portfolios.time_index.portfolios.storage import PortfolioRebalanceStateStorage
@@ -65,14 +65,14 @@ def test_rows_dated_at_or_after_the_boundary_are_dropped() -> None:
 @pytest.fixture
 def quiet_logger(monkeypatch) -> None:
     monkeypatch.setattr(
-        PortfoliosUpdater,
+        PortfolioValues,
         "logger",
         property(lambda self: SimpleNamespace(info=lambda *args, **kwargs: None)),
     )
 
 
-def test_values_updater_returns_before_reading_once_caught_up(quiet_logger) -> None:
-    node = object.__new__(PortfoliosUpdater)
+def test_values_node_returns_before_reading_once_caught_up(quiet_logger) -> None:
+    node = object.__new__(PortfolioValues)
     node.target_portfolio = SimpleNamespace(retired_at=RETIRED_AT.to_pydatetime())
     node._latest_portfolio_time_index_value = lambda: RETIRED_AT - pd.Timedelta(1, "us")
     node._valuation_window = lambda latest: (
@@ -80,29 +80,33 @@ def test_values_updater_returns_before_reading_once_caught_up(quiet_logger) -> N
         pd.Timestamp("2026-12-01T00:00:00Z").to_pydatetime(),
     )
 
-    def unexpected(**kwargs):
-        raise AssertionError("A caught-up run reads no executed weights.")
+    def unexpected():
+        raise AssertionError("A caught-up run reads no ledger.")
 
-    node._executed_weights_between = unexpected
+    node._ensure_portfolio_weights_node = unexpected
 
-    assert node._calculate_portfolio_workflow_values().empty
+    assert node._calculate_portfolio_values().empty
 
 
-def test_values_updater_reads_up_to_the_boundary(quiet_logger) -> None:
-    node = object.__new__(PortfoliosUpdater)
+def test_values_node_reads_the_ledger_up_to_the_boundary(quiet_logger) -> None:
+    node = object.__new__(PortfolioValues)
     node.target_portfolio = SimpleNamespace(retired_at=RETIRED_AT.to_pydatetime())
     node._latest_portfolio_time_index_value = lambda: None
+    node._unique_identifier = lambda: "portfolio"
     start = pd.Timestamp("2026-11-01T00:00:00Z").to_pydatetime()
     node._valuation_window = lambda latest: (start, pd.Timestamp.now(tz="UTC").to_pydatetime())
     window: dict[str, object] = {}
 
-    def executed_weights_between(*, start, end):
+    def ledger_rows(*, start, end):
         window.update(start=start, end=end)
         return pd.DataFrame()
 
-    node._executed_weights_between = executed_weights_between
+    engine = SimpleNamespace(ledger_rows=ledger_rows)
+    node._ensure_portfolio_weights_node = lambda: SimpleNamespace(
+        ensure_portfolio_engine=lambda: engine
+    )
 
-    assert node._calculate_portfolio_workflow_values().empty
+    assert node._calculate_portfolio_values().empty
     assert window["start"] == start
     assert window["end"] < RETIRED_AT.to_pydatetime()
 
@@ -140,7 +144,7 @@ def test_rebalance_writes_no_transition_after_the_boundary() -> None:
         assert node.update().empty
 
 
-def test_engine_reads_its_portfolio_row_once_for_the_boundary(monkeypatch) -> None:
+def test_engine_takes_the_boundary_from_the_row_its_run_resolved(monkeypatch) -> None:
     from msm.api.portfolios import Portfolio
 
     asked: list[str] = []
@@ -152,6 +156,13 @@ def test_engine_reads_its_portfolio_row_once_for_the_boundary(monkeypatch) -> No
     monkeypatch.setattr(
         Portfolio, "get_by_unique_identifier", classmethod(get_by_unique_identifier)
     )
+    rebalance = SimpleNamespace(_portfolio=SimpleNamespace(retired_at=RETIRED_AT))
+    node = object.__new__(PortfolioEngine)
+    node._engine_config = lambda: SimpleNamespace(portfolio_rebalance_instance=rebalance)
 
-    assert PortfolioEngine._retirement_boundary("retired-sleeve") == RETIRED_AT
+    # The rebalance carries the row the run prepared (#139): nothing is read.
+    assert node._retirement_boundary("retired-sleeve") == RETIRED_AT
+    assert asked == []
+    rebalance._portfolio = None
+    assert node._retirement_boundary("retired-sleeve") == RETIRED_AT
     assert asked == ["retired-sleeve"]

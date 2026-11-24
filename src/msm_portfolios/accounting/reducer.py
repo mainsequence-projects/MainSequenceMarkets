@@ -693,6 +693,17 @@ class PortfolioAccounting:
             set(getattr(valuation_before, "stale_sources", ()))
             | set(getattr(valuation_after, "stale_sources", ()))
         )
+        payload: dict[str, Any] = {}
+        if stale_sources:
+            payload["stale_sources"] = stale_sources
+        # An event that changes a position records each asset's value before and after
+        # it, in the portfolio's currency: the published weights are those values over
+        # the NAV (ADR 0065, decision 5).
+        if "record_kind" in economic.columns and economic["record_kind"].eq(
+            "position_delta"
+        ).any():
+            payload["position_values_before"] = _position_values(valuation_before)
+            payload["position_values"] = _position_values(valuation_after)
         summary = pd.DataFrame(
             [
                 {
@@ -703,8 +714,8 @@ class PortfolioAccounting:
                     "recognized_pnl": recognized_pnl,
                     "valuation_asset_identifier": self.valuation_asset_identifier,
                     "extension_payload": (
-                        json.dumps({"stale_sources": stale_sources}, separators=(",", ":"))
-                        if stale_sources
+                        json.dumps(payload, sort_keys=True, separators=(",", ":"))
+                        if payload
                         else None
                     ),
                 }
@@ -964,6 +975,23 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, pd.Timestamp):
         return _utc_timestamp(value).isoformat()
     return value
+
+
+def _position_values(valuation: ValuationResult) -> dict[str, float]:
+    """Each asset's position value in a valuation, in the portfolio's currency."""
+
+    components = valuation.components
+    if components is None or components.empty:
+        return {}
+    positions = components[components["component_kind"] == "position"]
+    if positions.empty:
+        return {}
+    by_asset = (
+        positions.assign(value=pd.to_numeric(positions["value"], errors="raise"))
+        .groupby(positions["asset_identifier"].astype(str), sort=True)["value"]
+        .sum()
+    )
+    return {str(asset): float(value) for asset, value in by_asset.items()}
 
 
 def _utc_timestamp(value: pd.Timestamp | str) -> pd.Timestamp:

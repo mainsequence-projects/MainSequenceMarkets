@@ -35,6 +35,7 @@ from ..base import (
 )
 from ..constants import PORTFOLIO_IDENTIFIER
 from ..portfolio_identity import get_or_create_portfolio
+from .run_rows import ValuationRows, held_rows, rows_between, window_bound
 from .storage import PortfolioRebalanceStateStorage
 from .temporal import (
     fetch_asset_observations,
@@ -85,10 +86,10 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self.valuation_column = str(build.valuation_column)
         self.valuation_asset_identifier = str(build.valuation_asset_identifier)
         self.fx_source = build.fx_source_instance
-        accounting = build.accounting_configuration
-        # A ledger's initial NAV gives the book a currency (ADR 0059); a strategy with
-        # its own size uses that instead (RebalanceStrategyBase.book_unit_value).
-        self.book_unit_value = None if accounting is None else float(accounting.initial_nav)
+        # The ledger's initial NAV is the book's unit, in the portfolio's currency
+        # (ADR 0059, ADR 0065).
+        self.book_unit_value = float(build.accounting_configuration.initial_nav)
+        self.ledger_initial_state = build.accounting_configuration.initial_state_time_index
         return self
 
     def set_rebalance_state_frame(
@@ -113,16 +114,32 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         self._initialize_configuration(init_kwargs=build_configuration)
 
     def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+        """The prices, the strategy's declared inputs and the signal's own inputs.
+
+        The signal is a published series (ADR 0060), not a MetaTables node: a signal
+        that computes its weights is computed by ``update()`` before it is read, so the
+        updaters and tables it reads are declared here, as ``signal.<name>``. In one
+        joined run a dependency several portfolios share runs once (issue #133).
+        """
         if getattr(self, "_portfolio_configuration", None) is None:
             return {}
-        # The signal is a published series (ADR 0060): it is read, never run, here.
         declared = self.rebalance_strategy.declared_dependencies()
         for reserved in ("signal_weights", "valuation_source", "fx_source"):
             if reserved in declared:
                 raise ValueError(f"{reserved!r} is reserved by PortfolioRebalance.")
+        signal_inputs = {
+            f"signal.{name}": dependency
+            for name, dependency in sorted(self._signal_dependencies().items())
+        }
+        clashing = sorted(set(signal_inputs) & set(declared))
+        if clashing:
+            raise ValueError(
+                "PortfolioRebalance names the signal's inputs "
+                f"{', '.join(clashing)}; the strategy declares them too."
+            )
         invalid = {
             name: dependency
-            for name, dependency in declared.items()
+            for name, dependency in {**declared, **signal_inputs}.items()
             if not isinstance(dependency, (TimeIndexTableUpdater, TimeIndexTableRef))
         }
         if invalid:
@@ -136,7 +153,25 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             dependencies["valuation_source"] = self.valuation_source
             if self.fx_source is not None:
                 dependencies["fx_source"] = self.fx_source
-        return {**dependencies, **dict(sorted(declared.items()))}
+        return {**dependencies, **dict(sorted(declared.items())), **signal_inputs}
+
+    def _signal_dependencies(self) -> dict[str, Any]:
+        """What a signal that computes its weights reads; nothing for a published one."""
+        if not self.signal_weights.computes_weights:
+            return {}
+        return self.signal_weights.dependencies() or {}
+
+    def _publish_signal(self) -> Any:
+        """Compute and publish a signal that computes its weights, before it is read.
+
+        Its inputs are this node's dependencies, so they ran before it. A signal whose
+        weights arrive by publication (``ApplicationWeights``) is only read, and a retired
+        portfolio's run, whose window is empty, reads nothing. Answers the signal's
+        ``SeriesPublication``, or ``None`` when it published nothing.
+        """
+        if self.signal_weights.computes_weights:
+            return self.signal_weights.run()
+        return None
 
     def update(self) -> pd.DataFrame:
         if getattr(self, "_portfolio_configuration", None) is None:
@@ -153,11 +188,15 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         boundary = self._retirement_boundary()
         end = end_before_retirement(end, boundary)
         if window_is_empty(start, end):
-            return normalize_rebalance_state_frame(
-                pd.DataFrame(),
-                portfolio_identifier=self._resolve_portfolio_identifier(),
-                output_table=self.output_table,
-            )
+            return self._no_transitions()
+        publication = self._publish_signal()
+        if latest is None and getattr(publication, "first_time", None) is not None:
+            # A first run starts at the signal's first observation, whatever kind of
+            # signal it is: a computed one has none until it publishes here (#138).
+            start, end = self._execution_window(None, signal_start=publication.first_time)
+            end = end_before_retirement(end, boundary)
+            if window_is_empty(start, end):
+                return self._no_transitions()
         assets = self._required_asset_identifiers()
         signals = self._signal_observations(start=start, end=end, assets=assets)
         if not assets and not signals.empty:
@@ -226,10 +265,26 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             )
         return retirement_boundary(portfolio)
 
-    def _execution_window(self, latest: Any | None) -> tuple[Any, Any]:
+    def _no_transitions(self) -> pd.DataFrame:
+        return normalize_rebalance_state_frame(
+            pd.DataFrame(),
+            portfolio_identifier=self._resolve_portfolio_identifier(),
+            output_table=self.output_table,
+        )
+
+    def _execution_window(
+        self, latest: Any | None, *, signal_start: Any | None = None
+    ) -> tuple[Any, Any]:
+        """After this portfolio's latest row, or on its first run from ``OFFSET_START``.
+
+        ``signal_start``, the signal's first observation, moves a first run's start to it
+        when it is later.
+        """
         start: Any = self.OFFSET_START
         if latest is not None:
             start = pd.Timestamp(latest) + pd.Timedelta(1, unit="ns")
+        elif signal_start is not None:
+            start = max(pd.Timestamp(start), pd.Timestamp(signal_start))
         end: Any = pd.Timestamp.now(tz="UTC")
         maximum_window = os.getenv("MAX_TD_FROM_LATEST_VALUE")
         if maximum_window:
@@ -308,21 +363,41 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         FX source, prices in another currency are converted at the last observed rate
         (ADR 0059); the rates are read from ``start``, with each currency's last rate
         before it.
+
+        In a portfolio run (``run_rows``) the source is read once for the rebalance and
+        its ledger (#139): from the ledger's initial state when that is earlier, and to the
+        source's last row unless ``MAX_TD_FROM_LATEST_VALUE`` bounds the window. The rows
+        before ``start`` give each asset's last row; an asset with none there is read.
         """
+        held = held_rows()
+        read_start = start
+        read_end = end
+        initial = getattr(self, "ledger_initial_state", None)
+        if held is not None:
+            if initial is not None and window_bound(initial) < window_bound(start):
+                read_start = initial
+            if not os.getenv("MAX_TD_FROM_LATEST_VALUE"):
+                read_end = None
         kwargs: dict[str, Any] = {
-            "start_date": start,
-            "end_date": end,
+            "start_date": read_start,
+            "end_date": read_end,
             "great_or_equal": True,
             "less_or_equal": True,
         }
         if assets:
             kwargs["dimension_filters"] = {ASSET_IDENTIFIER_DIMENSION: assets}
-        frame = self.valuation_source.get_df_between_dates(**kwargs)
-        seeds = _last_rows_before(
-            self.valuation_source,
-            coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in assets),
-            before=start,
-        )
+        read = self.valuation_source.get_df_between_dates(**kwargs)
+        read = pd.DataFrame() if read is None else read
+        frame = rows_between(read, start=start, end=end)
+        seeds = self._last_prices_before(read, start=start, read_start=read_start, assets=assets)
+        if held is not None:
+            held.valuations[self._resolve_portfolio_identifier()] = ValuationRows(
+                source=self.valuation_source,
+                start=window_bound(read_start),
+                end=None if read_end is None else window_bound(read_end),
+                assets=frozenset(assets) if assets else None,
+                frame=read,
+            )
         flat_frames = [
             _flat_frame(item) for item in (seeds, frame) if item is not None and not item.empty
         ]
@@ -349,6 +424,43 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             observed_prices(frame, price_column=self.valuation_column),
             valuation_prices(combined, price_column=self.valuation_column),
             conversion,
+        )
+
+    def _last_prices_before(
+        self, read: pd.DataFrame, *, start: Any, read_start: Any, assets: list[str]
+    ) -> pd.DataFrame:
+        """Each asset's last valuation row strictly before ``start``.
+
+        Taken from ``read`` (the source from ``read_start`` on); an asset with no row there
+        before ``start`` has its last row before ``read_start`` read.
+        """
+        if not assets:
+            return pd.DataFrame()
+        earlier = pd.DataFrame()
+        if not read.empty:
+            flat = _flat_frame(read)
+            flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
+            flat = flat[flat["time_index"] < pd.Timestamp(start)]
+            earlier = (
+                flat.sort_values("time_index", kind="stable")
+                .groupby(ASSET_IDENTIFIER_DIMENSION, sort=False)
+                .tail(1)
+                .reset_index(drop=True)
+            )
+        found = set() if earlier.empty else set(earlier[ASSET_IDENTIFIER_DIMENSION].astype(str))
+        missing = [asset for asset in assets if asset not in found]
+        before = _last_rows_before(
+            self.valuation_source,
+            coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in missing),
+            before=read_start,
+        )
+        frames = [item for item in (earlier, before) if not item.empty]
+        if not frames:
+            return pd.DataFrame()
+        return (
+            pd.concat(frames, ignore_index=True)
+            .sort_values("time_index", kind="stable")
+            .reset_index(drop=True)
         )
 
     def _previous_state(self, latest: Any | None) -> pd.DataFrame | None:
@@ -469,6 +581,8 @@ def read_strategy_inputs(
 ) -> dict[str, pd.DataFrame]:
     """Read every input ``strategy`` declares, each over its ``dependency_window``.
 
+    Each window is read at the coordinates the strategy follows
+    (``dependency_seed_coordinates``), such as its calendar in the calendar events, and
     ``assets`` and ``held`` filter the asset-scoped inputs. The input a strategy trades
     at (``own_execution_prices``) values its book and sizes each rebalance with each
     asset's last row before its earliest moment (#90): it is read from
@@ -485,13 +599,21 @@ def read_strategy_inputs(
     for name in sorted(dependencies):
         source_start, source_end = strategy.dependency_window(name, start, end)
         seeds = strategy.dependency_seed_coordinates(name)
+        contract = contracts[name]
+        # The window is read at the coordinates the strategy follows (#138).
+        dimensions = dict.fromkeys(dimension for coordinate in seeds for dimension in coordinate)
+        dimension_filters = {
+            dimension: sorted({str(coordinate[dimension]) for coordinate in seeds})
+            for dimension in dimensions
+        }
+        if contract.asset_scoped and universe:
+            dimension_filters[ASSET_IDENTIFIER_DIMENSION] = universe
         if own_prices is not None and name == own_prices[0]:
             if prices_since is not None and pd.Timestamp(prices_since) < pd.Timestamp(
                 source_start
             ):
                 source_start = prices_since
             seeds = (*seeds, *({ASSET_IDENTIFIER_DIMENSION: asset} for asset in universe))
-        contract = contracts[name]
         result[name] = read_rebalance_input(
             dependencies[name],
             dependency_name=name,
@@ -499,11 +621,7 @@ def read_strategy_inputs(
             start=source_start,
             end=source_end,
             seed_coordinates=seeds,
-            dimension_filters=(
-                {ASSET_IDENTIFIER_DIMENSION: universe}
-                if contract.asset_scoped and universe
-                else None
-            ),
+            dimension_filters=dimension_filters or None,
         )
     return result
 

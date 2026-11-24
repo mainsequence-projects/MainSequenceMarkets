@@ -27,7 +27,12 @@ from .reducer import (
     opening_cash_event_batch,
     valuation_marker_event_batch,
 )
-from .projections import project_cash_flows, project_portfolio_values, project_state
+from .projections import (
+    project_cash_flows,
+    project_portfolio_values,
+    project_portfolio_weights,
+    project_state,
+)
 from .valuation import MarketPriceValuationModel, PositionValuationModel, ValuationResult
 
 __all__ = [
@@ -58,6 +63,7 @@ __all__ = [
     "opening_cash_event_batch",
     "project_cash_flows",
     "project_portfolio_values",
+    "project_portfolio_weights",
     "project_state",
     "valuation_marker_event_batch",
 ]

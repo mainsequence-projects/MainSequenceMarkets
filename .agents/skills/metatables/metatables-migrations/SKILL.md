@@ -12,19 +12,17 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
-this skill's `references/` directory. The client CLI bundles the matching version's
-guides and examples there, including their linked documents. In the MetaTables
-source checkout, read the same paths from the repository root.
+The `metatables/examples/` files named in this skill ship inside the installed package;
+`python -c "import metatables.examples as e; print(e.__path__[0])"` prints their folder.
 
 For application development and mutation tests, use the
 [local development skill](../metatables-local-development/SKILL.md) to select and
 verify local SQLite before writing, then return to the intended environment after
 verification within the requested scope.
 
-Read `docs/client/define-and-migrate-tables.md`,
-`docs/concepts/table-contracts-and-lifecycle.md`, and the tested
-`src/metatables/examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
+Read [Define and migrate managed tables](https://potential-doodle-wn39mnm.pages.github.io/client/define-and-migrate-tables/),
+[Table contracts and lifecycle](https://potential-doodle-wn39mnm.pages.github.io/concepts/table-contracts-and-lifecycle/), and the tested
+`metatables/examples/tables.py`. Managed authoring is migration-first: define SQLAlchemy
 models, select a provider, author and apply a revision with the client, then
 finalize catalog bindings through the API. Use the
 [table skill](../metatables-meta-tables/SKILL.md) for contract design. The catalog
@@ -32,16 +30,16 @@ sync in `metatables migrations upgrade` also copies changed table descriptions,
 labels and column metadata to existing tables; a metadata-only change needs no
 revision (see the [table discovery skill](../metatables-table-discovery/SKILL.md)).
 
-Check `docs/reference/capabilities.md` and `metatables migrations --help` before
+Check [Supported capabilities](https://potential-doodle-wn39mnm.pages.github.io/reference/capabilities/) and `metatables migrations --help` before
 promising a command. The API's own catalog migrations are a separate history: a
 hosted API's deployment applies them before it rolls out, and Local mode runs them
-from Settings; see `docs/operations/catalog-migrations.md`. They are not
+from Settings; see [Initialize and upgrade the runtime database](https://potential-doodle-wn39mnm.pages.github.io/operations/catalog-migrations/). They are not
 application-provider revisions.
 
 ## Recommended workflow
 
 Follow this sequence, which mirrors how the MetaTables API deploys its own system
-migrations. Read `docs/client/deploy-application-migrations.md`.
+migrations. Read [Migrate in the deployment workflow](https://potential-doodle-wn39mnm.pages.github.io/client/deploy-application-migrations/).
 
 1. **Develop locally.** Author the revision and apply it to verified local SQLite
    with the [local development skill](../metatables-local-development/SKILL.md).
@@ -100,7 +98,7 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
 
 5. **Grant an owner, and anyone outside the branch.** This is a person's action in
    MetaTables, in each Environment; follow "Give the Job access" in
-   `docs/client/deploy-application-migrations.md`. A person who manages the Job in the
+   [Migrate in the deployment workflow](https://potential-doodle-wn39mnm.pages.github.io/client/deploy-application-migrations/). A person who manages the Job in the
    platform manages the namespace's access: they grant `owner` to themselves or to a
    Team they belong to, so the namespace keeps an owner when the Job is recreated:
    their authority follows the workload User that created the namespace, and a
@@ -118,7 +116,7 @@ migrations. Read `docs/client/deploy-application-migrations.md`.
    application uses another namespace. A namespace created before ADR 0024 has no
    owner until an Organization admin grants one. Recommend one namespace per
    application; it is not required (see "Namespaces and applications" in
-   `docs/security/ownership-and-sharing.md`). To share part of the application's
+   [Ownership, roles, and inheritance](https://potential-doodle-wn39mnm.pages.github.io/security/ownership-and-sharing/)). To share part of the application's
    tables, add a namespace to those tables; see
    [Namespaces of a table](#namespaces-of-a-table).
 
@@ -194,7 +192,7 @@ table in it; a table's role for a caller is the strongest across its namespaces.
 - Git source facts come from the current checkout through the SDK. Do not ask the
   user to choose a branch or environment for a migration.
 - An explicit `METATABLES_API_URL` selects an API endpoint, not a branch or a
-  storage binding. See `docs/client/installation-and-connection.md`.
+  storage binding. See [Install and connect](https://potential-doodle-wn39mnm.pages.github.io/client/installation-and-connection/).
 - Provider references resolve in the application process, for example
   `ledger.migrations:migration`. The API needs no provider code or allowlist.
 
@@ -278,7 +276,7 @@ provider: remove the model from the registry and the metadata, write the
 only for a teardown the user confirmed, after
 `get_impact(action="drop_table", override_schema_management_protection=True)`: it
 also deletes the referencing tables, changes one runtime only and writes no revision.
-See "Retire a table" in `docs/client/define-and-migrate-tables.md`.
+See "Retire a table" in [Define and migrate managed tables](https://potential-doodle-wn39mnm.pages.github.io/client/define-and-migrate-tables/).
 
 ## Provider placement
 
@@ -346,7 +344,7 @@ With client 0.1.74 or earlier, do not upgrade a local SQLite database that holds
 worth keeping: a batch rebuild destroys `UUID` values and drops indexes and constraints.
 Upgrade the client first.
 
-See "Autogenerate on SQLite" in `docs/client/define-and-migrate-tables.md`.
+See "Autogenerate on SQLite" in [Define and migrate managed tables](https://potential-doodle-wn39mnm.pages.github.io/client/define-and-migrate-tables/).
 
 The client imports and executes application revisions, using the connection
 resolved for the selected environment. Environment operators supply the database
@@ -364,7 +362,7 @@ from metatables import upgrade_application
 result = upgrade_application("ledger.migrations:migration")
 ```
 
-`src/metatables/examples/scripts/setup_metatables.py` shows the pattern. Keep
+`metatables/examples/scripts/setup_metatables.py` shows the pattern. Keep
 migration execution out of a library's import-time side effects. Remove the retired
 `application_migration_providers` setting and use Python references instead of aliases.
 Application migration histories remain separate from API system migrations.
@@ -380,7 +378,7 @@ only on `migrated=False` or equal revision heads: missing/unreadable tables must
 still fail, and only explicit removals may delete a catalog binding.
 
 For a slow migration, read the "Migration timings" section in
-`docs/client/deploy-application-migrations.md`. Enable INFO logging for
+[Migrate in the deployment workflow](https://potential-doodle-wn39mnm.pages.github.io/client/deploy-application-migrations/). Enable INFO logging for
 `metatables.migrations.runner` to see preparation, database setup, table checks,
 Alembic, finalization and total duration. The API logs inspection and total time
 per finalization batch. Measure these separately from platform job scheduling
@@ -402,7 +400,7 @@ This command copies guidance; Python imports alone do not refresh it.
   that registry.
 - Physical identity is DataSource UID + physical schema + physical table name.
   A logical identifier or contract hash does not replace it. See
-  `docs/concepts/identity-and-scope.md`.
+  [Identity and scope](https://potential-doodle-wn39mnm.pages.github.io/concepts/identity-and-scope/).
 - Repeated setup reuses compatible bindings and applied revision history.
 - `.register()` is lifecycle plumbing, not the ordinary way to create an
   application table. External registration cannot stand in for a managed
@@ -410,7 +408,7 @@ This command copies guidance; Python imports alone do not refresh it.
 
 ## Failure handling
 
-Read `docs/operations/recovery-and-observability.md`.
+Read [Recovery, deletion, and observability](https://potential-doodle-wn39mnm.pages.github.io/operations/recovery-and-observability/).
 
 - If provider loading fails, verify the import path, model registry, metadata,
   version-table binding, and installed `metatables` version.

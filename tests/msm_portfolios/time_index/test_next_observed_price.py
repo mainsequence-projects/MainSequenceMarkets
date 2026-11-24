@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from contextlib import nullcontext
 import uuid
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -41,6 +43,12 @@ from msm_portfolios.time_index.portfolios.calendar_events import (
 )
 from msm_portfolios.time_index.portfolios.rebalance import (
     PortfolioRebalance,
+)
+from msm_portfolios.time_index.portfolios.run_rows import (
+    ValuationRows,
+    held_rows,
+    run_rows,
+    window_bound,
 )
 from msm_portfolios.time_index.portfolios.storage import (
     PortfolioEventLedgerStorage,
@@ -375,6 +383,8 @@ def run_bar_strategy(strategy, bars: pd.DataFrame, signals: pd.DataFrame) -> pd.
         signal_observations=signals,
         observed_inputs={"execution_bars": bars},
         previous_state=None,
+        # The book's unit, the ledger's initial NAV (ADR 0065).
+        book_unit_value=100_000.0,
     )
 
 
@@ -400,7 +410,6 @@ def test_a_bar_strategy_skips_the_signals_own_bar_and_interpolated_bars() -> Non
             "bars", bars, index=["time_index", ASSET_IDENTIFIER]
         ),
         max_percent_volume_in_bar=1.0,
-        total_notional=100_000.0,
     )
     result = run_bar_strategy(
         strategy,
@@ -709,8 +718,73 @@ def test_a_new_target_that_repeats_a_weight_still_fills_at_the_next_price() -> N
     assert priced["executed_weight_delta"].tolist() == pytest.approx([0.5, 0.0])
 
 
+def test_the_rebalance_publishes_a_computed_signal_before_it_reads_it() -> None:
+    """The signal is no MetaTables node: the rebalance computes it, then reads it (#133)."""
+
+    calls: list[str] = []
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([("2026-11-18T21:30:00Z", {"AAPL": 0.5})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build("prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER])
+    strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        read = signals.get_last_observation
+        signals.computes_weights = True
+        signals.run = lambda: calls.append("published")
+        signals.get_last_observation = lambda **kwargs: calls.append("read") or read(**kwargs)
+        written = runner.run("2026-11-19T14:50:00Z")
+
+    assert calls[0] == "published" and "read" in calls[1:]
+    assert not written.empty
+
+
+def test_a_first_run_reads_from_the_computed_signals_first_observation() -> None:
+    """A computed signal has no observation until the rebalance publishes it (#138).
+
+    The first run then starts where the signal does, not at ``OFFSET_START``, and the
+    calendar events are read for the strategy's calendar only.
+    """
+
+    first = "2026-11-18T21:30:00Z"
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([(first, {"AAPL": 0.5})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build("prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER])
+    events = calendar()
+    other = calendar("XLON")
+    events.rows = pd.concat([events.rows, other.rows], ignore_index=True)
+    windows: list[dict] = []
+    read = events.get_df_between_dates
+    events.get_df_between_dates = lambda **kwargs: windows.append(kwargs) or read(**kwargs)
+    strategy = ImmediateSignal(calendar_events_instance=events, calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        signals.computes_weights = True
+        signals.run = lambda: SimpleNamespace(first_time=utc(first))
+        written = runner.run("2026-11-19T14:50:00Z")
+
+    (window,) = windows
+    assert pd.Timestamp(window["start_date"]) == utc(first)
+    assert window["dimension_filters"] == {
+        "calendar_identifier": ["XNYS"],
+        "event_type": ["market_close", "market_open"],
+        "session_label": ["regular"],
+    }
+    assert not written.empty
+
+
 def test_portfolio_rebalance_depends_on_the_valuation_source_it_trades_at() -> None:
     signal = PublishedTable.build("signal", signal_frame([]), index=["time_index"])
+    signal.computes_weights = False
     prices = PublishedTable.build("prices", AAPL_DAILY, index=["time_index", ASSET_IDENTIFIER])
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
@@ -956,7 +1030,8 @@ def test_the_ledger_shows_a_stale_valuation_in_its_references() -> None:
         (ledger["record_kind"] == "valuation_summary")
         & (pd.to_datetime(ledger["time_index"], utc=True) == utc("2026-11-19T14:31Z"))
     ].iloc[0]
-    assert pd.isna(fresh["extension_payload"])
+    # The fill's summary records the position's value, and no stale price (ADR 0065).
+    assert "stale_sources" not in json.loads(fresh["extension_payload"])
 
 
 def test_the_ledger_refuses_a_price_observed_at_another_time_than_its_fill() -> None:
@@ -1042,7 +1117,50 @@ def test_the_ledger_replays_unchanged_and_adds_only_new_fills() -> None:
     assert executions(tail) == [(utc("2026-11-20T14:31Z"), "AAPL", -80.0, 50.0)]
 
 
-def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
+def test_the_ledger_books_nothing_before_the_first_fill() -> None:
+    """A signal waiting for its rebalance: no fill, so no price is needed yet (ADR 0065)."""
+    rebalance = PublishedTable.build(
+        "portfolio-rebalance",
+        pd.DataFrame(
+            columns=[
+                "time_index",
+                "portfolio_identifier",
+                "rebalance_intent_id",
+                ASSET_IDENTIFIER,
+            ]
+        ),
+        index=["time_index", "portfolio_identifier", "rebalance_intent_id", ASSET_IDENTIFIER],
+    )
+    valuations = PublishedTable.build(
+        "valuations",
+        pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "price"]),
+        index=["time_index", ASSET_IDENTIFIER],
+    )
+    node = object.__new__(PortfolioEngine)
+    node.config = PortfolioEngineConfiguration(
+        portfolio_identifier="waiting",
+        valuation_asset_identifier="USD",
+        valuation_source_instance=valuations,
+        valuation_column="price",
+        accounting_configuration=PortfolioAccountingConfiguration(
+            initial_nav=10_000.0,
+            initial_state_time_index="2026-11-11T00:00:00Z",
+            position_valuation_model_instance=MarketPriceValuationModel(),
+        ),
+        portfolio_rebalance_instance=rebalance,
+        rebalance_strategy_instance=stock_strategy(calendar()),
+    )
+    node._retirement_boundary = lambda _portfolio_identifier: None
+
+    with _bound(PortfolioEventLedgerStorage, str(uuid.uuid4())) as storage:
+        node.output_table = storage
+        ledger = node.update()
+
+    assert ledger.empty
+
+
+def _recorded_fills_engine():
+    """A ledger over a recorded fill of 100 AAPL at 50 on 2026-11-12, and its prices."""
     events = calendar()
     strategy = stock_strategy(events)
     prices = minute_bars("AAPL", nyse_sessions("2026-11-11", "2026-11-12"), price=50.0)
@@ -1067,25 +1185,149 @@ def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
     node.config = PortfolioEngineConfiguration(
         portfolio_identifier="recorded-fills",
         valuation_asset_identifier="USD",
+        valuation_source_instance=valuations,
+        valuation_column="price",
         accounting_configuration=PortfolioAccountingConfiguration(
             initial_nav=10_000.0,
             initial_state_time_index="2026-11-11T00:00:00Z",
-            position_valuation_model_instance=MarketPriceValuationModel(
-                valuation_source=valuations
-            ),
+            position_valuation_model_instance=MarketPriceValuationModel(),
         ),
         portfolio_rebalance_instance=rebalance,
         rebalance_strategy_instance=strategy,
     )
     node._retirement_boundary = lambda _portfolio_identifier: None
     node.get_df_between_dates = lambda **_kwargs: pd.DataFrame()
+    return node, rebalance, valuations
 
+
+def test_the_ledger_update_reads_the_recorded_rebalance_state() -> None:
+    node, rebalance, valuations = _recorded_fills_engine()
+
+    # The ledger values with the portfolio's own valuation source (ADR 0065).
     assert node.dependencies() == {
         "portfolio_rebalance": rebalance,
-        "valuation.valuations": valuations,
+        "valuation_source": valuations,
     }
     with _bound(PortfolioEventLedgerStorage, str(uuid.uuid4())) as storage:
         node.output_table = storage
         ledger = node.update().reset_index()
 
     assert executions(ledger) == [(utc("2026-11-12T14:31Z"), "AAPL", 100.0, 50.0)]
+
+
+def test_in_a_run_the_ledger_books_with_the_prices_its_rebalance_read() -> None:
+    """The rebalance's read of the valuation source serves the ledger, row for row (#139).
+
+    A read that starts after the ledger's initial state does not cover it, and the ledger
+    reads the source itself, as it does outside a run.
+    """
+
+    node, _rebalance, valuations = _recorded_fills_engine()
+    # Half-hourly marks and the fill's minute keep the three bookings quick.
+    times = valuations.rows["time_index"]
+    valuations.rows = valuations.rows[
+        (times.dt.minute % 30 == 0) | (times == utc("2026-11-12T14:31Z"))
+    ]
+    read = valuations.get_df_between_dates
+    reads: list[dict] = []
+    valuations.get_df_between_dates = lambda **kwargs: reads.append(kwargs) or read(**kwargs)
+
+    def kept(start: str) -> ValuationRows:
+        return ValuationRows(
+            source=valuations,
+            start=window_bound(start),
+            end=None,
+            assets=frozenset({"AAPL"}),
+            frame=read(start_date=utc(start)),
+        )
+
+    with _bound(PortfolioEventLedgerStorage, str(uuid.uuid4())) as storage:
+        node.output_table = storage
+        alone = node.update()
+        with run_rows():
+            held_rows().valuations["recorded-fills"] = kept("2026-11-10T00:00:00Z")
+            shared = node.update()
+        with run_rows():
+            held_rows().valuations["recorded-fills"] = kept("2026-11-12T00:00:00Z")
+            late = node.update()
+
+    assert len(reads) == 2
+    pd.testing.assert_frame_equal(shared, alone)
+    pd.testing.assert_frame_equal(late, alone)
+    assert executions(shared.reset_index()) == [(utc("2026-11-12T14:31Z"), "AAPL", 100.0, 50.0)]
+
+
+def test_in_a_run_the_rebalance_reads_its_prices_once_from_the_ledgers_start() -> None:
+    """The rows before the window give each asset's last price, as the seed read did."""
+
+    def run(*, in_run: bool):
+        signals = PublishedTable.build(
+            "signals",
+            signal_frame(
+                [("2026-11-18T16:07:23Z", {"AAPL": 0.5}), ("2026-11-19T15:00:30Z", {"AAPL": 0.2})]
+            ),
+            index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+        )
+        prices = PublishedTable.build(
+            "prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER]
+        )
+        read = prices.get_df_between_dates
+        reads: list[dict] = []
+        prices.get_df_between_dates = lambda **kwargs: reads.append(kwargs) or read(**kwargs)
+        strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+        with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+            runner = IncrementalRebalance(
+                strategy=strategy, signals=signals, prices=prices, storage=storage
+            )
+            runner.node.ledger_initial_state = utc("2026-11-17T00:00:00Z")
+            with run_rows() if in_run else nullcontext():
+                written = [
+                    runner.run("2026-11-18T18:00:00Z"),
+                    runner.run("2026-11-19T16:00:00Z"),
+                ]
+                held = held_rows()
+        return written, reads, held
+
+    alone, alone_reads, _ = run(in_run=False)
+    shared, shared_reads, held = run(in_run=True)
+
+    for left, right in zip(shared, alone, strict=True):
+        pd.testing.assert_frame_equal(left, right)
+    assert not shared[1].empty
+    assert len(shared_reads) == len(alone_reads) == 2
+    # The second run reads from the ledger's start to the source's last row.
+    assert shared_reads[1]["start_date"] == utc("2026-11-17T00:00:00Z")
+    assert shared_reads[1]["end_date"] is None
+    assert held.valuations["portfolio"].start == window_bound("2026-11-17T00:00:00Z")
+
+
+def test_a_bounded_window_reads_its_prices_to_its_end_and_serves_nothing_later(
+    monkeypatch,
+) -> None:
+    """With ``MAX_TD_FROM_LATEST_VALUE`` the read stops at the window's end, so a ledger
+    whose own end is later reads the source itself and books what it books today."""
+
+    monkeypatch.setenv("MAX_TD_FROM_LATEST_VALUE", "30D")
+    signals = PublishedTable.build(
+        "signals",
+        signal_frame([("2026-11-18T16:07:23Z", {"AAPL": 0.5})]),
+        index=["time_index", "signal_uid", ASSET_IDENTIFIER],
+    )
+    prices = PublishedTable.build("prices", AAPL_MINUTES, index=["time_index", ASSET_IDENTIFIER])
+    strategy = ImmediateSignal(calendar_events_instance=calendar(), calendar_identifier="XNYS")
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        runner = IncrementalRebalance(
+            strategy=strategy, signals=signals, prices=prices, storage=storage
+        )
+        runner.node.ledger_initial_state = utc("2026-11-17T00:00:00Z")
+        with run_rows():
+            runner.run("2026-11-18T18:00:00Z")
+            kept = held_rows().valuations["portfolio"]
+
+    assert kept.end == window_bound("2026-11-18T18:00:00Z")
+    start = utc("2026-11-17T00:00:00Z")
+    served = kept.rows(prices, start=start, end=utc("2026-11-18T18:00:00Z"), assets=["AAPL"])
+    assert served is not None and not served.empty
+    assert kept.rows(prices, start=start, end=utc("2026-11-18T18:00:01Z"), assets=["AAPL"]) is None
+    # An asset the rebalance did not read is not served either.
+    assert kept.rows(prices, start=start, end=utc("2026-11-18T17:00:00Z"), assets=["MSFT"]) is None

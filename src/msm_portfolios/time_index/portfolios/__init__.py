@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import pytz
 
+from msm_portfolios.accounting.projections import project_portfolio_values
 from msm_portfolios.retirement import (
     drop_retired_rows,
     end_before_retirement,
@@ -17,12 +17,10 @@ from msm_portfolios.retirement import (
 from ..base import (
     OutputTable,
     _empty_flat_frame,
-    _is_canonical_frame,
     _require_columns,
     _reset_frame_index,
 )
 from ..constants import (
-    ASSET_IDENTIFIER,
     PORTFOLIO_CANONICAL_TIME_INDEX_NAME,
     PORTFOLIO_IDENTIFIER,
 )
@@ -30,19 +28,19 @@ from ..metadata import emit_portfolio_metadata, extract_portfolio_description
 from ..portfolio_identity import get_or_create_portfolio
 from msm_portfolios.series_nodes import PublishedSeriesNode
 from .storage import PortfoliosStorage
-from msm_portfolios.rebalance_strategy import PriceConversion
-
-from .rebalance import quote_currencies, read_fx_rates
-from .temporal import align_asset_observations, fetch_asset_observations, utc_index
 from .weights import PortfolioWeights
 
 
-class PortfoliosUpdater(PublishedSeriesNode):
-    """Valuation of executed portfolio weights, published as ``PortfolioValuesSeries``.
+class PortfolioValues(PublishedSeriesNode):
+    """The portfolio's values, a projection of its ledger, published as
+    ``PortfolioValuesSeries`` (ADR 0060, decision 5; ADR 0065, decision 5).
 
-    Bound to no table (ADR 0060, decision 5): ``run()`` runs the portfolio's chain
-    (signal, rebalance state, executed weights, valuation source), publishes the values
-    and records the portfolio's signal on its ``Portfolio`` row.
+    Bound to no table: ``run()`` publishes the values of the ledger as it is and records
+    the portfolio's signal on its ``Portfolio`` row. ``close`` is the NAV over the
+    ledger's ``initial_nav``, so a portfolio starts at 1. The ledger and what it reads
+    (signal, prices, calendar events, rebalance state) run first, in one joined
+    MetaTables run of every portfolio's ledger (``msm_portfolios.recipes.run_portfolios``,
+    issue #133).
     """
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
@@ -58,20 +56,20 @@ class PortfoliosUpdater(PublishedSeriesNode):
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
         rebalance_output_table: OutputTable | None = None,
+        event_ledger_output_table: OutputTable | None = None,
         namespace: str | None = None,
     ):
-        """Create the valuation node.
+        """Create the values node.
 
-        ``rebalance_output_table`` binds the internally built ``PortfolioRebalance`` to the
-        application's own ``PortfolioRebalanceStateTS`` instance; rebalance state is
-        private. The weights and values are published to Markets.
+        ``rebalance_output_table`` and ``event_ledger_output_table`` bind the internally
+        built ``PortfolioRebalance`` and ``PortfolioEngine`` to the application's own
+        ``PortfolioRebalanceStateTS`` and ``PortfolioEventLedgerTS`` instances; both are
+        private (ADR 0060, decision 7). The weights and values are published to Markets.
         """
         self._rebalance_output_table = rebalance_output_table
+        self._event_ledger_output_table = event_ledger_output_table
         self.portfolio_configuration = portfolio_configuration
-        self._portfolio_configuration = portfolio_configuration
         self._portfolio_resolver = portfolio_resolver
-        self._explicit_portfolio_identifier: str | None = None
-        self._portfolio_values_frame: pd.DataFrame | None = None
         self._portfolio_description = portfolio_description
         self._portfolio_metadata_updater = metadata_updater
         self._resolved_unique_identifier: str | None = None
@@ -88,9 +86,8 @@ class PortfoliosUpdater(PublishedSeriesNode):
         portfolio_resolver: Any | None = None,
         portfolio_description: str | None = None,
         metadata_updater: Any | None = None,
-    ) -> PortfoliosUpdater:
+    ) -> PortfolioValues:
         self.portfolio_configuration = portfolio_configuration
-        self._portfolio_configuration = portfolio_configuration
         self._portfolio_resolver = portfolio_resolver
         self._portfolio_description = portfolio_description
         self._portfolio_metadata_updater = metadata_updater
@@ -99,31 +96,21 @@ class PortfoliosUpdater(PublishedSeriesNode):
 
     def _initialize_from_portfolio_configuration(self, portfolio_configuration: Any) -> None:
         build = portfolio_configuration.portfolio_build_configuration
-        if getattr(build, "accounting_configuration", None) is not None:
-            raise ValueError(
-                "Position-aware accounting configurations must run through PortfolioEngine; "
-                "PortfoliosUpdater remains the legacy weight-only valuation path."
-            )
-        backtesting = build.backtesting_weights_configuration
         self.portfolio_build_configuration = build
-        self.execution_configuration = build.execution_configuration
         self.portfolio_markets_config = portfolio_configuration.portfolio_markets_configuration
-        self.commission_fee = self.execution_configuration.commission_fee
         self.valuation_source = build.valuation_source_instance
         self.valuation_column = str(build.valuation_column)
-        self.valuation_alignment_policy = build.valuation_alignment_policy
-        self.valuation_asset_identifier = str(build.valuation_asset_identifier)
-        self.fx_source = build.fx_source_instance
-        self.signal_weights = backtesting.signal_weights_instance
+        self.initial_nav = float(build.accounting_configuration.initial_nav)
+        self.signal_weights = build.backtesting_weights_configuration.signal_weights_instance
         self._ensure_portfolio_weights_node()
 
     def _ensure_portfolio_weights_node(self) -> PortfolioWeights:
         if self.portfolio_configuration is None:
-            raise ValueError("PortfolioWeights requires a portfolio configuration.")
+            raise ValueError("PortfolioValues requires a portfolio configuration.")
         if self.portfolio_weights is None:
             self.portfolio_weights = PortfolioWeights(
-                portfolio_configuration=self.portfolio_configuration,
                 rebalance_output_table=self._rebalance_output_table,
+                event_ledger_output_table=self._event_ledger_output_table,
                 namespace=self._canonical_namespace(),
             )
         self.portfolio_weights.set_portfolio_configuration(
@@ -136,438 +123,78 @@ class PortfoliosUpdater(PublishedSeriesNode):
         )
         return self.portfolio_weights
 
-    def set_portfolio_values_frame(
-        self,
-        portfolio_values_frame: pd.DataFrame,
-        *,
-        unique_identifier: str | None = None,
-        portfolio_configuration: Any | None = None,
-        portfolio_resolver: Any | None = None,
-        portfolio_description: str | None = None,
-        metadata_updater: Any | None = None,
-    ) -> PortfoliosUpdater:
-        """Attach direct canonical values for storage-only use."""
-        self._portfolio_values_frame = portfolio_values_frame
-        self._explicit_portfolio_identifier = unique_identifier
-        self._portfolio_configuration = portfolio_configuration
-        self._portfolio_resolver = portfolio_resolver
-        self._portfolio_description = portfolio_description
-        self._portfolio_metadata_updater = metadata_updater
-        return self
-
-    def dependencies(self) -> dict[str, Any]:
-        if self.portfolio_configuration is None:
-            return {}
-        return {
-            "portfolio_weights": self._ensure_portfolio_weights_node(),
-            "valuation_source": self.valuation_source,
-        }
-
     def series_key(self) -> str:
-        return self._resolve_unique_identifier()
+        return self._unique_identifier()
 
-    def run(
-        self,
-        *,
-        update_tree: bool = True,
-        update_only_tree: bool = False,
-        update_pointers: bool = True,
-    ):
-        """Run the chain, publish the values and record the portfolio's signal.
+    def run(self):
+        """Publish the ledger's new values and record the portfolio's signal.
 
-        With ``update_tree`` the signal, rebalance state, executed weights and valuation
-        source run first, in that order. ``update_only_tree`` runs them and publishes no
-        values. Answers ``{"portfolio_weights", "portfolio_values", "portfolio"}``, where
+        Runs nothing: the ledger is as its last run left it. Prepares the portfolio
+        (``prepare_portfolio``) unless that was done. Answers
+        ``{"portfolio_weights", "portfolio_values", "portfolio"}``, where
         ``portfolio_values`` is the values' ``SeriesPublication`` (``None`` when nothing
         was new).
         """
         if self.portfolio_configuration is None:
-            return None if update_only_tree else super().run(update_tree=update_tree)
+            raise ValueError("PortfolioValues requires a portfolio configuration.")
+        if self._resolved_unique_identifier is None:
+            self.prepare_portfolio()
         portfolio = self._resolve_portfolio_identity()
-        self._require_strategy_calendar(portfolio)
-        self._resolved_unique_identifier = str(portfolio.unique_identifier)
         portfolio_weights = self._ensure_portfolio_weights_node()
-        if update_tree:
-            self.run_dependencies()
-        if update_only_tree:
-            return {"portfolio_weights": portfolio_weights, "portfolio_values": None, "portfolio": portfolio}
         portfolio_values = self.publish_frame(self.update())
-        if update_pointers:
-            portfolio = self._update_portfolio_pointers(portfolio=portfolio)
+        portfolio = self._update_portfolio_pointers(portfolio=portfolio)
         return {
             "portfolio_weights": portfolio_weights,
             "portfolio_values": portfolio_values,
             "portfolio": portfolio,
         }
 
+    def prepare_portfolio(self) -> Any:
+        """Resolve the ``Portfolio`` row, check its calendar and bind the weights to it.
+
+        Refuses a strategy that reads another calendar than the portfolio's. Answers the
+        row; the weights node, its ledger and its rebalance then carry its identifier.
+        """
+        if self.portfolio_configuration is None:
+            raise ValueError("PortfolioValues requires a portfolio configuration.")
+        portfolio = self._resolve_portfolio_identity()
+        self._require_strategy_calendar(portfolio)
+        self._resolved_unique_identifier = str(portfolio.unique_identifier)
+        self._ensure_portfolio_weights_node()
+        return portfolio
+
     def update(self) -> pd.DataFrame:
-        raw_frame = self._calculate_portfolio_values()
-        frame = (
-            self.validate_frame(raw_frame)
-            if _is_canonical_frame(raw_frame, output_table=PortfoliosStorage)
-            else normalize_portfolio_values_frame(
-                raw_frame,
-                unique_identifier=self._resolve_unique_identifier(),
-            )
+        frame = normalize_portfolio_values_frame(
+            self._calculate_portfolio_values(),
+            unique_identifier=self._unique_identifier(),
         )
         frame = drop_retired_rows(frame, retirement_boundary(getattr(self, "target_portfolio", None)))
         self._upsert_portfolio_metadata_if_available(frame)
         return frame
 
     def _calculate_portfolio_values(self) -> pd.DataFrame:
-        if self.portfolio_configuration is not None:
-            return self._calculate_portfolio_workflow_values()
-        if self._portfolio_values_frame is None:
-            raise ValueError(
-                "PortfoliosUpdater needs a portfolio configuration or set_portfolio_values_frame()."
-            )
-        return self._portfolio_values_frame
+        """The ledger's values after the last published one.
 
-    def _calculate_portfolio_workflow_values(self) -> pd.DataFrame:
-        latest_value = self._latest_portfolio_time_index_value()
-        start, end = self._valuation_window(latest_value)
+        The ledger is read from the last published time on, so the first new value's
+        return is its change from the last published one.
+        """
+        latest = self._latest_portfolio_time_index_value()
+        start, end = self._valuation_window(latest)
         end = end_before_retirement(end, retirement_boundary(getattr(self, "target_portfolio", None)))
         if window_is_empty(start, end):
             self.logger.info("The portfolio is retired and valued up to its retirement.")
             return pd.DataFrame()
-        weights = self._executed_weights_between(start=start, end=end)
-        if weights.empty:
-            self.logger.info("No executed portfolio weights are available for valuation.")
+        engine = self._ensure_portfolio_weights_node().ensure_portfolio_engine()
+        ledger = engine.ledger_rows(start=start, end=end)
+        if ledger is None or ledger.empty:
+            self.logger.info("The portfolio's ledger has nothing to value yet.")
             return pd.DataFrame()
-
-        assets = list(
-            dict.fromkeys(weights.index.get_level_values(ASSET_IDENTIFIER).astype(str).tolist())
-        )
-        override_asset = self.signal_weights.get_asset_uid_to_override_portfolio_price()
-        valuation_assets = list(assets)
-        if override_asset is not None:
-            valuation_assets.append(str(override_asset))
-        valuation_assets = list(dict.fromkeys(valuation_assets))
-
-        valuation_window, valuation_seed = fetch_asset_observations(
-            self.valuation_source,
-            start=start,
-            end=end,
-            asset_identifiers=valuation_assets,
-        )
-        if valuation_window.empty:
-            return pd.DataFrame()
-        observation_index = utc_index(valuation_window.index.get_level_values("time_index"))
-        if latest_value is not None:
-            observation_index = observation_index[observation_index > pd.Timestamp(latest_value)]
-        first_execution = weights.index.get_level_values("time_index").min()
-        observation_index = observation_index[observation_index >= first_execution]
-        if len(observation_index) == 0:
-            return pd.DataFrame()
-
-        calculation_index = observation_index
-        if latest_value is not None:
-            calculation_index = utc_index([latest_value, *observation_index])
-        held_weights = self._weights_as_of(weights, calculation_index, assets)
-        book = _has_book(weights)
-        held_shares = (
-            self._weights_as_of(weights, calculation_index, assets, column="held_shares")
-            if book
-            else None
-        )
-        required_valuations = self._required_valuation_coordinates(
-            held_weights=held_weights if held_shares is None else held_shares,
-            valuation_assets=valuation_assets,
-            override_asset=override_asset,
-        )
-        all_valuations = pd.concat([valuation_seed, valuation_window]).sort_index()
-        aligned = align_asset_observations(
-            all_valuations,
-            target_index=calculation_index,
-            asset_identifiers=valuation_assets,
-            value_columns=[self.valuation_column],
-            maximum_staleness=self.valuation_alignment_policy.maximum_staleness,
-            fail_on_missing_values=self.valuation_alignment_policy.fail_on_missing_values,
-            required_coordinates=required_valuations,
-        )
-        prices = (
-            aligned[self.valuation_column]
-            .unstack(ASSET_IDENTIFIER)
-            .reindex(
-                index=calculation_index,
-                columns=valuation_assets,
-            )
-        )
-        prices = self._in_portfolio_currency(
-            prices, all_valuations, end=end, required=required_valuations
-        )
-        valuation_stale = self._stale_valuations(
-            aligned,
-            required_valuations=required_valuations,
-            calculation_index=calculation_index,
-            valuation_assets=valuation_assets,
-        )
-        eligible = (prices.notna() | ~required_valuations).all(axis=1)
-        observation_index = observation_index.intersection(eligible[eligible].index)
-        if len(observation_index) == 0:
-            return pd.DataFrame()
-        calculation_index = observation_index
-        if latest_value is not None and bool(eligible.get(pd.Timestamp(latest_value), False)):
-            calculation_index = utc_index([latest_value, *observation_index])
-        prices = prices.reindex(calculation_index)
-        held_weights = held_weights.reindex(calculation_index)
-        portfolio_returns = self._calculate_portfolio_returns(
-            held_weights=held_weights,
-            valuations=prices,
-            executed_weights=weights,
-            latest_value=latest_value,
-            held_shares=None if held_shares is None else held_shares.reindex(calculation_index),
-        ).loc[observation_index]
-        portfolio = self._apply_cumulative_portfolio_values(portfolio_returns)
-        portfolio["calculated_close"] = portfolio["close"]
-
-        if override_asset is not None:
-            override_values = prices[str(override_asset)].reindex(portfolio.index)
-            portfolio["close"] = override_values
-            previous_override = prices[str(override_asset)].shift(1).reindex(portfolio.index)
-            portfolio["return"] = (override_values / previous_override - 1).fillna(0.0)
-        portfolio["close_time"] = portfolio.index
-        portfolio["valuation_stale"] = (
-            valuation_stale.reindex(portfolio.index).fillna(False).astype(bool)
-        )
-        return portfolio
-
-    @staticmethod
-    def _stale_valuations(
-        aligned: pd.DataFrame,
-        *,
-        required_valuations: pd.DataFrame,
-        calculation_index: pd.DatetimeIndex,
-        valuation_assets: list[str],
-    ) -> pd.Series:
-        """Return, per valuation time, whether a held asset used a stale price.
-
-        A held asset is valued at its last observed price, however old (ADR 0058);
-        past ``ValuationAlignmentPolicy.maximum_staleness`` that price is stale. The
-        holdings concerned are logged as a warning.
-        """
-        stale = (
-            aligned["stale"]
-            .unstack(ASSET_IDENTIFIER)
-            .reindex(index=calculation_index, columns=valuation_assets)
-            .fillna(False)
-            .astype(bool)
-            & required_valuations.reindex(
-                index=calculation_index, columns=valuation_assets
-            ).fillna(False).astype(bool)
-        )
-        if stale.to_numpy().any():
-            from msm_portfolios import logger
-
-            logger.warning(
-                "Portfolio values use prices older than "
-                "ValuationAlignmentPolicy.maximum_staleness for: "
-                + ", ".join(sorted(str(asset) for asset in stale.columns[stale.any(axis=0)]))
-            )
-        return stale.any(axis=1).rename("valuation_stale")
-
-    def _in_portfolio_currency(
-        self,
-        prices: pd.DataFrame,
-        valuations: pd.DataFrame,
-        *,
-        end: Any,
-        required: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Convert the prices a valuation needs at the last observed FX rate.
-
-        Without an FX source every asset must be priced in the portfolio's currency
-        (ADR 0059); a source naming another currency is refused. A price no holding
-        needs is left as it is.
-        """
-        currencies = quote_currencies(
-            valuations,
-            valuation_asset_identifier=self.valuation_asset_identifier,
-            fx_declared=self.fx_source is not None,
-        )
-        if self.fx_source is None or prices.empty:
-            return prices
-        conversion = PriceConversion(
-            valuation_asset_identifier=self.valuation_asset_identifier,
-            currencies=currencies,
-            fx_rates=read_fx_rates(
-                self.fx_source,
-                currencies=currencies,
-                valuation_asset_identifier=self.valuation_asset_identifier,
-                start=prices.index.min(),
-                end=end,
-            ),
-        )
-        rates = pd.DataFrame(
-            {
-                asset: [
-                    conversion.rate(str(asset), time_index)
-                    if pd.notna(prices.at[time_index, asset])
-                    and bool(required.at[time_index, asset])
-                    else 1.0
-                    for time_index in prices.index
-                ]
-                for asset in prices.columns
-            },
-            index=prices.index,
-        )
-        return prices * rates
-
-    @staticmethod
-    def _weights_as_of(
-        weights: pd.DataFrame,
-        target_index: pd.DatetimeIndex,
-        assets: list[str],
-        *,
-        column: str = "weight",
-    ) -> pd.DataFrame:
-        wide = weights[column].unstack(ASSET_IDENTIFIER).reindex(columns=assets)
-        combined = wide.index.union(target_index).sort_values()
-        return wide.reindex(combined).ffill().reindex(target_index).fillna(0.0)
-
-    @staticmethod
-    def _required_valuation_coordinates(
-        *,
-        held_weights: pd.DataFrame,
-        valuation_assets: list[str],
-        override_asset: Any | None,
-    ) -> pd.DataFrame:
-        previous_weights = held_weights.shift(1).fillna(held_weights)
-        required = held_weights.ne(0.0) | previous_weights.ne(0.0)
-        required = required.reindex(columns=valuation_assets, fill_value=False)
-        if override_asset is not None:
-            required[str(override_asset)] = True
-        return required
-
-    def _calculate_portfolio_returns(
-        self,
-        *,
-        held_weights: pd.DataFrame,
-        valuations: pd.DataFrame,
-        executed_weights: pd.DataFrame,
-        latest_value: Any | None,
-        held_shares: pd.DataFrame | None = None,
-    ) -> pd.DataFrame:
-        """Return each valuation time's portfolio return, net of the commission fee.
-
-        With the rebalance book's shares, the portfolio is its cash plus its shares at
-        their prices: weights drift with prices between fills (ADR 0059). Shares and
-        cash change only at fills, which are self-financing at the fill's price.
-        """
-        valuations = valuations.reindex(columns=held_weights.columns)
-        if held_shares is not None:
-            cash = _book_cash_as_of(executed_weights, valuations.index)
-            holdings = held_shares.reindex(columns=valuations.columns).fillna(0.0)
-            invested = (holdings * valuations).where(holdings != 0.0, 0.0).sum(axis=1)
-            value = cash + invested
-            result = pd.DataFrame({"return": value.pct_change(fill_method=None).fillna(0.0)})
-        else:
-            asset_returns = valuations.pct_change(fill_method=None).replace(
-                [np.inf, -np.inf], 0.0
-            )
-            asset_returns = asset_returns.fillna(0.0)
-            period_weights = held_weights.shift(1).fillna(held_weights)
-            result = pd.DataFrame({"return": (period_weights * asset_returns).sum(axis=1)})
-        events = executed_weights.reset_index()
-        if latest_value is not None:
-            events = events[events["time_index"] > pd.Timestamp(latest_value)]
-        if not events.empty:
-            events["turnover"] = (
-                events["weight"].fillna(0.0) - events["weight_before"].fillna(0.0)
-            ).abs()
-            turnover = events.groupby("time_index")["turnover"].sum()
-            fee_by_target = pd.Series(0.0, index=result.index)
-            target_positions = result.index.searchsorted(turnover.index, side="left")
-            for event_time, position in zip(turnover.index, target_positions, strict=True):
-                if position < len(fee_by_target):
-                    fee_by_target.iloc[position] += turnover.loc[event_time] * self.commission_fee
-            result["return"] = result["return"] - fee_by_target
-        return result
-
-    def _executed_weights_between(self, *, start: datetime, end: datetime) -> pd.DataFrame:
-        portfolio_identifier = self._unique_identifier()
-        node = self._ensure_portfolio_weights_node()
-        window = self._normalize_weights_frame(
-            node.get_df_between_dates(
-                start_date=start,
-                end_date=end,
-                great_or_equal=True,
-                less_or_equal=True,
-                dimension_filters={PORTFOLIO_IDENTIFIER: [portfolio_identifier]},
-            )
-        )
-        self._require_unique_weight_coordinates(
-            window,
-            context="Persisted portfolio weight window",
-        )
-        assets = [
-            str(node._asset_unique_identifier(asset))
-            for asset in (self.signal_weights.get_asset_list() or [])
-        ]
-        if not assets and not window.empty:
-            assets = window.index.get_level_values(ASSET_IDENTIFIER).astype(str).unique().tolist()
-        seed = pd.DataFrame()
-        if assets:
-            seed = self._normalize_weights_frame(
-                node.get_last_observation(
-                    dimension_range_map=[
-                        {
-                            "coordinate": {
-                                PORTFOLIO_IDENTIFIER: portfolio_identifier,
-                                ASSET_IDENTIFIER: asset,
-                            },
-                            "end_date": start,
-                            "end_date_operand": "<",
-                        }
-                        for asset in assets
-                    ]
-                )
-            )
-            if not seed.empty:
-                seed_cutoff = pd.to_datetime(start, utc=True)
-                seed = seed[seed.index.get_level_values("time_index") < seed_cutoff]
-                self._require_unique_weight_coordinates(
-                    seed,
-                    context="Portfolio weight seed",
-                )
-
-        executed_weights = pd.concat([seed, window]).sort_index() if not seed.empty else window
-        self._require_unique_weight_coordinates(
-            executed_weights,
-            context="Executed portfolio weights",
-        )
-        return executed_weights
-
-    @staticmethod
-    def _normalize_weights_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
-        if frame is None or frame.empty:
-            return pd.DataFrame()
-        flat = frame.copy().reset_index()
-        flat["time_index"] = pd.to_datetime(flat["time_index"], utc=True)
-        flat[ASSET_IDENTIFIER] = flat[ASSET_IDENTIFIER].map(str)
-        return flat.set_index(["time_index", ASSET_IDENTIFIER]).sort_index()
-
-    @staticmethod
-    def _require_unique_weight_coordinates(
-        frame: pd.DataFrame,
-        *,
-        context: str,
-    ) -> None:
-        if frame.empty or not frame.index.has_duplicates:
-            return
-
-        duplicate_index = frame.index[frame.index.duplicated(keep=False)].unique()
-        sample = ", ".join(
-            f"({pd.Timestamp(time_index).isoformat()}, {asset_identifier!r})"
-            for time_index, asset_identifier in duplicate_index[:5]
-        )
-        remaining = len(duplicate_index) - 5
-        if remaining > 0:
-            sample = f"{sample}, and {remaining} more"
-        raise ValueError(
-            f"{context} contains duplicate canonical weight coordinates "
-            f"(time_index, {ASSET_IDENTIFIER}): {sample}."
-        )
+        values = project_portfolio_values(ledger, initial_nav=self.initial_nav).reset_index()
+        values["time_index"] = pd.to_datetime(values["time_index"], utc=True)
+        values["return"] = values["return"].fillna(0.0)
+        if latest is not None:
+            values = values[values["time_index"] > pd.Timestamp(latest)]
+        return values.drop(columns=[PORTFOLIO_IDENTIFIER]).set_index("time_index")
 
     def _valuation_window(self, latest_value: Any | None) -> tuple[datetime, datetime]:
         start = (
@@ -583,34 +210,8 @@ class PortfoliosUpdater(PublishedSeriesNode):
 
     def _latest_portfolio_time_index_value(self) -> Any | None:
         """The portfolio's last published value time: this node's progress."""
-        identifier = self._portfolio_progress_identifier()
-        if identifier is None:
-            return None
-        last_time = self.reader.bounds(identifier).last_time
+        last_time = self.reader.bounds(self._unique_identifier()).last_time
         return None if last_time is None else pd.Timestamp(last_time)
-
-    def _portfolio_progress_identifier(self) -> str | None:
-        if self._resolved_unique_identifier is not None:
-            return self._resolved_unique_identifier
-        if self.portfolio_configuration is None and self._portfolio_configuration is None:
-            return None
-        self._resolved_unique_identifier = self._unique_identifier()
-        return self._resolved_unique_identifier
-
-    def _apply_cumulative_portfolio_values(self, portfolio: pd.DataFrame) -> pd.DataFrame:
-        last_close = 1.0
-        latest_value = self._latest_portfolio_time_index_value()
-        if latest_value is not None:
-            previous = self.get_df_between_dates(
-                start_date=latest_value,
-                end_date=latest_value,
-                dimension_filters={PORTFOLIO_IDENTIFIER: [self._unique_identifier()]},
-            )
-            if previous is not None and not previous.empty:
-                last_close = float(previous.sort_index()["close"].iloc[-1])
-        result = portfolio.copy()
-        result["close"] = last_close * np.cumprod(result["return"] + 1.0)
-        return result
 
     def _canonical_namespace(self) -> str | None:
         namespace = self.hash_namespace or ""
@@ -619,11 +220,10 @@ class PortfoliosUpdater(PublishedSeriesNode):
     def _resolve_portfolio_identity(self) -> Any:
         if self.target_portfolio is not None and self.target_portfolio.unique_identifier:
             return self.target_portfolio
-        configuration = self.portfolio_configuration or self._portfolio_configuration
-        if configuration is None:
-            raise ValueError("PortfoliosUpdater requires a portfolio_configuration.")
+        if self.portfolio_configuration is None:
+            raise ValueError("PortfolioValues requires a portfolio_configuration.")
         self.target_portfolio = get_or_create_portfolio(
-            configuration,
+            self.portfolio_configuration,
             portfolio_resolver=self._portfolio_resolver,
         )
         return self.target_portfolio
@@ -633,11 +233,6 @@ class PortfoliosUpdater(PublishedSeriesNode):
         if not identifier:
             raise ValueError("Portfolio must expose unique_identifier.")
         return str(identifier)
-
-    def _resolve_unique_identifier(self) -> str:
-        if self._explicit_portfolio_identifier:
-            return str(self._explicit_portfolio_identifier)
-        return self._unique_identifier()
 
     def _resolve_portfolio_description(self) -> str | None:
         if self._portfolio_description is not None:
@@ -683,30 +278,35 @@ class PortfoliosUpdater(PublishedSeriesNode):
         )
 
     def _update_portfolio_pointers(self, *, portfolio: Any) -> Any:
-        """Record the portfolio's current signal on its ``Portfolio`` row."""
+        """Record the portfolio's current signal on its ``Portfolio`` row.
+
+        Writes the row only when its signal or price column changes: ``portfolio`` is the
+        row this run resolved. The signal's ``SignalMetadata`` row exists already: the
+        signal's run, or its first publication, created it.
+        """
         from msm.api.portfolios import Portfolio
 
         if portfolio.calendar_uid in (None, ""):
             raise ValueError(
-                "PortfoliosUpdater cannot update the Portfolio row because "
+                "PortfolioValues cannot update the Portfolio row because "
                 "portfolio.calendar_uid is missing."
             )
-        self._ensure_signal_metadata(self.signal_weights)
+        signal_uid = self._required_signal_uid(self.signal_weights)
+        price_column = portfolio.backtest_table_price_column_name or self.valuation_column
+        if (
+            portfolio.signal_uid == signal_uid
+            and portfolio.backtest_table_price_column_name == price_column
+        ):
+            return portfolio
         portfolio = Portfolio.upsert(
             unique_identifier=str(portfolio.unique_identifier),
             calendar_uid=portfolio.calendar_uid,
             published_index_uid=portfolio.published_index_uid,
-            backtest_table_price_column_name=(
-                portfolio.backtest_table_price_column_name or self.valuation_column
-            ),
-            signal_uid=self._required_signal_uid(self.signal_weights),
+            backtest_table_price_column_name=price_column,
+            signal_uid=signal_uid,
         )
         self.target_portfolio = portfolio
         return portfolio
-
-    @staticmethod
-    def _ensure_signal_metadata(signal_weights: Any) -> None:
-        signal_weights._upsert_signal_metadata_if_available()
 
     @staticmethod
     def _required_signal_uid(signal_weights: Any) -> str:
@@ -716,7 +316,7 @@ class PortfoliosUpdater(PublishedSeriesNode):
         return str(signal_uid)
 
     def _upsert_portfolio_metadata_if_available(self, frame: pd.DataFrame) -> None:
-        configuration = self._portfolio_configuration
+        configuration = self.portfolio_configuration
         description = self._portfolio_description
         if configuration is None and description is None:
             return
@@ -731,44 +331,9 @@ class PortfoliosUpdater(PublishedSeriesNode):
             updater=self._portfolio_metadata_updater,
         )
 
-    @staticmethod
-    def normalize_values_frame(
-        portfolio_values_frame: pd.DataFrame,
-        *,
-        unique_identifier: str,
-    ) -> pd.DataFrame:
-        return normalize_portfolio_values_frame(
-            portfolio_values_frame,
-            unique_identifier=unique_identifier,
-        )
-
     @classmethod
     def _required_output_table(cls) -> type[PortfoliosStorage]:
         return PortfoliosStorage
-
-
-def _has_book(weights: pd.DataFrame) -> bool:
-    """Return whether the weights carry the rebalance book's shares and cash."""
-    if "held_shares" not in weights.columns or "book_cash" not in weights.columns:
-        return False
-    recorded = weights["held_shares"].notna() & weights["book_cash"].notna()
-    if recorded.all():
-        return True
-    if recorded.any():
-        raise ValueError(
-            "Portfolio weights mix rows with and without the rebalance book's shares; "
-            "they cannot be valued together (ADR 0059)."
-        )
-    return False
-
-
-def _book_cash_as_of(weights: pd.DataFrame, target_index: pd.DatetimeIndex) -> pd.Series:
-    """Return the book's cash at each time: the one its newest row recorded."""
-    by_time = (
-        weights["book_cash"].astype("float64").groupby(level="time_index").last().sort_index()
-    )
-    combined = by_time.index.union(target_index).sort_values()
-    return by_time.reindex(combined).ffill().reindex(target_index)
 
 
 def normalize_portfolio_values_frame(
@@ -776,23 +341,16 @@ def normalize_portfolio_values_frame(
     *,
     unique_identifier: str,
 ) -> pd.DataFrame:
-    """Normalize portfolio values into canonical valuation-observation rows."""
-    required_columns = list(PortfoliosUpdater._column_dtypes_map_for_storage())
+    """Normalize projected values into canonical ``PortfoliosTS`` rows."""
+    required_columns = list(PortfolioValues._column_dtypes_map_for_storage())
     flat = _reset_frame_index(portfolio_values_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
     if PORTFOLIO_CANONICAL_TIME_INDEX_NAME not in flat.columns and "index" in flat.columns:
         flat = flat.rename(columns={"index": PORTFOLIO_CANONICAL_TIME_INDEX_NAME})
     flat[PORTFOLIO_IDENTIFIER] = str(unique_identifier)
-    if "calculated_close" not in flat.columns and "close" in flat.columns:
-        flat["calculated_close"] = flat["close"]
-    if "close_time" not in flat.columns and PORTFOLIO_CANONICAL_TIME_INDEX_NAME in flat.columns:
-        flat["close_time"] = flat[PORTFOLIO_CANONICAL_TIME_INDEX_NAME]
-    if "valuation_stale" not in flat.columns and "valuation_stale" in required_columns:
-        # A value supplied without the marking is unknown, not fresh (ADR 0058).
-        flat["valuation_stale"] = pd.Series(pd.NA, index=flat.index, dtype="boolean")
-    _require_columns(flat, required_columns=required_columns, frame_name="PortfoliosUpdater")
-    return PortfoliosUpdater.validate_frame(flat[required_columns])
+    _require_columns(flat, required_columns=required_columns, frame_name="PortfolioValues")
+    return PortfolioValues.validate_frame(flat[required_columns])
 
 
 from .accounting import (  # noqa: E402
@@ -805,7 +363,7 @@ from .accounting import (  # noqa: E402
 __all__ = [
     "PortfolioEngine",
     "PortfolioEngineConfiguration",
-    "PortfoliosUpdater",
+    "PortfolioValues",
     "normalize_portfolio_event_ledger_frame",
     "normalize_portfolio_values_frame",
 ]

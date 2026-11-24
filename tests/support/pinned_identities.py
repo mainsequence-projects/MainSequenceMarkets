@@ -21,11 +21,14 @@ from metatables import TimeIndexMetaTable, TimeIndexTableUpdater, sqlalchemy_nam
 from msm.storage_instances import configured_time_index_instance
 from msm.time_index.assets import AssetSnapshot
 from msm.time_index.assets.storage import AssetSnapshotsStorage
+from msm_portfolios.accounting import (
+    MarketPriceValuationModel,
+    PortfolioAccountingConfiguration,
+)
 from msm_portfolios.configuration import (
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
-    PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
 )
 from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
@@ -78,12 +81,14 @@ class _Source(TimeIndexTableUpdater):
 def _source(update_hash: str) -> _Source:
     source = object.__new__(_Source)
     source.update_hash = update_hash
+    source.update_statistics = None
     source._output_table = SimpleNamespace(
         get_time_index_meta_table=lambda: TimeIndexMetaTable.model_construct(
             uid=f"{update_hash}-table",
             data_source_uid="source",
         ),
         get_data_source_uid=lambda: "source",
+        get_meta_table_uid=lambda: f"{update_hash}-table",
     )
     return source
 
@@ -102,7 +107,8 @@ LIBRARY_SIGNALS: dict[str, Callable[[], SignalWeights]] = {
             asset_unique_identifier_weights=[
                 AUIDWeight(unique_identifier="ASSET_A", weight=0.6),
                 AUIDWeight(unique_identifier="ASSET_B", weight=0.4),
-            ]
+            ],
+            signal_time_index=pd.Timestamp("2026-01-02T12:00:00Z").to_pydatetime(),
         ),
     ),
     "library_application_weights": lambda: _signal(
@@ -119,6 +125,14 @@ def _immediate_signal() -> ImmediateSignal:
     )
 
 
+PINNED_ACCOUNTING = PortfolioAccountingConfiguration(
+    initial_nav=50_000_000.0,
+    initial_state_time_index=pd.Timestamp("2026-01-02T00:00:00Z").to_pydatetime(),
+    position_valuation_model_instance=MarketPriceValuationModel(),
+)
+"""The ledger every pinned portfolio keeps (ADR 0065)."""
+
+
 def _portfolio_configuration(
     signal: SignalWeights,
     *,
@@ -129,11 +143,11 @@ def _portfolio_configuration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=valuation_source or _source("valuation"),
             valuation_asset_identifier="USD",
-            execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.0),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal,
                 rebalance_strategy_instance=rebalance_strategy or _immediate_signal(),
             ),
+            accounting_configuration=PINNED_ACCOUNTING,
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(portfolio_name="pinned-identity"),
     )
@@ -206,21 +220,19 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
 
 STRATEGIES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "immediate_signal": lambda updaters: _immediate_signal(),
-    # The size these identities were pinned with, the strategies' former default (#113).
     "liquidity_constrained_on_asset_snapshot": lambda updaters: LiquidityConstrained(
-        liquidity_source_instance=updaters["asset_snapshot"], total_notional=50_000_000
+        liquidity_source_instance=updaters["asset_snapshot"]
     ),
     "time_weighted_on_interpolated_prices": lambda updaters: TimeWeighted(
         execution_bars_instance=updaters["interpolated_prices"]
     ),
     "volume_participation_on_interpolated_prices": lambda updaters: VolumeParticipation(
-        execution_bars_instance=updaters["interpolated_prices"], total_notional=50_000_000
+        execution_bars_instance=updaters["interpolated_prices"]
     ),
     "trailing_average_daily_volume_on_asset_snapshot": lambda updaters: (
         TrailingAverageDailyVolumeParticipation(
             daily_liquidity_instance=updaters["asset_snapshot"],
             execution_bars_instance=updaters["interpolated_prices"],
-            total_notional=50_000_000,
         )
     ),
 }

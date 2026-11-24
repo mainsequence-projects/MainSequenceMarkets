@@ -25,14 +25,30 @@ flows, accounting valuation, deterministic restart, or ledger-derived projection
   accounting implementation task as SDK-blocked without a separately reproduced
   SDK defect.
 
-## Mode Boundary And Compatibility
+## Every Portfolio Keeps A Ledger
 
-- `PortfolioBuildConfiguration.accounting_configuration` is optional.
-- Omitted and explicit `None` must preserve the legacy serialized payload,
-  configuration hash, dependency graph, output identity, and stored history.
-- Enabled accounting is hash-bearing and creates a distinct history.
-- `PortfoliosUpdater` must reject enabled accounting; it must not silently
-  downgrade, mix histories, or fabricate accounting state from weights.
+- `PortfolioBuildConfiguration.accounting_configuration` is required (ADR 0065)
+  and hash-bearing. `PortfolioWeights` and `PortfolioValues` publish projections
+  of the ledger (`project_portfolio_weights`, `project_portfolio_values`).
+- `PortfolioEngine` reads the build's `valuation_source_instance` with its
+  `valuation_column` (`portfolio_valuations`): a price is in the portfolio's
+  currency unless the source has `price_asset_identifier`, and a row without a
+  `source_revision` gets one computed from its time, asset and price. The
+  valuation model declares no price source of its own.
+- A summary record of an event that changes a position carries each asset's value
+  before and after it in `extension_payload` (`position_values_before`,
+  `position_values`); the weights projection reads only those.
+- A strategy without `execution_model_instance` gets `default_execution_model`:
+  fractional units (`quantity_step=None`), multiplier 1, cash settlement, quoted in
+  the currency of the asset's valuation rows.
+- The source states which events its prices include (`events_in_price`:
+  `"adjusted"` by default, every event; a tuple names exactly which; a
+  `TimeIndexTableRef` is adjusted). An asset type lists the events its assets can
+  have (`AssetType.event_types`), a lifecycle model those it books
+  (`booked_event_types`). On prices that do not include an event,
+  `require_booked_events` refuses a held or bought asset whose type lists an event
+  no model books; the build configuration refuses a model that books an event the
+  prices include.
 - Do not restore the rejected `unique_identifier` source-field fallback.
   Accounting Asset inputs use `asset_identifier` and persisted FKs target
   `AssetTable.unique_identifier`.
@@ -52,15 +68,17 @@ dividends:              time_index, source_event_identifier, source_revision
 Require stable source identities and revisions. Use economic time for
 `time_index` and availability time for `observed_at`. In `as_known` mode, reject
 an observation that became available after the event being calculated. Missing
-or stale price/FX/terms/eligibility input is an error, never zero or a fallback.
+price/FX/terms/eligibility input is an error, never zero or a fallback; a price or
+rate past `maximum_staleness` is used and marked stale (ADR 0058).
 
 Internal simulated execution facts must retain signed quantity, unit, execution
 price, quote Asset, source revisions, terms version, settlement legs, and costs.
 They are generated from the post-lifecycle/pre-execution accounting state. Do
 not accept actual account or broker fills as Portfolio inputs.
 
-Use `TargetWeightExecutionModel` plus one `InstrumentExecutionSpec` per
-economically required Asset for the built-in position-aware sizing path. An
+To state sizing terms instead of the default model, use
+`TargetWeightExecutionModel` plus one `InstrumentExecutionSpec` per economically
+required Asset. An
 unchanged zero target needs neither terms nor a mark; entries and exits do. Each
 spec declares target measure,
 quantity unit, contract multiplier, quantity step, quote Asset, settlement style,

@@ -37,7 +37,7 @@ from .portfolios.analytics import PortfolioAnalytics, PortfolioAnalyticsConfigur
 from .portfolios import (
     PortfolioEngine,
     PortfolioEngineConfiguration,
-    PortfoliosUpdater,
+    PortfolioValues,
     normalize_portfolio_event_ledger_frame,
     normalize_portfolio_values_frame,
 )
@@ -62,7 +62,7 @@ __all__ = [
     "SIGNAL_DESCRIPTION",
     "SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS",
     "SIGNAL_WEIGHTS_INDEX_NAMES",
-    "PortfoliosUpdater",
+    "PortfolioValues",
     "PortfolioEngine",
     "PortfolioEngineConfiguration",
     "PortfolioAnalytics",

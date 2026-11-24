@@ -63,6 +63,7 @@ Recommended sections:
 - [0062. Capital Given To A Virtual Fund](0062-capital-given-to-a-virtual-fund.md)
 - [0063. Policies And Rebalance Strategies For Portfolios And Accounts](0063-a-policy-base-for-portfolios-and-accounts.md)
 - [0064. An Order Has Its Own Row](0064-an-order-has-its-own-row.md)
+- [0065. Every Portfolio Keeps A Ledger](0065-every-portfolio-keeps-a-ledger.md)
 
 ## Command Center Decisions
 

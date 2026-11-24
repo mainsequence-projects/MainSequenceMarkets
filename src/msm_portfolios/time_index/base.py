@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
-from metatables import dtype_codec as dc
+import metatables as dc
 from metatables import (
     TimeIndexTableUpdater,
     TimeIndexTableUpdateConfig,

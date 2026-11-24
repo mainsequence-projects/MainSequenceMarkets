@@ -8,7 +8,7 @@ import pytest
 
 from msm.api.calendars import Calendar
 from msm_portfolios.rebalance_strategy import CalendarEventSignal, ImmediateSignal, TimeWeighted
-from msm_portfolios.time_index.portfolios import PortfoliosUpdater
+from msm_portfolios.time_index.portfolios import PortfolioValues
 
 STORED = {
     "NYSE": SimpleNamespace(uid="nyse-uid", unique_identifier="NYSE"),
@@ -33,7 +33,7 @@ def check(strategy, *, calendar_uid) -> None:
         )
     )
     portfolio = SimpleNamespace(unique_identifier="P", calendar_uid=calendar_uid)
-    PortfoliosUpdater._require_strategy_calendar(updater, portfolio)
+    PortfolioValues._require_strategy_calendar(updater, portfolio)
 
 
 def calendar_event_signal(identifier: str) -> CalendarEventSignal:

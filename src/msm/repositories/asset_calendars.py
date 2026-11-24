@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import Uuid, func, literal, select
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
-from msm.models import AssetCalendarTable, AssetTable
+from msm.models import AssetCalendarTable, AssetTable, CalendarTable
 from msm.repositories.asset_registration import dialect_insert
 from msm.repositories.base import (
     MarketsCompiledWrite,
@@ -169,6 +169,54 @@ def read_asset_link_state(
     return state
 
 
+def build_asset_trading_calendars_operation(
+    context: MarketsRepositoryContext,
+    *,
+    asset_identifiers: Sequence[str],
+) -> MetaTableCompiledSQLOperation:
+    """One read of the named assets with the row of the calendar each is linked to."""
+
+    statement = (
+        select(AssetTable.unique_identifier.label("asset_identifier"), *CalendarTable.__table__.c)
+        .select_from(AssetTable)
+        .outerjoin(AssetCalendarTable, AssetCalendarTable.asset_uid == AssetTable.uid)
+        .outerjoin(CalendarTable, CalendarTable.uid == AssetCalendarTable.calendar_uid)
+        .where(AssetTable.unique_identifier.in_(list(asset_identifiers)))
+        .order_by(AssetTable.unique_identifier)
+        .limit(LINK_STATE_READ_SIZE)
+    )
+    return compile_markets_statement(statement, context=context, operation="select")
+
+
+def read_asset_trading_calendars(
+    context: MarketsRepositoryContext,
+    *,
+    asset_identifiers: Sequence[str],
+) -> dict[str, dict[str, Any] | None]:
+    """Each existing asset's calendar row, by identifier, in one read per 1,000 assets.
+
+    An identifier missing from the answer names no asset; an asset with no trading
+    calendar answers ``None``.
+    """
+
+    names = list(dict.fromkeys(str(identifier) for identifier in asset_identifiers))
+    calendars: dict[str, dict[str, Any] | None] = {}
+    for index in range(0, len(names), LINK_STATE_READ_SIZE):
+        result = execute_markets_operation(
+            build_asset_trading_calendars_operation(
+                context,
+                asset_identifiers=names[index : index + LINK_STATE_READ_SIZE],
+            ),
+            context=context,
+        )
+        for row in result.get("rows") or []:
+            calendar = {key: value for key, value in row.items() if key != "asset_identifier"}
+            calendars[str(row["asset_identifier"])] = (
+                None if calendar.get("uid") is None else calendar
+            )
+    return calendars
+
+
 def build_unlinked_assets_operation(
     context: MarketsRepositoryContext,
     *,
@@ -228,11 +276,13 @@ __all__ = [
     "LINK_IDENTIFIERS_PER_STATEMENT",
     "LINK_STATEMENTS_PER_TRANSACTION",
     "build_asset_link_state_operation",
+    "build_asset_trading_calendars_operation",
     "build_link_assets_operation",
     "build_unlinked_assets_operation",
     "count_assets_on_calendar",
     "link_assets",
     "link_assets_statements",
     "read_asset_link_state",
+    "read_asset_trading_calendars",
     "read_unlinked_assets",
 ]

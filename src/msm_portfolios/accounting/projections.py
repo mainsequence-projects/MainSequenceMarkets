@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import pandas as pd
+import json
+
 import numpy as np
+import pandas as pd
 
 from .reducer import _validate_ledger_record_identities
 
@@ -151,15 +153,19 @@ def project_cash_flows(ledger: pd.DataFrame) -> pd.DataFrame:
 
 
 def project_portfolio_values(ledger: pd.DataFrame, *, initial_nav: float) -> pd.DataFrame:
-    """Project normalized portfolio close and linked returns from summary records."""
+    """Project the portfolio's close, return and stale flag at each ledger time.
+
+    ``close`` is the NAV after the last event at a time over ``initial_nav``, so a
+    portfolio starts at 1. ``valuation_stale`` is set when that event's valuation used a
+    price or rate past the valuation model's ``maximum_staleness`` (ADR 0058).
+    """
 
     flat = ledger.copy().reset_index()
     _validate_ledger_record_identities(flat)
+    columns = ["close", "return", "calculated_close", "close_time", "valuation_stale"]
     summaries = flat[flat["record_kind"] == "valuation_summary"].copy()
     if summaries.empty:
-        return pd.DataFrame(
-            columns=["close", "return", "calculated_close", "close_time"]
-        ).rename_axis(index=["time_index", "portfolio_identifier"])
+        return _empty(columns, ["time_index", "portfolio_identifier"])
     summaries = (
         summaries.sort_values(
             ["portfolio_identifier", "time_index", "event_sequence"], kind="stable"
@@ -173,20 +179,106 @@ def project_portfolio_values(ledger: pd.DataFrame, *, initial_nav: float) -> pd.
     ].pct_change()
     summaries["calculated_close"] = summaries["close"]
     summaries["close_time"] = summaries["time_index"]
+    summaries["valuation_stale"] = [
+        bool(_payload(value).get("stale_sources")) for value in summaries["extension_payload"]
+    ]
     return (
-        summaries[
-            [
-                "time_index",
-                "portfolio_identifier",
-                "close",
-                "return",
-                "calculated_close",
-                "close_time",
-            ]
-        ]
+        summaries[["time_index", "portfolio_identifier", *columns]]
         .set_index(["time_index", "portfolio_identifier"])
         .sort_index()
     )
 
 
-__all__ = ["project_cash_flows", "project_portfolio_values", "project_state"]
+def project_portfolio_weights(ledger: pd.DataFrame) -> pd.DataFrame:
+    """Project the weights of the assets the ledger's events changed at each time (ADR 0065).
+
+    An event that changes a position records every held asset's value before and after
+    it in its valuation summary. At a time with such events, each asset they changed gets
+    a row: ``weight`` is its value over the NAV after the last of them, ``weight_before``
+    its value over the NAV before the first, and ``price_current`` the price the last
+    event that traded it booked.
+    """
+
+    flat = ledger.copy().reset_index()
+    _validate_ledger_record_identities(flat)
+    columns = ["weight", "weight_before", "price_current"]
+    index = ["time_index", "portfolio_identifier", "asset_identifier"]
+    if flat.empty:
+        return _empty(columns, index)
+    deltas = flat[flat["record_kind"] == "position_delta"]
+    if deltas.empty:
+        return _empty(columns, index)
+    summaries = flat[flat["record_kind"] == "valuation_summary"].set_index(
+        ["portfolio_identifier", "event_identifier"]
+    )
+    rows: list[dict] = []
+    for (portfolio, time_index), changed in deltas.sort_values(
+        ["portfolio_identifier", "event_sequence", "record_sequence"], kind="stable"
+    ).groupby(["portfolio_identifier", "time_index"], sort=True):
+        events = list(dict.fromkeys(changed["event_identifier"]))
+        first = _summary(summaries, portfolio, events[0])
+        last = _summary(summaries, portfolio, events[-1])
+        before = first["payload"].get("position_values_before", {})
+        after = last["payload"]["position_values"]
+        prices = changed.groupby(changed["asset_identifier"].astype(str), sort=False)["price"].last()
+        for asset in dict.fromkeys(changed["asset_identifier"].astype(str)):
+            price = prices.get(asset)
+            rows.append(
+                {
+                    "time_index": time_index,
+                    "portfolio_identifier": portfolio,
+                    "asset_identifier": asset,
+                    "weight": _share(after.get(asset, 0.0), last["nav_after"]),
+                    "weight_before": _share(before.get(asset, 0.0), first["nav_before"]),
+                    "price_current": None if price is None or pd.isna(price) else float(price),
+                }
+            )
+    return pd.DataFrame(rows).set_index(index)[columns].sort_index()
+
+
+def _summary(summaries: pd.DataFrame, portfolio: str, event_identifier: str) -> dict:
+    """An event's valuation summary: its NAV before and after, and its payload."""
+    key = (portfolio, event_identifier)
+    if key not in summaries.index:
+        raise ValueError(f"Ledger event {event_identifier!r} has no valuation summary.")
+    summary = summaries.loc[key]
+    payload = _payload(summary["extension_payload"])
+    if "position_values" not in payload:
+        raise ValueError(
+            f"Ledger event {event_identifier!r} changes a position but records no "
+            "position values."
+        )
+    return {
+        "nav_before": float(summary["nav_before"]),
+        "nav_after": float(summary["nav_after"]),
+        "payload": payload,
+    }
+
+
+def _empty(columns: list[str], index: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=columns,
+        index=pd.MultiIndex.from_arrays([[] for _ in index], names=index),
+    )
+
+
+def _share(value: float, nav: float) -> float:
+    if not np.isfinite(nav) or nav == 0.0:
+        raise ValueError("A weight needs a finite, non-zero NAV.")
+    return float(value) / nav
+
+
+def _payload(value) -> dict:
+    if value is None or (not isinstance(value, (str, dict)) and pd.isna(value)):
+        return {}
+    if isinstance(value, dict):
+        return value
+    return json.loads(value) if value else {}
+
+
+__all__ = [
+    "project_cash_flows",
+    "project_portfolio_values",
+    "project_portfolio_weights",
+    "project_state",
+]

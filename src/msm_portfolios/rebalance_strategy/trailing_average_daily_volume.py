@@ -39,8 +39,8 @@ class TrailingAverageDailyVolumeParticipation(SizedBarStrategy):
     The order is fixed at the decision (#90). A bar's slice, in the portfolio's
     currency, is at most what is left of the asset's daily cap
     (``max_daily_participation`` of its trailing average daily notional, from completed
-    days only) and ``max_bar_participation`` of the bar's notional; ``total_notional``
-    turns it into shares of the book. The daily cap counts what filled, which the
+    days only) and ``max_bar_participation`` of the bar's notional; the book's unit, the
+    portfolio's initial NAV, turns it into shares of the book. The daily cap counts what filled, which the
     execution policy's cash rules can make less than the bar allowed.
     """
 
@@ -302,7 +302,6 @@ class TrailingAverageDailyVolumeParticipation(SizedBarStrategy):
         bar_states: dict[str, dict[str, Any]],
         execution_context: Any,
     ) -> dict[str, BarSlice]:
-        del book
         if not isinstance(execution_context, _TrailingExecutionContext):
             raise TypeError("Trailing execution context was not prepared.")
         session_date = execution_context.session_date_by_event[event_time]
@@ -331,7 +330,7 @@ class TrailingAverageDailyVolumeParticipation(SizedBarStrategy):
             daily_remaining = 0.0 if daily_limit is None else max(daily_limit - consumed, 0.0)
             bar_limit = 0.0 if volume is None else price * volume * self.max_bar_participation
             slices[asset] = BarSlice(
-                shares=self.shares_for_notional(min(daily_remaining, bar_limit), price),
+                shares=self.shares_for_notional(min(daily_remaining, bar_limit), price, book=book),
                 observed_volume=volume,
                 state={
                     "session_date": session_date,
@@ -349,11 +348,13 @@ class TrailingAverageDailyVolumeParticipation(SizedBarStrategy):
             )
         return slices
 
-    def bar_state(self, *, bar_slice: BarSlice, entry: BookEntry) -> dict[str, Any]:
+    def bar_state(
+        self, *, bar_slice: BarSlice, entry: BookEntry, book: RebalanceBook
+    ) -> dict[str, Any]:
         """Count what filled at the bar, in the portfolio's currency, against the daily cap."""
         state = dict(bar_slice.state)
         consumed = state["daily_notional_consumed"] + abs(entry.shares * entry.price) * (
-            self.total_notional
+            self.book_unit(book)
         )
         limit = state["daily_notional_limit"]
         state["daily_notional_consumed"] = consumed

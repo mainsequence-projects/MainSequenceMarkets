@@ -238,7 +238,7 @@ PINNED_PUBLISHED_NODE_PATHS = (
     "msm_portfolios.contrib.signals.market_cap:MarketCap",
     "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
     "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
-    "msm_portfolios.time_index.portfolios:PortfoliosUpdater",
+    "msm_portfolios.time_index.portfolios:PortfolioValues",
     "msm_portfolios.time_index.signals.weights:SignalWeights",
 )
 
@@ -265,15 +265,17 @@ PINNED_CONFIGURATION_PATHS = (
 
 PINNED_SIGNAL_UIDS = {
     "library_signal_weights": "bae957552a8ef090996db67ef64e846a",
-    "library_fixed_weights": "2874b08647b5f015f339f08210f117ea",
+    # Rotated when FixedWeightsConfig gained signal_time_index (#134).
+    "library_fixed_weights": "f7544fc3893593aafb4bb83d29e56f0d",
     "library_application_weights": "18737141b453a2a42ea24500673fdc29",
     "application_signal": "278f13bd9d683932451e5f4087fec5a7",
 }
 
 PINNED_PORTFOLIO_CONFIGURATION_HASHES = {
     # Rotated by the next-observed-price fill rule (issue #89, ADR 0058).
-    "library_signal_weights": "616ead637f8817cec74796e71f2f462d",
-    "library_fixed_weights": "c0dfbe7c17eb03571e1c4b4234f17369",
+    "library_signal_weights": "7bc09bfb4b3c8d0c7b02dbf5980ee435",
+    # Rotated again with the FixedWeights signal_uid (#134).
+    "library_fixed_weights": "5949c5708874269eee666ff45a7c68a9",
 }
 
 PINNED_UPDATE_HASHES = {
@@ -291,12 +293,13 @@ PINNED_NESTED_SIGNAL_UIDS = {
 
 PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
     # Rotated by the next-observed-price fill rule (issue #89, ADR 0058). All four
-    # rotated again with their bar strategies' execution_policy (#90).
-    "interpolated_prices_valuation": "80db060ede6d15e56f326968c4fc6b5e",
+    # rotated again with their bar strategies' execution_policy (#90), and with the
+    # FixedWeights signal_uid they hold (#134).
+    "interpolated_prices_valuation": "47b0f796d3b52a0bf0839875c5a0882a",
     # Execution windows are datetime.time values, which hash as ISO strings.
-    "time_weighted_rebalance": "38940994252d50f48edb51c124296c74",
-    "volume_participation_rebalance": "2cc4202b820a0d0a3aa9ec1b4f13af80",
-    "trailing_average_daily_volume_rebalance": "f38be6f3dec95b17596afc24730e6e9f",
+    "time_weighted_rebalance": "34ca96b85ea7a2d559b5beb4b05242e4",
+    "volume_participation_rebalance": "27141c729e29e26698159da23facc199",
+    "trailing_average_daily_volume_rebalance": "26ef20d2d8004c7237f3ed45decb3cde",
 }
 
 PINNED_STRATEGY_REVISIONS = {
@@ -305,16 +308,16 @@ PINNED_STRATEGY_REVISIONS = {
     # The four bar strategies rotated again with their execution_policy (#90).
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
-        "0a8c643be4d6d3eae455830706d878e7a97f95b2efd526a143e0933f9a412c5b"
+        "9dd3eb51d6a50fe2440247bc77998a02d5cc660f28ca27900d1ce100db881058"
     ),
     "time_weighted_on_interpolated_prices": (
         "412e686b88ae429af19b286a090dfaefcb91a8f5c01f91b8944398967a34b622"
     ),
     "volume_participation_on_interpolated_prices": (
-        "9f18caaaa45dacd095b17b4d3319b2f7a9f34dc672bdc542b9d8825e1738306b"
+        "c91e357c91bb54300d007b947d4e06a75221c98cb353e1f0cc53ba92abefc637"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "fd041f762ac5f3fa0e3c435a0a64c57f7370da51e80ceede2285e92c390fb2da"
+        "5c8ad355978746656c7e3ac74c829a46662cd61f161ee0adb2a431182e00cf2a"
     ),
 }
 

@@ -1163,6 +1163,13 @@ class AccountRegistrationAssetType(BaseModel):
     asset_type: str = Field(min_length=1, max_length=64)
     display_name: str | None = Field(default=None, max_length=255)
     description: str | None = None
+    event_types: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The events an asset of a new type can have (ADR 0065). A built-in type keeps "
+            "its own; an existing type is left as it is."
+        ),
+    )
 
     @field_validator("asset_type")
     @classmethod
@@ -1170,6 +1177,13 @@ class AccountRegistrationAssetType(BaseModel):
         from msm.api.assets import normalize_asset_type
 
         return normalize_asset_type(value)
+
+    @field_validator("event_types")
+    @classmethod
+    def _distinct_event_types(cls, value: list[str]) -> list[str]:
+        from msm.api.assets import _distinct_event_types
+
+        return _distinct_event_types(value)
 
 
 class AccountRegistrationAssetSnapshot(BaseModel):

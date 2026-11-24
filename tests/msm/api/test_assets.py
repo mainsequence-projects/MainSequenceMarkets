@@ -319,6 +319,7 @@ def test_currency_spot_upsert_owns_multitable_workflow(monkeypatch) -> None:
                 "asset_type": "currency_spot",
                 "display_name": "Currency Spot",
                 "description": "Tradable currency spot pair asset.",
+                "event_types": [],
             },
             ("asset_type",),
         ),

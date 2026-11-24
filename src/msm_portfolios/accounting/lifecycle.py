@@ -11,6 +11,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
+from msm.constants import EVENT_TYPE_DIVIDEND
 
 from .contracts import (
     CashDeltaBatch,
@@ -37,6 +38,10 @@ class LifecycleEventModel(BaseModel, ABC):
     model_version: ClassVar[str] = "1"
     configuration_schema_version: ClassVar[int] = 1
     economic_ordering_priority: ClassVar[int] = 0
+    booked_event_types: ClassVar[tuple[str, ...]] = ()
+    """The event types this model books, such as ``"dividend"`` (ADR 0065). A portfolio on
+    unadjusted prices refuses to run while it holds an asset whose type lists an event
+    that no model books."""
 
     def declared_dependencies(self) -> dict[str, LifecycleDependency]:
         return {}
@@ -122,6 +127,7 @@ class DividendCashFlowModel(LifecycleEventModel):
     model_identifier: ClassVar[str] = "msm.dividend_cash_flow"
     model_version: ClassVar[str] = "1"
     configuration_schema_version: ClassVar[int] = 1
+    booked_event_types: ClassVar[tuple[str, ...]] = (EVENT_TYPE_DIVIDEND,)
 
     dividend_source: LifecycleDependency | None = Field(
         default=None,

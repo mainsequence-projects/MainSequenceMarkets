@@ -36,7 +36,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mainsequence.client.exceptions import ApiError
-from metatables.endpoint import ApiResolutionError
+from metatables import ApiResolutionError
 from msm.api.remote import (
     INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE,
     INCOMPLETE_READ_ERROR_TYPE,

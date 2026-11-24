@@ -256,6 +256,41 @@ def test_portfolio_weights_refuse_different_rows_and_rows_after_retirement(
     assert frame["weight"].tolist() == [0.5]
 
 
+def test_new_only_leaves_out_what_is_stored_without_comparing_it(markets, backend) -> None:
+    portfolio = _portfolio(markets.engine, managed_by=_managed(backend))
+    row = {"time_index": T0, "asset_identifier": "AAA", "weight": 0.5, "weight_before": 0.0}
+    PortfolioWeightsSeries.publish(portfolio, [row])
+
+    published = PortfolioWeightsSeries.publish(
+        portfolio,
+        [{**row, "weight": 0.6}, {**row, "time_index": T1, "weight": 0.7}],
+        new_only=True,
+    )
+
+    assert (published.written, published.skipped, published.row_count) == (1, 0, 2)
+    assert (published.first_time, published.last_time) == (T0, T1)
+    rows = PortfolioWeightsSeries.window([portfolio], columns=["weight"]).rows
+    assert [(item["time_index"], item["weight"]) for item in rows] == [(T0, 0.5), (T1, 0.7)]
+    with pytest.raises(LookupError, match="Unknown asset unique identifiers: \\['ZZZ'\\]"):
+        PortfolioWeightsSeries.publish(
+            portfolio, [{**row, "time_index": T2, "asset_identifier": "ZZZ"}], new_only=True
+        )
+
+
+def test_a_publish_reads_once_before_it_writes(markets) -> None:
+    from msm.repositories.operation_count import counting_operations
+
+    portfolio = _portfolio(markets.engine)
+    row = {"time_index": T0, "asset_identifier": "AAA", "weight": 0.5, "weight_before": 0.0}
+    PortfolioWeightsSeries.publish(portfolio, [row])
+
+    with counting_operations() as count:
+        PortfolioWeightsSeries.publish(portfolio, [{**row, "time_index": T1}])
+
+    # The registry row, the bounds and the assets in one read, then the insert.
+    assert count.operations == 2
+
+
 def test_rows_returned_by_both_backends_are_typed(markets, backend) -> None:
     portfolio = _portfolio(markets.engine, managed_by=_managed(backend))
     PortfolioValuesSeries.publish(

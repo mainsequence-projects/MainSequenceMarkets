@@ -7,6 +7,7 @@ from .core import (
     CalendarType,
     CalendarUpdate,
     CalendarUpsert,
+    calendar_reads,
 )
 from .exceptions import (
     CalendarException,
@@ -39,4 +40,5 @@ __all__ = [
     "CalendarUpsert",
     "ComputedCalendarDate",
     "ComputedCalendarSession",
+    "calendar_reads",
 ]

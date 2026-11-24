@@ -204,7 +204,7 @@ One call links them all in one transaction. Do not loop over
 - The `asset_list` of `InterpolatedPricesConfig` holds identifiers only. A
   `calendar` key in a scope mapping is refused.
 - An `ImmediateSignal` or `CalendarEventSignal` must use the calendar of
-  `Portfolio.calendar_uid`. `PortfoliosUpdater` refuses to run when its
+  `Portfolio.calendar_uid`. `PortfolioValues` refuses to run when its
   `calendar_identifier` names another calendar.
 - Attach `AssetCalendar` in the runtime models where price updates run.
 
@@ -262,7 +262,7 @@ ProjectInterpolatedPrices = configured_time_index_instance(
 - `namespace`, `storage_app` and `base` have no default. A producer never passes
   Markets' own, and never applies or extends Markets' migrations for this table.
 - This is the price source's schema, not portfolio core registration, and it does
-  not mean `PortfoliosUpdater` may construct prices internally.
+  not mean a portfolio node may construct prices internally.
 
 The equal-weight example is such a producer, with its provider and committed revision
 in `examples/msm_portfolios/portfolio_equal_weights_migrations/`. From the repository
@@ -274,9 +274,10 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 Both write only to MetaTables' local SQLite runtime: a sandbox is a separate database,
-never another namespace. With updaters on, the example currently stops in the rebalance
-(`FixedWeights` dates its signal 2018-01-02, the example's bars begin in May 2026);
-`--no-run-updaters` runs to the end. Normal runtime code still builds the graph explicitly as
+never another namespace. With updaters on, the first run publishes the signal, the
+portfolio's weights and its values, and a second run writes nothing new. Its `FixedWeights`
+signal is stated after the first source close (`SIGNAL_TIME_INDEX`), so the rebalance has a
+price to size it with. Normal runtime code still builds the graph explicitly as
 source price or valuation node -> interpolation when needed -> signal node -> portfolio node. If
 the backend dependency tree was created by an older graph, run the top-level
 portfolio node once with `refresh_dependency_tree=True`, or call
@@ -287,22 +288,24 @@ Portfolio construction must expose execution and valuation as separate temporal 
 
 ```text
 SignalWeights --------------------+
-                                   +--> PortfolioWeights --> PortfolioWeightsStorage
-calendar events / execution bars -+           |
-execution valuations --------------+           |
-                                               v
-valuation source ----------------------> PortfoliosUpdater --> PortfoliosStorage
-                                                               |
-                                                               v
-                                                     optional PortfolioAnalytics
+calendar events / execution bars -+--> PortfolioRebalance --> rebalance state (fills)
+                                                                |
+valuation source, FX, lifecycle inputs --------------> PortfolioEngine --> event ledger
+                                                                |
+                                        +-----------------------+-----------------------+
+                                        v                                               v
+                         PortfolioWeights --> PortfolioWeightsStorage    PortfolioValues --> PortfoliosStorage
+                                                                                          |
+                                                                                          v
+                                                                                optional PortfolioAnalytics
 ```
 
-`PortfoliosUpdater` must not construct `InterpolatedPrices` from
+No portfolio node constructs `InterpolatedPrices` from
 `AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
 needed, prepare or attach the interpolation node first and pass it as
-`PortfolioBuildConfiguration.valuation_source_instance`. Keep any local
-valuation alignment inside portfolio calculation as bounded per-asset as-of
-selection at source observation timestamps only.
+`PortfolioBuildConfiguration.valuation_source_instance`. The ledger values each
+held asset at its last observation at or before each ledger time, at source
+observation timestamps only.
 
 Current portfolio build contract:
 
@@ -310,9 +313,10 @@ Current portfolio build contract:
 PortfolioBuildConfiguration
   valuation_source_instance TimeIndexTableUpdater | TimeIndexTableRef
   valuation_column          str, defaults to close
-  valuation_alignment_policy ValuationAlignmentPolicy
-  execution_configuration
+  valuation_asset_identifier the portfolio's currency
+  fx_source_instance        optional
   backtesting_weights_configuration
+  accounting_configuration  PortfolioAccountingConfiguration, required (ADR 0065)
 ```
 
 Rules:
@@ -339,14 +343,16 @@ Rules:
   already registered compatible source table through `TimeIndexTableRef`.
 - `InterpolatedPrices.dependencies()` must expose the resolved source price
   object in both cases.
-- Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to
-  `PortfoliosUpdater`.
-- `PortfolioWeights.dependencies()` exposes `signal_weights` and the explicit
-  execution valuation source. It owns event selection, signal cutoff, previous
-  executed state, and `PortfolioWeightsStorage` production.
-- `PortfoliosUpdater.dependencies()` exposes canonical `portfolio_weights` and
-  `valuation_source`. Signal weights are a transitive execution dependency, not
-  a direct valuation dependency.
+- Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to a
+  portfolio node.
+- `PortfolioRebalance.dependencies()` is the valuation source (and FX source) it
+  trades at, unless the strategy has bars of its own, plus the strategy's declared
+  inputs; it reads the signal, a published series, without running it. It owns
+  event selection, signal cutoff and the rebalance state.
+- `PortfolioEngine.dependencies()` is the rebalance state, the valuation source, the
+  FX source and the valuation and lifecycle models' inputs.
+  `PortfolioWeights.dependencies()` is the engine, and
+  `PortfolioValues.dependencies()` the weights node.
 - Prices are stamped at the moment they were observed, and a trade happens only
   at an observed price (ADR 0058). Every strategy follows it: the earliest moment
   is the strategy's moment while the portfolio calendar is in session, otherwise
@@ -366,8 +372,8 @@ Rules:
   has open, and their `execution_policy` applies the cash setting to the slices. Their
   rows record the book (`held_shares`, `cash`) like `ImmediateSignal`'s, with the
   strategy's facts under `strategy_state["bar"]`; no `pending` or `superseded` rows.
-  The three sized strategies require `total_notional`, the money one unit of their book
-  stands for; it turns a bar's capacity into shares of the order.
+  The book's unit is the ledger's `initial_nav` (ADR 0065); it turns a bar's capacity
+  into shares of the order.
 - `ImmediateSignal` rebalances at every new signal. It requires
   `calendar_events_instance` (a `PortfolioCalendarEvents` publishing both
   `market_open` and `market_close`) and `calendar_identifier`, the portfolio's
@@ -381,11 +387,11 @@ Rules:
 - A held asset is always valued at its last observed price (and FX at its last
   rate), however old. Past `maximum_staleness` it is marked stale; only a held asset
   with no observed price at all raises. `fail_on_missing_values=True` on
-  `ValuationAlignmentPolicy` or `MarketPriceValuationModel` refuses a stale price
-  instead (default `False`).
+  `MarketPriceValuationModel` refuses a stale price instead (default `False`).
 - `execution_policy` (`ExecutionPolicy`), on every built-in strategy, holds the
   execution choices; its defaults are the owner's decisions: shares sized at the decision, no negative
-  cash (`negative_cash`: `fraction_of_nav`, or `fixed_amount` only with a ledger),
+  cash (`negative_cash`: `fraction_of_nav`, or `fixed_amount`, converted with the
+  ledger's `initial_nav`),
   sells before buys, pro-rata allocation of too little cash, cut-and-cancel of an
   uncovered buy once the
   rebalance's sells have filled (reason `insufficient_cash`), and the portfolio
@@ -405,9 +411,18 @@ Rules:
   `fx_source_instance` when an asset is quoted in another currency: the valuation
   source then needs `price_asset_identifier`, and prices convert at the last
   observed rate. Without it, a foreign quote is refused.
-- Without a ledger, the portfolio is valued from the rebalance book's shares and
-  cash (`PortfolioWeights.held_shares`, `book_cash`): weights drift with prices
-  between rebalances.
+- Every portfolio keeps a ledger (ADR 0065): `accounting_configuration` states its
+  `initial_nav`, `initial_state_time_index`, valuation model and lifecycle models.
+  The ledger values positions at their prices, so weights drift with prices between
+  rebalances. Costs are the strategy's `execution_cost_model_instances`.
+- A valuation source's prices are at the level its producer chose; the source states
+  it in `events_in_price` (`"adjusted"`, the default: every event of the asset is in
+  the price; a tuple names exactly what is; `()` for unadjusted). A
+  `TimeIndexTableRef` is adjusted. `InterpolatedPrices` adjusts nothing. On prices
+  that do not include an event, a run refuses while the portfolio holds or buys an
+  asset whose type lists it (`AssetType.event_types`) and no lifecycle model books it
+  (`booked_event_types`); a model that books an event the prices include is refused
+  at configuration, since it would count it twice.
 - Use `CalendarEventSignal` when the latest eligible signal should execute at a
   persisted market open or close. Its calendar identifier, session label,
   event, offset, cadence, signal selection, and execution valuation convention
@@ -420,24 +435,20 @@ Rules:
   `CalendarRangeError`.
 - The authoritative portfolio universe is the signal output frame. A signal
   `get_asset_list()` is preflight/context only.
-- Required valuation assets are derived from signal output, previous portfolio
-  weights that still need valuation or liquidation, and any explicit portfolio
-  value override asset.
-- Valuation sources may contain extra assets; portfolio calculation filters to
-  the required signal universe.
-- `SignalWeights`, `PortfolioWeights` and `PortfoliosUpdater` are not
+- The ledger reads the valuation source's rows of the assets the portfolio's fills
+  trade; valuation sources may contain extra assets.
+- `SignalWeights`, `PortfolioWeights` and `PortfolioValues` are not
   `TimeIndexTableUpdater`s (ADR 0060): they take no `output_table=` and publish
   through the series row classes. Their progress is the published series itself
   (`bounds`, `last`), scoped by key: a portfolio's start is its latest published
   value for the resolved `PortfolioTable.unique_identifier`; a later row for another
   portfolio never moves it. Running the same window twice publishes nothing.
-- Portfolio valuation timestamps come from actual valuation-source observations.
-  Executed weights are selected as-of each valuation timestamp, so sparse weekly
-  rebalances can drive daily valuation without daily weight rows.
-- Seed valuation reads must fetch the latest eligible observation for every
-  required asset in one set-based request. Past
-  `ValuationAlignmentPolicy.maximum_staleness` an observation is marked stale,
-  not refused.
+- Portfolio value timestamps are ledger times: fills, lifecycle events and actual
+  valuation-source observations, so sparse weekly rebalances can drive daily
+  valuation without daily weight rows. A weights row is published for each ledger
+  event that changes a position.
+- Seed reads must fetch the latest eligible observation for every required asset in
+  one set-based request.
 - Contributed signal progress is scoped by `signal_uid`: the signal's published
   `SignalWeightsSeries` (`bounds`, and `last(by="asset")` per asset). `signal_uid`
   references `SignalMetadataTable.signal_uid`, so a signal's metadata exists before
@@ -448,9 +459,8 @@ Rules:
 - `SignalMetadataTable.signal_description` and signal `get_explanation()` text
   must be plain text or Markdown. Do not return or document HTML tags for signal
   descriptions; rendering belongs to the consuming UI.
-- Missing or stale required valuation assets fail under the default strict
-  policy. A permissive policy may yield no eligible rows, but it must never
-  manufacture a timestamp.
+- A held asset with no observed price fails the event; nothing manufactures a
+  timestamp.
 - As-of selection may reindex to explicit signal, calendar, bar, or valuation
   timestamps. It must not introduce any additional economic timestamp.
 - `PortfolioAnalytics` is the only portfolio component that may resample. Its
@@ -464,12 +474,18 @@ Rules:
   computed from the stored calendar and the historical `close_time`, prove the
   inspection reaches the latest stored row, and apply one portfolio at a time.
   Never update indexed coordinates in place or use raw SQL.
-- `PortfoliosUpdater.run(..., update_pointers=True)` is the default portfolio
-  workflow behavior: after it publishes, it upserts the resolved `PortfolioTable`
-  row with its `signal_uid`. The three `*_table_update_uid` pointers name update
+- Run portfolios with `msm_portfolios.recipes.run_portfolios` (every portfolio of a
+  tick in one call) or `run_portfolio` (one). Their ledgers (`PortfolioEngine`) are
+  the heads of one joined MetaTables run (`run_updaters`), so a dependency several
+  portfolios share (prices, calendar events, a strategy's or a signal's input) runs
+  once, before every node that reads it (issue #133). The rebalance computes and
+  publishes a signal that computes its weights before it reads it; the signal's
+  `dependencies()` are the rebalance's `signal.<name>` dependencies. Then each
+  portfolio publishes its weights and values and records its `signal_uid` on its
+  `PortfolioTable` row. `PortfolioValues.run()` and `PortfolioWeights.run()` only
+  publish what the ledger holds. The three `*_table_update_uid` pointers name update
   records of bound tables, which a publishing node does not have; they are left as
-  they are (ADR 0060 leaves their replacement undecided). Prefer
-  `msm_portfolios.recipes.run_portfolio`, which runs the chain in order.
+  they are (ADR 0060 leaves their replacement undecided).
 - Rerunning before a new execution event or valuation observation must return an
   empty incremental update. Job run time is never an economic timestamp.
 - API reads for a portfolio's signal weights must filter by
@@ -482,6 +498,10 @@ Contributed signal rules:
 
 - `FixedWeightsConfig` must not require asset/price configuration for portfolio
   core behavior.
+- `FixedWeightsConfig.signal_time_index` (required, timezone-aware) is the time of the
+  signal's one observation, and part of its signal uid. State it after the portfolio's
+  first observed price: a rebalance sizes with the last prices before its earliest
+  moment and refuses without one (ADR 0058).
 - Weights an application receives (not computes) use `ApplicationWeights`, or
   `msm_portfolios.recipes.publish_signal_weights` directly; do not write a signal
   class for them. Its identity is `ApplicationWeightsConfig(provider, key)`, never the
@@ -496,10 +516,9 @@ Contributed signal rules:
 
 ## Position-Aware Accounting
 
-Use `PortfolioEngine` only when the portfolio needs instrument quantities,
-currency balances, obligations, or position-driven lifecycle events. Preserve
-`PortfoliosUpdater` as the unchanged default when accounting configuration is
-omitted or explicitly `None`.
+Every portfolio keeps a ledger, which `PortfolioEngine` books: instrument
+quantities, currency balances, obligations, and position-driven lifecycle events.
+`PortfolioWeights` and `PortfolioValues` publish projections of it.
 
 A Portfolio is a backtest model. It has no Account and must not ingest broker
 orders, trades, fills, account holdings, custody balances, or actual account
@@ -508,9 +527,12 @@ simulated portfolio executions. The strategy emits internal execution facts to
 `PortfolioAccounting`; do not expose an external execution-fact input lane or a
 compatibility fallback for one.
 
-For the built-in position-aware path, configure a `TargetWeightExecutionModel`
-on that existing strategy and provide an explicit `InstrumentExecutionSpec` for
-every simulated Asset. Keep fill-time `ExecutionCostModel`s on the strategy and
+A strategy without `execution_model_instance` trades with the default model:
+fractional units (`quantity_step=None`), multiplier 1, cash settlement, quoted in
+the currency of the asset's valuation rows. To change that, configure a
+`TargetWeightExecutionModel` on the strategy with an explicit
+`InstrumentExecutionSpec` for every simulated Asset. Keep fill-time
+`ExecutionCostModel`s on the strategy and
 holding-period funding/dividend/coupon economics in `LifecycleEventModel`s.
 Variation-margin instruments change quantity without a full-notional cash leg;
 their valuation model must implement the corresponding instrument-value

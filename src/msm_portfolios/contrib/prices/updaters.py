@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -67,6 +67,17 @@ class InterpolatedPricesConfig(AssetIndexedUpdaterConfiguration):
         default=None,
     )
     upsample_frequency_id: str | None = None
+    events_in_price: Literal["adjusted"] | tuple[str, ...] = Field(
+        default="adjusted",
+        description=(
+            "The events the source's prices include (ADR 0065). 'adjusted', the default, "
+            "means every event of the asset, so a portfolio needs no lifecycle model for "
+            "them; a tuple names exactly the event types they include, () for unadjusted "
+            "prices. The updater adjusts nothing: it states the level of the bars it reads, "
+            "so the setting changes no row it writes and is not part of its update hash."
+        ),
+        json_schema_extra={"hash_excluded": True},
+    )
 
     @model_validator(mode="after")
     def _require_one_source(self) -> "InterpolatedPricesConfig":

@@ -7,6 +7,206 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-11-24
+
+Minor release 6.1.0, with breaking changes. Every portfolio keeps a ledger
+([ADR 0065](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0065-every-portfolio-keeps-a-ledger/)):
+`PortfolioEngine` books every portfolio, and its published weights and values are
+projections of the ledger. A portfolio refuses to run while it holds an asset with an
+event nothing books. Every portfolio of a tick runs in one MetaTables invocation, which runs
+what they share once
+([#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)).
+
+### Added
+
+- **`run_portfolios`: every portfolio of a tick in one MetaTables run**
+  (`msm_portfolios.recipes`,
+  [#133](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/133)). The
+  portfolios' `PortfolioEngine`s are the heads of one `run_updaters` call (MetaTables ADR
+  0031), so a dependency several of them share (prices, calendar events, a strategy's or a
+  signal's input) runs once, before every node that reads it. Then each portfolio publishes
+  its weights and values and records its signal on its `Portfolio` row. It answers
+  `PortfolioRuns`: `ran`, a `PortfolioRun` for each portfolio that ran, in the order given,
+  and `failed`, a `PortfolioRunFailure` (position, identifier, reason, error) for each one
+  the preflight refused, whose node or a dependency it needs failed, or whose publication
+  failed; a failure never stops the others. It reads the signals' bounds in one call, and
+  a portfolio's first rebalance is what its weights' publication says
+  ([#135](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/135)).
+
+- **Asset types list their events.** `AssetType.event_types` (column `event_types` of
+  `ms_markets__assettype`, revision `0038`) names the events an asset of the type can have.
+  The built-in types list them (`msm.EVENT_TYPE_*`): `equity` dividend and split, `bond`
+  coupon and redemption, `future` expiry; `currency`, `currency_spot` and `crypto` none.
+  Revision `0038` sets them on the built-in rows that exist; other rows list none. An asset
+  type of a provider's own states its events when it is created, with `AssetType.create`
+  or `upsert` or in an account registration (`AccountRegistrationAssetType.event_types`).
+- **A price source states which events its prices include.** `events_in_price` on the
+  valuation source's configuration (`InterpolatedPricesConfig.events_in_price`):
+  `"adjusted"`, the default, means the prices include every event of the asset, whatever
+  its type; a tuple names exactly the event types they include, `()` for unadjusted prices.
+  `InterpolatedPrices` adjusts nothing, and the setting is not part of its update hash. A
+  `TimeIndexTableRef` source counts as adjusted (`msm_portfolios.accounting.events`).
+- **A lifecycle model states the events it books** (`LifecycleEventModel.booked_event_types`;
+  `DividendCashFlowModel` books `dividend`).
+- **A portfolio refuses to run while it holds an asset with an event nothing books.** On
+  prices that are not adjusted, `PortfolioEngine` reads the types of the assets the
+  portfolio trades and refuses, naming each asset and event type, an event that neither a
+  lifecycle model books nor the prices include (`require_booked_events`). The build
+  configuration refuses a lifecycle model that books an event the prices already include,
+  which would count it twice.
+- **`PortfolioValues`** publishes a portfolio's values from its ledger: `close` is the NAV
+  over the ledger's `initial_nav`, so a portfolio starts at 1, and `valuation_stale` is set
+  when the ledger valued a held asset at a price older than the valuation model's
+  `maximum_staleness`. `project_portfolio_weights` and `project_portfolio_values`
+  (`msm_portfolios.accounting`) project the ledger.
+- **A default execution model.** A strategy without `execution_model_instance` trades every
+  asset in fractional units, with multiplier 1 and cash settlement, priced in its source's
+  currency (`default_execution_model`). `InstrumentExecutionSpec.quantity_step` may be
+  `None` for fractional quantities.
+
+### Changed
+
+- **Breaking: every portfolio keeps a ledger.** `PortfolioBuildConfiguration.accounting_configuration`
+  is required: every portfolio states its `initial_nav`, `initial_state_time_index` and
+  `position_valuation_model_instance`, and the lifecycle models its assets need. Every
+  portfolio's identity changes.
+- **Breaking: the ledger reads the portfolio's valuation source.** `PortfolioEngine` values
+  every position with the build's `valuation_source_instance` and `valuation_column`. A price
+  is in the portfolio's currency unless the source has `price_asset_identifier`, and a row's
+  revision is computed from it when the source has no `source_revision`.
+  `PortfolioEngineConfiguration` gains `valuation_source_instance` and `valuation_column`.
+- **Breaking: the weights are a projection of the ledger.** `PortfolioWeights` depends on the
+  portfolio's `PortfolioEngine` and publishes, at each ledger event that changes a position,
+  the weight of each asset it changed: its value over the NAV after the event. An event that
+  changes a position records each asset's value before and after it in its valuation
+  summary. `PortfolioWeights` and `PortfolioValues` take `rebalance_output_table` and
+  `event_ledger_output_table`, the producer's private rebalance state and ledger.
+- **Breaking: `run_portfolio` runs the ledger.** It runs the signal, the prices and calendar
+  events, the rebalance state, `PortfolioEngine` (into `event_ledger_output_table`), then
+  publishes the weights and values. `portfolio_preflight` no longer refuses a portfolio with
+  a ledger. The valuation source is no longer run a second time.
+- **Breaking: `run_portfolio` is `run_portfolios` for one portfolio** (#133). Its graph is
+  one MetaTables invocation, every node once. It raises what stopped the portfolio: the
+  preflight's `ValueError`, its own node's error or a dependency's. It checks the
+  strategy's calendar before anything runs.
+- **Breaking: a published node runs nothing.** `SignalWeights.run()`,
+  `PortfolioWeights.run()` and `PortfolioValues.run()` compute and publish their rows and
+  take no `update_tree`; `PortfolioValues.run()` takes no `update_only_tree` or
+  `update_pointers` and always records the portfolio's signal. A portfolio's chain runs
+  only through `run_portfolios` or `run_portfolio`.
+- **Breaking: the rebalance runs a signal that computes its weights.**
+  `PortfolioRebalance.update()` computes and publishes such a signal (`FixedWeights`,
+  `MarketCap`, ...) before it reads it, and `PortfolioRebalance.dependencies()` declares the
+  updaters and tables the signal's `dependencies()` names, as `signal.<name>`, so they
+  join the run. A signal whose weights arrive by publication (`ApplicationWeights`) is only
+  read, and a retired portfolio's run, whose window is empty, reads nothing.
+- **Requires `mainsequence-metatable` 0.1.83** (`>=0.1.83,<0.2`), for `run_updaters`
+  (MetaTables#156), which registers a run's updates and their edges with one request each
+  (MetaTables#162). A time-index write a constraint refuses now raises
+  `TransferConstraintError`, code `time_index_constraint_violation`, naming the kind,
+  constraint, columns and value (MetaTables#157), so a ledger whose currency is not an
+  `Asset` says which key refused it. MetaTables' modules moved into packages in 0.1.80
+  (MetaTables ADR 0030), and 0.1.82 exports the dtype tokens and `sqlalchemy_type_to_token`
+  (MetaTables#160): ms-markets imports them, `api_endpoint_scope`, `ApiResolutionError`,
+  `RuntimeContext`, `DataSourceResolutionError`, `MetaTableWriteOperation`,
+  `get_runtime_context` and `time_indexed_registration_request_from_sqlalchemy_model` from
+  `metatables` (`import metatables as dc` where it imported `dtype_codec`). The tests give
+  the client their runtime with `metatables.use_runtime_context`. It also requires
+  `mainsequence` 9.0.41 and OpenTelemetry 1.45.2. `.agents/skills/metatables` was copied
+  again from 0.1.83, whose skills link MetaTables' documentation site instead of shipping
+  copies of its guides.
+- **Breaking: one size, the ledger's `initial_nav`.** It is the unit of the rebalance's book
+  for every strategy. The strategies sized in money or volume take it from the book
+  (`SizedBarStrategy.book_unit`), and `RebalanceStrategyBase.bar_state` receives the book.
+  A fixed-amount negative cash limit is allowed for every portfolio.
+- **Breaking: `FixedWeights` states when its weights apply.** `FixedWeightsConfig.signal_time_index`
+  (required, timezone-aware) is the time of the signal's one observation. It was always
+  2018-01-02, so a portfolio whose prices start later had no price to size its rebalance
+  with and refused to run
+  ([#134](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/134)). The
+  time is part of the signal uid, so every `FixedWeights` signal uid changes, and the
+  identity of every portfolio built on one. The equal-weights example states its weights
+  after its first close and now publishes its weights and values, and so does the account
+  workflow built on it.
+- **A publish reads once before it writes**
+  ([#135](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/135)).
+  `publish` reads the key's registry row, its series' bounds and whether its rows' assets
+  are registered in one statement, and reads the stored rows only where a row is at or
+  before the key's last stored time. `publish(new_only=True)` leaves those rows out without
+  comparing them; the published nodes (`PublishedSeriesNode.publish_frame`) publish that
+  way and read no bounds of their own. A run of the equal-weights example made 163
+  requests instead of 189.
+- **A run writes a signal's metadata and the `Portfolio` row only when they change**
+  ([#136](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/136)).
+  `SignalWeights.run()` reads the signal's `SignalMetadata` row and writes it only when it
+  is missing or its description changed (`ensure_signal_metadata`, which
+  `publish_signal_weights` uses too). `PortfolioValues` no longer writes the signal's
+  metadata again, and writes the `Portfolio` row only when its signal or price column
+  changes. A second run of the equal-weights example made 101 requests instead of 108.
+- **A portfolio run reads each calendar once**
+  ([#137](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/137)).
+  `run_portfolios` runs inside `msm.api.calendars.calendar_reads()`: in it a calendar's
+  row, session rules and exceptions are each read once, and `Calendar.sessions`, `dates`
+  and `is_business_day` compute from that one definition, every exception included.
+  `Calendar.get_by_unique_identifier` and `get_by_uid` keep what they read for the block.
+  `AssetCalendar.calendars_of(identifiers)` reads each asset's calendar row in one read,
+  so `resolve_asset_schedules` makes one read instead of three. A calendar's exceptions
+  are read in pages of 9,000 rows instead of 1,000. A second run of the equal-weights
+  example made 87 requests instead of 101, 4 of them for the calendar instead of 11.
+- **A first run with a computed signal starts where the signal does, and reads only its
+  calendar's events**
+  ([#138](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/138)). A
+  signal that computes its weights publishes in the rebalance's update, so on a first run
+  the preflight found no observation and the rebalance started at `OFFSET_START`
+  (2018-01-01). `PortfolioRebalance` now starts a first run at the first observation the
+  signal's publication reports. A strategy input is read at the coordinates the strategy
+  follows (`dependency_seed_coordinates`), so the calendar events' window is read for the
+  strategy's calendar, session label and event types only. The first run of the
+  equal-weights example made 135 requests instead of 147: its calendar events took one
+  read instead of 13 pages of 6,499 rows.
+- **A portfolio run looks its MetaTables runtime up once**
+  ([#140](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/140)).
+  Every Markets statement asked MetaTables for its runtime, to compile for its DataSource
+  and SQL dialect; a local API answers each time. `run_portfolios` runs inside
+  `msm.repositories.base.one_runtime_lookup()`: the first statement asks, and every later
+  one compiles offline with that answer (`compile_markets_statement`,
+  `resolve_markets_sql_target`). Outside a block nothing changes. The first run of the
+  equal-weights example sent 20 runtime lookups instead of 37 (59 before #135), one of
+  them from Markets inside the run; the rest are MetaTables' own (MetaTables#162) and the
+  example's setup before the run.
+- **A portfolio run reads each table's rows once**
+  ([#139](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/139)).
+  `run_portfolios` runs inside `msm_portfolios.time_index.portfolios.run_rows.run_rows()`,
+  in which a node keeps the rows it read for the nodes after it. The rebalance reads the
+  valuation source once, from the ledger's initial state to the source's last row (to its
+  window's end under `MAX_TD_FROM_LATEST_VALUE`). Each asset's last price before the window
+  comes from those rows, and the ledger books with them. `PortfolioEngine.ledger_rows` and
+  `rebalance_state_rows` answer the weights and values with the ledger and the rebalance
+  state the ledger's update kept. A node that finds no rows kept reads them itself, as
+  outside a run: a ledger whose rebalance read no prices or read fewer than it needs, and
+  every node run on its own. The ledger takes `retired_at` from the `Portfolio` row its
+  run resolved, and `FixedWeights` no longer reads its own series: publishing its one
+  observation again writes nothing. The ledger books the same rows. A second run of the
+  equal-weights example reads the ledger once instead of three times and the prices once
+  instead of three times plus a seed read: 71 requests instead of 76.
+
+### Removed
+
+- **Breaking: the portfolio without a ledger.** `PortfoliosUpdater` is removed, with its
+  valuation from the rebalance book or from constant weights.
+  `PortfolioBuildConfiguration.execution_configuration` (`PortfolioExecutionConfiguration`,
+  `commission_fee`) and `valuation_alignment_policy` (`ValuationAlignmentPolicy`) are
+  removed: costs come from the strategy's `execution_cost_model_instances`, such as
+  `ProportionalExecutionCostModel(rate=0.00018)`, and staleness from the valuation model.
+  `SizedBarStrategy.total_notional`, `RebalanceStrategyBase.book_unit_value`,
+  `MarketPriceValuationModel.valuation_source` and `price_column`, and the signal's
+  `get_asset_uid_to_override_portfolio_price` are removed.
+- **Breaking: the weights lose the book's columns.** Revision `0038` drops `held_shares` and
+  `book_cash` from `ms_markets__portfolioweightsts`; the ledger holds the quantities.
+- **Breaking: the published nodes' dependencies.** `PortfolioWeights.dependencies()`,
+  `PortfolioValues.dependencies()` and `PublishedSeriesNode.run_dependencies()` are
+  removed; `dependencies()` stays on `SignalWeights`, where it names the signal's inputs.
+
 ## [6.0.0] - 2026-11-23
 
 Major release 6.0.0. An order has its own row, and a batch's orders, their states, events

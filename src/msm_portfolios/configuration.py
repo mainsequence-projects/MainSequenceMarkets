@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import json
 import uuid
@@ -351,53 +350,6 @@ class BacktestingWeightsConfig(PortfolioConfigBaseModel):
         return canonical_rebalance_strategy_configuration(v)
 
 
-class PortfolioExecutionConfiguration(PortfolioConfigBaseModel):
-    """
-    Configuration for execution / fee model.
-
-    Attributes:
-        commission_fee:
-            Commission/fee rate applied to turnover (abs(weights_current - weights_before)).
-    """
-
-    commission_fee: float = Field(
-        default=0.00018,
-        ge=0.0,
-        description=(
-            "Commission fee rate applied as turnover drag. "
-            "PortfoliosUpdater computes fees as sum(abs(w_current - w_before)) * commission_fee."
-        ),
-        examples=[0.00018, 0.001, 0.0],
-    )
-
-
-class ValuationAlignmentPolicy(PortfolioConfigBaseModel):
-    """Per-asset as-of policy for consumed valuation observations (ADR 0058)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    maximum_staleness: dt.timedelta = Field(
-        default=dt.timedelta(days=1),
-        gt=dt.timedelta(0),
-        description=(
-            "Age past which a valuation observation is marked stale. A held asset is "
-            "always valued at its last observed price, however old; a portfolio value "
-            "that uses an older price has valuation_stale set. Only a held asset with no "
-            "observed price at all raises. Alignment never creates timestamps."
-        ),
-        examples=["P1D"],
-    )
-    fail_on_missing_values: bool = Field(
-        default=False,
-        description=(
-            "Raise when a held asset's last observed price is older than "
-            "maximum_staleness, instead of valuing it at that price and marking the "
-            "value stale (the default, ADR 0058)."
-        ),
-        examples=[False, True],
-    )
-
-
 class FrontEndDetails(PortfolioConfigBaseModel):
     """
     Optional descriptive metadata intended for UI/front-end surfaces.
@@ -482,8 +434,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
     - which explicit valuation source is consumed
     - how signal weights are generated
     - which stateful rebalance strategy and observed execution dependencies are used
-    - what fee model to apply
-    - how observations are aligned without manufacturing timestamps
+    - how the portfolio's ledger books and values it (ADR 0065)
 
     Attributes:
         valuation_source_instance:
@@ -494,12 +445,10 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
             The portfolio's currency: NAV, cash and every value are in it.
         fx_source_instance:
             The portfolio's one FX source, when an asset is quoted in another currency.
-        valuation_alignment_policy:
-            Bounded per-asset as-of behavior for the consumed valuation frame.
-        execution_configuration:
-            Fee/execution model.
         backtesting_weights_configuration:
             The injected signal + rebalance strategies.
+        accounting_configuration:
+            The portfolio's ledger: its initial NAV, valuation and lifecycle models.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -522,9 +471,10 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         default="close",
         min_length=1,
         description=(
-            "Numeric column from the consumed valuation source used for portfolio "
-            "valuation and returns. Defaults to 'close' for bar-based workflows, "
-            "but may be any source column such as fair_value, nav, or mark_price."
+            "Numeric column from the consumed valuation source: the price the rebalance "
+            "sizes with and the ledger values with (ADR 0065). Defaults to 'close' for "
+            "bar-based workflows, but may be any source column such as fair_value, nav, "
+            "or mark_price."
         ),
         examples=["close", "fair_value", "nav", "mark_price"],
     )
@@ -534,7 +484,7 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         min_length=1,
         description=(
             "The portfolio's currency (ADR 0059). NAV, cash and every value are in it; the "
-            "ledger, PortfolioRebalance and the weights path all read it from here."
+            "ledger and PortfolioRebalance read it from here."
         ),
         examples=["USD"],
     )
@@ -547,8 +497,8 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
             description=(
                 "The portfolio's one FX source, indexed by time_index, "
                 "base_asset_identifier and quote_asset_identifier, with a rate: one unit "
-                "of the base is rate units of the quote. PortfolioRebalance, the ledger "
-                "and the weights path convert prices quoted in another currency into "
+                "of the base is rate units of the quote. PortfolioRebalance and the ledger "
+                "convert prices quoted in another currency into "
                 "valuation_asset_identifier at the last observed rate. With it, the "
                 "valuation source must have a price_asset_identifier column; without "
                 "it, every asset is priced in the portfolio's currency (ADR 0059)."
@@ -557,31 +507,17 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         WithJsonSchema({"type": "object"}),
     ]
 
-    valuation_alignment_policy: ValuationAlignmentPolicy = Field(
-        default_factory=ValuationAlignmentPolicy,
-        description=(
-            "Per-asset as-of and staleness policy used at explicit execution and "
-            "valuation observations."
-        ),
-    )
-
-    execution_configuration: PortfolioExecutionConfiguration = Field(
-        ...,
-        description="Execution / fee configuration used by PortfoliosUpdater.",
-        examples=[{"commission_fee": 0.00018}],
-    )
-
     backtesting_weights_configuration: BacktestingWeightsConfig = Field(
         ...,
         description="Injected signal and rebalance strategy instances used to build the portfolio.",
     )
 
-    accounting_configuration: PortfolioAccountingConfiguration | None = Field(
-        default=None,
-        exclude_if=lambda value: value is None,
+    accounting_configuration: PortfolioAccountingConfiguration = Field(
+        ...,
         description=(
-            "Explicit opt-in position accounting configuration. Omitted and None preserve "
-            "the legacy weight-return path and its serialized identity."
+            "The portfolio's ledger (ADR 0065): every portfolio keeps one. PortfolioEngine "
+            "books the fills PortfolioRebalance records and the events its lifecycle "
+            "models book, and the portfolio's weights and values are projections of it."
         ),
     )
 
@@ -602,30 +538,33 @@ class PortfolioBuildConfiguration(PortfolioConfigBaseModel):
         return None if v is None else canonical_valuation_source_configuration(v)
 
     @model_validator(mode="after")
-    def _fixed_cash_limit_needs_a_ledger(self) -> PortfolioBuildConfiguration:
-        """A fixed-amount negative cash limit is in currency; only a ledger has one."""
-        strategy = self.backtesting_weights_configuration.rebalance_strategy_instance
-        if (
-            self.accounting_configuration is None
-            and strategy.fill_policy().negative_cash == "fixed_amount"
-        ):
+    def _no_event_is_counted_twice(self) -> PortfolioBuildConfiguration:
+        """Refuse a lifecycle model that books an event the prices already include.
+
+        The valuation source states which events its prices include
+        (``events_in_price``, ADR 0065); a model that books one of them would count
+        it twice.
+        """
+        from msm_portfolios.accounting.events import events_in_price, price_includes
+
+        in_price = events_in_price(self.valuation_source_instance)
+        twice = sorted(
+            {
+                (model.model_identifier, event_type)
+                for model in self.accounting_configuration.lifecycle_event_model_instances
+                for event_type in model.booked_event_types
+                if price_includes(in_price, event_type)
+            }
+        )
+        if twice:
+            listed = ", ".join(f"{event_type} ({model})" for model, event_type in twice)
             raise ValueError(
-                "A fixed-amount negative cash limit needs accounting_configuration: a "
-                "portfolio without a ledger has no NAV in currency, so it allows no "
-                "negative cash or a fraction of NAV (ADR 0059)."
+                "The valuation source's prices already include these events, and a "
+                f"lifecycle model also books them, so they would be counted twice: {listed}. "
+                "State on the source which events its prices include (events_in_price), "
+                "or drop the model (ADR 0065)."
             )
         return self
-
-    @field_serializer(
-        "valuation_alignment_policy",
-        when_used="json",
-        return_type=dict[str, Any],
-    )
-    def ser_valuation_alignment_policy(
-        self,
-        v: ValuationAlignmentPolicy,
-    ) -> dict[str, Any]:
-        return v.model_dump()
 
     def model_dump(self, **kwargs):
         """

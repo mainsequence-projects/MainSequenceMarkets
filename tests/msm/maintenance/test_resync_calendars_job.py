@@ -13,7 +13,7 @@ import pytest
 import sqlalchemy as sa
 import yaml
 
-import metatables.endpoint
+import metatables
 from msm.api.calendars import Calendar
 from msm.services.calendars import (
     CalendarSyncResult,
@@ -39,7 +39,7 @@ def _load_job(monkeypatch, context) -> SimpleNamespace:
 
     state = {"scopes": [], "models": None}
 
-    original = metatables.endpoint.api_endpoint_scope
+    original = metatables.api_endpoint_scope
 
     @contextmanager
     def scope(**kwargs):
@@ -53,7 +53,7 @@ def _load_job(monkeypatch, context) -> SimpleNamespace:
         state["models"] = models
         return SimpleNamespace(context=context)
 
-    monkeypatch.setattr(metatables.endpoint, "api_endpoint_scope", scope)
+    monkeypatch.setattr(metatables, "api_endpoint_scope", scope)
     monkeypatch.setattr("msm.start_engine", start_engine)
     spec = importlib.util.spec_from_file_location("resync_calendars_job", JOB_PATH)
     module = importlib.util.module_from_spec(spec)

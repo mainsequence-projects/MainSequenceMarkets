@@ -41,6 +41,7 @@ class NewAssetType:
     asset_type: str
     display_name: str | None = None
     description: str | None = None
+    event_types: tuple[str, ...] = ()
 
     @classmethod
     def from_definition(cls, definition: AssetTypeDefinition) -> NewAssetType:
@@ -49,6 +50,7 @@ class NewAssetType:
             asset_type=definition.asset_type,
             display_name=definition.display_name,
             description=definition.description,
+            event_types=tuple(definition.event_types),
         )
 
 
@@ -87,6 +89,7 @@ def insert_missing_asset_types(
                     "asset_type": item.asset_type,
                     "display_name": item.display_name,
                     "description": item.description,
+                    "event_types": list(item.event_types),
                 }
                 for item in asset_types
             ]

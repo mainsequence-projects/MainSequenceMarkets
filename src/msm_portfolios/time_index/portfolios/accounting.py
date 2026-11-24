@@ -17,10 +17,17 @@ from msm_portfolios.accounting import (
     PortfolioAccountingConfiguration,
     event_digest,
 )
+from msm_portfolios.accounting.events import EventsInPrice, events_in_price, price_includes
 from msm_portfolios.accounting.reducer import _validate_ledger_record_identities
+from msm_portfolios.accounting.valuation import PRICE_COLUMN, VALUATIONS_INPUT
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm_portfolios.rebalance_strategy import RebalanceStrategyBase
-from msm_portfolios.rebalance_strategy.accounting import _empty_event_batch
+from msm_portfolios.rebalance_strategy.accounting import (
+    InstrumentExecutionSpec,
+    PositionExecutionModel,
+    TargetWeightExecutionModel,
+    _empty_event_batch,
+)
 from msm_portfolios.rebalance_strategy.base import UNFILLED_ENDINGS
 
 from msm_portfolios.retirement import (
@@ -30,11 +37,12 @@ from msm_portfolios.retirement import (
     window_is_empty,
 )
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
+from .run_rows import held_rows, rows_between
 from .storage import PortfolioEventLedgerStorage
 
 
 class PortfolioEngineConfiguration(PortfolioCanonicalUpdaterConfiguration):
-    """Hash-bearing opt-in position-accounting updater configuration."""
+    """Hash-bearing configuration of the portfolio's ledger updater (ADR 0065)."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
@@ -43,6 +51,16 @@ class PortfolioEngineConfiguration(PortfolioCanonicalUpdaterConfiguration):
     valuation_asset_identifier: str = Field(
         min_length=1,
         description="The portfolio's currency, from its build configuration (ADR 0059).",
+    )
+    valuation_source_instance: TimeIndexTableUpdater | TimeIndexTableRef = Field(
+        description=(
+            "The portfolio's valuation source, from its build configuration: the ledger "
+            "values every position at its prices (ADR 0065, decision 10)."
+        ),
+    )
+    valuation_column: str = Field(
+        min_length=1,
+        description="The source column that holds the price, from the build configuration.",
     )
     fx_source_instance: TimeIndexTableUpdater | TimeIndexTableRef | None = Field(
         default=None,
@@ -60,6 +78,15 @@ class PortfolioEngineConfiguration(PortfolioCanonicalUpdaterConfiguration):
 
     @field_serializer("portfolio_rebalance_instance", when_used="json")
     def serialize_portfolio_rebalance(
+        self,
+        value: TimeIndexTableUpdater | TimeIndexTableRef,
+    ) -> dict[str, Any]:
+        from msm_portfolios.configuration import canonical_valuation_source_configuration
+
+        return canonical_valuation_source_configuration(value)
+
+    @field_serializer("valuation_source_instance", when_used="json")
+    def serialize_valuation_source(
         self,
         value: TimeIndexTableUpdater | TimeIndexTableRef,
     ) -> dict[str, Any]:
@@ -101,18 +128,14 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         portfolio_rebalance: TimeIndexTableUpdater | TimeIndexTableRef | None = None,
         **kwargs,
     ) -> PortfolioEngine:
-        """Construct the opt-in engine from the nested portfolio build contract.
+        """Construct the portfolio's ledger updater from its build configuration.
 
         The ledger follows the portfolio's ``PortfolioRebalance``; one is built from
         the same configuration unless ``portfolio_rebalance`` is given.
         """
 
         build = portfolio_configuration.portfolio_build_configuration
-        accounting = getattr(build, "accounting_configuration", None)
-        if accounting is None:
-            raise ValueError(
-                "PortfolioEngine requires enabled PortfolioBuildConfiguration.accounting_configuration."
-            )
+        accounting = build.accounting_configuration
         if portfolio_rebalance is None:
             from .rebalance import PortfolioRebalance
 
@@ -126,6 +149,8 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 portfolio_identifier=portfolio_identifier,
                 accounting_configuration=accounting,
                 valuation_asset_identifier=build.valuation_asset_identifier,
+                valuation_source_instance=build.valuation_source_instance,
+                valuation_column=build.valuation_column,
                 fx_source_instance=build.fx_source_instance,
                 portfolio_rebalance_instance=portfolio_rebalance,
                 rebalance_strategy_instance=(
@@ -141,6 +166,7 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         engine = self._engine_config()
         dependencies: dict[str, TimeIndexTableUpdater | TimeIndexTableRef] = {
             "portfolio_rebalance": engine.portfolio_rebalance_instance,
+            "valuation_source": engine.valuation_source_instance,
         }
         if engine.fx_source_instance is not None:
             dependencies["fx"] = engine.fx_source_instance
@@ -159,8 +185,53 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 dependencies[key] = dependency
         return dependencies
 
+    def ledger_rows(self, *, start: Any, end: Any) -> pd.DataFrame:
+        """This portfolio's ledger rows from ``start`` to ``end``, both included.
+
+        In a portfolio run (``run_rows``) after this ledger's update, they are the rows the
+        update kept: the stored ledger it replayed and the tail it wrote, so the run's
+        weights and values read nothing (#139). Otherwise they are read.
+        """
+
+        identifier = self._engine_config().portfolio_identifier
+        held = held_rows()
+        if held is not None and identifier in held.ledgers:
+            return rows_between(held.ledgers[identifier], start=start, end=end)
+        return self.get_df_between_dates(
+            start_date=start,
+            end_date=end,
+            great_or_equal=True,
+            less_or_equal=True,
+            dimension_filters={"portfolio_identifier": [identifier]},
+        )
+
+    def rebalance_state_rows(self, *, start: Any, end: Any) -> pd.DataFrame:
+        """This portfolio's rebalance state from ``start`` to ``end``, both included.
+
+        In a portfolio run after this ledger's update, they are the rows the update read,
+        from the ledger's initial state on (the ledger books nothing earlier). Otherwise
+        they are read.
+        """
+
+        config = self._engine_config()
+        held = held_rows()
+        if held is not None and config.portfolio_identifier in held.rebalance_states:
+            return rows_between(
+                held.rebalance_states[config.portfolio_identifier], start=start, end=end
+            )
+        return _read_dependency(
+            config.portfolio_rebalance_instance,
+            start=start,
+            end=end,
+            dimension_filters={"portfolio_identifier": [config.portfolio_identifier]},
+        )
+
     def update(self) -> pd.DataFrame:
         config = self._engine_config()
+        held = held_rows()
+        if held is not None:
+            held.ledgers.pop(config.portfolio_identifier, None)
+            held.rebalance_states.pop(config.portfolio_identifier, None)
         accounting_config = config.accounting_configuration
         start = pd.Timestamp(accounting_config.initial_state_time_index)
         if start.tzinfo is None:
@@ -185,15 +256,47 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             end=end,
             dimension_filters={"portfolio_identifier": [config.portfolio_identifier]},
         )
-        frames: dict[str, pd.DataFrame] = {}
-        for name, dependency in sorted(
-            accounting_config.position_valuation_model_instance.declared_dependencies().items()
-        ):
-            frames[f"valuation.{name}"] = _read_dependency(
-                dependency,
+        fills = recorded_fills(rebalance_state)
+        if fills.empty:
+            # Nothing traded yet: the ledger opens at its first fill's run.
+            written = normalize_portfolio_event_ledger_frame(
+                pd.DataFrame(),
+                output_table=self.output_table,
+            )
+            self._keep(written, rebalance_state)
+            return written
+        assets = sorted(fills[ASSET_IDENTIFIER_DIMENSION].astype(str).unique())
+        require_booked_events(
+            assets,
+            in_price=events_in_price(config.valuation_source_instance),
+            lifecycle_models=accounting_config.lifecycle_event_model_instances,
+        )
+        valuation_model = accounting_config.position_valuation_model_instance
+        read = held.valuations.get(config.portfolio_identifier) if held is not None else None
+        frames: dict[str, pd.DataFrame] = {
+            f"valuation.{VALUATIONS_INPUT}": portfolio_valuations(
+                config.valuation_source_instance,
+                valuation_column=config.valuation_column,
+                currency=config.valuation_asset_identifier,
                 start=start,
                 end=end,
+                assets=assets,
+                rows=(
+                    None
+                    if read is None
+                    else read.rows(
+                        config.valuation_source_instance, start=start, end=end, assets=assets
+                    )
+                ),
             )
+        }
+        for name, dependency in sorted(valuation_model.declared_dependencies().items()):
+            if name == VALUATIONS_INPUT:
+                raise ValueError(
+                    f"A valuation model's own input cannot be named {VALUATIONS_INPUT!r}: "
+                    "PortfolioEngine fills it from the portfolio's valuation source."
+                )
+            frames[f"valuation.{name}"] = _read_dependency(dependency, start=start, end=end)
         for model in sorted(
             accounting_config.lifecycle_event_model_instances,
             key=lambda value: value.model_identifier,
@@ -204,14 +307,14 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                     start=start,
                     end=end,
                 )
-        valuation_dependencies = (
-            accounting_config.position_valuation_model_instance.declared_dependencies()
-        )
-        valuation_contracts = (
-            accounting_config.position_valuation_model_instance.required_input_contracts()
-        )
-        if set(valuation_dependencies) != set(valuation_contracts):
-            raise ValueError("Valuation dependency names and input-contract names must match.")
+        valuation_contracts = valuation_model.required_input_contracts()
+        provided = {*valuation_model.declared_dependencies(), VALUATIONS_INPUT}
+        missing_inputs = sorted(set(valuation_contracts) - provided)
+        if missing_inputs:
+            raise ValueError(
+                "The valuation model needs inputs it declares no source for: "
+                + ", ".join(missing_inputs)
+            )
         for name, contract in valuation_contracts.items():
             key = f"valuation.{name}"
             frames[key] = _validate_declared_input(frames[key], contract=contract, name=key)
@@ -226,9 +329,12 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             for name, contract in lifecycle_contracts.items():
                 key = f"lifecycle.{model.model_identifier}.{name}"
                 frames[key] = _validate_declared_input(frames[key], contract=contract, name=key)
-        valuations = frames.get("valuation.valuations", pd.DataFrame())
+        valuations = frames[f"valuation.{VALUATIONS_INPUT}"]
         if valuations.empty:
-            raise ValueError("PortfolioEngine requires declared valuation observations.")
+            raise ValueError(
+                "PortfolioEngine found no prices for the portfolio's assets in its "
+                "valuation source."
+            )
         fx = pd.DataFrame()
         if config.fx_source_instance is not None:
             fx = _validate_declared_input(
@@ -266,21 +372,39 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         )
         _validate_replay_against_existing(existing, ledger)
         ledger = _new_ledger_tail(existing, ledger)
-        return drop_retired_rows(
+        written = drop_retired_rows(
             normalize_portfolio_event_ledger_frame(
                 ledger,
                 output_table=self.output_table,
             ),
             boundary,
         )
+        self._keep(_appended(existing, written), rebalance_state)
+        return written
 
-    @staticmethod
-    def _retirement_boundary(portfolio_identifier: str) -> pd.Timestamp | None:
-        """Read the portfolio row once per run for its ``retired_at`` (ADR 0049)."""
+    def _keep(self, ledger: pd.DataFrame, rebalance_state: pd.DataFrame) -> None:
+        """Keep the ledger and the state it read for the run's weights and values."""
 
-        from msm.api.portfolios import Portfolio
+        held = held_rows()
+        if held is not None:
+            identifier = self._engine_config().portfolio_identifier
+            held.ledgers[identifier] = ledger
+            held.rebalance_states[identifier] = rebalance_state
 
-        return retirement_boundary(Portfolio.get_by_unique_identifier(portfolio_identifier))
+    def _retirement_boundary(self, portfolio_identifier: str) -> pd.Timestamp | None:
+        """The portfolio's ``retired_at`` (ADR 0049), from the row the run resolved.
+
+        The rebalance carries the ``Portfolio`` row its run prepared (#139); a ledger
+        built without one reads it.
+        """
+
+        rebalance = self._engine_config().portfolio_rebalance_instance
+        portfolio = getattr(rebalance, "_portfolio", None)
+        if portfolio is None:
+            from msm.api.portfolios import Portfolio
+
+            portfolio = Portfolio.get_by_unique_identifier(portfolio_identifier)
+        return retirement_boundary(portfolio)
 
     @classmethod
     def calculate_backtest(
@@ -403,6 +527,21 @@ FX_INPUT_CONTRACT = LifecycleInputContract(
     index_names=("time_index", "base_asset_identifier", "quote_asset_identifier"),
     required_columns=("rate", "source_revision"),
 )
+
+
+def _appended(existing: pd.DataFrame | None, written: pd.DataFrame) -> pd.DataFrame:
+    """The stored ledger with the tail the update wrote, indexed as the table is."""
+
+    if existing is None or existing.empty:
+        return written
+    if written.empty:
+        return existing
+    index = list(written.index.names)
+    return (
+        pd.concat([existing.reset_index(), written.reset_index()], ignore_index=True)
+        .set_index(index)
+        .sort_index()
+    )
 
 
 def _read_dependency(
@@ -566,9 +705,11 @@ class _RecordedFillBooker:
         self._strategy_revision = compute_strategy_revision(strategy)
         model = strategy.execution_model_instance
         if model is None:
-            raise ValueError(
-                f"{strategy.__class__.__name__} requires execution_model_instance for "
-                "position-aware accounting."
+            model = default_execution_model(
+                booked[ASSET_IDENTIFIER_DIMENSION].astype(str).unique()
+                if not booked.empty
+                else (),
+                valuation_observations=valuation_observations,
             )
         self._model = model
         strategy_name = f"{strategy.__class__.__module__}.{strategy.__class__.__qualname__}"
@@ -594,6 +735,7 @@ class _RecordedFillBooker:
         intent_id = str(fills["rebalance_intent_id"].iloc[0])
         return self.strategy.simulate_recorded_fills(
             time_index=timestamp,
+            execution_model=self._model,
             fills=fills,
             state=state,
             valuation_result=valuation_result,
@@ -602,6 +744,168 @@ class _RecordedFillBooker:
             fx_observations=self.fx_observations,
             strategy_revision=self._strategy_revision,
             decided_quantities=self._decided.get(intent_id),
+        )
+
+
+def default_execution_model(
+    assets: Any,
+    *,
+    valuation_observations: pd.DataFrame,
+) -> PositionExecutionModel:
+    """The execution model of a strategy that states none (ADR 0065, decision 11).
+
+    Every asset trades in fractional units, with multiplier 1 and cash settlement, priced
+    in the currency of its valuation rows, as the rebalance's book does.
+    """
+
+    flat = valuation_observations.reset_index()
+    specs = []
+    for asset in sorted({str(value) for value in assets}):
+        rows = flat[flat["asset_identifier"].astype(str) == asset]
+        currencies = sorted(set(rows["price_asset_identifier"].astype(str)))
+        if len(currencies) != 1:
+            raise ValueError(
+                f"Asset {asset!r} needs one price currency in the valuation source to "
+                f"trade with the default execution model; found {currencies or 'none'}."
+            )
+        specs.append(
+            InstrumentExecutionSpec(
+                asset_identifier=asset,
+                quantity_unit="units",
+                target_measure="market_value_weight",
+                contract_multiplier=1.0,
+                price_asset_identifier=currencies[0],
+                settlement_style="cash",
+                terms_version="default",
+            )
+        )
+    return TargetWeightExecutionModel(instrument_specs=tuple(specs))
+
+
+def portfolio_valuations(
+    source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    valuation_column: str,
+    currency: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    assets: Any,
+    rows: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """The portfolio's prices, read from its valuation source (ADR 0065, decision 10).
+
+    ``rows`` are the source's rows of ``assets`` from ``start`` to ``end`` when the run
+    has read them already (the rebalance did, #139); without them the source is read.
+    The price is the source's ``valuation_column``. It is in ``currency``, the
+    portfolio's, unless the source has ``price_asset_identifier``. A row's
+    ``source_revision`` is the source's own when it has one; otherwise it is computed
+    from the row's time, asset and price, so a changed price is a changed source.
+    """
+
+    assets = [str(asset) for asset in assets]
+    if not assets:
+        return pd.DataFrame(
+            columns=[PRICE_COLUMN, "price_asset_identifier", "source_revision"],
+            index=pd.MultiIndex.from_arrays([[], []], names=["time_index", "asset_identifier"]),
+        )
+    frame = (
+        rows
+        if rows is not None
+        else _read_dependency(
+            source,
+            start=start,
+            end=end,
+            dimension_filters={ASSET_IDENTIFIER_DIMENSION: assets},
+        )
+    )
+    flat = frame.reset_index()
+    if flat.empty:
+        return portfolio_valuations(
+            source, valuation_column=valuation_column, currency=currency,
+            start=start, end=end, assets=(),
+        )
+    if valuation_column not in flat.columns:
+        raise ValueError(
+            f"The valuation source has no column {valuation_column!r}, the build's "
+            "valuation_column."
+        )
+    prices = pd.DataFrame(
+        {
+            "time_index": pd.to_datetime(flat["time_index"], utc=True).astype(
+                "datetime64[ns, UTC]"
+            ),
+            "asset_identifier": flat[ASSET_IDENTIFIER_DIMENSION].astype(str),
+            PRICE_COLUMN: pd.to_numeric(flat[valuation_column], errors="coerce").astype(
+                "float64"
+            ),
+        }
+    )
+    prices["price_asset_identifier"] = (
+        flat["price_asset_identifier"].astype(str)
+        if "price_asset_identifier" in flat.columns
+        else str(currency)
+    )
+    if "source_revision" in flat.columns:
+        prices["source_revision"] = flat["source_revision"].astype(str)
+    else:
+        prices["source_revision"] = pd.util.hash_pandas_object(
+            prices[["time_index", "asset_identifier", PRICE_COLUMN]], index=False
+        ).map("{:016x}".format)
+    prices = prices[prices[PRICE_COLUMN].notna()]
+    return prices.set_index(["time_index", "asset_identifier"]).sort_index()
+
+
+def require_booked_events(
+    assets: Any,
+    *,
+    in_price: EventsInPrice,
+    lifecycle_models: Any,
+) -> None:
+    """Refuse to run while the portfolio holds an asset with an event nothing books.
+
+    An asset's type lists the events it can have (``AssetType.event_types``). Each must
+    be booked by a lifecycle model or included in the prices (ADR 0065, decision 2).
+    Adjusted prices include every event, so nothing is read for them.
+    """
+
+    from msm_portfolios.accounting.events import ADJUSTED
+
+    assets = sorted({str(asset) for asset in assets})
+    if in_price == ADJUSTED or not assets:
+        return
+    from msm.api.assets import Asset, AssetType
+
+    booked = {event_type for model in lifecycle_models for event_type in model.booked_event_types}
+    rows = Asset.filter(unique_identifier__in=assets, limit=len(assets))
+    asset_types = {str(row.unique_identifier): row.asset_type for row in rows}
+    unknown = [asset for asset in assets if asset not in asset_types]
+    if unknown:
+        raise ValueError(
+            "The portfolio trades assets Markets does not know, so their events are "
+            "unknown: " + ", ".join(unknown)
+        )
+    type_keys = sorted({value for value in asset_types.values() if value})
+    events_by_type = {
+        str(row.asset_type): tuple(row.event_types)
+        for row in (
+            AssetType.filter(asset_type__in=type_keys, limit=len(type_keys)) if type_keys else []
+        )
+    }
+    unbooked = {
+        asset: [
+            event_type
+            for event_type in events_by_type.get(str(asset_types[asset]), ())
+            if event_type not in booked and not price_includes(in_price, event_type)
+        ]
+        for asset in assets
+    }
+    unbooked = {asset: events for asset, events in unbooked.items() if events}
+    if unbooked:
+        listed = "; ".join(f"{asset}: {', '.join(events)}" for asset, events in unbooked.items())
+        raise ValueError(
+            "The portfolio holds assets with events nothing books, on prices that do not "
+            f"include them: {listed}. Add a lifecycle model that books them, or value the "
+            "portfolio with prices that include them (events_in_price, ADR 0065)."
         )
 
 
@@ -773,6 +1077,9 @@ def _flat_ledger(frame: pd.DataFrame) -> pd.DataFrame:
 __all__ = [
     "PortfolioEngine",
     "PortfolioEngineConfiguration",
+    "default_execution_model",
     "normalize_portfolio_event_ledger_frame",
+    "portfolio_valuations",
     "recorded_fills",
+    "require_booked_events",
 ]

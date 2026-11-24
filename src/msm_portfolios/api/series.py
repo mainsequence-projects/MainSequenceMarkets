@@ -53,10 +53,14 @@ class _SeriesOperations:
         return resolve_runtime(models=cls.__required_tables__, row_model_name=cls.__name__).context
 
     @classmethod
-    def _publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
+    def _publish(
+        cls, key: str, rows: Sequence[Mapping[str, Any]], new_only: bool
+    ) -> SeriesPublication:
         from msm_portfolios.services.series import publish_series
 
-        return publish_series(cls._context(), cls.__series__, key=key, rows=list(rows))
+        return publish_series(
+            cls._context(), cls.__series__, key=key, rows=list(rows), new_only=new_only
+        )
 
     @classmethod
     def _window(cls, **kwargs: Any) -> SeriesRows:
@@ -105,17 +109,21 @@ class SignalWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
     ]
 
     @classmethod
-    def publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
+    def publish(
+        cls, key: str, rows: Sequence[Mapping[str, Any]], new_only: bool = False
+    ) -> SeriesPublication:
         """Write observations of signal ``key`` in one transaction.
 
         A row equal to the stored one is skipped and a different one refuses the call.
         A new observation must be after the signal's last stored time; an asset the
         signal held and the observation leaves out is written at ``0``. Times carry a
         timezone, weights are finite numbers and assets are registered. At most
-        ``PUBLISH_MAX_ROWS`` rows per call. Only the signal's manager may publish.
+        ``PUBLISH_MAX_ROWS`` rows per call. Only the signal's manager may publish. With
+        ``new_only``, rows at or before the signal's last stored time are left out
+        without being compared.
         """
 
-        return cls._publish(key, rows)
+        return cls._publish(key, rows, new_only)
 
     @classmethod
     def window(
@@ -182,11 +190,12 @@ class SignalWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
 
 
 class PortfolioWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
-    """A portfolio's executed weights, keyed by ``Portfolio.unique_identifier`` and asset.
+    """A portfolio's weights, keyed by ``Portfolio.unique_identifier`` and asset.
 
     Rows: ``time_index``, ``asset_identifier``, ``weight``, ``weight_before``,
-    ``price_current``, ``price_before``, ``volume_current``, ``volume_before``,
-    ``held_shares`` and ``book_cash``; values other than the time and asset may be null.
+    ``price_current``, ``price_before``, ``volume_current`` and ``volume_before``; values
+    other than the time and asset may be null. ``PortfolioWeights`` publishes them from
+    the portfolio's ledger (ADR 0065).
     """
 
     __resource__: ClassVar[str] = "portfolio-weights"
@@ -198,15 +207,19 @@ class PortfolioWeightsSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
     ]
 
     @classmethod
-    def publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
+    def publish(
+        cls, key: str, rows: Sequence[Mapping[str, Any]], new_only: bool = False
+    ) -> SeriesPublication:
         """Write rows of portfolio ``key`` in one transaction.
 
         A row equal to the stored one is skipped and a different one refuses the call;
         rows at or after the portfolio's retirement are refused. At most
         ``PUBLISH_MAX_ROWS`` rows per call. Only the portfolio's manager may publish.
+        With ``new_only``, rows at or before the portfolio's last stored time are left
+        out without being compared.
         """
 
-        return cls._publish(key, rows)
+        return cls._publish(key, rows, new_only)
 
     @classmethod
     def window(
@@ -290,15 +303,19 @@ class PortfolioValuesSeries(_SeriesOperations, RemoteRowOperations, BaseModel):
     ]
 
     @classmethod
-    def publish(cls, key: str, rows: Sequence[Mapping[str, Any]]) -> SeriesPublication:
+    def publish(
+        cls, key: str, rows: Sequence[Mapping[str, Any]], new_only: bool = False
+    ) -> SeriesPublication:
         """Write values of portfolio ``key`` in one transaction.
 
         A row equal to the stored one is skipped and a different one refuses the call;
         rows at or after the portfolio's retirement are refused. At most
         ``PUBLISH_MAX_ROWS`` rows per call. Only the portfolio's manager may publish.
+        With ``new_only``, rows at or before the portfolio's last stored time are left
+        out without being compared.
         """
 
-        return cls._publish(key, rows)
+        return cls._publish(key, rows, new_only)
 
     @classmethod
     def window(

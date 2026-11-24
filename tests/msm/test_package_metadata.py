@@ -70,9 +70,14 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # positional and a keyword configuration (MetaTables#127, #131, #130), 0.1.77
     # answers a delete impact in a fixed number of statements (MetaTables#136), reports a
     # client timeout as one (MetaTables#147) and keeps values, indexes and checks through
-    # a SQLite rebuild (MetaTables#135), and 0.1.78's client skills, which ms-markets
+    # a SQLite rebuild (MetaTables#135), 0.1.78's client skills, which ms-markets
     # copies into .agents/skills/metatables, name no real application or vendor
-    # (MetaTables#151).
+    # (MetaTables#151), 0.1.80 runs several updaters as one invocation that runs a
+    # shared dependency once (run_updaters, MetaTables#156), which run_portfolios uses,
+    # 0.1.81 names the constraint and value that refused a time-index row
+    # (MetaTables#157), and 0.1.82 exports the dtype tokens, sqlalchemy_type_to_token
+    # and use_runtime_context, which ms-markets imports from metatables (MetaTables#160),
+    # and 0.1.83 registers a run's updates and edges with one request each (MetaTables#162).
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -87,7 +92,11 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.74") not in requirement.specifier
     assert Version("0.1.76") not in requirement.specifier
     assert Version("0.1.77") not in requirement.specifier
-    assert Version("0.1.78") in requirement.specifier
+    assert Version("0.1.79") not in requirement.specifier
+    assert Version("0.1.80") not in requirement.specifier
+    assert Version("0.1.81") not in requirement.specifier
+    assert Version("0.1.82") not in requirement.specifier
+    assert Version("0.1.83") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

@@ -253,6 +253,7 @@ def _asset_type_definition(asset_type: Any) -> NewAssetType:
         asset_type=asset_type.asset_type,
         display_name=asset_type.display_name,
         description=asset_type.description,
+        event_types=tuple(asset_type.event_types),
     )
 
 

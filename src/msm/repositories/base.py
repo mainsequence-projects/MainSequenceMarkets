@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from typing import Any
 
 from metatables import (
+    DataSourceResolutionError,
     MetaTable,
     MetaTableCompiledSQLDialect,
     MetaTableCompiledSQLOperation,
@@ -12,14 +15,13 @@ from metatables import (
     MetaTableOperation,
     MetaTableOperationLimits,
     MetaTableTransactionGuardError,
+    MetaTableWriteOperation,
 )
 from metatables.compiled_sql.v1 import (
     GuardedStatement,
     compile_sqlalchemy_statement,
     compile_sqlalchemy_statements,
 )
-from metatables.models import MetaTableWriteOperation
-from metatables.runtime_contract import DataSourceResolutionError
 
 from msm.base import MarketsBase
 
@@ -148,6 +150,66 @@ def with_delete_deadline[ContextT: (MarketsRepositoryContext, MarketsMetaTableHa
     )
 
 
+@dataclass
+class _RuntimeLookup:
+    target: tuple[str, MetaTableCompiledSQLDialect] | None = None
+
+
+_lookup: ContextVar[_RuntimeLookup | None] = ContextVar("msm_runtime_lookup", default=None)
+
+
+@contextmanager
+def one_runtime_lookup() -> Iterator[None]:
+    """Look the MetaTables API runtime up once for the Markets statements of the block.
+
+    A run of many statements enters it (issue #140): the first statement that needs the
+    DataSource and SQL dialect asks the runtime, and every later one compiles offline
+    with that answer. Outside a block each statement asks; MetaTables keeps a hosted
+    API's runtime for the process and asks a local API every time. The API checks the
+    DataSource and dialect of every operation, so a runtime that changes during the block
+    refuses its operations instead of running them elsewhere. A block inside another
+    shares its lookup.
+    """
+
+    if _lookup.get() is not None:
+        yield
+        return
+    token = _lookup.set(_RuntimeLookup())
+    try:
+        yield
+    finally:
+        _lookup.reset(token)
+
+
+def _runtime_target() -> tuple[str, MetaTableCompiledSQLDialect]:
+    lookup = _lookup.get()
+    if lookup is not None and lookup.target is not None:
+        return lookup.target
+
+    import metatables
+
+    runtime = metatables.get_runtime_context()
+    target = (runtime.require_data_source_uid(), runtime.require_sql_dialect()[0])
+    if lookup is not None:
+        lookup.target = target
+    return target
+
+
+def _sql_target(
+    data_source_uid: str | None, dialect: MetaTableCompiledSQLDialect | None
+) -> tuple[str, MetaTableCompiledSQLDialect]:
+    runtime_uid, runtime_dialect = _runtime_target()
+    if data_source_uid is not None and str(data_source_uid) != runtime_uid:
+        raise DataSourceResolutionError(
+            "The requested DataSource differs from the API runtime; supply its dialect too."
+        )
+    if dialect is not None and dialect != runtime_dialect:
+        raise DataSourceResolutionError(
+            "The requested SQL dialect differs from the API runtime DataSource."
+        )
+    return runtime_uid, runtime_dialect
+
+
 def resolve_markets_sql_target(
     context: MarketsOperationContext,
     *,
@@ -158,27 +220,14 @@ def resolve_markets_sql_target(
     A write whose SQL differs by dialect resolves both once, then compiles
     offline with them. Supplying `context.data_source_uid` and `dialect`
     needs no runtime. Otherwise the Environment-selected MetaTables API runtime
-    answers, and a supplied value that disagrees with it raises
-    `metatables.DataSourceResolutionError`, as `compile_markets_statement` does.
+    answers (once per `one_runtime_lookup` block), and a supplied value that
+    disagrees with it raises `metatables.DataSourceResolutionError`, as
+    `compile_markets_statement` does.
     """
 
     if context.data_source_uid is not None and dialect is not None:
         return str(context.data_source_uid), dialect
-
-    import metatables.runtime_context as runtime_context
-
-    runtime = runtime_context.get_runtime_context()
-    runtime_uid = runtime.require_data_source_uid()
-    runtime_dialect, _paramstyle = runtime.require_sql_dialect()
-    if context.data_source_uid is not None and str(context.data_source_uid) != runtime_uid:
-        raise DataSourceResolutionError(
-            "The requested DataSource differs from the API runtime; supply its dialect too."
-        )
-    if dialect is not None and dialect != runtime_dialect:
-        raise DataSourceResolutionError(
-            "The requested SQL dialect differs from the API runtime DataSource."
-        )
-    return runtime_uid, runtime_dialect
+    return _sql_target(context.data_source_uid, dialect)
 
 
 def values_parameter(value: Any, type_: Any, *, dialect: MetaTableCompiledSQLDialect) -> Any:
@@ -210,14 +259,19 @@ def compile_markets_statement(
     together from the Environment-selected MetaTables API runtime and raises
     `metatables.DataSourceResolutionError` if that runtime has no usable
     DataSource or disagrees with the supplied value. Supplying both compiles
-    offline without the runtime. `operation="select"` selects read execution;
+    offline without the runtime, and so does every statement after the first in a
+    `one_runtime_lookup` block. `operation="select"` selects read execution;
     the other operation labels select write execution.
     """
 
+    if data_source_uid is None:
+        data_source_uid = context.data_source_uid
+    if _lookup.get() is not None and (data_source_uid is None or dialect is None):
+        data_source_uid, dialect = _sql_target(data_source_uid, dialect)
     return compile_sqlalchemy_statement(
         statement,
         operation=operation,
-        data_source_uid=data_source_uid if data_source_uid is not None else context.data_source_uid,
+        data_source_uid=data_source_uid,
         dialect=dialect,
         limits=context.limits,
     )
@@ -291,6 +345,7 @@ __all__ = [
     "compile_markets_statements",
     "execute_markets_operation",
     "execute_markets_write",
+    "one_runtime_lookup",
     "resolve_markets_sql_target",
     "values_parameter",
     "with_delete_deadline",

@@ -29,15 +29,28 @@ def emit_signal_metadata(
     if updater is None:
         from msm_portfolios.api.market_metadata import SignalMetadata
 
-        return SignalMetadata.upsert(
-            signal_uid=signal_uid,
-            signal_description=signal_description,
-        )
+        return ensure_signal_metadata(SignalMetadata, signal_uid, signal_description)
     payload = {
         "signal_uid": signal_uid,
         "signal_description": signal_description,
     }
     return _emit_metadata(payload=payload, updater=updater)
+
+
+def ensure_signal_metadata(rows: Any, signal_uid: str, description: str | None) -> bool:
+    """Create the signal's ``SignalMetadata`` row, or update its description if it changed.
+
+    Reads the row once and writes only when it is missing or ``description`` differs; a
+    ``None`` description leaves the stored one. Answers whether it created the row.
+    """
+
+    existing = rows.filter(signal_uid=signal_uid, limit=1)
+    if not existing:
+        rows.create(signal_uid=signal_uid, signal_description=description)
+        return True
+    if description is not None and existing[0].signal_description != description:
+        rows.update(existing[0].uid, signal_description=description)
+    return False
 
 
 def extract_portfolio_description(value: Any | None) -> str | None:
@@ -100,6 +113,7 @@ def _emit_metadata(*, payload: dict[str, Any], updater: Any) -> Any:
 __all__ = [
     "emit_portfolio_metadata",
     "emit_signal_metadata",
+    "ensure_signal_metadata",
     "extract_portfolio_description",
     "extract_signal_description",
 ]

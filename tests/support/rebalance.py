@@ -44,6 +44,7 @@ def output_table_stub(name: str) -> SimpleNamespace:
             data_source_uid="source",
         ),
         get_data_source_uid=lambda: "source",
+        get_meta_table_uid=lambda: f"{name}-table",
     )
 
 
@@ -85,6 +86,7 @@ class PublishedCalendarEvents(TimeIndexTableUpdater):
         source = object.__new__(cls)
         source.update_hash = f"calendar-events-{calendar_identifier}"
         source._output_table = output_table_stub("calendar-events")
+        source.update_statistics = None
         source.rows = pd.DataFrame(
             [
                 {
@@ -164,6 +166,7 @@ class PublishedTable(TimeIndexTableUpdater):
         source = object.__new__(cls)
         source.update_hash = name
         source._output_table = output_table_stub(name)
+        source.update_statistics = None
         source.rows = frame.reset_index() if "time_index" not in frame.columns else frame.copy()
         source.rows["time_index"] = pd.to_datetime(source.rows["time_index"], utc=True)
         source.index = index
@@ -263,6 +266,7 @@ class IncrementalRebalance:
         prices: PublishedTable,
         storage,
         assets: tuple[str, ...] = ("AAPL", "ILLQ"),
+        unit_value: float = 10_000.0,
     ):
         self.strategy = strategy
         self.signals = signals
@@ -272,13 +276,16 @@ class IncrementalRebalance:
         node._portfolio_configuration = SimpleNamespace()
         node._portfolio_identifier = "portfolio"
         signals.signal_uid = SIGNAL_UID
+        # A published signal: the rebalance reads it and never computes it.
+        signals.computes_weights = False
         node.signal_weights = signals
         node.rebalance_strategy = strategy
         node.valuation_source = prices
         node.valuation_column = "close"
         node.valuation_asset_identifier = "USD"
         node.fx_source = None
-        node.book_unit_value = None
+        # The book's unit, the ledger's initial NAV (ADR 0065).
+        node.book_unit_value = unit_value
         node.output_table = storage
         node._retirement_boundary = lambda: None
         node._required_asset_identifiers = lambda: list(assets)
@@ -326,8 +333,8 @@ class IncrementalRebalance:
             source.published_until = run_time
         node = self.node
         node.update_statistics = self._statistics()
-        node._execution_window = lambda latest: (
-            PortfolioRebalance._execution_window(node, latest)[0],
+        node._execution_window = lambda latest, **kwargs: (
+            PortfolioRebalance._execution_window(node, latest, **kwargs)[0],
             run_time,
         )
         written = node.update()

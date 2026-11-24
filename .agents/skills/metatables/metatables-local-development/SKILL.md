@@ -12,11 +12,10 @@ development fixtures and test writes in the local runtime, then return to the
 intended environment as part of the requested workflow. Respect an explicitly
 requested target or backend-specific test scope.
 
-In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
-this skill's `references/` directory. In the MetaTables source checkout, resolve
-them from the repository root. Read `docs/operations/local-runtime.md` for runtime
-selection and persistence, and `docs/client/installation-and-connection.md` when
-installing or troubleshooting. `src/metatables/examples/local_app/README.md` provides a complete
+The `metatables/examples/` files named in this skill ship inside the installed package;
+`python -c "import metatables.examples as e; print(e.__path__[0])"` prints their folder. Read [Local runtime](https://potential-doodle-wn39mnm.pages.github.io/operations/local-runtime/) for runtime
+selection and persistence, and [Install and connect](https://potential-doodle-wn39mnm.pages.github.io/client/installation-and-connection/) when
+installing or troubleshooting. `metatables/examples/local_app/README.md` provides a complete
 installed-package migration/write/read example.
 
 ## Select local storage deliberately
@@ -120,6 +119,11 @@ if not (
 local_source_uid = source["uid"]
 ```
 
+A test that serves its own runtime, such as an offline API over a temporary database,
+sets it with `use_runtime_context(context)` from `metatables`: inside the block every
+client lookup answers that `RuntimeContext` and asks no API. Do not patch
+`get_runtime_context` in a MetaTables module; the client looks it up in several.
+
 Resolve each test output in that runtime and check its DataSource UID against
 `local_source_uid`. Keep fixtures, migration providers and writable dependencies
 there too. Local mode does not isolate unrelated HTTP calls, external connections,
@@ -160,7 +164,7 @@ unverified. Commit the reviewed application code and its migration revisions tog
 local rows, catalog UIDs, credentials and fixture data are never promoted.
 The application's deployment workflow applies those revisions to the hosted runtime
 before the code rolls out; see the [migrations skill](../metatables-migrations/SKILL.md)
-and `docs/client/deploy-application-migrations.md`. Add the migration Job if the
+and [Migrate in the deployment workflow](https://potential-doodle-wn39mnm.pages.github.io/client/deploy-application-migrations/). Add the migration Job if the
 workflow lacks one.
 
 When returning to the environment is part of the requested workflow:

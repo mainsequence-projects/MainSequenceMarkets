@@ -164,6 +164,22 @@ def test_unlinked_assets_lists_what_a_price_update_would_refuse(markets) -> None
     assert [a.unique_identifier for a in AssetCalendar.unlinked_assets(limit=1, offset=1)] == ["A2"]
 
 
+def test_calendars_of_reads_each_assets_calendar_in_one_read(markets) -> None:
+    from msm.repositories.operation_count import counting_operations
+
+    assets("A0", "A1", "A2")
+    AssetCalendar.link_many(["A1"], calendar_identifier="NYSE")
+    AssetCalendar.link_many(["A2"], calendar_identifier="DESK")
+
+    with counting_operations() as count:
+        calendars = AssetCalendar.calendars_of(["A0", "A1", "A2", "GHOST", "A1"])
+
+    assert count.operations == 1
+    # An asset with no link answers None; an identifier that names no asset is left out.
+    assert calendars == {"A0": None, "A1": markets.nyse, "A2": markets.desk}
+    assert "calendars_of" in remote_operations(AssetCalendar)
+
+
 def test_a_link_is_deleted_by_its_asset_uid_and_delete_is_offered_remotely(markets) -> None:
     (asset,) = assets("A0")
     AssetCalendar.link_many(["A0"], calendar_identifier="NYSE")

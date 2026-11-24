@@ -163,9 +163,6 @@ The full workflow example is
 the reusable equal-weight portfolio example, whose interpolated-price table the
 example's own provider migrates: apply that provider's committed revision first, as
 [Portfolios](../../../tutorial/04-portfolios.md) shows. The workflow migrates nothing.
-With the portfolio updaters on it currently stops in the rebalance, because the
-portfolio example's signal predates its bars; `--no-run-portfolio-updaters` runs to
-the end.
 The account example reuses the resulting `Portfolio` row as a target sleeve,
 assigns that sleeve to an example `PortfolioGroup`, publishes `AssetSnapshot`
 rows with canonical ticker and name metadata, creates two accounts, assigns both

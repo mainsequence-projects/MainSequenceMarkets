@@ -34,6 +34,8 @@ from msm_portfolios.time_index.portfolios.rebalance import (  # noqa: E402
 
 ASSET_IDENTIFIER = "asset_identifier"
 SIGNAL_UID = "example-trailing-adv-target"
+PREVIEW_INITIAL_NAV = 50_000_000.0
+"""The portfolio's initial NAV, the unit of the rebalance's book (ADR 0065)."""
 
 
 def parse_utc_timestamp(value: str) -> pd.Timestamp:
@@ -119,11 +121,13 @@ def load_observed_inputs(
 def transition_summary(
     strategy: TrailingAverageDailyVolumeParticipation,
     transitions: pd.DataFrame,
+    *,
+    initial_nav: float = PREVIEW_INITIAL_NAV,
 ) -> pd.DataFrame:
     """Expand the strategy state fields most useful when reviewing a preview.
 
-    A row's ``executed_quantity`` is in shares of the rebalance's book, whose unit is
-    ``total_notional``; ``quantity`` is the same fill in shares of the asset.
+    A row's ``executed_quantity`` is in shares of the rebalance's book, whose unit is the
+    portfolio's ``initial_nav``; ``quantity`` is the same fill in shares of the asset.
     """
     if transitions.empty:
         return pd.DataFrame()
@@ -132,7 +136,7 @@ def transition_summary(
         strategy.parse_strategy_state(row).get("bar") or {}
         for row in result.to_dict(orient="records")
     ]
-    result["quantity"] = result["executed_quantity"] * strategy.total_notional
+    result["quantity"] = result["executed_quantity"] * initial_nav
     for field_name in (
         "history_observations",
         "trailing_average_daily_notional",
@@ -176,6 +180,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target portfolio weight; repeat once per asset.",
     )
     parser.add_argument(
+        "--initial-nav",
+        type=float,
+        default=PREVIEW_INITIAL_NAV,
+        help="The portfolio's initial NAV, the unit of the rebalance's book.",
+    )
+    parser.add_argument(
         "--output-rows",
         type=int,
         default=30,
@@ -213,6 +223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         observed_inputs=observed_inputs,
         previous_state=None,
+        book_unit_value=args.initial_nav,
     )
 
     print(strategy.get_explanation())
@@ -222,7 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("No strategy transition was produced for the requested execution window.")
         return 0
 
-    summary = transition_summary(strategy, transitions)
+    summary = transition_summary(strategy, transitions, initial_nav=args.initial_nav)
     print(f"Transitions: {len(summary):,}; showing final {min(len(summary), args.output_rows):,}")
     print(summary.tail(args.output_rows).to_string(index=False))
     print("Preview only: no PortfolioRebalanceStateStorage rows were persisted.")

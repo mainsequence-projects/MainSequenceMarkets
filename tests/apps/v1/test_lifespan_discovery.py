@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 
-import metatables.endpoint
+import metatables
 import pytest
 
 import apps.v1.main as main
@@ -14,7 +14,7 @@ def test_startup_wait_scope_covers_both_attachments_and_preserves_failures(monke
     state = {"active": False, "budgets": [], "calls": []}
     failure = RuntimeError("runtime attachment failed")
     monkeypatch.setattr(main.time, "monotonic", lambda: 0)
-    original = metatables.endpoint.api_endpoint_scope
+    original = metatables.api_endpoint_scope
 
     @contextmanager
     def observe_scope(*, discovery_timeout):
@@ -57,7 +57,7 @@ def test_startup_wait_scope_covers_both_attachments_and_preserves_failures(monke
 def test_startup_recovers_temporary_dependency_failure(monkeypatch, stage, kind):
     from types import SimpleNamespace
     from mainsequence.client.exceptions import ServerError
-    from metatables.endpoint import ApiResolutionError
+    from metatables import ApiResolutionError
 
     clock = [0]
     calls = []
@@ -77,13 +77,27 @@ def test_startup_recovers_temporary_dependency_failure(monkeypatch, stage, kind)
         if name == stage and calls.count(name) == 1:
             raise failure
 
+    scopes = {"open": 0}
+    original = main.api_endpoint_scope
+
+    @contextmanager
+    def observe_scope(**kwargs):
+        with original(**kwargs):
+            scopes["open"] += 1
+            try:
+                yield
+            finally:
+                scopes["open"] -= 1
+
     monkeypatch.setattr(main.asyncio, "sleep", sleep)
+    monkeypatch.setattr(main, "api_endpoint_scope", observe_scope)
     monkeypatch.setattr(main, "ensure_apps_v1_runtime", lambda: attach("markets"))
     monkeypatch.setattr(main, "ensure_apps_v1_pricing_runtime", lambda: attach("pricing"))
 
     async def startup():
         async with main.lifespan(None):
-            assert metatables.endpoint._operation.get() is None
+            # The discovery scope is closed once the application serves.
+            assert scopes["open"] == 0
 
     asyncio.run(startup())
     assert calls == (["markets", "markets", "pricing"] if stage == "markets" else

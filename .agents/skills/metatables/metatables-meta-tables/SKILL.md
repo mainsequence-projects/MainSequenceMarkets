@@ -12,10 +12,8 @@ client. It covers application-facing models and workflows. Client-library
 implementation, this repository's development/release tooling, and API internals
 have separate ownership.
 
-In a copied skill, resolve the `docs/` and `src/metatables/examples/` paths below relative to
-this skill's `references/` directory. The client CLI bundles the matching version's
-guides and examples there, including their linked documents. In the MetaTables
-source checkout, read the same paths from the repository root.
+The `metatables/examples/` files named in this skill ship inside the installed package;
+`python -c "import metatables.examples as e; print(e.__path__[0])"` prints their folder.
 
 For application development and mutation tests, use the
 [local development skill](../metatables-local-development/SKILL.md) to select and
@@ -24,20 +22,23 @@ verification within the requested scope.
 
 Use the installed `metatables` client. The API catalog resource, the client
 resource model, and a SQLAlchemy authoring class have different responsibilities.
-Read `docs/concepts/architecture.md` and
-`docs/concepts/table-contracts-and-lifecycle.md` before choosing a workflow.
+Import every name from `metatables` itself (`from metatables import MetaTable`). The
+modules under it, such as `metatables.client.endpoint` or `metatables.models.meta_table`,
+are internal and move between releases.
+Read [Architecture and glossary](https://potential-doodle-wn39mnm.pages.github.io/concepts/architecture/) and
+[Table contracts and lifecycle](https://potential-doodle-wn39mnm.pages.github.io/concepts/table-contracts-and-lifecycle/) before choosing a workflow.
 
-For actual endpoint support, consult `docs/reference/capabilities.md`. Do not
+For actual endpoint support, consult [Supported capabilities](https://potential-doodle-wn39mnm.pages.github.io/reference/capabilities/). Do not
 infer API support from the presence of an inherited client method. Platform
 identity and Git source facts use SDK imports. Table operations use the client's automatic hosted discovery or an explicit
 `METATABLES_API_URL`; the API selects the effective DataSource. See
-`docs/client/installation-and-connection.md`. Local development runs the same API
+[Install and connect](https://potential-doodle-wn39mnm.pages.github.io/client/installation-and-connection/). Local development runs the same API
 with SQLite behind it; ordinary clients never open local table files. Local
 workspaces use one persistent SQLite database for system and user tables per
 checkout; Git branches share it.
 A hosted API's deployment declares and initializes its runtime DataSource; Local
 Settings explicitly initializes or selects the SQLite file. Startup never runs
-Alembic. See `docs/operations/catalog-migrations.md`.
+Alembic. See [Initialize and upgrade the runtime database](https://potential-doodle-wn39mnm.pages.github.io/operations/catalog-migrations/).
 
 ## Authoring decisions
 
@@ -52,18 +53,18 @@ contract. Preserve the user's existing authorization and scope.
   evolution.
 - Existing externally owned tables use `register_external_sqlalchemy_model` with
   their actual physical binding. Registration does not create the physical table;
-  see `docs/client/register-existing-tables.md` and `src/metatables/examples/external_table.py`.
+  see [Import existing tables and views](https://potential-doodle-wn39mnm.pages.github.io/client/register-existing-tables/) and `metatables/examples/external_table.py`.
 - `backend_managed` is a separate low-level API provisioning intent. Do not use it
   as a substitute for ordinary managed application-table migrations.
 
 A UID is catalog identity. An optional identifier is unique in the connected catalog.
 A physical binding is DataSource + schema + table name. A catalog
 namespace groups tables for access: a role on it applies to every table in it. It is not a SQL schema. Contract hashes
-are fingerprints, not table identity. See `docs/concepts/identity-and-scope.md`.
+are fingerprints, not table identity. See [Identity and scope](https://potential-doodle-wn39mnm.pages.github.io/concepts/identity-and-scope/).
 
 ## SQLAlchemy contract rules
 
-Use `src/metatables/examples/tables.py` as the tested pattern. Declare an explicit
+Use `metatables/examples/tables.py` as the tested pattern. Declare an explicit
 application-prefixed physical name with `schema_table_name(app, concept)` and a
 stable logical identifier. Write the table description, labels and every column's
 `info={"label": ..., "description": ...}` by the rules in the
@@ -111,8 +112,8 @@ revisions; do not recompute identity from columns or rewrite applied history.
 
 A password, API key, token or similar value that an application stores in a table
 is declared with `EncryptedString`, never with `String`
-(ADR 0025, `docs/adr/client/0025-application-encrypted-columns.md`; guide section
-"Protect a column with application encryption" in `docs/client/define-and-migrate-tables.md`).
+([ADR 0025: Application-encrypted columns](https://potential-doodle-wn39mnm.pages.github.io/adr/client/0025-application-encrypted-columns/); guide section
+"Protect a column with application encryption" in [Define and migrate managed tables](https://potential-doodle-wn39mnm.pages.github.io/client/define-and-migrate-tables/)).
 Table grants decide who reads the row; the Secret decides who reads the value.
 
 ```python
@@ -151,7 +152,7 @@ api_key: Mapped[str | None] = mapped_column(
 
 ## Queries and mutations
 
-Read `docs/client/query-and-mutate.md` and `src/metatables/examples/query.py`. Use
+Read [Query and mutate](https://potential-doodle-wn39mnm.pages.github.io/client/query-and-mutate/) and `metatables/examples/query.py`. Use
 `compile_sqlalchemy_statement` with bound parameters. The request sends SQL and
 selects one DataSource; the API executes as the authenticated user, and the
 selected database backend enforces the caller's roles (`data_viewer` reads, `data_writer` and above write) on the tables
@@ -206,7 +207,7 @@ other table, `add_to_namespace(name)` and `remove_from_namespace(name)` change t
 adding needs `tables.update` on the table and `tables.create` on the namespace,
 removing needs `tables.create` on the namespace. PATCH does not accept a namespace.
 Labels can be changed through the documented table PATCH path. Authorization is owned by the API
-catalog; see `docs/security/ownership-and-sharing.md`.
+catalog; see [Ownership, roles, and inheritance](https://potential-doodle-wn39mnm.pages.github.io/security/ownership-and-sharing/).
 
 Updater output rollback uses `TimeIndexMetaTable.delete_after_date` with an
 inclusive time cutoff and explicit dimension/coordinate scope when appropriate.
@@ -238,7 +239,7 @@ check. Preserve published contracts unless the task authorizes their evolution.
 
 ## Bounded transfers and recovery
 
-Read `docs/client/bounded-transfers.md` for transfer contract v1. Prefer
+Read [Bounded reads, uploads, and recovery](https://potential-doodle-wn39mnm.pages.github.io/client/bounded-transfers/) for transfer contract v1. Prefer
 `MetaTable.iter_rows()` for structured relation batches and
 `TimeIndexTableRef.iter_batches()` for typed time-index frames. Existing complete
 DataFrame readers have row, serialized-byte, and elapsed-time budgets; increase

@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import metatables
-import metatables.endpoint
 import pytest
 
 
@@ -17,7 +16,7 @@ JOB_PATH = PROJECT_ROOT / "jobs" / "migrate_markets.py"
 @pytest.fixture
 def discovery_scope(monkeypatch):
     state = {"budgets": [], "active": False}
-    original = metatables.endpoint.api_endpoint_scope
+    original = metatables.api_endpoint_scope
 
     @contextmanager
     def observe_scope(*, discovery_timeout):
@@ -29,7 +28,7 @@ def discovery_scope(monkeypatch):
             finally:
                 state["active"] = False
 
-    monkeypatch.setattr(metatables.endpoint, "api_endpoint_scope", observe_scope)
+    monkeypatch.setattr(metatables, "api_endpoint_scope", observe_scope)
     return state
 
 

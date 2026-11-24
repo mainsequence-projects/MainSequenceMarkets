@@ -13,9 +13,7 @@ os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
 
-from metatables.sqlalchemy_contracts import (
-    time_indexed_registration_request_from_sqlalchemy_model,
-)
+from metatables import time_indexed_registration_request_from_sqlalchemy_model
 from msm.time_index.indices import IndexUpdaterConfiguration, IndexTimestampedUpdater
 from msm.models import IndexTable
 from msm.models.registration import markets_foreign_key_target_identifiers

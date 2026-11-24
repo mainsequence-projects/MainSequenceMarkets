@@ -473,7 +473,7 @@ parallel runs that must not collide on a shared backend.
 - `src/msm/time_index/utils/stamped.py`: shared timestamped frame behavior
   validated against the registered `output_table`.
 - `src/msm/time_index/utils/storage_schema.py`: derives column dtype maps from a
-  storage class via `metatables.dtype_codec`.
+  storage class with MetaTables' dtype tokens (`sqlalchemy_type_to_token`).
 - `src/msm/time_index/utils/namespaces.py`: shared markets hash-namespace
   defaulting for updaters.
 - `src/msm/time_index/assets/snapshots.py`: `AssetSnapshot`,

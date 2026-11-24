@@ -37,6 +37,11 @@ class SignalWeights(PublishedSeriesNode):
     them under the signal's ``signal_uid``, after creating its ``SignalMetadata`` row.
     Its progress is the published series: ``_latest_signal_time_index_value()`` is the
     signal's last stored time and ``_signal_asset_start_date(asset)`` an asset's.
+
+    ``dependencies()`` names the updaters and tables the calculation reads. The
+    portfolio's ``PortfolioRebalance`` declares them as its own and computes the signal
+    before it reads it, so one joined run refreshes them once for every portfolio that
+    needs them (issue #133).
     """
 
     series_resource = "signal-weights"
@@ -79,13 +84,18 @@ class SignalWeights(PublishedSeriesNode):
     def series_key(self) -> str:
         return self.signal_uid
 
-    def run(self, *, update_tree: bool = True) -> Any:
-        """Create the signal's metadata, then compute and publish its new weights."""
+    def dependencies(self) -> dict[str, Any]:
+        """The updaters and tables the calculation reads; none by default."""
+
+        return {}
+
+    def run(self) -> Any:
+        """Write the signal's metadata if it is new or changed, then publish its new weights."""
 
         self._progress_by_asset = None
-        self._upsert_signal_metadata_if_available()
+        self._ensure_signal_metadata()
         try:
-            return super().run(update_tree=update_tree)
+            return super().run()
         finally:
             self._progress_by_asset = None
 
@@ -121,7 +131,7 @@ class SignalWeights(PublishedSeriesNode):
     def signal_uid(self) -> str:
         return self._resolve_signal_uid()
 
-    def _upsert_signal_metadata_if_available(self) -> None:
+    def _ensure_signal_metadata(self) -> None:
         if self.signal_configuration is None:
             return
 
@@ -146,9 +156,6 @@ class SignalWeights(PublishedSeriesNode):
 
     def get_update_asset_list(self) -> None | list:
         return self.get_asset_list()
-
-    def get_asset_uid_to_override_portfolio_price(self):
-        return None
 
     def _latest_signal_time_index_value(self) -> pd.Timestamp | None:
         """The signal's last published time, or ``None`` before its first observation."""

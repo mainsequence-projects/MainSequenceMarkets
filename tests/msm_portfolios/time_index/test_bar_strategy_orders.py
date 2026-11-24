@@ -12,9 +12,9 @@ buys limited to the cash plus the allowed negative cash, buys short of cash at o
 filling the same fraction, and once the rebalance's sells have filled, what a buy
 cannot pay is cut and cancelled (`insufficient_cash`).
 
-The book's unit is the NAV at the portfolio's first rebalance. For the three
-strategies sized in money or volume, one unit is `total_notional` in the portfolio's
-currency: a bar's capacity of `q` shares is `q / total_notional` shares of the book.
+The book's unit is the NAV at the portfolio's first rebalance, the ledger's initial NAV
+(ADR 0065). For the three strategies sized in money or volume, a bar's capacity of `q`
+shares is `q / unit` shares of the book.
 
 All times are Wednesday 2026-11-18 UTC unless stated.
 """
@@ -36,15 +36,9 @@ from msm_portfolios.rebalance_strategy import (
     TrailingAverageDailyVolumeParticipation,
     VolumeParticipation,
 )
-from msm_portfolios.time_index import PortfolioWeights
-from msm_portfolios.time_index.constants import ASSET_IDENTIFIER, PORTFOLIO_IDENTIFIER
+from msm_portfolios.time_index.constants import ASSET_IDENTIFIER
 from msm_portfolios.time_index.portfolios.storage import PortfolioRebalanceStateStorage
 from tests.support.pinned_identities import _bound
-from tests.support.portfolio_values import (
-    FrameSource,
-    asset_frame,
-    portfolio_values_node_for_frames,
-)
 from tests.support.rebalance import (
     IncrementalRebalance,
     PublishedTable,
@@ -105,7 +99,7 @@ def strategy(kind: str, frame: pd.DataFrame, **fields):
             rebalance_end="12:30",
             **fields,
         )
-    sized = {"total_notional": 10_000.0, **fields}
+    sized = fields
     if kind == "volume_participation":
         return VolumeParticipation(
             execution_bars_instance=source, max_percent_volume_in_bar=0.1, **sized
@@ -142,7 +136,7 @@ def run(
     frame: pd.DataFrame,
     signals: pd.DataFrame,
     *,
-    unit_value: float | None = None,
+    unit_value: float | None = 10_000.0,
 ) -> pd.DataFrame:
     return strategy.build_transitions(
         start=utc("2026-11-18T00:00Z"),
@@ -656,56 +650,6 @@ def test_a_resumed_run_equals_one_full_run(kind) -> None:
     assert comparable(resumed) == comparable(full)
 
 
-def test_the_weights_path_values_a_bar_strategy_from_its_shares() -> None:
-    """Half the NAV in AAPL, bought 25 shares a bar at 100; AAPL then goes to 110 and 121.
-
-    The portfolio is the cash plus the shares: 1.00, 1.05, 1.105. Holding the weight at
-    0.5 would have returned 5% twice.
-    """
-    frame = bars(
-        ("2026-11-18T09:30Z", "AAPL", 100.0, 250.0),
-        ("2026-11-18T10:30Z", "AAPL", 100.0, 250.0),
-        ("2026-11-18T11:00Z", "AAPL", 100.0, 250.0),
-    )
-    result = run(
-        strategy("volume_participation", frame),
-        frame,
-        signal_frame([("2026-11-18T10:00:00Z", {"AAPL": 0.5})]),
-    )
-    rebalance_state = result.assign(**{PORTFOLIO_IDENTIFIER: "portfolio"}).set_index(
-        ["time_index", PORTFOLIO_IDENTIFIER, "rebalance_intent_id", ASSET_IDENTIFIER]
-    )
-    projection = object.__new__(PortfolioWeights)
-    projection.portfolio_rebalance = FrameSource(rebalance_state)
-    projection._latest_projection_time_index_value = lambda: None
-    projection._retirement_boundary = lambda: None
-    projection._resolve_portfolio_identifier = lambda: "portfolio"
-    projection._projection_window = lambda _latest: (
-        utc("2026-11-18T00:00Z").to_pydatetime(),
-        utc("2026-11-18T23:00Z").to_pydatetime(),
-    )
-    projection._last_projected_weights = lambda _latest: None
-    weights = projection._calculate_projected_weights()
-
-    assert weights["held_shares"].tolist() == pytest.approx([0.0025, 0.005])
-    assert weights["book_cash"].tolist() == pytest.approx([0.75, 0.5])
-    times = pd.DatetimeIndex(
-        [utc(f"2026-11-18T{stamp}Z") for stamp in ("10:30", "11:00", "12:00", "13:00")]
-    )
-    values = portfolio_values_node_for_frames(
-        valuations=asset_frame(
-            [
-                (time.isoformat(), "AAPL", price)
-                for time, price in zip(times, [100.0, 100.0, 110.0, 121.0], strict=True)
-            ]
-        ),
-        weights=weights,
-        timestamps=times,
-    )._calculate_portfolio_workflow_values()
-
-    assert values["return"].tolist() == pytest.approx([0.0, 0.0, 0.05, 1.105 / 1.05 - 1.0])
-
-
 def test_the_position_ledger_books_each_slice_of_the_order_it_decided() -> None:
     """The ledger decides 45 shares at 09:30's 100 and trades each recorded slice of them.
 
@@ -749,7 +693,7 @@ def test_bar_strategies_have_the_execution_policy_with_the_same_defaults(kind) -
     assert compute_strategy_revision(other) != compute_strategy_revision(built)
 
 
-def test_a_fixed_cash_amount_is_converted_with_total_notional() -> None:
+def test_a_fixed_cash_amount_is_converted_with_the_ledgers_initial_nav() -> None:
     """$5,000 of negative cash on a $10,000 book is half of the book's first NAV."""
     frame = swap_bars(buy_price=100.0)
     fixed = run(
@@ -776,8 +720,8 @@ def test_a_fixed_cash_amount_is_converted_with_total_notional() -> None:
     )
 
     assert steps(fixed) == steps(half)
-    # TimeWeighted has no size of its own: only a ledger gives its book a currency.
-    with pytest.raises(ValueError, match="needs a portfolio with a ledger"):
+    # Without the book's unit, the ledger's initial NAV, the amount has no currency.
+    with pytest.raises(ValueError, match="needs the book's unit"):
         run(
             strategy(
                 "time_weighted",
@@ -788,4 +732,5 @@ def test_a_fixed_cash_amount_is_converted_with_total_notional() -> None:
             ),
             frame,
             swap_signals({"ILLQ": 1.0}),
+            unit_value=None,
         )

@@ -17,8 +17,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from mainsequence.client.exceptions import TransportError
-from metatables import MetaTableTransactionGuardError
-from metatables.endpoint import ApiResolutionError
+from metatables import ApiResolutionError, MetaTableTransactionGuardError
 
 from apps.v1.main import app
 from apps.v1.upstream_errors import (

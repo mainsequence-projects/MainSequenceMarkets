@@ -20,6 +20,7 @@ if __name__ == "__main__":
 from examples.msm.assets.utils import (  # noqa: E402
     EXAMPLE_CRYPTO_ASSETS,
     EXAMPLE_CRYPTO_ASSET_TYPE,
+    EXAMPLE_CURRENCY_ASSET_TYPE,
 )
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     ASSET_UNIQUE_IDENTIFIERS,
@@ -31,6 +32,7 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     PORTFOLIO_UNIQUE_IDENTIFIER,
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
+    SIGNAL_TIME_INDEX,
     SOURCE_PRICE_CADENCE,
     TIME_INDEX,
 )
@@ -38,7 +40,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
 import msm_portfolios  # noqa: E402
 from metatables import TimeIndexMetaTable  # noqa: E402
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
-from msm.api.assets import Asset, AssetCalendar, AssetType  # noqa: E402
+from msm.api.assets import Asset, AssetType  # noqa: E402
+from msm.constants import ASSET_TYPE_CURRENCY  # noqa: E402
 from msm.api.calendars import Calendar  # noqa: E402
 from msm.time_index.assets.asset_indexed import (  # noqa: E402
     AssetIndexedUpdater,
@@ -46,13 +49,15 @@ from msm.time_index.assets.asset_indexed import (  # noqa: E402
 )
 from msm.time_index.utils.time import normalize_datetime64_ns_utc  # noqa: E402
 from msm.api.portfolios import Portfolio  # noqa: E402
+from msm_portfolios.accounting import (  # noqa: E402
+    MarketPriceValuationModel,
+    PortfolioAccountingConfiguration,
+)
 from msm_portfolios.configuration import (  # noqa: E402
     BacktestingWeightsConfig,
     PortfolioBuildConfiguration,
     PortfolioConfiguration,
-    PortfolioExecutionConfiguration,
     PortfolioMarketsConfig,
-    ValuationAlignmentPolicy,
 )
 from msm_portfolios.contrib.signals.fixed_weights import (  # noqa: E402
     AUIDWeight,
@@ -66,13 +71,19 @@ from msm_portfolios.contrib.prices.updaters import (  # noqa: E402
 from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
 )
+from msm_portfolios.recipes import run_portfolio  # noqa: E402
 from msm_portfolios.time_index import (  # noqa: E402
     PortfolioCalendarEvents,
     PortfolioCalendarEventsConfiguration,
-    PortfoliosUpdater,
     compute_portfolio_configuration_hash,
 )
-from msm_portfolios.rebalance_strategy import CalendarEventSignal  # noqa: E402
+from msm_portfolios.rebalance_strategy import (  # noqa: E402
+    CalendarEventSignal,
+    ProportionalExecutionCostModel,
+)
+
+
+PORTFOLIO_CURRENCY = "USD"
 
 
 class ExamplePortfolioResolver:
@@ -149,28 +160,30 @@ def start_portfolio_example_runtime(
     )
 
 
-def register_assets() -> list[Asset]:
-    asset_type = AssetType.upsert(**EXAMPLE_CRYPTO_ASSET_TYPE)
-    assets = [Asset.upsert(**asset_payload) for asset_payload in EXAMPLE_CRYPTO_ASSETS]
-    print_detail("asset_type", asset_type.asset_type)
-    print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
-    return assets
+def register_assets(calendar: Calendar) -> list[Asset]:
+    """Register the asset types, then the assets: one upsert of each.
 
-
-def link_assets_to_calendar(assets: Sequence[Asset], calendar: Calendar) -> None:
-    """Link each asset to the stored calendar whose sessions decide its price bars.
-
-    An asset without this link has no trading calendar, and the price update
-    refuses it. There is no default calendar.
+    Each crypto asset names the stored calendar whose sessions decide its price bars,
+    so the upsert links it (ADR 0057). An asset with no link fails the price update;
+    there is no default calendar. The portfolio's currency is an asset too, since the
+    ledger's cash is in it (ADR 0065). It gets no price bars and needs no calendar.
+    Returns the crypto assets.
     """
 
-    result = AssetCalendar.link_many(
-        [asset.unique_identifier for asset in assets],
-        calendar_uid=calendar.uid,
+    asset_types = AssetType.upsert_many(
+        [EXAMPLE_CRYPTO_ASSET_TYPE, EXAMPLE_CURRENCY_ASSET_TYPE]
     )
-    if result.unknown:
-        raise LookupError(f"Assets {result.unknown} were not found.")
+    *assets, currency = Asset.upsert_many(
+        [
+            *({**payload, "calendar_uid": calendar.uid} for payload in EXAMPLE_CRYPTO_ASSETS),
+            {"unique_identifier": PORTFOLIO_CURRENCY, "asset_type": ASSET_TYPE_CURRENCY},
+        ]
+    )
+    print_detail("asset_types", ", ".join(asset_type.asset_type for asset_type in asset_types))
+    print_detail("assets", ", ".join(asset.unique_identifier for asset in assets))
     print_detail("asset_calendar", f"{len(assets)} assets -> {calendar.unique_identifier}")
+    print_detail("portfolio_currency", currency.unique_identifier)
+    return assets
 
 
 def create_crypto_calendar_from_pandas() -> Calendar:
@@ -196,6 +209,7 @@ def build_fixed_weights_config() -> FixedWeightsConfig:
             AUIDWeight(unique_identifier=asset_uid, weight=weight)
             for asset_uid in ASSET_UNIQUE_IDENTIFIERS
         ],
+        signal_time_index=SIGNAL_TIME_INDEX.to_pydatetime(),
     )
 
 
@@ -209,12 +223,8 @@ def build_portfolio_configuration(
     return PortfolioConfiguration(
         portfolio_build_configuration=PortfolioBuildConfiguration(
             valuation_source_instance=price_source,
-            valuation_asset_identifier="USD",
+            valuation_asset_identifier=PORTFOLIO_CURRENCY,
             valuation_column="close",
-            # Strict freshness applies to current and immediately preceding
-            # nonzero holdings, preserving entry/exit checks and zero rows.
-            valuation_alignment_policy=ValuationAlignmentPolicy(),
-            execution_configuration=PortfolioExecutionConfiguration(commission_fee=0.00018),
             backtesting_weights_configuration=BacktestingWeightsConfig(
                 signal_weights_instance=signal_weights,
                 rebalance_strategy_instance=CalendarEventSignal(
@@ -222,7 +232,18 @@ def build_portfolio_configuration(
                     calendar_identifier=calendar.unique_identifier,
                     session_label="regular",
                     rebalance_event="market_close",
+                    # A cost of 0.018% of each trade's notional, booked by the ledger.
+                    execution_cost_model_instances=(
+                        ProportionalExecutionCostModel(rate=0.00018),
+                    ),
                 ),
+            ),
+            # Every portfolio keeps a ledger (ADR 0065): 1,000,000 USD in cash from the
+            # first source bar, valued at the interpolated closes.
+            accounting_configuration=PortfolioAccountingConfiguration(
+                initial_nav=1_000_000.0,
+                initial_state_time_index=(TIME_INDEX - pd.Timedelta(days=3)).to_pydatetime(),
+                position_valuation_model_instance=MarketPriceValuationModel(),
             ),
         ),
         portfolio_markets_configuration=PortfolioMarketsConfig(
@@ -256,7 +277,7 @@ def build_interpolated_prices_node(
     return InterpolatedPrices(
         interpolation_config=InterpolatedPricesConfig(
             # The scope names the assets. Each asset's trading calendar is its
-            # stored AssetCalendar link, written by link_assets_to_calendar().
+            # stored AssetCalendar link, written by register_assets().
             asset_list=list(ASSET_UNIQUE_IDENTIFIERS),
             intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
             source_price_instance=source_price_instance,
@@ -264,19 +285,6 @@ def build_interpolated_prices_node(
         ),
         output_table=INTERPOLATED_PRICES_STORAGE,
         hash_namespace=NAMESPACE,
-    )
-
-
-def build_portfolio_values_node(
-    portfolio_configuration: PortfolioConfiguration,
-    *,
-    portfolio_resolver: ExamplePortfolioResolver,
-) -> PortfoliosUpdater:
-    return PortfoliosUpdater(
-        namespace=NAMESPACE,
-        portfolio_configuration=portfolio_configuration,
-        portfolio_resolver=portfolio_resolver,
-        portfolio_description="Published portfolio value series.",
     )
 
 
@@ -375,7 +383,6 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
     print_detail("source_prices_table_update_uid", result["source_prices_table_update_uid"])
     print_detail("interpolated_prices_table_update_uid", result["interpolated_prices_table_update_uid"])
     print_detail("calendar_events_table_update_uid", result["calendar_events_table_update_uid"])
-    print_detail("portfolio_rebalance_table_update_uid", result["portfolio_rebalance_table_update_uid"])
     print_detail("published_signal_weights_rows", result["published_signal_weights_rows"])
     print_detail("published_portfolio_weights_rows", result["published_portfolio_weights_rows"])
     print_detail("published_portfolio_values_rows", result["published_portfolio_values_rows"])
@@ -395,12 +402,11 @@ def build_equal_weight_portfolio(
     print_step(1, "Starting the portfolio example runtime.")
     runtime = start_portfolio_example_runtime(models=runtime_models)
 
-    print_step(2, "Registering the crypto asset universe.")
-    assets = register_assets()
-
-    print_step(3, "Creating or reusing the crypto 24/7 calendar with sessions.")
+    print_step(2, "Creating or reusing the crypto 24/7 calendar with sessions.")
     portfolio_calendar = create_crypto_calendar_from_pandas()
-    link_assets_to_calendar(assets, portfolio_calendar)
+
+    print_step(3, "Registering the crypto assets on that calendar, and the portfolio currency.")
+    assets = register_assets(portfolio_calendar)
 
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
     source_prices_storage_uid = resolve_source_prices_storage(runtime)
@@ -423,10 +429,6 @@ def build_equal_weight_portfolio(
     )
     portfolio_resolver = ExamplePortfolioResolver(
         portfolio=portfolio,
-    )
-    portfolio_values_node = build_portfolio_values_node(
-        portfolio_configuration,
-        portfolio_resolver=portfolio_resolver,
     )
     print_detail("portfolio_uid", portfolio.uid)
     print_detail("portfolio_identifier", portfolio.unique_identifier)
@@ -456,27 +458,25 @@ def build_equal_weight_portfolio(
 
     print_step(5, "Running the portfolio and publishing its series to Markets (ADR 0060).")
     if run_updaters:
-        source_bars_node.run(update_tree=False)
+        # One joined MetaTables run (issue #133): the source bars, the interpolated
+        # prices and the calendar events run once, then the rebalance (which publishes
+        # the signal first) and the ledger; the weights and values are published after.
+        portfolio_run = run_portfolio(
+            portfolio_configuration,
+            namespace=NAMESPACE,
+            portfolio_resolver=portfolio_resolver,
+            portfolio_description="Published portfolio value series.",
+        )
+        portfolio = portfolio_run.portfolio
+        print_detail("first_rebalance", portfolio_run.first_rebalance)
+
         source_prices_table_update_uid = str(source_bars_node.table_update.uid)
         print_detail("source_prices_table_update_uid", source_prices_table_update_uid)
-
-        portfolio_run_result = portfolio_values_node.run(
-            update_tree=True,
-            update_pointers=True,
-        )
-        portfolio = portfolio_run_result["portfolio"]
-
         interpolated_prices_table_update_uid = str(interpolated_prices_node.table_update.uid)
         print_detail("interpolated_prices_table_update_uid", interpolated_prices_table_update_uid)
 
         calendar_events_table_update_uid = str(calendar_events_node.table_update.uid)
         print_detail("calendar_events_table_update_uid", calendar_events_table_update_uid)
-
-        portfolio_weights_node = portfolio_run_result["portfolio_weights"]
-        portfolio_rebalance_table_update_uid = str(
-            portfolio_weights_node.portfolio_rebalance.table_update.uid
-        )
-        print_detail("portfolio_rebalance_table_update_uid", portfolio_rebalance_table_update_uid)
 
         from msm_portfolios.api import (
             PortfolioValuesSeries,
@@ -500,12 +500,10 @@ def build_equal_weight_portfolio(
         print_detail("source_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("interpolated_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("calendar_events_table_update_uid", "skipped (--no-run-updaters)")
-        print_detail("portfolio_rebalance_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("published series", "skipped (--no-run-updaters)")
         source_prices_table_update_uid = None
         interpolated_prices_table_update_uid = None
         calendar_events_table_update_uid = None
-        portfolio_rebalance_table_update_uid = None
         published_signal_weights_rows = None
         published_portfolio_weights_rows = None
         published_portfolio_values_rows = None
@@ -529,7 +527,6 @@ def build_equal_weight_portfolio(
         "source_prices_table_update_uid": source_prices_table_update_uid,
         "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
         "calendar_events_table_update_uid": calendar_events_table_update_uid,
-        "portfolio_rebalance_table_update_uid": portfolio_rebalance_table_update_uid,
         "published_signal_weights_rows": published_signal_weights_rows,
         "published_portfolio_weights_rows": published_portfolio_weights_rows,
         "published_portfolio_values_rows": published_portfolio_values_rows,

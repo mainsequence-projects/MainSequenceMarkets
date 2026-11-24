@@ -3,16 +3,14 @@ from datetime import timedelta
 from typing import Union
 
 import pandas as pd
+from pydantic import Field, field_validator
 
 from msm_portfolios.time_index import (
     ASSET_IDENTIFIER,
-    SIGNAL_UID,
     SignalWeights,
 )
 from msm_portfolios.configuration import PortfolioConfigBaseModel
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
-
-SIGNAL_OFFSET_START = datetime.datetime(2018, 1, 1, tzinfo=datetime.UTC)
 
 
 class AUIDWeight(PortfolioConfigBaseModel):
@@ -21,7 +19,24 @@ class AUIDWeight(PortfolioConfigBaseModel):
 
 
 class FixedWeightsConfig(PortfolioConfigBaseModel):
+    """Weights that never change, and the time they are stated.
+
+    The signal has one observation, at ``signal_time_index``. A rebalance sizes it with
+    the last prices strictly before its earliest moment (ADR 0058), so the time must
+    come after the portfolio's first observed price.
+    """
+
     asset_unique_identifier_weights: list[AUIDWeight]
+    signal_time_index: datetime.datetime = Field(
+        description="The time of the signal's one observation; timezone-aware.",
+    )
+
+    @field_validator("signal_time_index")
+    @classmethod
+    def require_aware_signal_time(cls, value: datetime.datetime) -> datetime.datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("signal_time_index must be timezone-aware.")
+        return value.astimezone(datetime.UTC)
 
 
 class FixedWeights(SignalWeights):
@@ -48,19 +63,14 @@ class FixedWeights(SignalWeights):
         return {}
 
     def _calculate_signal_weights(self) -> pd.DataFrame:
-        existing_signal_rows = self.get_df_between_dates(
-            dimension_filters={SIGNAL_UID: [self.signal_uid]}
-        )
-        if not existing_signal_rows.empty:
-            return pd.DataFrame(columns=["time_index", ASSET_IDENTIFIER, "signal_weight"])
+        """The one observation, every run: once stored, publishing it writes nothing."""
 
         df = pd.DataFrame([m.model_dump() for m in self.asset_unique_identifier_weights]).rename(
             columns={"unique_identifier": ASSET_IDENTIFIER, "weight": "signal_weight"}
         )
         df = df.set_index([ASSET_IDENTIFIER])
-        # offset 1 day to avoid last filter
         signals_weights = pd.concat(
-            [df], axis=0, keys=[SIGNAL_OFFSET_START + datetime.timedelta(days=1)]
+            [df], axis=0, keys=[self.fixed_weights_config.signal_time_index]
         ).rename_axis(["time_index", ASSET_IDENTIFIER])
 
         signals_weights = signals_weights.dropna()
