@@ -371,7 +371,27 @@ def rebalance_state(monkeypatch):
         yield runs
 
 
-def test_run_portfolio_publishes_weights_and_values_once(markets, rebalance_state) -> None:
+def _spy_registry_writes(monkeypatch) -> list[str]:
+    """Record every write of a ``Portfolio`` or ``SignalMetadata`` row from now on."""
+
+    from msm.api.portfolios import Portfolio
+
+    writes: list[str] = []
+    for rows in (Portfolio, SignalMetadata):
+        for name in ("create", "update", "upsert"):
+            original = getattr(rows, name).__func__
+
+            def spy(cls, *args, _original=original, _name=f"{rows.__name__}.{name}", **kwargs):
+                writes.append(_name)
+                return _original(cls, *args, **kwargs)
+
+            monkeypatch.setattr(rows, name, classmethod(spy))
+    return writes
+
+
+def test_run_portfolio_publishes_weights_and_values_once(
+    markets, rebalance_state, monkeypatch
+) -> None:
     signal = _signal()
     configuration = _configuration(signal)
     resolver = Resolver(markets.calendar["uid"])
@@ -380,8 +400,12 @@ def test_run_portfolio_publishes_weights_and_values_once(markets, rebalance_stat
         recipes.run_portfolio(configuration, portfolio_resolver=resolver)
     recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
     first = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
+    writes = _spy_registry_writes(monkeypatch)
     second = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
 
+    # Nothing changed, so the second run writes neither the Portfolio row nor the
+    # signal's metadata (#136).
+    assert writes == []
     assert first.first_rebalance is True
     assert first.weights.written == 2
     assert first.values.written == 3

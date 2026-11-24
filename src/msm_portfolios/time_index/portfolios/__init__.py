@@ -284,7 +284,12 @@ class PortfolioValues(PublishedSeriesNode):
         )
 
     def _update_portfolio_pointers(self, *, portfolio: Any) -> Any:
-        """Record the portfolio's current signal on its ``Portfolio`` row."""
+        """Record the portfolio's current signal on its ``Portfolio`` row.
+
+        Writes the row only when its signal or price column changes: ``portfolio`` is the
+        row this run resolved. The signal's ``SignalMetadata`` row exists already: the
+        signal's run, or its first publication, created it.
+        """
         from msm.api.portfolios import Portfolio
 
         if portfolio.calendar_uid in (None, ""):
@@ -292,22 +297,22 @@ class PortfolioValues(PublishedSeriesNode):
                 "PortfolioValues cannot update the Portfolio row because "
                 "portfolio.calendar_uid is missing."
             )
-        self._ensure_signal_metadata(self.signal_weights)
+        signal_uid = self._required_signal_uid(self.signal_weights)
+        price_column = portfolio.backtest_table_price_column_name or self.valuation_column
+        if (
+            portfolio.signal_uid == signal_uid
+            and portfolio.backtest_table_price_column_name == price_column
+        ):
+            return portfolio
         portfolio = Portfolio.upsert(
             unique_identifier=str(portfolio.unique_identifier),
             calendar_uid=portfolio.calendar_uid,
             published_index_uid=portfolio.published_index_uid,
-            backtest_table_price_column_name=(
-                portfolio.backtest_table_price_column_name or self.valuation_column
-            ),
-            signal_uid=self._required_signal_uid(self.signal_weights),
+            backtest_table_price_column_name=price_column,
+            signal_uid=signal_uid,
         )
         self.target_portfolio = portfolio
         return portfolio
-
-    @staticmethod
-    def _ensure_signal_metadata(signal_weights: Any) -> None:
-        signal_weights._upsert_signal_metadata_if_available()
 
     @staticmethod
     def _required_signal_uid(signal_weights: Any) -> str:

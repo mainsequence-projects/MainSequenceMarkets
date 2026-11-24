@@ -90,10 +90,10 @@ class SignalWeights(PublishedSeriesNode):
         return {}
 
     def run(self) -> Any:
-        """Create the signal's metadata, then compute and publish its new weights."""
+        """Write the signal's metadata if it is new or changed, then publish its new weights."""
 
         self._progress_by_asset = None
-        self._upsert_signal_metadata_if_available()
+        self._ensure_signal_metadata()
         try:
             return super().run()
         finally:
@@ -131,7 +131,7 @@ class SignalWeights(PublishedSeriesNode):
     def signal_uid(self) -> str:
         return self._resolve_signal_uid()
 
-    def _upsert_signal_metadata_if_available(self) -> None:
+    def _ensure_signal_metadata(self) -> None:
         if self.signal_configuration is None:
             return
 

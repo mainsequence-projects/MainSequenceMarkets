@@ -133,6 +133,13 @@ what they share once
   comparing them; the published nodes (`PublishedSeriesNode.publish_frame`) publish that
   way and read no bounds of their own. A run of the equal-weights example made 163
   requests instead of 189.
+- **A run writes a signal's metadata and the `Portfolio` row only when they change**
+  ([#136](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/136)).
+  `SignalWeights.run()` reads the signal's `SignalMetadata` row and writes it only when it
+  is missing or its description changed (`ensure_signal_metadata`, which
+  `publish_signal_weights` uses too). `PortfolioValues` no longer writes the signal's
+  metadata again, and writes the `Portfolio` row only when its signal or price column
+  changes. A second run of the equal-weights example made 101 requests instead of 108.
 
 ### Removed
 

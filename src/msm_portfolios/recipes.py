@@ -81,9 +81,10 @@ def publish_signal_weights(
 
     from msm_portfolios.api import SignalMetadata, SignalWeightsSeries
     from msm_portfolios.series_nodes import whole_time_batches
+    from msm_portfolios.time_index.metadata import ensure_signal_metadata
 
     pending = _validated_observations(observations)
-    created = _ensure_signal_metadata(SignalMetadata, signal_uid, description)
+    created = ensure_signal_metadata(SignalMetadata, signal_uid, description)
     rows: list[dict[str, Any]] = []
     for time, weights in pending:
         if not weights:
@@ -593,16 +594,6 @@ def delete_private_series(
 
 
 # Helpers -------------------------------------------------------------------------------
-
-
-def _ensure_signal_metadata(rows: Any, signal_uid: str, description: str | None) -> bool:
-    existing = rows.filter(signal_uid=signal_uid, limit=1)
-    if not existing:
-        rows.create(signal_uid=signal_uid, signal_description=description)
-        return True
-    if description is not None and existing[0].signal_description != description:
-        rows.update(existing[0].uid, signal_description=description)
-    return False
 
 
 def _held_assets(series: Any, signal_uid: str) -> list[str]:

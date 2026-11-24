@@ -53,6 +53,29 @@ def test_the_one_observation_is_at_the_stated_time_and_is_published_once(markets
     }
 
 
+def test_a_run_writes_the_signals_metadata_only_when_it_is_new(markets, monkeypatch) -> None:
+    from msm_portfolios.api import SignalMetadata
+
+    writes: list[str] = []
+    for name in ("create", "update", "upsert"):
+        original = getattr(SignalMetadata, name).__func__
+
+        def spy(cls, *args, _original=original, _name=name, **kwargs):
+            writes.append(_name)
+            return _original(cls, *args, **kwargs)
+
+        monkeypatch.setattr(SignalMetadata, name, classmethod(spy))
+    signal = FixedWeights.from_signal_configuration(_configuration(STATED))
+
+    signal.run()
+    signal.run()
+
+    # The first run creates the row (#136); the second finds it unchanged.
+    assert writes == ["create"]
+    (row,) = SignalMetadata.filter(signal_uid=signal.signal_uid)
+    assert row.signal_description == signal.get_explanation()
+
+
 def test_the_time_is_part_of_the_identity_and_must_be_timezone_aware() -> None:
     def uid(signal_time_index: dt.datetime) -> str:
         return FixedWeights.from_signal_configuration(
