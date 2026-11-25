@@ -37,7 +37,9 @@ For an application that computes or receives signals or runs portfolios, read
 signal weights, portfolio weights and values are published to Markets through
 `SignalWeightsSeries`, `PortfolioWeightsSeries` and `PortfolioValuesSeries` and the
 recipes of `msm_portfolios.recipes`; a producer keeps no table for them, registers no
-table with Markets and grants Markets no role.
+table with Markets and grants Markets no role. The one table it keeps is its computed
+signals' own: a computed signal is its own node, which writes that table and publishes the
+same rows (ADR 0060, amended on 2026-11-24).
 
 For position-aware accounting, lifecycle cash flows, or portfolio valuation,
 also read:
@@ -214,14 +216,14 @@ other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
 `InterpolatedPrices` writes only the table of its configuration, which the producer
-owns. Declare it on the producer's own base, migrate it with the producer's provider,
-and pass it as `output_table=`:
+owns. Declare it with a class statement at the top level of a module of the producer
+(`my_project/tables.py`), on `InterpolatedPricesInstance` and the producer's own base,
+list it in the producer's migration provider, and pass it as `output_table=`:
 
 ```python
 from metatables import sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 from sqlalchemy import MetaData
@@ -232,20 +234,21 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ProjectInterpolatedPrices = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=interpolated_prices_instance_key(
+class ProjectInterpolatedPrices(InterpolatedPricesInstance, Base):
+    __instance_key__ = interpolated_prices_instance_key(
         source_table_name="my_project__bars_1d",  # ProjectBars.__table__.name
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
-    ),
-    cadence="1d",  # the upsample frequency
-    namespace="my-project",
-    storage_app="my_project",
-    base=Base,
-)
+    )
+    __metatable_namespace__ = "my-project"
+    __markets_storage_app__ = "my_project"
+    __cadence__ = "1d"  # the upsample frequency
 ```
+
+- One class per configuration, never one a function returns: a node Job run imports it
+  by `my_project.tables:ProjectInterpolatedPrices`. A dictionary keyed by
+  configuration is fine for looking the classes up.
 
 - The four arguments of `interpolated_prices_instance_key` are the table's whole key.
   The source is its physical table name, never its UID, so one committed revision
@@ -259,13 +262,15 @@ ProjectInterpolatedPrices = configured_time_index_instance(
   source still holds bars. Set an earlier one before that run when older bars matter.
 - A table registered with the wrong cadence is refused. Correct its class and run its
   provider's `metatables migrations upgrade`, which registers the class's cadence.
-- `namespace`, `storage_app` and `base` have no default. A producer never passes
-  Markets' own, and never applies or extends Markets' migrations for this table.
+- `__metatable_namespace__`, `__markets_storage_app__` and the base have no default. A
+  producer never gives Markets' own, and never applies or extends Markets' migrations
+  for this table.
 - This is the price source's schema, not portfolio core registration, and it does
   not mean a portfolio node may construct prices internally.
 
-The equal-weight example is such a producer, with its provider and committed revision
-in `examples/msm_portfolios/portfolio_equal_weights_migrations/`. From the repository
+The equal-weight example is such a producer, with its provider and committed revisions
+(its interpolated-price table and its signal table) in
+`examples/msm_portfolios/portfolio_equal_weights_migrations/`. From the repository
 root, after Markets' own migrations:
 
 ```bash
@@ -274,8 +279,9 @@ python examples/msm_portfolios/portfolio_equal_weights_run.py
 ```
 
 Both write only to MetaTables' local SQLite runtime: a sandbox is a separate database,
-never another namespace. With updaters on, the first run publishes the signal, the
-portfolio's weights and its values, and a second run writes nothing new. Its `FixedWeights`
+never another namespace. With updaters on, the first run writes the signal to the
+example's signal table and publishes it, then the portfolio's weights and its values, and a
+second run writes nothing new. Its `FixedWeights`
 signal is stated after the first source close (`SIGNAL_TIME_INDEX`), so the rebalance has a
 price to size it with. Normal runtime code still builds the graph explicitly as
 source price or valuation node -> interpolation when needed -> signal node -> portfolio node. If
@@ -300,8 +306,7 @@ valuation source, FX, lifecycle inputs --------------> PortfolioEngine --> event
                                                                                 optional PortfolioAnalytics
 ```
 
-No portfolio node constructs `InterpolatedPrices` from
-`AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
+No portfolio node constructs `InterpolatedPrices`. If persistent interpolation is
 needed, prepare or attach the interpolation node first and pass it as
 `PortfolioBuildConfiguration.valuation_source_instance`. The ledger values each
 held asset at its last observation at or before each ledger time, at source
@@ -337,18 +342,22 @@ Rules:
   of renaming the column to `close`. Use
   `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` as the
   reference configuration path.
-- `InterpolatedPricesConfig` accepts either `source_price_instance` or
-  `source_time_index_meta_table_uid`. Use the instance path when the raw/source
-  price node is already in the graph; use the UID path only to attach an
-  already registered compatible source table through `TimeIndexTableRef`.
+- A price source is an updater instance or a table name (ADR 0066). Pass
+  `source_price_instance` the raw/source price node when it is in the graph, or
+  another owner's registered table by its physical name,
+  `TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. Never
+  refer to a table by its UID, which differs in each Environment.
 - `InterpolatedPrices.dependencies()` must expose the resolved source price
   object in both cases.
 - Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to a
   portfolio node.
-- `PortfolioRebalance.dependencies()` is the valuation source (and FX source) it
-  trades at, unless the strategy has bars of its own, plus the strategy's declared
-  inputs; it reads the signal, a published series, without running it. It owns
-  event selection, signal cutoff and the rebalance state.
+- `PortfolioRebalance.dependencies()` is a computed signal (`signal_weights`), the
+  valuation source (and FX source) it trades at, unless the strategy has bars of its own,
+  and the strategy's declared inputs. It reads the signal and never runs it: a computed
+  signal from the signal's own table (its window, and each asset's last row before it),
+  a published one (`ApplicationWeights`, no node, no edge) from Markets. A first run
+  starts at the signal's first observation. It owns event selection, signal cutoff and
+  the rebalance state.
 - `PortfolioEngine.dependencies()` is the rebalance state, the valuation source, the
   FX source and the valuation and lifecycle models' inputs.
   `PortfolioWeights.dependencies()` is the engine, and
@@ -437,25 +446,30 @@ Rules:
   `get_asset_list()` is preflight/context only.
 - The ledger reads the valuation source's rows of the assets the portfolio's fills
   trade; valuation sources may contain extra assets.
-- `SignalWeights`, `PortfolioWeights` and `PortfolioValues` are not
-  `TimeIndexTableUpdater`s (ADR 0060): they take no `output_table=` and publish
-  through the series row classes. Their progress is the published series itself
-  (`bounds`, `last`), scoped by key: a portfolio's start is its latest published
-  value for the resolved `PortfolioTable.unique_identifier`; a later row for another
-  portfolio never moves it. Running the same window twice publishes nothing.
+- `PortfolioWeights` and `PortfolioValues` are not `TimeIndexTableUpdater`s (ADR 0060):
+  they take no `output_table=` and publish through the series row classes. Their
+  progress is the published series itself (`bounds`, `last`), scoped by key: a
+  portfolio's start is its latest published value for the resolved
+  `PortfolioTable.unique_identifier`; a later row for another portfolio never moves it.
+  Running the same window twice publishes nothing.
+- A computed signal (`SignalWeights` and its subclasses) is a `TimeIndexTableUpdater`
+  whose `output_table=` is the producer's own `SignalWeightsTS` instance
+  (a class statement on `SignalWeightsInstance`); Markets' own table is
+  refused. Its update writes the new rows there and publishes them to Markets.
 - Portfolio value timestamps are ledger times: fills, lifecycle events and actual
   valuation-source observations, so sparse weekly rebalances can drive daily
   valuation without daily weight rows. A weights row is published for each ledger
   event that changes a position.
 - Seed reads must fetch the latest eligible observation for every required asset in
   one set-based request.
-- Contributed signal progress is scoped by `signal_uid`: the signal's published
-  `SignalWeightsSeries` (`bounds`, and `last(by="asset")` per asset). `signal_uid`
-  references `SignalMetadataTable.signal_uid`, so a signal's metadata exists before
-  its weights are published (`SignalWeights.run()` and `publish_signal_weights`
-  create it). `asset_identifier` must reference `AssetTable.unique_identifier`.
-  Markets refuses an observation at or before the signal's last stored time, and
-  closes at `0` an asset the signal held that a new observation leaves out.
+- A computed signal's progress is scoped by `signal_uid` in its table's update
+  statistics. `signal_uid` references `SignalMetadataTable.signal_uid`, so a signal's
+  metadata exists before its weights are written or published (a computed signal's
+  update and `publish_signal_weights` create it). `asset_identifier` must reference
+  `AssetTable.unique_identifier`. Markets refuses an observation at or before the
+  signal's last stored time, and closes at `0` an asset the signal held that a new
+  observation leaves out; a computed signal's table takes no row at or before the
+  signal's last one either.
 - `SignalMetadataTable.signal_description` and signal `get_explanation()` text
   must be plain text or Markdown. Do not return or document HTML tags for signal
   descriptions; rendering belongs to the consuming UI.
@@ -478,14 +492,22 @@ Rules:
   tick in one call) or `run_portfolio` (one). Their ledgers (`PortfolioEngine`) are
   the heads of one joined MetaTables run (`run_updaters`), so a dependency several
   portfolios share (prices, calendar events, a strategy's or a signal's input) runs
-  once, before every node that reads it (issue #133). The rebalance computes and
-  publishes a signal that computes its weights before it reads it; the signal's
-  `dependencies()` are the rebalance's `signal.<name>` dependencies. Then each
+  once, before every node that reads it (issue #133). A computed signal is one of those
+  nodes: the rebalance depends on it, so it runs (after its own `dependencies()`),
+  writes its table and publishes before the rebalance reads it. Then each
   portfolio publishes its weights and values and records its `signal_uid` on its
   `PortfolioTable` row. `PortfolioValues.run()` and `PortfolioWeights.run()` only
   publish what the ledger holds. The three `*_table_update_uid` pointers name update
   records of bound tables, which a publishing node does not have; they are left as
   they are (ADR 0060 leaves their replacement undecided).
+- A producer's own updaters join the same graph with `run_portfolios(..., updaters=[...])`
+  (outcomes in `PortfolioRuns.updaters`). On a hosted runtime,
+  `node_job="<node Job name>"` runs each node in its own run of that Job, independent
+  nodes at the same time, up to `max_parallel_nodes` (ADR 0067). The node Job's script
+  is `msm_portfolios.node_job.run_node()`. A node Job run rebuilds each node from its
+  saved configuration: keep every table a top-level class statement, every typed value
+  inside a pydantic config, and read another node's result from its table only. The
+  weights and values are still published by the calling process.
 - Rerunning before a new execution event or valuation observation must return an
   empty incremental update. Job run time is never an economic timestamp.
 - API reads for a portfolio's signal weights must filter by
@@ -507,6 +529,9 @@ Contributed signal rules:
   class for them. Its identity is `ApplicationWeightsConfig(provider, key)`, never the
   weights; Markets refuses unknown assets and observations at or before the last
   stored time.
+- A computed signal takes `output_table=`, the producer's own signal table, which holds
+  every signal the producer computes. `ExternalWeights` is computed (it reads an
+  artifact); `ApplicationWeights` is the only published one.
 - External weights and market-cap signals must receive their asset universe or
   market-data dependencies explicitly.
 - ETF replication must expose both basket and ETF price sources explicitly.

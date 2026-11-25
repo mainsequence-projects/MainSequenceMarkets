@@ -12,6 +12,9 @@ called:
 - Physical table names and MetaTable identifiers come from each model's
   authored identifier.
 
+A computed signal is a MetaTables updater (2026-11-24): its class path is pinned with
+the updaters' and with the signals'.
+
 Changing a value pinned here rotates that identity in every Environment: new
 ``TimeIndexTableUpdate`` records, a new ``signal_uid`` whose rows do not include
 the old ones, a different strategy revision on ledger events, or a different
@@ -33,7 +36,7 @@ from pydantic import Field
 
 from metatables import TimeIndexTableUpdateConfig, TimeIndexTableUpdater
 from msm.time_index.assets import AssetSnapshot
-from msm.time_index.indices import configured_index_values_storage
+from msm.time_index.indices import IndexValues1d
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
 from msm.settings import DEFAULT_MARKETS_NAMESPACE
@@ -46,20 +49,19 @@ from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, Interpola
 from msm_portfolios.contrib.signals.intraday_trend import IntradayTrend, IntradayTrendConfig
 from msm_portfolios.time_index import (
     SignalWeights,
+    SignalWeightsSource,
     compute_portfolio_configuration_hash,
     compute_signal_uid,
 )
-from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_rebalance_state_storage,
-)
+from msm_portfolios.time_index.contract_instances import PortfolioRebalanceStateInstance
 from tests.support.pinned_identities import (
     LIBRARY_SIGNALS,
     NESTED_PORTFOLIOS,
     PINNED_PRE_RENAME_UPDATE_HASHES,
     STRATEGIES,
     PinnedBase,
+    PinnedInterpolatedPrices,
     _built_updaters,
-    _interpolated_prices_storage,
     _portfolio_configuration,
     _signal,
 )
@@ -100,6 +102,9 @@ PINNED_TABLE_NAMES = {
     "IndexTable": "ms_markets__index",
     "IndexTypeTable": "ms_markets__indextype",
     "IndexValuesStorage": "ms_markets__indexvaluests",
+    "IndexValues1m": "ms_markets__index_values__t_1m",
+    "IndexValues1h": "ms_markets__index_values__t_1h",
+    "IndexValues1d": "ms_markets__index_values__t_1d",
     "IssuerTable": "ms_markets__issuer",
     "OpenFigiAssetDetailsTable": "ms_markets__openfigiassetdetails",
     "OrderEventsStorage": "ms_markets__ordereventsts",
@@ -166,6 +171,9 @@ PINNED_METATABLE_IDENTIFIERS = {
     "IndexTable": "Index",
     "IndexTypeTable": "IndexType",
     "IndexValuesStorage": "IndexValuesTS",
+    "IndexValues1m": "IndexValuesTS.1m",
+    "IndexValues1h": "IndexValuesTS.1h",
+    "IndexValues1d": "IndexValuesTS.1d",
     "IssuerTable": "Issuer",
     "OpenFigiAssetDetailsTable": "OpenFigiAssetDetails",
     "OrderEventsStorage": "OrderEventsTS",
@@ -216,12 +224,19 @@ PINNED_UPDATER_PATHS = (
     "msm.time_index.indices.values:IndexValuesUpdater",
     "msm.time_index.utils.stamped:StampedUpdater",
     "msm_portfolios.contrib.prices.updaters:InterpolatedPrices",
+    # A computed signal is its own node, with its producer's table (2026-11-24).
+    "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
+    "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
+    "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
+    "msm_portfolios.contrib.signals.market_cap:MarketCap",
+    "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
     "msm_portfolios.time_index.base:AssetScopedPortfolioCanonicalUpdater",
     "msm_portfolios.time_index.base:PortfolioCanonicalUpdater",
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngine",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalytics",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEvents",
     "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalance",
+    "msm_portfolios.time_index.signals.weights:SignalWeights",
     "msm_pricing.time_index.curves:CurveTimestampedUpdater",
     "msm_pricing.time_index.curves:DiscountCurvesUpdater",
     "msm_pricing.time_index.index_fixings:FixingRatesUpdater",
@@ -229,16 +244,19 @@ PINNED_UPDATER_PATHS = (
 )
 
 PINNED_PUBLISHED_NODE_PATHS = (
-    # Nodes of the published series (ADR 0060): no MetaTables update hash, but a
-    # signal's class path is hashed into its signal_uid.
+    # Nodes of the published portfolio series (ADR 0060): no MetaTables update hash.
+    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
+    "msm_portfolios.time_index.portfolios:PortfolioValues",
+)
+
+PINNED_SIGNAL_PATHS = (
+    # Every signal, computed or published: its class path is hashed into its signal_uid.
     "msm_portfolios.contrib.signals.application_weights:ApplicationWeights",
     "msm_portfolios.contrib.signals.external_weights:ExternalWeights",
     "msm_portfolios.contrib.signals.fixed_weights:FixedWeights",
     "msm_portfolios.contrib.signals.intraday_trend:IntradayTrend",
     "msm_portfolios.contrib.signals.market_cap:MarketCap",
     "msm_portfolios.contrib.signals.portfolio_replicator:ETFReplicator",
-    "msm_portfolios.time_index.portfolios.weights:PortfolioWeights",
-    "msm_portfolios.time_index.portfolios:PortfolioValues",
     "msm_portfolios.time_index.signals.weights:SignalWeights",
 )
 
@@ -257,6 +275,7 @@ PINNED_CONFIGURATION_PATHS = (
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngineConfiguration",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalyticsConfiguration",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEventsConfiguration",
+    "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalanceConfiguration",
     "msm_pricing.time_index.curves:CurveConfig",
     "msm_pricing.time_index.curves:CurveUpdaterConfiguration",
     "msm_pricing.time_index.index_fixings:IndexFixingConfiguration",
@@ -282,8 +301,10 @@ PINNED_UPDATE_HASHES = {
     # Rotated in 3.0.0 when the classes moved to msm.time_index and
     # msm_portfolios.contrib.prices.updaters (ADR 0048).
     "asset_snapshot": "assetsnapshot_6eb60d0a440e8ab0b9794f1f5d3e42eb",
-    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130).
-    "interpolated_prices": "interpolatedprices_c2d1d020889b41e2644db7b8dae0ef0c",
+    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130),
+    # and in 6.2.0 when InterpolatedPricesConfig lost source_time_index_meta_table_uid: a
+    # source is an instance or a table reference (ADR 0066, decision 4).
+    "interpolated_prices": "interpolatedprices_17f41f4e488cba69925cc39974325a66",
 }
 
 
@@ -305,19 +326,21 @@ PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
 PINNED_STRATEGY_REVISIONS = {
     # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
     # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
-    # The four bar strategies rotated again with their execution_policy (#90).
+    # The four bar strategies rotated again with their execution_policy (#90). The three on
+    # interpolated prices rotated again in 6.2.0, with that updater's hash (ADR 0066,
+    # decision 4).
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
         "9dd3eb51d6a50fe2440247bc77998a02d5cc660f28ca27900d1ce100db881058"
     ),
     "time_weighted_on_interpolated_prices": (
-        "412e686b88ae429af19b286a090dfaefcb91a8f5c01f91b8944398967a34b622"
+        "fb718570aabcdca257a57b57319615eda35466409c9b32e6555a32b61790437c"
     ),
     "volume_participation_on_interpolated_prices": (
-        "c91e357c91bb54300d007b947d4e06a75221c98cb353e1f0cc53ba92abefc637"
+        "d934bab227aa741048884705dc84c33ef03a4f855d37a34ca3fa13c108939cf7"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "5c8ad355978746656c7e3ac74c829a46662cd61f161ee0adb2a431182e00cf2a"
+        "4e90a28ab354c44e68e7f2c3267621dacbf4469cd3b885fe480062a4a4bdd473"
     ),
 }
 
@@ -385,15 +408,16 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
 }
 
 
+class PinnedRebalanceState(PortfolioRebalanceStateInstance, PinnedBase):
+    __instance_key__ = "pinned_identity"
+    __metatable_namespace__ = DEFAULT_MARKETS_NAMESPACE
+    __markets_storage_app__ = "pinned_app"
+
+
 CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
-    "index_values_1d": lambda: configured_index_values_storage(cadence="1d"),
-    "interpolated_prices_1d_ffill": _interpolated_prices_storage,
-    "rebalance_state_contract_instance": lambda: configured_portfolio_rebalance_state_storage(
-        instance_key="pinned_identity",
-        namespace=DEFAULT_MARKETS_NAMESPACE,
-        storage_app="pinned_app",
-        base=PinnedBase,
-    ),
+    "index_values_1d": lambda: IndexValues1d,
+    "interpolated_prices_1d_ffill": lambda: PinnedInterpolatedPrices,
+    "rebalance_state_contract_instance": lambda: PinnedRebalanceState,
 }
 
 
@@ -471,6 +495,14 @@ def test_published_series_node_class_paths_are_pinned() -> None:
         _defined_subclass_paths(PublishedSeriesNode),
         PINNED_PUBLISHED_NODE_PATHS,
         "published series node",
+    )
+
+
+def test_signal_class_paths_are_pinned() -> None:
+    _assert_paths_pinned(
+        _defined_subclass_paths(SignalWeightsSource),
+        PINNED_SIGNAL_PATHS,
+        "signal",
     )
 
 

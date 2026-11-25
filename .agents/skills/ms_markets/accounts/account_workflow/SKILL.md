@@ -197,12 +197,12 @@ only putting display data in holdings `extra_details`.
 
 The full account example is intentionally chainable. By default,
 `examples/msm/accounts/account_portfolio_full_workflow.py` chains the reusable
-equal-weight portfolio workflow, whose interpolated-price table the example's own
-provider migrates first (`portfolios/portfolio_workflow`), reuses the resulting
+equal-weight portfolio workflow, whose interpolated-price and signal tables the example's
+own provider migrates first (`portfolios/portfolio_workflow`), reuses the resulting
 `Portfolio` row, and assigns that portfolio UID as one of the account target
 positions. The portfolio's weights and values are published to Markets
-(`PortfolioWeightsSeries`, `PortfolioValuesSeries`; ADR 0060). That table is
-not portfolio core registration: the portfolio's ledger (`PortfolioEngine`) must
+(`PortfolioWeightsSeries`, `PortfolioValuesSeries`; ADR 0060). The interpolated-price
+table is not portfolio core registration: the portfolio's ledger (`PortfolioEngine`) must
 still consume an explicit `PortfolioBuildConfiguration.valuation_source_instance` and
 configured `valuation_column`. The same full workflow can be extended with a dry-run
 account virtual-fund allocation plan using

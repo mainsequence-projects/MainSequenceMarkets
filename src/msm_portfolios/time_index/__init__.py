@@ -43,6 +43,7 @@ from .portfolios import (
 )
 from .signals import (
     SignalWeights,
+    SignalWeightsSource,
     canonical_signal_configuration,
     compute_signal_uid,
     normalize_signal_weights_frame,
@@ -73,6 +74,7 @@ __all__ = [
     "PortfolioWeights",
     "SignalWeights",
     "SignalWeightsConfiguration",
+    "SignalWeightsSource",
     "PORTFOLIO_CANONICAL_TIME_INDEX_NAME",
     "PortfolioCanonicalUpdater",
     "AssetScopedPortfolioCanonicalUpdater",

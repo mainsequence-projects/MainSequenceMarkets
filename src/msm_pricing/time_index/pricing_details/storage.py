@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm.storage_instances import TimeIndexInstance
 
 
 class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -97,4 +98,11 @@ class AssetPricingDetailsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["AssetPricingDetailsStorage"]
+class AssetPricingDetailsInstance(TimeIndexInstance):
+    """The base of an owner's own ``AssetPricingDetailsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = AssetPricingDetailsStorage
+
+
+__all__ = ["AssetPricingDetailsInstance", "AssetPricingDetailsStorage"]

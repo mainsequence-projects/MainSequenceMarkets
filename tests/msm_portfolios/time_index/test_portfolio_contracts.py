@@ -14,6 +14,7 @@ from metatables.updaters.configuration import (
 )
 from msm.time_index.utils.storage_schema import storage_column_dtypes_map
 from msm.models import AssetTable, PortfolioTable
+from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
 from msm_portfolios.configuration import (
     PortfolioBuildConfiguration,
     canonical_rebalance_strategy_configuration,
@@ -97,7 +98,6 @@ def test_portfolio_nodes_source_schema_from_storage(node_cls, storage_cls) -> No
     ("node_cls", "storage_cls"),
     [
         (PortfolioWeights, PortfolioWeightsStorage),
-        (SignalWeights, SignalWeightsStorage),
         (PortfolioValues, PortfoliosStorage),
     ],
 )
@@ -107,6 +107,16 @@ def test_published_nodes_validate_against_the_markets_contract(node_cls, storage
     assert node_cls._column_dtypes_map_for_storage() == storage_column_dtypes_map(storage_cls)
     assert node_cls._required_output_table() is storage_cls
     assert not issubclass(node_cls, TimeIndexTableUpdater)
+
+
+def test_a_computed_signal_is_a_node_of_the_signal_weights_contract() -> None:
+    """It writes its producer's own instance of the contract, and publishes to Markets'."""
+
+    assert SignalWeights._column_dtypes_map_for_storage() == storage_column_dtypes_map(
+        SignalWeightsStorage
+    )
+    assert SignalWeights._required_output_table() is SignalWeightsStorage
+    assert issubclass(SignalWeights, TimeIndexTableUpdater)
 
 
 def test_portfolio_configurations_do_not_carry_storage_schema() -> None:
@@ -494,15 +504,20 @@ def test_calendar_strategy_weekly_cadence_produces_sparse_execution_events() -> 
     assert result["time_index"].tolist() == [pd.Timestamp("2026-03-09T20:00:00Z")]
 
 
-def test_the_rebalance_declares_the_inputs_of_a_signal_that_computes_its_weights() -> None:
-    """A computed signal's inputs join the rebalance's graph as ``signal.<name>`` (#133).
+def test_the_rebalance_depends_on_a_computed_signal_and_only_reads_a_published_one() -> None:
+    """A computed signal is its own node; the rebalance's edge to it is ``signal_weights``.
 
-    The signal is a published series, not a MetaTables node. In one joined run its
-    inputs run once, before every rebalance that computes it; a signal whose weights
-    arrive by publication is only read.
+    The signal's inputs are its own dependencies, not the rebalance's: MetaTables runs
+    them before the signal, and the signal before the rebalance (2026-11-24). A signal
+    whose weights arrive only by publication has no node and no edge.
     """
     prices = valuation_source("signal-prices")
     events = valuation_source("calendar-events")
+
+    class PricedSignal(SignalWeights):
+        def dependencies(self):
+            return {"price_source": prices}
+
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
     node.valuation_source = valuation_source()
@@ -510,24 +525,28 @@ def test_the_rebalance_declares_the_inputs_of_a_signal_that_computes_its_weights
     node.rebalance_strategy = ImmediateSignal(
         calendar_events_instance=events, calendar_identifier="XNYS"
     )
-    node.signal_weights = SimpleNamespace(
-        computes_weights=True, dependencies=lambda: {"price_source": prices}
+    computed = object.__new__(PricedSignal)
+    node.signal_weights = computed
+    assert node.dependencies() == {
+        "signal_weights": computed,
+        "valuation_source": node.valuation_source,
+        "calendar_events": events,
+    }
+    assert computed.dependencies() == {"price_source": prices}
+
+    node.signal_weights = ApplicationWeights.from_signal_configuration(
+        ApplicationWeightsConfig(provider="an-application", key="model-a")
     )
     assert node.dependencies() == {
         "valuation_source": node.valuation_source,
         "calendar_events": events,
-        "signal.price_source": prices,
     }
-
-    node.signal_weights = SimpleNamespace(
-        computes_weights=False, dependencies=lambda: {"price_source": prices}
-    )
-    assert "signal.price_source" not in node.dependencies()
 
 
 def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_dispatch() -> None:
-    signal = valuation_source("signal")
-    signal.computes_weights = False
+    signal = ApplicationWeights.from_signal_configuration(
+        ApplicationWeightsConfig(provider="an-application", key="model-a")
+    )
     liquidity = valuation_source("liquidity")
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()
@@ -536,7 +555,7 @@ def test_portfolio_rebalance_merges_arbitrary_strategy_dependencies_without_disp
         liquidity_source_instance=liquidity
     )
 
-    # A published signal (ADR 0060) is read by the rebalance; it declares no input.
+    # A published signal is read by the rebalance; it is no node and has no edge.
     assert node.dependencies() == {"available_liquidity": liquidity}
     source = inspect.getsource(PortfolioRebalance)
     assert "timing_mode" not in source
@@ -1289,7 +1308,7 @@ def test_trailing_daily_volume_resets_consumption_for_the_next_session() -> None
 def test_portfolio_value_node_is_not_asset_scoped() -> None:
     assert PortfolioValues.asset_column is None
     assert PortfolioWeights.asset_column == ASSET_IDENTIFIER
-    assert SignalWeights.asset_column == ASSET_IDENTIFIER
+    assert SignalWeights.asset_identity_dimension == ASSET_IDENTIFIER
 
 
 def test_retired_fixed_frame_strategy_api_is_not_exposed() -> None:

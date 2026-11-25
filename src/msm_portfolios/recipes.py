@@ -15,12 +15,14 @@ and never sends Markets a table uid.
 ``portfolio_history``       a portfolio's values newest first, with the total count
 ``weights_as_of``           each portfolio's latest weights at or before a time
 ``portfolio_preflight``     why a portfolio cannot run yet
-``run_portfolios``          run many portfolios' chains in one joined MetaTables run and
-                            publish their weights and values; list what failed
+``run_portfolios``          run many portfolios' chains, computed signals and the
+                            producer's own updaters included, in one joined MetaTables
+                            run, in this process or in node Jobs, and publish their
+                            weights and values; list what failed
 ``run_portfolio``           the same for one portfolio
 ``end_signal``              delete a signal's weights and metadata in one Markets call
-``delete_private_series``   delete a producer's private rows of portfolios, calendars or
-                            accounts, in the order their keys demand
+``delete_private_series``   delete a producer's private rows of portfolios, calendars,
+                            accounts or signals, in the order their keys demand
 =========================  ===========================================================
 """
 
@@ -149,7 +151,9 @@ def end_signal(signal_uid: str) -> dict[str, Any]:
     """Delete a signal's weights and its ``SignalMetadata`` row in one Markets call.
 
     Only the signal's manager may end it; a portfolio that still names the signal
-    refuses the delete (the database's ``RESTRICT`` key) and nothing is deleted.
+    refuses the delete (the database's ``RESTRICT`` key) and nothing is deleted. So do
+    a computed signal's rows in its producer's own table, which the producer deletes
+    first (``delete_private_series(..., signals=[signal_uid])``).
     """
 
     from msm_portfolios.api import SignalMetadata
@@ -236,11 +240,12 @@ def portfolio_preflight(
 ) -> PortfolioPreflight:
     """Why the portfolio of ``portfolio_configuration`` cannot run yet.
 
-    A signal whose weights arrive through ``publish_signal_weights`` (an
-    ``ApplicationWeights`` signal) must have a published observation; a signal that
-    computes its weights is computed by the run. With ``portfolio_identifier``, a
-    retired portfolio is reported too: it publishes nothing dated at or after its
-    retirement.
+    A signal whose weights arrive only by publication (an ``ApplicationWeights``
+    signal, through ``publish_signal_weights``) must have a published observation. A
+    computed signal is a node of the run, which computes it before the rebalance reads
+    it. With ``portfolio_identifier``, a retired portfolio is reported too: it publishes
+    nothing dated at or after its retirement. ``signal_first_time`` and
+    ``signal_last_time`` are the signal's published bounds.
     """
 
     from msm_portfolios.api import SignalWeightsSeries
@@ -252,7 +257,14 @@ def portfolio_preflight(
         from msm.api.portfolios import Portfolio
 
         portfolio = Portfolio.get_by_unique_identifier(portfolio_identifier)
-    return _preflight(signal, bounds, portfolio)
+    reasons = _refusals(signal, bounds, portfolio)
+    return PortfolioPreflight(
+        ready=not reasons,
+        reasons=tuple(reasons),
+        signal_uid=str(signal.signal_uid),
+        signal_first_time=bounds.first_time,
+        signal_last_time=bounds.last_time,
+    )
 
 
 def _signal_of(portfolio_configuration: Any) -> Any:
@@ -260,26 +272,29 @@ def _signal_of(portfolio_configuration: Any) -> Any:
     return build.backtesting_weights_configuration.signal_weights_instance
 
 
-def _preflight(signal: Any, bounds: SeriesBounds, portfolio: Any | None) -> PortfolioPreflight:
+def _is_computed(signal: Any) -> bool:
+    """Whether ``signal`` is a node of the run, which computes it (``SignalWeights``)."""
+
+    from metatables import TimeIndexTableUpdater
+
+    return isinstance(signal, TimeIndexTableUpdater)
+
+
+def _refusals(signal: Any, bounds: SeriesBounds | None, portfolio: Any | None) -> list[str]:
+    """Why a portfolio cannot run; ``bounds`` are a published signal's published bounds."""
+
     reasons: list[str] = []
-    signal_uid = str(signal.signal_uid)
-    if bounds.row_count == 0 and not signal.computes_weights:
+    if not _is_computed(signal) and (bounds is None or bounds.row_count == 0):
         reasons.append(
-            f"Signal {signal_uid} has no published observation; publish its weights with "
-            "publish_signal_weights first."
+            f"Signal {signal.signal_uid} has no published observation; publish its weights "
+            "with publish_signal_weights first."
         )
     if portfolio is not None and getattr(portfolio, "retired_at", None) is not None:
         reasons.append(
             f"Portfolio {portfolio.unique_identifier!r} is retired from "
             f"{portfolio.retired_at.isoformat()} (ADR 0049)."
         )
-    return PortfolioPreflight(
-        ready=not reasons,
-        reasons=tuple(reasons),
-        signal_uid=signal_uid,
-        signal_first_time=bounds.first_time,
-        signal_last_time=bounds.last_time,
-    )
+    return reasons
 
 
 @dataclass(frozen=True)
@@ -311,11 +326,13 @@ class PortfolioRunFailure:
 
 @dataclass(frozen=True)
 class PortfolioRuns:
-    """What ``run_portfolios`` did: each portfolio that ran, in the order given, and
-    each one that failed, with its reason."""
+    """What ``run_portfolios`` did: each portfolio that ran, in the order given, each one
+    that failed, with its reason, and the MetaTables outcome of each of the producer's
+    own ``updaters``, in the order given."""
 
     ran: tuple[PortfolioRun, ...]
     failed: tuple[PortfolioRunFailure, ...]
+    updaters: tuple[Any, ...] = ()
 
 
 def run_portfolios(
@@ -325,6 +342,9 @@ def run_portfolios(
     event_ledger_output_table: Any = None,
     namespace: str | None = None,
     portfolio_resolver: Any = None,
+    updaters: Sequence[Any] = (),
+    node_job: str | None = None,
+    max_parallel_nodes: int = -1,
 ) -> PortfolioRuns:
     """Run many portfolios' chains in one MetaTables run and publish their weights and values.
 
@@ -332,18 +352,30 @@ def run_portfolios(
     ``event_ledger_output_table``, the producer's private ``PortfolioEventLedgerTS``
     instance). MetaTables joins their graphs by update uid (``run_updaters``, MetaTables
     ADR 0031), so a dependency several portfolios share, such as their valuation source,
-    their calendar events or a strategy's declared input, runs once, before every node
-    that reads it. Each ledger's graph holds its rebalance state (into
-    ``rebalance_output_table``, the private ``PortfolioRebalanceStateTS`` instance),
-    which computes and publishes a signal that computes its weights before it reads it,
-    and the signal's own inputs. After the run each portfolio publishes the weights and values its
-    ledger projects (ADR 0065), creates its ``Portfolio`` row when it does not exist
-    (its manager is the caller) and records its signal on it. A first run starts at the
-    signal's first observation.
+    their calendar events, a computed signal or a strategy's declared input, runs once,
+    before every node that reads it. Each ledger's graph holds its rebalance state (into
+    ``rebalance_output_table``, the private ``PortfolioRebalanceStateTS`` instance) and,
+    for a computed signal, the signal's node, which writes the producer's own signal
+    table and publishes its new rows to Markets before the rebalance reads it. After the
+    run each portfolio publishes the weights and values its ledger projects (ADR 0065),
+    creates its ``Portfolio`` row when it does not exist (its manager is the caller) and
+    records its signal on it. A first run starts at the signal's first observation.
 
     A portfolio the preflight refuses, whose row cannot be resolved, whose ledger or a
     dependency it needs fails, or whose publication fails is listed in ``failed`` with
     the reason; it never stops the others.
+
+    ``updaters`` are the producer's own updaters to run in the same graph (ADR 0067,
+    decision 2): heads of the same invocation as the ledgers, so what they share with a
+    portfolio runs once. Each one's MetaTables ``UpdaterOutcome`` is in
+    ``PortfolioRuns.updaters``; one that fails stops only what needs it.
+
+    ``node_job`` and ``max_parallel_nodes`` go to MetaTables' ``run_updaters`` unchanged
+    (ADR 0067, decision 1). Without ``node_job`` every node runs in this process. With it,
+    each node runs in its own run of that Job, independent nodes at the same time, up to
+    ``max_parallel_nodes`` (``-1``, no limit); it needs a hosted runtime and the node Job's
+    script (``msm_portfolios.node_job.run_node``). The weights and values are published
+    here either way, after the graph. Neither is part of any identity.
     """
 
     return _run_portfolios(
@@ -352,6 +384,9 @@ def run_portfolios(
         event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
         portfolio_resolver=portfolio_resolver,
+        updaters=updaters,
+        node_job=node_job,
+        max_parallel_nodes=max_parallel_nodes,
     )
 
 
@@ -363,12 +398,15 @@ def run_portfolio(
     namespace: str | None = None,
     portfolio_resolver: Any = None,
     portfolio_description: str | None = None,
+    node_job: str | None = None,
+    max_parallel_nodes: int = -1,
 ) -> PortfolioRun:
     """Run one portfolio's chain and publish its weights and values, as ``run_portfolios``.
 
     Raises what stopped it: ``ValueError`` for a portfolio ``portfolio_preflight`` finds
     not ready, otherwise its own error or a dependency's. ``portfolio_description``
-    replaces the description the configuration gives.
+    replaces the description the configuration gives. ``node_job`` and
+    ``max_parallel_nodes`` are ``run_portfolios``'.
     """
 
     runs = _run_portfolios(
@@ -377,6 +415,9 @@ def run_portfolio(
         event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
         portfolio_resolver=portfolio_resolver,
+        updaters=(),
+        node_job=node_job,
+        max_parallel_nodes=max_parallel_nodes,
     )
     if runs.failed:
         raise runs.failed[0].error
@@ -399,6 +440,9 @@ def _run_portfolios(
     event_ledger_output_table: Any,
     namespace: str | None,
     portfolio_resolver: Any,
+    updaters: Sequence[Any],
+    node_job: str | None,
+    max_parallel_nodes: int,
 ) -> PortfolioRuns:
     from msm.api.calendars import calendar_reads
     from msm.repositories.base import one_runtime_lookup
@@ -418,19 +462,22 @@ def _run_portfolios(
             )
 
         signals = [_signal_of(configuration) for configuration, _description in entries]
-        signal_uids = list(dict.fromkeys(str(signal.signal_uid) for signal in signals))
+        # Only a published signal can be refused: a computed one runs in the graph.
+        published = list(
+            dict.fromkeys(str(signal.signal_uid) for signal in signals if not _is_computed(signal))
+        )
         bounds = (
-            {item.key: item for item in SignalWeightsSeries.bounds(signal_uids)}
-            if signal_uids
+            {item.key: item for item in SignalWeightsSeries.bounds(published)}
+            if published
             else {}
         )
         prepared: list[_Prepared] = []
         for position, ((configuration, description), signal) in enumerate(zip(entries, signals)):
             identifier: str | None = None
             try:
-                preflight = _preflight(signal, bounds[str(signal.signal_uid)], None)
-                if not preflight.ready:
-                    raise ValueError("The portfolio cannot run: " + " ".join(preflight.reasons))
+                reasons = _refusals(signal, bounds.get(str(signal.signal_uid)), None)
+                if reasons:
+                    raise ValueError("The portfolio cannot run: " + " ".join(reasons))
                 values_node = PortfolioValues(
                     portfolio_configuration=configuration,
                     portfolio_resolver=portfolio_resolver,
@@ -442,14 +489,16 @@ def _run_portfolios(
                 identifier = str(values_node.prepare_portfolio().unique_identifier)
                 weights_node = values_node._ensure_portfolio_weights_node()
                 engine = weights_node.ensure_portfolio_engine()
-                if preflight.signal_first_time is not None:
-                    for node in (values_node, weights_node, weights_node.portfolio_rebalance):
-                        node.OFFSET_START = preflight.signal_first_time
                 prepared.append(_Prepared(position, identifier, values_node, weights_node, engine))
             except Exception as error:
                 fail(position, identifier, error)
 
-        errors = _run_ledgers([item.engine for item in prepared])
+        errors, outcomes = _run_graph(
+            [item.engine for item in prepared],
+            list(updaters),
+            node_job=node_job,
+            max_parallel_nodes=max_parallel_nodes,
+        )
         published: dict[int, tuple[Any, Any, Any]] = {}
         for item in prepared:
             error = errors[id(item.engine)]
@@ -477,27 +526,43 @@ def _run_portfolios(
                     first_rebalance=weights is not None and weights.row_count == weights.written,
                 )
             )
-        return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
+        return PortfolioRuns(
+            ran=tuple(ran),
+            failed=tuple(failed[key] for key in sorted(failed)),
+            updaters=tuple(outcomes),
+        )
 
 
-def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
-    """Run every ledger in one joined MetaTables run; each one's error, ``None`` if it ran.
+def _run_graph(
+    engines: Sequence[Any],
+    updaters: Sequence[Any],
+    *,
+    node_job: str | None,
+    max_parallel_nodes: int,
+) -> tuple[dict[int, BaseException | None], list[Any]]:
+    """Run the ledgers and the producer's updaters in one joined MetaTables run.
 
-    A node that fails stops only the ledgers that need it (MetaTables ADR 0031). An
-    error raised before any node started stops them all.
+    Answers each ledger's error, ``None`` if it ran, and the outcome of each updater, in
+    order. A node that fails stops only what needs it (MetaTables ADR 0031). An error
+    raised before any node started, such as a node a node Job run could not rebuild, stops
+    them all: each ledger fails with it and each updater's outcome is ``not_run``.
     """
 
-    from metatables import UpdatersFailedError, run_updaters
+    from metatables import UpdaterOutcome, UpdatersFailedError, run_updaters
 
-    if not engines:
-        return {}
+    heads = [*engines, *updaters]
+    if not heads:
+        return {}, []
     try:
-        outcomes = run_updaters(list(engines))
+        outcomes = run_updaters(heads, node_job=node_job, max_parallel_nodes=max_parallel_nodes)
     except UpdatersFailedError as error:
         outcomes = error.outcomes
     except Exception as error:
-        return {id(engine): error for engine in engines}
-    return {
+        return (
+            {id(engine): error for engine in engines},
+            [UpdaterOutcome(updater=updater, state="not_run", error=error) for updater in updaters],
+        )
+    errors = {
         id(engine): (
             None
             if outcome.state == "succeeded"
@@ -506,6 +571,7 @@ def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
         )
         for engine, outcome in zip(engines, outcomes)
     }
+    return errors, list(outcomes[len(engines):])
 
 
 # Private rows --------------------------------------------------------------------------
@@ -514,6 +580,7 @@ PRIVATE_KEY_COLUMNS = {
     "portfolios": "portfolio_identifier",
     "calendars": "calendar_identifier",
     "accounts": "account_uid",
+    "signals": "signal_uid",
 }
 
 
@@ -523,17 +590,20 @@ def delete_private_series(
     portfolios: Sequence[str] = (),
     calendars: Sequence[str] = (),
     accounts: Sequence[str] = (),
+    signals: Sequence[str] = (),
 ) -> dict[str, int]:
-    """Delete the producer's own rows of ``portfolios``, ``calendars`` or ``accounts``.
+    """Delete the producer's own rows of ``portfolios``, ``calendars``, ``accounts`` or
+    ``signals``.
 
-    ``tables`` are the producer's private storage classes (built with
-    ``configured_portfolio_rebalance_state_storage`` and the other factories, bound to
-    its own tables). Each table is cleared of the rows whose ``portfolio_identifier``,
-    ``calendar_identifier`` or ``account_uid`` is given, in one transaction, a table
-    before the tables it references. Run it before the registry delete: a private
-    ``RESTRICT`` key on a registry row refuses that delete while rows remain. The
-    statements run on the producer's own runtime (its MetaTables grants), never on the
-    Markets API. Answers the rows deleted per table.
+    ``tables`` are the producer's private storage classes (class statements on
+    ``PortfolioRebalanceStateInstance``, ``SignalWeightsInstance`` and the other contract
+    bases, bound to its own tables). Each table is cleared of the rows
+    whose ``portfolio_identifier``, ``calendar_identifier``, ``account_uid`` or
+    ``signal_uid`` is given, in one transaction, a table before the tables it references.
+    Run it before the registry delete: a private ``RESTRICT`` key on a registry row
+    refuses that delete while rows remain, as a computed signal's table refuses
+    ``end_signal``. The statements run on the producer's own runtime (its MetaTables
+    grants), never on the Markets API. Answers the rows deleted per table.
     """
 
     from sqlalchemy import delete, func, select
@@ -554,6 +624,7 @@ def delete_private_series(
             ("portfolios", portfolios),
             ("calendars", calendars),
             ("accounts", accounts),
+            ("signals", signals),
         )
         if values
     }

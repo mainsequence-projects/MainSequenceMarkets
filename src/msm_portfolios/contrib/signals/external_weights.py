@@ -65,6 +65,4 @@ class ExternalWeights(SignalWeights):
         weights = weights_source[["time_index", ASSET_IDENTIFIER, "weight"]]
         weights.rename(columns={"weight": "signal_weight"}, inplace=True)
         weights.set_index(["time_index", ASSET_IDENTIFIER], inplace=True)
-
-        weights = self.rows_after_last_observation(weights)
         return weights

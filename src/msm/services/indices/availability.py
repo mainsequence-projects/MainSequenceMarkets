@@ -67,7 +67,7 @@ def reconcile_index_dataset_availability(
 ) -> IndexDatasetReconciliationResult:
     """Reconcile a bounded set of Indexes against every visible canonical contract."""
 
-    from .catalog import _dataset_model_and_handle, discover_canonical_datasets
+    from .catalog import _dataset_table, discover_canonical_datasets
 
     normalized_uids = tuple(dict.fromkeys(uuid.UUID(str(item)) for item in index_uids))
     normalized_identifiers = tuple(
@@ -118,7 +118,7 @@ def reconcile_index_dataset_availability(
     reconciled: list[IndexDatasetState] = []
     for dataset in datasets:
         try:
-            model, handle = _dataset_model_and_handle(context, dataset)
+            values = _dataset_table(dataset).c
         except Exception as exc:
             for index in indexes:
                 reconciled.append(
@@ -132,23 +132,23 @@ def reconcile_index_dataset_availability(
             continue
         statement = (
             select(
-                model.index_identifier,
+                values.index_identifier,
                 func.count().label("row_count"),
-                func.min(model.time_index).label("earliest_time_index"),
-                func.max(model.time_index).label("latest_time_index"),
+                func.min(values.time_index).label("earliest_time_index"),
+                func.max(values.time_index).label("latest_time_index"),
             )
-            .where(model.index_identifier.in_([index.unique_identifier for index in indexes]))
-            .group_by(model.index_identifier)
+            .where(values.index_identifier.in_([index.unique_identifier for index in indexes]))
+            .group_by(values.index_identifier)
         )
         try:
             aggregate_rows = operation_result_rows(
                 execute_markets_operation(
                     compile_markets_statement(
                         statement,
-                        context=handle,
+                        context=context,
                         operation="select",
                     ),
-                    context=handle,
+                    context=context,
                 )
             )
         except Exception as exc:

@@ -1,4 +1,5 @@
-"""The equal-weight example declares and migrates its own interpolated-price table (#95)."""
+"""The equal-weight example declares and migrates its own tables: its interpolated prices
+(#95) and its computed signal's table (2026-11-24)."""
 
 from __future__ import annotations
 
@@ -42,8 +43,9 @@ def test_static_runtime_models_exclude_configured_interpolation_storage() -> Non
     assert "InterpolatedPricesStorage" not in config.PORTFOLIO_EXAMPLE_RUNTIME_MODELS
 
 
-def test_the_example_declares_its_table_on_its_own_base() -> None:
-    table = config.INTERPOLATED_PRICES_STORAGE
+def test_the_example_declares_its_tables_on_its_own_base() -> None:
+    table = config.EqualWeightInterpolatedPrices
+    signals = config.EqualWeightSignalWeights
     key = interpolated_prices_instance_key(
         source_table_name=ExternalPricesStorage.__table__.name,
         source_cadence=ExternalPricesStorage.__cadence__,
@@ -51,8 +53,15 @@ def test_the_example_declares_its_table_on_its_own_base() -> None:
         intraday_bar_interpolation_rule=config.PRICE_INTERPOLATION_RULE,
     )
 
-    assert list(config.ProviderBase.metadata.tables) == [table.__table__.name]
-    assert not issubclass(table, MarketsBase)
+    assert list(config.ProviderBase.metadata.tables) == [
+        table.__table__.name,
+        signals.__table__.name,
+    ]
+    assert not issubclass(table, MarketsBase) and not issubclass(signals, MarketsBase)
+    assert signals.__table__.name == f"{config.PROVIDER_STORAGE_APP}__signalweightsts__signals"
+    assert signals.__metatable_identifier__ == (
+        f"{config.PROVIDER_NAMESPACE}.SignalWeightsTS.signals"
+    )
     assert table.__metatable_identifier__ == (
         f"{config.PROVIDER_NAMESPACE}.InterpolatedPricesTS.{key}"
     )
@@ -62,16 +71,32 @@ def test_the_example_declares_its_table_on_its_own_base() -> None:
     assert table.__cadence__ == config.PRICE_UPSAMPLE_FREQUENCY_ID
 
 
-def test_the_provider_registers_and_targets_only_the_examples_table(provider) -> None:
-    # Alembic alone would create the table; MetaTables registers what this list holds.
-    assert list(provider.metatable_models) == [config.INTERPOLATED_PRICES_STORAGE]
+def test_the_examples_tables_import_back_by_their_address() -> None:
+    """What a node Job run imports (MetaTables ADR 0032): ``module:qualname``."""
+
+    for table in (config.EqualWeightInterpolatedPrices, config.EqualWeightSignalWeights):
+        module = importlib.import_module(table.__module__)
+
+        assert table.__module__ == "examples.msm_portfolios.portfolio_equal_weights_config"
+        assert getattr(module, table.__qualname__) is table
+
+
+def test_the_provider_registers_and_targets_only_the_examples_tables(provider) -> None:
+    # Alembic alone would create the tables; MetaTables registers what this list holds.
+    assert list(provider.metatable_models) == [
+        config.EqualWeightInterpolatedPrices,
+        config.EqualWeightSignalWeights,
+    ]
     assert provider.target_metadata is config.ProviderBase.metadata
 
 
-def test_one_committed_revision_creates_the_table_in_each_catalog(
+def test_the_committed_revisions_create_the_tables_in_each_catalog(
     provider, tmp_path, sqlite_revisions
 ) -> None:
-    table = config.INTERPOLATED_PRICES_STORAGE.__table__
+    tables_created = {
+        config.EqualWeightInterpolatedPrices.__table__.name,
+        config.EqualWeightSignalWeights.__table__.name,
+    }
     for environment in ("development", "production"):
         engine = sqlite_revisions.engine(tmp_path / f"{environment}.sqlite", "head")
         with engine.connect() as connection:
@@ -93,7 +118,7 @@ def test_one_committed_revision_creates_the_table_in_each_catalog(
         engine.dispose()
 
         assert {name: after.get(name) for name in before} == before
-        assert tables - set(before) == {table.name, provider.version_table}
+        assert tables - set(before) == {*tables_created, provider.version_table}
 
 
 def test_the_example_binds_interpolation_to_that_table() -> None:
@@ -107,20 +132,29 @@ def test_the_example_binds_interpolation_to_that_table() -> None:
         )
     )
     with _bound(
-        config.INTERPOLATED_PRICES_STORAGE,
+        config.EqualWeightInterpolatedPrices,
         PRICES_TABLE_UID,
-        cadence=config.INTERPOLATED_PRICES_STORAGE.__cadence__,
+        cadence=config.EqualWeightInterpolatedPrices.__cadence__,
     ):
         prices = example.build_interpolated_prices_node(source)
 
-    assert prices.output_table is config.INTERPOLATED_PRICES_STORAGE
+    assert prices.output_table is config.EqualWeightInterpolatedPrices
 
 
-def test_the_example_names_its_migration_when_the_table_is_missing(monkeypatch) -> None:
+def test_the_example_binds_its_signal_to_its_signal_table() -> None:
+    with _bound(config.EqualWeightSignalWeights, "d0000000-0000-4000-8000-000000000003"):
+        signal = example.build_signal_weights_node()
+
+    assert signal.output_table is config.EqualWeightSignalWeights
+
+
+def test_the_example_names_its_migration_when_a_table_is_missing(monkeypatch) -> None:
     monkeypatch.setattr(TimeIndexMetaTable, "filter_by_body", classmethod(lambda cls, **_: []))
 
     with pytest.raises(RuntimeError, match=f"migrations upgrade --provider {MIGRATIONS}:migration"):
         example.assert_interpolated_prices_storage_registered()
+    with pytest.raises(RuntimeError, match="signal table is missing"):
+        example.assert_signal_weights_storage_registered()
 
 
 def test_example_daily_bars_declares_no_dependencies() -> None:

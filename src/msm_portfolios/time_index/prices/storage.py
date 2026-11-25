@@ -13,14 +13,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
-from msm.storage_instances import normalized_cadence
+from msm.storage_instances import TimeIndexInstance, normalized_cadence
 
 
 class InterpolatedPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Interpolated/upsampled OHLCV price bars keyed by asset unique identifier.
 
     The contract of interpolated prices. A producer writes its own instance of it, one
-    per interpolation configuration (:func:`interpolated_prices_instance_key`).
+    per interpolation configuration (:func:`interpolated_prices_instance_key`), declared
+    on :class:`InterpolatedPricesInstance`.
     """
 
     __metatable_identifier__ = "InterpolatedPricesTS"
@@ -114,9 +115,9 @@ def interpolated_prices_instance_key(
 ) -> str:
     """The instance key of the one table that an interpolation configuration writes (#95).
 
-    A producer declares that table with
-    ``configured_time_index_instance(InterpolatedPricesStorage, instance_key=..., cadence=...)``
-    and migrates it, and ``InterpolatedPrices`` computes the same key when it runs.
+    A producer declares that table with a class statement on
+    :class:`InterpolatedPricesInstance` (``__instance_key__`` and ``__cadence__``) and migrates
+    it, and ``InterpolatedPrices`` computes the same key when it runs.
     ``source_table_name`` is the source's physical table name: ``__table__.name`` of its
     class, ``physical_table_name`` of its registered table. It is the same in every
     Environment, where the table's UID is not. ``upsample_frequency_id`` is the source
@@ -231,8 +232,41 @@ class ExternalPricesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
+class ExternalPricesInstance(TimeIndexInstance):
+    """The base of an owner's own ``ExternalPricesTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = ExternalPricesStorage
+
+
+class InterpolatedPricesInstance(TimeIndexInstance):
+    """The base of a producer's interpolated-price table, one per configuration.
+
+    Its key is :func:`interpolated_prices_instance_key` of the configuration and its
+    ``__cadence__`` the configuration's upsample frequency::
+
+        class DailyInterpolatedPrices(InterpolatedPricesInstance, ProviderBase):
+            __instance_key__ = interpolated_prices_instance_key(
+                source_table_name=DailyBars.__table__.name,
+                source_cadence="1d",
+                upsample_frequency_id="1d",
+                intraday_bar_interpolation_rule="ffill",
+            )
+            __metatable_namespace__ = "my-provider"
+            __markets_storage_app__ = "my_provider"
+            __cadence__ = "1d"
+
+    ``InterpolatedPrices`` refuses any other table for that configuration.
+    """
+
+    __abstract__ = True
+    __core_storage__ = InterpolatedPricesStorage
+
+
 __all__ = [
+    "ExternalPricesInstance",
     "ExternalPricesStorage",
+    "InterpolatedPricesInstance",
     "InterpolatedPricesStorage",
     "interpolated_prices_instance_key",
 ]

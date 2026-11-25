@@ -26,6 +26,7 @@ from msm.base import (
     markets_table_storage_name,
 )
 from msm.time_index.accounts.storage import AccountHoldingsStorage
+from msm.time_index.indices.storage import index_values_output_table_name
 from msm.models.registration import (
     build_markets_registration_requests,
     is_time_index_meta_table_model,
@@ -111,11 +112,13 @@ def test_markets_models_use_package_owned_table_names() -> None:
 
     for model in markets_sqlalchemy_models():
         assert issubclass(model, PlatformManagedMetaTable)
-        table_identity = model.__metatable_identifier__.rsplit(".", 1)[-1]
-        assert model.__table__.name == markets_table_name(
-            MARKETS_TABLE_APP,
-            table_identity,
-        )
+        if model.__metatable_identifier__.startswith("IndexValuesTS."):
+            # Markets' Index values at one cadence (ADR 0066, decision 6).
+            expected = index_values_output_table_name(cadence=model.__cadence__)
+        else:
+            table_identity = model.__metatable_identifier__.rsplit(".", 1)[-1]
+            expected = markets_table_name(MARKETS_TABLE_APP, table_identity)
+        assert model.__table__.name == expected
         assert model.__table__.name.startswith("ms_markets__")
         assert len(model.__table__.name) <= 63
         assert model.__table__.name not in table_names

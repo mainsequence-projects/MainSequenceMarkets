@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import uuid
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -26,7 +27,13 @@ from msm_portfolios.api import (
     SignalMetadata,
     SignalWeightsSeries,
 )
-from msm_portfolios.contrib.signals import ApplicationWeights, ApplicationWeightsConfig
+from msm_portfolios.contrib.signals import (
+    ApplicationWeights,
+    ApplicationWeightsConfig,
+    AUIDWeight,
+    FixedWeights,
+    FixedWeightsConfig,
+)
 from msm_portfolios.accounting import (
     MarketPriceValuationModel,
     PortfolioAccountingConfiguration,
@@ -44,7 +51,8 @@ from msm_portfolios.time_index.portfolios.rebalance import (
 )
 from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_portfolios.rebalance_strategy import ImmediateSignal
-from msm_portfolios.time_index import compute_portfolio_configuration_hash
+from msm_portfolios.time_index import SignalWeights, compute_portfolio_configuration_hash
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance
 from tests.support.metatables_runs import serve_joined_runs
 from tests.support.pinned_identities import _bound
 from tests.support.rebalance import PublishedTable
@@ -278,7 +286,7 @@ def _prices(name: str = "prices") -> Prices:
 
 
 def _configuration(
-    signal: ApplicationWeights,
+    signal: ApplicationWeights | FixedWeights,
     *,
     prices: Prices | None = None,
     calendar_events: Prices | None = None,
@@ -340,12 +348,13 @@ def rebalance_state(monkeypatch):
     ``run_updaters`` (``tests/support/metatables_runs.py``): its graph and order are
     MetaTables'. A ledger node computes its rows (``PortfolioEngine.update``) and keeps
     them in memory, where the weights and values nodes read them; the other nodes write
-    nothing. Answers the invocations, each the update hashes of the nodes it ran.
+    nothing. Answers the invocations, each the update hashes of the nodes it ran, and
+    ``calculate``, the node calculation a test may replace.
     """
 
     ledger: dict[str, list[pd.DataFrame]] = {}
 
-    def calculate(updater):
+    def book(updater):
         if isinstance(updater, PortfolioEngine):
             frame = updater.update()
             if not frame.empty:
@@ -363,7 +372,8 @@ def rebalance_state(monkeypatch):
         lambda self, **_kwargs: _filled_state(self._portfolio_identifier),
     )
     monkeypatch.setattr(PortfolioEngine, "get_df_between_dates", booked)
-    runs = serve_joined_runs(monkeypatch, calculate)
+    runs = serve_joined_runs(monkeypatch, lambda updater: runs.calculate(updater))
+    runs.calculate = book
     with (
         _bound(PortfolioRebalanceStateStorage, "a0000000-0000-4000-8000-0000000000aa"),
         _bound(PortfolioEventLedgerStorage, "a0000000-0000-4000-8000-0000000000bb"),
@@ -534,6 +544,201 @@ def test_run_portfolios_lists_a_portfolio_that_cannot_run_and_runs_the_others(
     assert len(rebalance_state.invocations) == 1
 
 
+class Report(Prices):
+    """A producer's own updater that reads the prices and no portfolio needs."""
+
+    def dependencies(self) -> dict:
+        return {"prices": self.prices}
+
+
+def _report(prices: Prices) -> Report:
+    report = Report.build("report", pd.DataFrame(columns=["time_index"]), index=["time_index"])
+    report.prices = prices
+    return report
+
+
+def _two_portfolios(markets, prices: Prices):
+    """Two portfolios on the same prices, each with its own published signal."""
+
+    signals = {name: _signal(name) for name in ("model-a", "model-b")}
+    configurations = {
+        name: _configuration(signal, prices=prices, name=f"{name}-portfolio")
+        for name, signal in signals.items()
+    }
+    resolver = Resolver(
+        markets.calendar["uid"],
+        {
+            compute_portfolio_configuration_hash(configuration): f"{name}-portfolio"
+            for name, configuration in configurations.items()
+        },
+    )
+    for signal in signals.values():
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
+    return list(configurations.values()), resolver
+
+
+def test_run_portfolios_runs_the_producers_updaters_in_the_same_invocation(
+    markets, rebalance_state
+) -> None:
+    """ADR 0067, decision 2: a producer's updater shares the portfolios' graph."""
+
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+
+    runs = recipes.run_portfolios(configurations, portfolio_resolver=resolver, updaters=[report])
+
+    assert runs.failed == () and len(runs.ran) == 2
+    (outcome,) = runs.updaters
+    assert outcome.updater is report and outcome.state == "succeeded"
+    (invocation,) = rebalance_state.invocations
+    assert invocation.count("prices") == 1
+    assert invocation.index("prices") < invocation.index("report")
+
+
+def test_a_producers_updater_that_fails_stops_no_portfolio(
+    markets, rebalance_state
+) -> None:
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+    calculate = rebalance_state.calculate
+
+    def fail_the_report(updater):
+        if updater is report:
+            raise RuntimeError("the report failed")
+        return calculate(updater)
+
+    rebalance_state.calculate = fail_the_report
+
+    runs = recipes.run_portfolios(configurations, portfolio_resolver=resolver, updaters=[report])
+
+    assert runs.failed == () and len(runs.ran) == 2
+    (outcome,) = runs.updaters
+    assert outcome.state == "failed" and "the report failed" in str(outcome.error)
+
+
+def test_run_portfolios_passes_the_run_settings_to_metatables(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """ADR 0067, decision 1: node_job and max_parallel_nodes go to run_updaters unchanged."""
+
+    import metatables
+
+    run_updaters = metatables.run_updaters
+    settings: list[dict] = []
+
+    def recorded(updaters, **kwargs):
+        settings.append(kwargs)
+        # node_job is refused on a local runtime; the graph runs in this process here.
+        return run_updaters(updaters)
+
+    monkeypatch.setattr(metatables, "run_updaters", recorded)
+    configurations, resolver = _two_portfolios(markets, _prices())
+
+    runs = recipes.run_portfolios(
+        configurations, portfolio_resolver=resolver, node_job="nodes", max_parallel_nodes=4
+    )
+    recipes.run_portfolio(configurations[0], portfolio_resolver=resolver)
+
+    assert runs.failed == ()
+    assert settings == [
+        {"node_job": "nodes", "max_parallel_nodes": 4},
+        {"node_job": None, "max_parallel_nodes": -1},
+    ]
+
+
+def test_a_run_refused_before_it_starts_fails_every_portfolio_and_runs_no_updater(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """A node a node Job run could not rebuild stops the run before anything starts."""
+
+    import metatables
+    from metatables.updaters.job_mode import NodeRebuildError
+
+    def refused(_updaters, **_kwargs):
+        raise NodeRebuildError("Report: argument 'x' cannot be rebuilt")
+
+    monkeypatch.setattr(metatables, "run_updaters", refused)
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+
+    runs = recipes.run_portfolios(
+        configurations, portfolio_resolver=resolver, updaters=[report], node_job="nodes"
+    )
+
+    assert runs.ran == ()
+    assert [failure.position for failure in runs.failed] == [0, 1]
+    assert all("cannot be rebuilt" in failure.detail for failure in runs.failed)
+    (outcome,) = runs.updaters
+    assert outcome.updater is report and outcome.state == "not_run"
+    assert isinstance(outcome.error, NodeRebuildError)
+
+
+class SignalTableBase(DeclarativeBase):
+    metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
+
+
+class SignalTable(SignalWeightsInstance, SignalTableBase):
+    __instance_key__ = "signals"
+    __metatable_namespace__ = "an-application"
+    __markets_storage_app__ = "an_application"
+
+
+def test_a_computed_signal_is_its_own_node_that_runs_before_the_rebalance(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """2026-11-24: the signal node writes its own table and publishes to Markets; the
+    rebalance depends on it, so it runs first. Nothing is published before the run, and
+    the preflight refuses nothing: the run computes it."""
+
+    table: list[pd.DataFrame] = []  # the producer's signal table, as MetaTables writes it
+    calculate = rebalance_state.calculate
+
+    def calculate_signal(updater):
+        if not isinstance(updater, SignalWeights):
+            return calculate(updater)
+        progress: dict = {}
+        for frame in table:
+            for time, signal_uid, asset in frame.index:
+                progress.setdefault(signal_uid, {})[asset] = time
+        updater.update_statistics = SimpleNamespace(index_progress=progress)
+        frame = updater.update()
+        if not frame.empty:
+            table.append(frame)
+        return frame
+
+    rebalance_state.calculate = calculate_signal
+    with _bound(SignalTable, "a0000000-0000-4000-8000-0000000000cc"):
+        signal = FixedWeights.from_signal_configuration(
+            FixedWeightsConfig(
+                asset_unique_identifier_weights=[
+                    AUIDWeight(unique_identifier="AAA", weight=0.6),
+                    AUIDWeight(unique_identifier="BBB", weight=0.4),
+                ],
+                signal_time_index=T0,
+            ),
+            output_table=SignalTable,
+        )
+        configuration = _configuration(signal)
+        resolver = Resolver(markets.calendar["uid"])
+
+        assert recipes.portfolio_preflight(configuration).ready is True
+        first = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
+        second = recipes.run_portfolio(configuration, portfolio_resolver=resolver)
+
+    for invocation in (0, 1):
+        kinds = rebalance_state.kinds_of(invocation)
+        assert kinds.count("FixedWeights") == 1
+        assert kinds.index("FixedWeights") < kinds.index("PortfolioRebalance")
+    assert len(table) == 1 and len(table[0]) == 2
+    (bounds,) = SignalWeightsSeries.bounds([signal.signal_uid])
+    assert (bounds.first_time, bounds.last_time, bounds.row_count) == (T0, T0, 2)
+    assert first.first_rebalance is True and first.portfolio.signal_uid == signal.signal_uid
+    assert (second.first_rebalance, second.weights, second.values) == (False, None, None)
+
+
 def test_portfolio_preflight_reports_why_a_portfolio_cannot_run(markets) -> None:
     signal = _signal()
 
@@ -552,23 +757,31 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
     tmp_path, monkeypatch, sqlite_revisions
 ):
     from msm_portfolios.time_index.contract_instances import (
-        configured_portfolio_calendar_events_storage,
-        configured_portfolio_rebalance_state_storage,
+        PortfolioCalendarEventsInstance,
+        PortfolioRebalanceStateInstance,
     )
 
     class ProducerBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
-    rebalance = configured_portfolio_rebalance_state_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
-    )
-    events = configured_portfolio_calendar_events_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
-    )
+    class Producer:
+        __instance_key__ = "private"
+        __metatable_namespace__ = "my-app"
+        __markets_storage_app__ = "my_app"
+
+    class PrivateRebalanceState(PortfolioRebalanceStateInstance, Producer, ProducerBase):
+        pass
+
+    class PrivateCalendarEvents(PortfolioCalendarEventsInstance, Producer, ProducerBase):
+        pass
+
+    class PrivateSignals(SignalWeightsInstance, Producer, ProducerBase):
+        pass
 
     def prepare(engine):
-        rebalance.__table__.create(engine)
-        events.__table__.create(engine)
+        PrivateRebalanceState.__table__.create(engine)
+        PrivateCalendarEvents.__table__.create(engine)
+        PrivateSignals.__table__.create(engine)
 
     markets = make_sqlite_markets(
         tmp_path, monkeypatch, template=sqlite_revisions.file("head"), prepare=prepare
@@ -584,22 +797,42 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
         )
         _insert(
             markets.engine,
-            rebalance.__table__.name,
+            PrivateRebalanceState.__table__.name,
             time_index=T0,
             portfolio_identifier=identifier,
             asset_identifier="AAA",
             target_signal_time_index=T0,
         )
-    _insert(markets.engine, events.__table__.name, time_index=T0, calendar_identifier="XNYS")
+    _insert(markets.engine, PrivateCalendarEvents.__table__.name, time_index=T0, calendar_identifier="XNYS")
+    for signal_uid in ("kept-signal", "ended-signal"):
+        _insert(markets.engine, "ms_markets__signalmetadata", signal_uid=signal_uid)
+        _insert(
+            markets.engine,
+            PrivateSignals.__table__.name,
+            time_index=T0,
+            signal_uid=signal_uid,
+            asset_identifier="AAA",
+            signal_weight=1.0,
+        )
 
     deleted = recipes.delete_private_series(
-        [rebalance, events], portfolios=["deleted"], calendars=["XNYS"]
+        [PrivateRebalanceState, PrivateCalendarEvents, PrivateSignals],
+        portfolios=["deleted"],
+        calendars=["XNYS"],
+        signals=["ended-signal"],
     )
 
-    assert deleted == {rebalance.__table__.name: 1, events.__table__.name: 1}
+    assert deleted == {
+        PrivateRebalanceState.__table__.name: 1,
+        PrivateCalendarEvents.__table__.name: 1,
+        PrivateSignals.__table__.name: 1,
+    }
+    assert _rows(markets.engine, f"SELECT signal_uid FROM {PrivateSignals.__table__.name}") == [
+        {"signal_uid": "kept-signal"}
+    ]
     remaining = _rows(
-        markets.engine, f"SELECT portfolio_identifier FROM {rebalance.__table__.name}"
+        markets.engine, f"SELECT portfolio_identifier FROM {PrivateRebalanceState.__table__.name}"
     )
     assert remaining == [{"portfolio_identifier": "kept"}]
     with pytest.raises(ValueError, match="has none of the columns"):
-        recipes.delete_private_series([events], portfolios=["kept"])
+        recipes.delete_private_series([PrivateCalendarEvents], portfolios=["kept"])

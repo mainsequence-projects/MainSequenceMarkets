@@ -13,6 +13,7 @@ from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountHoldingsSetTable, AccountTable
+from msm.storage_instances import TimeIndexInstance
 from msm.models.assets.core import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
 from msm.models.accounts.virtual_funds import VirtualFundHoldingsSetTable, VirtualFundTable
@@ -352,9 +353,17 @@ class AccountAllocationLinesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase)
     )
 
 
+class VirtualFundHoldingsInstance(TimeIndexInstance):
+    """The base of an owner's own ``VirtualFundHoldingsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = VirtualFundHoldingsStorage
+
+
 __all__ = [
     "OWNER_TYPE_DIRECT",
     "OWNER_TYPE_FUND",
     "AccountAllocationLinesStorage",
+    "VirtualFundHoldingsInstance",
     "VirtualFundHoldingsStorage",
 ]

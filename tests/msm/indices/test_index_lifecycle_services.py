@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from msm.base import MarketsBase, MarketsMetaTableMixin, markets_table_args, new_markets_uid
-from msm.time_index.indices.storage import configured_index_values_storage
+from msm.time_index.indices.storage import IndexValues1d
 from msm.models import IndexTable
 from msm.services.indices import (
     IndexActor,
@@ -65,7 +65,7 @@ def _fake_canonical_meta_table(storage_model, *, meta_table_uid: uuid.UUID) -> S
 
 
 def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(monkeypatch) -> None:
-    storage_model = configured_index_values_storage(cadence="1d")
+    storage_model = IndexValues1d
     meta_table_uid = uuid.uuid4()
     fake_meta_table = _fake_canonical_meta_table(storage_model, meta_table_uid=meta_table_uid)
     monkeypatch.setattr(
@@ -87,7 +87,7 @@ def test_canonical_dataset_discovery_requires_registered_cadence_and_real_fk(mon
 def test_canonical_dataset_access_does_not_infer_edit_from_the_registering_user(
     monkeypatch,
 ) -> None:
-    storage_model = configured_index_values_storage(cadence="1d")
+    storage_model = IndexValues1d
     fake_meta_table = _fake_canonical_meta_table(storage_model, meta_table_uid=uuid.uuid4())
     monkeypatch.setattr(
         catalog_service.TimeIndexMetaTable,
@@ -156,7 +156,7 @@ def test_extension_provider_requires_no_core_updater_inheritance() -> None:
     )
 
     assert provider.storage_model is ExtensionOwnedIndexStorage
-    assert not issubclass(ExtensionOwnedIndexStorage, configured_index_values_storage(cadence="1d"))
+    assert not issubclass(ExtensionOwnedIndexStorage, IndexValues1d)
 
     with pytest.raises(ValueError, match="does not match the actual foreign key action"):
         IndexRelationshipProvider(

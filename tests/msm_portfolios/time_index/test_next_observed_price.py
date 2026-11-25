@@ -718,8 +718,11 @@ def test_a_new_target_that_repeats_a_weight_still_fills_at_the_next_price() -> N
     assert priced["executed_weight_delta"].tolist() == pytest.approx([0.5, 0.0])
 
 
-def test_the_rebalance_publishes_a_computed_signal_before_it_reads_it() -> None:
-    """The signal is no MetaTables node: the rebalance computes it, then reads it (#133)."""
+def test_the_rebalance_reads_the_signal_and_never_runs_it() -> None:
+    """A computed signal is its own node, which ran before the rebalance (2026-11-24).
+
+    The rebalance only reads it: its window, and each asset's last row before it.
+    """
 
     calls: list[str] = []
     signals = PublishedTable.build(
@@ -733,21 +736,22 @@ def test_the_rebalance_publishes_a_computed_signal_before_it_reads_it() -> None:
         runner = IncrementalRebalance(
             strategy=strategy, signals=signals, prices=prices, storage=storage
         )
-        read = signals.get_last_observation
-        signals.computes_weights = True
-        signals.run = lambda: calls.append("published")
-        signals.get_last_observation = lambda **kwargs: calls.append("read") or read(**kwargs)
+        signals.run = lambda **_kwargs: calls.append("ran")
+        signals.update = lambda: calls.append("updated")
+        window, seed = signals.get_df_between_dates, signals.get_last_observation
+        signals.get_df_between_dates = lambda **kwargs: calls.append("window") or window(**kwargs)
+        signals.get_last_observation = lambda **kwargs: calls.append("seed") or seed(**kwargs)
         written = runner.run("2026-11-19T14:50:00Z")
 
-    assert calls[0] == "published" and "read" in calls[1:]
+    assert calls == ["window", "seed"]
     assert not written.empty
 
 
-def test_a_first_run_reads_from_the_computed_signals_first_observation() -> None:
-    """A computed signal has no observation until the rebalance publishes it (#138).
+def test_a_first_run_reads_from_the_signals_first_observation() -> None:
+    """A first run starts where the signal does, read when the rebalance runs (#138).
 
-    The first run then starts where the signal does, not at ``OFFSET_START``, and the
-    calendar events are read for the strategy's calendar only.
+    Not at ``OFFSET_START``; and the calendar events are read for the strategy's calendar
+    only.
     """
 
     first = "2026-11-18T21:30:00Z"
@@ -768,8 +772,6 @@ def test_a_first_run_reads_from_the_computed_signals_first_observation() -> None
         runner = IncrementalRebalance(
             strategy=strategy, signals=signals, prices=prices, storage=storage
         )
-        signals.computes_weights = True
-        signals.run = lambda: SimpleNamespace(first_time=utc(first))
         written = runner.run("2026-11-19T14:50:00Z")
 
     (window,) = windows
@@ -783,8 +785,7 @@ def test_a_first_run_reads_from_the_computed_signals_first_observation() -> None
 
 
 def test_portfolio_rebalance_depends_on_the_valuation_source_it_trades_at() -> None:
-    signal = PublishedTable.build("signal", signal_frame([]), index=["time_index"])
-    signal.computes_weights = False
+    signal = SimpleNamespace(signal_uid="signal-a")  # a published signal: no node
     prices = PublishedTable.build("prices", AAPL_DAILY, index=["time_index", ASSET_IDENTIFIER])
     node = object.__new__(PortfolioRebalance)
     node._portfolio_configuration = object()

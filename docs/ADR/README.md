@@ -64,6 +64,8 @@ Recommended sections:
 - [0063. Policies And Rebalance Strategies For Portfolios And Accounts](0063-a-policy-base-for-portfolios-and-accounts.md)
 - [0064. An Order Has Its Own Row](0064-an-order-has-its-own-row.md)
 - [0065. Every Portfolio Keeps A Ledger](0065-every-portfolio-keeps-a-ledger.md)
+- [0066. A Producer Declares Its Tables As Classes](0066-a-producer-declares-its-tables-as-classes.md)
+- [0067. Portfolio Runs In Parallel](0067-portfolio-runs-in-parallel.md)
 
 ## Command Center Decisions
 

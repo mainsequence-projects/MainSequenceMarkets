@@ -12,6 +12,10 @@ final; the signatures are under [Implementation Notes](#implementation-notes), w
 record where the implementation departs from the text above and the "Not Verified" items
 it settled.
 
+Amended (2026-11-24, owner): decisions 2 and 5, for a signal its producer computes. Such a
+signal is its own node, with its own table, and also publishes to Markets. See the
+amendments under both decisions.
+
 - It supersedes decision 5 of
   [ADR 0047](0047-markets-api-application-boundary.md) (contract instances read through a
   Markets catalog) and withdraws the grant of its decision 4 (`include` hydration of a
@@ -128,6 +132,25 @@ state, calendar events, event ledger), and its own tables.
 Publishing shares the rows with everyone who may read Markets. A producer that must not
 share a portfolio does not register it in Markets.
 
+Amended (2026-11-24, owner): a computed signal keeps its own table.
+
+- **What it is.** A signal its producer computes (`SignalWeights` and its subclasses) is a
+  node of the producer's portfolio DAG, an independent time series updated by its own
+  node, for example every minute.
+- **Its own table.** The node writes the producer's own `SignalWeightsTS` instance. The
+  producer declares and migrates it, as it does its interpolated-price table
+  (`configured_time_index_instance(SignalWeightsStorage, ...)`, decision 7).
+- **Markets' table.** In the same update the node publishes its new rows to Markets'
+  `SignalWeightsTS` through `SignalWeightsSeries`, under decision 3's rules and decision
+  4's manager check. Markets' table stays what every other reader reads.
+- **Who reads which.** The producer's rebalance reads the node's own table, as it reads any
+  dependency (decision 5's amendment).
+- **The rest is unchanged.** A signal whose weights arrive only by publication
+  (`ApplicationWeights`) has no table of its producer: it is stored once, in Markets.
+  Portfolio weights and values are too.
+- **Decision 10.** The rule "a producer keeps no copy of a published series" excepts a
+  computed signal's own table.
+
 ### 3. Series operations are the primitive
 
 Each published series gets a row class in `msm_portfolios.api`, dispatched like every other
@@ -173,6 +196,26 @@ one (decision 9).
   `output_table=` and the event-ledger table stay, built by the factories of decision 7.
 - The same code runs inside the Markets deployment under the `runtime` backend, so Markets
   is one more producer and has no path of its own.
+
+Amended (2026-11-24, owner): a computed signal has `output_table=` again. This reverses the
+part of this decision that removed it from the signal nodes. `PortfolioWeights` and
+`PortfolioValues` keep the decision as written.
+
+- **The node.** A computed signal is a MetaTables `TimeIndexTableUpdater`. Its
+  `output_table=` is the producer's `SignalWeightsTS` instance; Markets' own table is
+  refused. Its progress is its own table's update statistics, not `bounds` and `last`.
+- **Its update.** It writes the signal's `SignalMetadata` row when that is missing or
+  changed. It keeps the computed rows after the signal's last row in its table, publishes
+  them (`publish(new_only=True)`), and returns them for MetaTables to write.
+- **The rebalance's edge.** `PortfolioRebalance` depends on the signal with a normal edge
+  (`dependencies()["signal_weights"]`), so the signal runs first. The rebalance reads the
+  signal's rows from the node's table: its window, plus each asset's last row before it.
+  It never runs or publishes a signal, and applies its own rules (say weekly) to the latest
+  observation at or before each rebalance date.
+- **A first run.** A rebalance's first run starts at the signal's first observation, read
+  from the signal's table when the rebalance runs.
+- **A published signal.** `ApplicationWeights` stays a published series. It is read from
+  Markets and has no node and no edge.
 
 ### 6. Recipes: what a producer reuses instead of writing
 
@@ -347,6 +390,10 @@ run a second access policy beside MetaTables' grants.
 ### Keep the instance and also publish
 
 The rows would be stored twice, and the producer's copy would be a second source of truth.
+
+Amended (2026-11-24, owner): chosen for a computed signal (decision 2's amendment). Its
+table is its node's output, which its producer's rebalance reads; Markets' rows are what
+every other reader reads.
 
 ### Give producers a write role on the core tables
 
@@ -530,3 +577,29 @@ operation recorded by `registry_write` as `end` is, end a selection in two:
   the read or a key from an application's own table, refuses the transaction, which deletes
   nothing; each signal is then ended on its own, as `end` ends one, so only the refused ones
   stay.
+
+### 2026-11-24: a computed signal is its own node
+
+The amendments to decisions 2 and 5, for 6.2.0 (unreleased; 6.1.0 shipped with the rebalance running a computed signal):
+
+- **Two kinds of signal, one base.** `SignalWeightsSource`
+  (`src/msm_portfolios/time_index/signals/weights.py`) is what both kinds share: the
+  `signal_uid`, `maximum_forward_fill`, the asset list, interpolation and
+  `first_observation_time`. `signal_weights_instance` takes it.
+  - `SignalWeights` and its subclasses are the computed kind, MetaTables updaters.
+  - `ApplicationWeights` is the published kind. It reads Markets through
+    `PublishedSeriesReads` (`src/msm_portfolios/series_nodes.py`).
+  - Which kind a signal is follows from its class: a node is a `TimeIndexTableUpdater`.
+    `computes_weights` is gone.
+- **The node's table.** `output_table=` must be an instance of the `SignalWeightsTS`
+  contract. The node's update hash is its class, configuration and namespace; its
+  `signal_uid` stays its class and configuration only.
+- **Publishing.** A computed signal publishes with `publish_new_rows`, the same function the
+  published portfolio nodes use.
+- **First runs.** `PortfolioRebalance` reads the signal's first observation on a first run:
+  a computed signal's from its table's update statistics (`index_min`, one request), a
+  published one's from `bounds`. `run_portfolios` no longer moves any node's
+  `OFFSET_START`.
+- **Deleting.** A computed signal's table references `SignalMetadata` with `RESTRICT`, so
+  `end_signal` is refused while it holds the signal's rows.
+  `delete_private_series(..., signals=[...])` deletes them first.

@@ -46,13 +46,14 @@ Read with:
 ## Declare The Application's Tables
 
 The application writes its execution rows into its own instances of the three storages,
-in its own namespace, migrated by its own provider. Declare them on the application's
-own base:
+in its own namespace, migrated by its own provider. Declare each one with a class
+statement at the top level of a module of the application (`my_app/tables.py`, never a
+function or the script that is run), on the contract's base and the application's own
+base:
 
 ```python
 from metatables import sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
-from msm.time_index.execution.storage import OrderEventsStorage, OrdersStorage, TradesStorage
+from msm.time_index.execution.storage import OrderEventsInstance, OrdersInstance, TradesInstance
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
@@ -61,16 +62,27 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-def _instance(storage):
-    return configured_time_index_instance(
-        storage, instance_key="main", namespace="my-app", storage_app="my_app", base=Base
-    )
+class MyApp:
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
 
 
-MyOrders = _instance(OrdersStorage)
-MyOrderEvents = _instance(OrderEventsStorage)
-MyTrades = _instance(TradesStorage)
+class MyOrders(OrdersInstance, MyApp, Base):
+    pass
+
+
+class MyOrderEvents(OrderEventsInstance, MyApp, Base):
+    pass
+
+
+class MyTrades(TradesInstance, MyApp, Base):
+    pass
 ```
+
+A node Job run in another process imports each class by its address
+(`my_app.tables:MyTrades`), and the application's migration provider lists the classes
+as `metatable_models`.
 
 The instances carry the contract's keys into Markets' `Order`, `Account` and `Asset`.
 Attach them to the application's runtime (`msm.start_engine(models=[MyOrders,

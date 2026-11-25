@@ -317,7 +317,6 @@ def test_without_an_fx_source_every_asset_is_in_the_portfolios_currency() -> Non
 
 def test_portfolio_rebalance_reads_the_portfolios_fx_source() -> None:
     signal = PublishedTable.build("signal", signal_frame([]), index=["time_index"])
-    signal.computes_weights = False
     source = PublishedTable.build(
         "prices", priced_in(("SAP", "EUR")), index=["time_index", ASSET_IDENTIFIER]
     )
@@ -334,7 +333,9 @@ def test_portfolio_rebalance_reads_the_portfolios_fx_source() -> None:
         calendar_events_instance=events, calendar_identifier="XNYS"
     )
 
+    # The signal is a node (a computed signal), so the rebalance depends on it too.
     assert node.dependencies() == {
+        "signal_weights": signal,
         "valuation_source": source,
         "fx_source": fx,
         "calendar_events": events,

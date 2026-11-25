@@ -160,8 +160,8 @@ explicit by requiring the caller to pass the holdings frame. Do not pass the raw
 
 The full workflow example is
 `examples/msm/accounts/account_portfolio_full_workflow.py`. By default it chains
-the reusable equal-weight portfolio example, whose interpolated-price table the
-example's own provider migrates: apply that provider's committed revision first, as
+the reusable equal-weight portfolio example, whose interpolated-price and signal tables
+the example's own provider migrates: apply that provider's committed revisions first, as
 [Portfolios](../../../tutorial/04-portfolios.md) shows. The workflow migrates nothing.
 The account example reuses the resulting `Portfolio` row as a target sleeve,
 assigns that sleeve to an example `PortfolioGroup`, publishes `AssetSnapshot`

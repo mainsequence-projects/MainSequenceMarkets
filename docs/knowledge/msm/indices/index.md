@@ -95,9 +95,11 @@ See [Formula And Custom Indexes](formula_indexes.md) for the full workflow.
 
 ## Canonical Values
 
-Stable-frequency publication uses
-`configured_index_values_storage(cadence=...)`. Each cadence has a separate
-MetaTable and physical table with grain:
+Each cadence has a separate MetaTable and physical table. Markets declares
+three, `IndexValues1m`, `IndexValues1h` and `IndexValues1d`
+(`ms_markets__index_values__t_1m`, `__t_1h` and `__t_1d`), which its migrations
+create. A provider that publishes another cadence, or its own table, declares one
+on `IndexValuesInstance`. Each table has the grain:
 
 ```text
 (time_index, index_identifier)
@@ -121,28 +123,37 @@ One identity can publish at several cadences:
 
 ```text
 IndexValuesTS.1m -> ms_markets__index_values__t_1m
+IndexValuesTS.1h -> ms_markets__index_values__t_1h
 IndexValuesTS.1d -> ms_markets__index_values__t_1d
 ```
 
 Frequency is part of dataset identity, not Index identity.
 
-These are Markets' own tables. A provider that publishes Index values owns its
-table in its own namespace (ADR 0047, decision 4) and builds it with the same
-factory:
+These are Markets' own tables, the only cadences Markets declares (ADR 0066,
+decision 6). A provider that publishes Index values owns its table in its
+own namespace (ADR 0047, decision 4) and declares it with a class statement on
+`IndexValuesInstance`, one class per cadence, at the top level of a module of its
+repository:
 
 ```python
-ProviderDailyValues = configured_index_values_storage(
-    cadence="1d",
-    namespace="my_provider",
-    storage_app="my_provider",
-    base=ProviderBase,  # the provider's own base, whose metadata its Alembic provider targets
-)
+# my_provider/tables.py
+from msm.time_index.indices import IndexValuesInstance
+
+
+class ProviderDailyValues(IndexValuesInstance, ProviderBase):  # the provider's own base
+    __cadence__ = "1d"
+    __metatable_namespace__ = "my_provider"
+    __markets_storage_app__ = "my_provider"
 ```
 
 The table is `my_provider__index_values__t_1d`, identified as
 `my_provider.IndexValuesTS.1d`, with the contract's columns, foreign keys and
-grain. The Index dataset catalog discovers it like the Markets tables and reads
-it as the Markets workload, which needs `data_viewer` on it. A provider moving
+grain. The provider's migration provider targets `ProviderBase.metadata` and lists
+the class as one of its `metatable_models`. The Index dataset catalog discovers it
+like the Markets tables and reads it as the Markets workload, which needs
+`data_viewer` on it. The catalog reads it through its registration: its statement
+names the registered table, with the `IndexValuesTS` contract's column types, and it
+declares no class or table for it (ADR 0066, decision 7). A provider moving
 values it already wrote in a Markets table copies them with
 `msm.storage_copies.TableSeriesMove(..., key_column="index_identifier")`.
 
@@ -153,13 +164,9 @@ Custom producers use `IndexValuesUpdater` or
 omitted. Custom publication rejects a non-null `definition_uid`.
 
 ```python
-from msm.time_index.indices import (
-    configured_index_values_storage,
-    normalize_index_values_frame,
-)
+from msm.time_index.indices import IndexValues1d, normalize_index_values_frame
 
-DailyValues = configured_index_values_storage(cadence="1d")
-normalized = normalize_index_values_frame(frame, output_table=DailyValues)
+normalized = normalize_index_values_frame(frame, output_table=IndexValues1d)
 ```
 
 Self-financing and chained performance are custom from the Index perspective.

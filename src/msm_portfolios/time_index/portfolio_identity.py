@@ -14,9 +14,16 @@ from .constants import PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS
 def canonical_portfolio_configuration(
     portfolio_configuration: Any,
 ) -> dict[str, Any]:
-    """Return the canonical hash payload for a Portfolios portfolio configuration."""
+    """Return the canonical hash payload for a Portfolios portfolio configuration.
+
+    The signal is named by its ``signal_uid`` payload, its class and configuration, so the
+    portfolio's identity is the same in every namespace and Environment.
+    """
+    from .signals.weights import signal_identity_payloads
+
     payload = _portfolio_configuration_payload(portfolio_configuration)
-    serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
+    with signal_identity_payloads():
+        serialized_payload = update_configuration.Serializer().serialize_init_kwargs(payload)
     return _drop_excluded_keys(
         _isoformat_dates_and_times(dict(serialized_payload)),
         excluded_keys=PORTFOLIO_CONFIGURATION_HASH_EXCLUDED_KEYS,

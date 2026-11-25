@@ -12,13 +12,21 @@ from msm_portfolios.rebalance_strategy import (
 
 def build_trailing_adv_strategy(
     *,
-    daily_liquidity_table_uid: str,
-    execution_bars_table_uid: str,
+    daily_liquidity_table_name: str,
+    execution_bars_table_name: str,
 ) -> TrailingAverageDailyVolumeParticipation:
-    """Build a strategy that never treats historical VWAP as an execution price."""
+    """Build a strategy that never treats historical VWAP as an execution price.
+
+    Both sources are another owner's registered tables, referred to by their physical
+    names, which are the same in every Environment (ADR 0066).
+    """
     return TrailingAverageDailyVolumeParticipation(
-        daily_liquidity_instance=TimeIndexTableRef.from_uid(daily_liquidity_table_uid),
-        execution_bars_instance=TimeIndexTableRef.from_uid(execution_bars_table_uid),
+        daily_liquidity_instance=TimeIndexTableRef.from_physical_identity(
+            schema="public", table_name=daily_liquidity_table_name
+        ),
+        execution_bars_instance=TimeIndexTableRef.from_physical_identity(
+            schema="public", table_name=execution_bars_table_name
+        ),
         daily_vwap_column="vwap",
         daily_volume_column="volume",
         execution_price_column="close",
@@ -35,12 +43,12 @@ def build_trailing_adv_strategy(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--daily-liquidity-table-uid", required=True)
-    parser.add_argument("--execution-bars-table-uid", required=True)
+    parser.add_argument("--daily-liquidity-table-name", required=True)
+    parser.add_argument("--execution-bars-table-name", required=True)
     args = parser.parse_args()
     strategy = build_trailing_adv_strategy(
-        daily_liquidity_table_uid=args.daily_liquidity_table_uid,
-        execution_bars_table_uid=args.execution_bars_table_uid,
+        daily_liquidity_table_name=args.daily_liquidity_table_name,
+        execution_bars_table_name=args.execution_bars_table_name,
     )
     print(strategy.get_explanation())
     print("Declared dependencies:", ", ".join(strategy.declared_dependencies()))

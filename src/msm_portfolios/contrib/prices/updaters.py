@@ -1,11 +1,10 @@
 import datetime
-import uuid
 from typing import Annotated, Any, Literal
 
 import numpy as np
 import pandas as pd
 import pytz
-from pydantic import ConfigDict, Field, WithJsonSchema, model_validator
+from pydantic import ConfigDict, Field, WithJsonSchema
 
 from metatables import (
     PlatformTimeIndexMetaTable,
@@ -50,19 +49,17 @@ class InterpolatedPricesConfig(AssetIndexedUpdaterConfiguration):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     intraday_bar_interpolation_rule: str
-    source_time_index_meta_table_uid: uuid.UUID | str | None = None
     source_price_instance: Annotated[
-        TimeIndexTableUpdater | TimeIndexTableRef | None,
+        TimeIndexTableUpdater | TimeIndexTableRef,
         Field(
             description=(
-                "Optional raw/source price TimeIndexTableUpdater or TimeIndexTableRef. Pass this when "
-                "the source price dependency is already instantiated. If absent, "
-                "source_time_index_meta_table_uid is resolved through "
-                "TimeIndexTableRef.from_uid(...)."
+                "The source bars (ADR 0066, decision 4): the updater that writes them, when "
+                "they come from a graph, or one table referred to by its physical name, "
+                "TimeIndexTableRef.from_physical_identity(schema=..., table_name=...)."
             ),
         ),
         WithJsonSchema({"type": "object"}),
-    ] = None
+    ]
     asset_category_unique_id: str | None = Field(
         default=None,
     )
@@ -78,17 +75,6 @@ class InterpolatedPricesConfig(AssetIndexedUpdaterConfiguration):
         ),
         json_schema_extra={"hash_excluded": True},
     )
-
-    @model_validator(mode="after")
-    def _require_one_source(self) -> "InterpolatedPricesConfig":
-        has_uid = self.source_time_index_meta_table_uid not in (None, "")
-        has_instance = self.source_price_instance is not None
-        if has_uid == has_instance:
-            raise ValueError(
-                "InterpolatedPricesConfig requires exactly one source: "
-                "source_price_instance or source_time_index_meta_table_uid."
-            )
-        return self
 
 
 def _assert_source_price_instance(
@@ -113,8 +99,7 @@ def _source_output_metadata(
             raise RuntimeError(
                 "InterpolatedPrices source_price_instance was a TimeIndexTableRef without "
                 "registered output metadata. Build it with "
-                "TimeIndexTableRef.from_uid(...) or pass "
-                "source_time_index_meta_table_uid."
+                "TimeIndexTableRef.from_physical_identity(schema=..., table_name=...)."
             )
         return output_metadata
 
@@ -126,42 +111,6 @@ def _source_output_metadata(
             f"output metadata, where interpolation reads the source's table name and cadence: "
             f"{source_context}."
         ) from exc
-
-
-def _source_time_index_meta_table_uid_from_instance(
-    source_price: TimeIndexTableUpdater | TimeIndexTableRef,
-) -> str:
-    output_metadata = _source_output_metadata(
-        source_price,
-        source_context=source_price.__class__.__name__,
-    )
-    source_uid = output_metadata.uid
-    if source_uid in (None, ""):
-        raise RuntimeError(
-            "InterpolatedPrices source_price_instance output metadata is missing uid."
-        )
-    return str(source_uid)
-
-
-def _resolve_interpolated_source_prices(
-    interpolation_config: InterpolatedPricesConfig,
-) -> tuple[TimeIndexTableUpdater | TimeIndexTableRef, str]:
-    source_price_instance = interpolation_config.source_price_instance
-    if source_price_instance is not None:
-        source_price_instance = _assert_source_price_instance(source_price_instance)
-        return (
-            source_price_instance,
-            _source_time_index_meta_table_uid_from_instance(source_price_instance),
-        )
-
-    source_time_index_meta_table_uid = interpolation_config.source_time_index_meta_table_uid
-    if source_time_index_meta_table_uid in (None, ""):
-        raise RuntimeError(
-            "InterpolatedPricesConfig requires source_time_index_meta_table_uid "
-            "when source_price_instance is not supplied."
-        )
-    source_uid = str(source_time_index_meta_table_uid)
-    return TimeIndexTableRef.from_uid(source_uid), source_uid
 
 
 def _require_output_table_of_configuration(
@@ -187,10 +136,10 @@ def _require_output_table_of_configuration(
             "InterpolatedPrices writes only the table its configuration produces: the "
             f"{contract} instance with key {instance_key!r} and cadence {cadence!r}. "
             f"output_table={getattr(output_table, '__name__', output_table)!s} has contract, key "
-            f"and cadence {bound!r}. Declare the table with "
-            f"configured_time_index_instance(InterpolatedPricesStorage, "
-            f"instance_key={instance_key!r}, cadence={cadence!r}, namespace=..., storage_app=..., "
-            "base=...) and migrate it with its owner's provider."
+            f"and cadence {bound!r}. Declare the table with a class statement on "
+            f"InterpolatedPricesInstance and the owner's base, with __instance_key__ = "
+            f"{instance_key!r} and __cadence__ = {cadence!r}, and migrate it with its owner's "
+            "provider."
         )
 
 
@@ -210,21 +159,16 @@ def _registered_cadence(output_metadata: Any) -> Any:
     return cadence
 
 
-def _source_time_indexed_profile_cadence(
-    source_prices_ts: TimeIndexTableUpdater | TimeIndexTableRef,
-    *,
-    source_time_index_meta_table_uid: str,
-) -> str:
-    output_table = _source_output_metadata(
-        source_prices_ts,
-        source_context=source_time_index_meta_table_uid,
-    )
-    cadence = _registered_cadence(output_table)
+def _source_time_indexed_profile_cadence(source_metadata: Any) -> str:
+    """The cadence the source table is registered with."""
+
+    source_table_name = getattr(source_metadata, "physical_table_name", None)
+    cadence = _registered_cadence(source_metadata)
     if cadence in (None, ""):
         raise RuntimeError(
             "InterpolatedPrices requires the source TimeIndexMetaTable to declare "
             "time_indexed_profile.cadence. Register or migrate the source storage "
-            f"{source_time_index_meta_table_uid} with __cadence__ before using it "
+            f"{source_table_name} with __cadence__ before using it "
             "as a portfolio price source."
         )
 
@@ -232,7 +176,7 @@ def _source_time_indexed_profile_cadence(
     if not (cadence.endswith("d") or cadence.endswith("m")):
         raise ValueError(
             "InterpolatedPrices currently supports daily or minute source cadences. "
-            f"Source TimeIndexMetaTable {source_time_index_meta_table_uid} declares "
+            f"Source TimeIndexMetaTable {source_table_name} declares "
             f"cadence={cadence!r}."
         )
     return cadence
@@ -779,17 +723,17 @@ class InterpolatedPrices(AssetIndexedUpdater):
         intraday_bar_interpolation_rule = interpolation_config.intraday_bar_interpolation_rule
         asset_category_unique_id = interpolation_config.asset_category_unique_id
         asset_list = interpolation_config.asset_list
-        source_prices_ts, source_time_index_meta_table_uid = _resolve_interpolated_source_prices(
-            interpolation_config
+        source_prices_ts = _assert_source_price_instance(
+            interpolation_config.source_price_instance
         )
         if asset_category_unique_id is None:
             assert asset_list is not None, (
                 f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
             )
-        source_cadence = _source_time_indexed_profile_cadence(
-            source_prices_ts,
-            source_time_index_meta_table_uid=source_time_index_meta_table_uid,
+        source_metadata = _source_output_metadata(
+            source_prices_ts, source_context=source_prices_ts.__class__.__name__
         )
+        source_cadence = _source_time_indexed_profile_cadence(source_metadata)
         upsample_frequency_id = normalized_cadence(
             interpolation_config.upsample_frequency_id or source_cadence,
             argument="upsample_frequency_id",
@@ -797,10 +741,7 @@ class InterpolatedPrices(AssetIndexedUpdater):
         _require_output_table_of_configuration(
             output_table,
             instance_key=interpolated_prices_instance_key(
-                source_table_name=_source_output_metadata(
-                    source_prices_ts,
-                    source_context=source_time_index_meta_table_uid,
-                ).physical_table_name,
+                source_table_name=source_metadata.physical_table_name,
                 source_cadence=source_cadence,
                 upsample_frequency_id=upsample_frequency_id,
                 intraday_bar_interpolation_rule=intraday_bar_interpolation_rule,
@@ -821,7 +762,6 @@ class InterpolatedPrices(AssetIndexedUpdater):
         self.intraday_bar_interpolation_rule = intraday_bar_interpolation_rule
         self.bar_frequency_id = source_cadence
         self.upsample_frequency_id = upsample_frequency_id
-        self.source_time_index_meta_table_uid = source_time_index_meta_table_uid
         self.bars_ts = source_prices_ts
 
         super().__init__(

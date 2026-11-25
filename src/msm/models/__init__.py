@@ -102,11 +102,19 @@ def _markets_time_index_storage_models() -> list[type]:
         OrdersStorage,
         TradesStorage,
     )
-    from msm.time_index.indices.storage import IndexValuesStorage
+    from msm.time_index.indices.storage import (
+        IndexValues1d,
+        IndexValues1h,
+        IndexValues1m,
+        IndexValuesStorage,
+    )
 
     return [
         AssetSnapshotsStorage,
         IndexValuesStorage,
+        IndexValues1m,
+        IndexValues1h,
+        IndexValues1d,
         AccountHoldingsStorage,
         VirtualFundHoldingsStorage,
         AccountAllocationLinesStorage,

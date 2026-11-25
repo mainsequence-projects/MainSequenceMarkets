@@ -18,7 +18,6 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import TimeIndexMetaTable, TimeIndexTableUpdater, sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm.time_index.assets import AssetSnapshot
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm_portfolios.accounting import (
@@ -41,9 +40,9 @@ from msm_portfolios.contrib.signals.fixed_weights import (
     FixedWeights,
     FixedWeightsConfig,
 )
-from msm_portfolios.time_index import SignalWeights
+from msm_portfolios.time_index import SignalWeights, SignalWeightsSource
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 from msm_portfolios.rebalance_strategy import (
@@ -57,8 +56,9 @@ from msm_portfolios.rebalance_strategy import (
 PINNED_PRE_RENAME_UPDATE_HASHES = {
     "asset_snapshot": "assetsnapshot_4d4316ca465e3c695835bc75d3af6f26",
     # Rotated in 5.0.0: MetaTables 0.1.74 hashes a positional configuration as a keyword
-    # one (MetaTables#130), so this is also the keyword-constructed updater's hash.
-    "interpolated_prices": "interpolatedprices_753f5a4be740e1ee13dc2fe8c39602d8",
+    # one (MetaTables#130), so this is also the keyword-constructed updater's hash. Rotated
+    # in 6.2.0 when InterpolatedPricesConfig lost source_time_index_meta_table_uid.
+    "interpolated_prices": "interpolatedprices_f1066f6ab896c70d453debd3b8df8c66",
 }
 
 SOURCE_TABLE_UID = "0f2d6c1e-7a3b-4c5d-9e8f-1a2b3c4d5e6f"
@@ -78,11 +78,8 @@ class _Source(TimeIndexTableUpdater):
         return {}
 
 
-def _source(update_hash: str) -> _Source:
-    source = object.__new__(_Source)
-    source.update_hash = update_hash
-    source.update_statistics = None
-    source._output_table = SimpleNamespace(
+def _output_table(update_hash: str) -> SimpleNamespace:
+    return SimpleNamespace(
         get_time_index_meta_table=lambda: TimeIndexMetaTable.model_construct(
             uid=f"{update_hash}-table",
             data_source_uid="source",
@@ -90,12 +87,31 @@ def _source(update_hash: str) -> _Source:
         get_data_source_uid=lambda: "source",
         get_meta_table_uid=lambda: f"{update_hash}-table",
     )
+
+
+def _source(update_hash: str) -> _Source:
+    source = object.__new__(_Source)
+    source.update_hash = update_hash
+    source.update_statistics = None
+    source._output_table = _output_table(update_hash)
     return source
 
 
-def _signal(signal_class: type[SignalWeights], configuration: Any) -> SignalWeights:
+def _signal(signal_class: type[SignalWeightsSource], configuration: Any) -> SignalWeightsSource:
+    """The signal of ``configuration``, built without a table.
+
+    A published signal is built as it is. A computed one stands in for its node, with the
+    update hash and table a run gives it: a portfolio's rebalance saves the signal by them
+    (ADR 0067, decision 4). The update hash follows the signal's uid.
+    """
+
+    if not issubclass(signal_class, TimeIndexTableUpdater):
+        return signal_class.from_signal_configuration(configuration)
     signal = object.__new__(signal_class)
     signal.signal_configuration = configuration
+    signal.update_hash = f"{signal_class.__name__.lower()}_{signal.signal_uid}"
+    signal.update_statistics = None
+    signal._output_table = _output_table(signal.update_hash)
     return signal
 
 
@@ -176,20 +192,18 @@ def _bound(storage: type, uid: str, **metadata: Any) -> Iterator[type]:
                 setattr(storage, name, value)
 
 
-def _interpolated_prices_storage() -> type:
-    return configured_time_index_instance(
-        InterpolatedPricesStorage,
-        instance_key=interpolated_prices_instance_key(
-            source_table_name=AssetSnapshotsStorage.__table__.name,
-            source_cadence="1d",
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-        ),
-        cadence="1d",
-        namespace="pinned-app",
-        storage_app="pinned_app",
-        base=PinnedBase,
+class PinnedInterpolatedPrices(InterpolatedPricesInstance, PinnedBase):
+    """The pinned interpolated-price table: daily bars of AssetSnapshotsTS, forward filled."""
+
+    __instance_key__ = interpolated_prices_instance_key(
+        source_table_name=AssetSnapshotsStorage.__table__.name,
+        source_cadence="1d",
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
     )
+    __metatable_namespace__ = "pinned-app"
+    __markets_storage_app__ = "pinned_app"
+    __cadence__ = "1d"
 
 
 @contextmanager
@@ -203,7 +217,7 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
             cadence="1d",
             physical_table_name=AssetSnapshotsStorage.__table__.name,
         ),
-        _bound(_interpolated_prices_storage(), PRICES_TABLE_UID, cadence="1d"),
+        _bound(PinnedInterpolatedPrices, PRICES_TABLE_UID, cadence="1d"),
     ):
         asset_snapshot = AssetSnapshot()
         interpolated_prices = InterpolatedPrices(
@@ -213,7 +227,7 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
                 upsample_frequency_id="1d",
                 asset_list=["ASSET_A", "ASSET_B"],
             ),
-            output_table=_interpolated_prices_storage(),
+            output_table=PinnedInterpolatedPrices,
         )
         yield {"asset_snapshot": asset_snapshot, "interpolated_prices": interpolated_prices}
 

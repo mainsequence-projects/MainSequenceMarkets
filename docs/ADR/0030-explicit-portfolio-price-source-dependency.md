@@ -27,6 +27,12 @@ the example's preparation script: the equal-weight example now migrates its own 
 with its own provider. The transition helper `get_interpolated_prices_timeseries(...)`
 that Stage 8 retained is removed.
 
+Amendment (2026-11-25, [ADR 0066](0066-a-producer-declares-its-tables-as-classes.md),
+decision 4): a price source is an updater instance or a table referred to by its physical
+name. `InterpolatedPricesConfig.source_time_index_meta_table_uid` and
+`PricesConfiguration` are removed, and `source_price_instance` is required. This
+supersedes the UID path this ADR describes under "Price Source Contract".
+
 Implemented in the portfolio configuration contract, `PortfoliosDataNode`,
 contributed signal configurations, the equal-weight portfolio example, docs,
 skills, changelog, and focused portfolio tests.

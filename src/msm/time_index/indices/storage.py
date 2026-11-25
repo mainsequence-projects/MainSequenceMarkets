@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 import re
 import uuid
-from functools import lru_cache
 from typing import Any, ClassVar
 
 from sqlalchemy import (
@@ -28,6 +27,7 @@ from msm.base import (
     MarketsTimeIndexMetaTableMixin,
     markets_table_name,
 )
+from msm.storage_instances import TimeIndexInstance, owner_attribute
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.indices import IndexTable
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
@@ -39,9 +39,10 @@ INDEX_VALUES_STORAGE_NAME_COMPONENT = "storage_name"
 class IndexValuesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     """Schema anchor for canonical Index observations.
 
-    Production datasets with a stable frequency use
-    :func:`configured_index_values_storage` so cadence participates in the
-    MetaTable identity and physical table name.
+    Production datasets have a stable frequency, so each cadence is its own table, and
+    cadence is part of the MetaTable identity and physical table name. Markets' own are
+    :class:`IndexValues1m`, :class:`IndexValues1h` and :class:`IndexValues1d`; a provider
+    declares its own with a class statement on :class:`IndexValuesInstance`.
     """
 
     __metatable_identifier__ = "IndexValuesTS"
@@ -160,113 +161,67 @@ def index_values_output_table_name(*, cadence: str) -> str:
     )
 
 
-def configured_index_values_storage(
-    *,
-    cadence: str,
-    namespace: str | None = None,
-    storage_app: str | None = None,
-    base: type[Any] | None = None,
-) -> type[PlatformTimeIndexMetaTable]:
-    """Build one canonical Index-value storage class for a stable cadence.
+class IndexValuesInstance(TimeIndexInstance):
+    """A provider's own Index-value table at one cadence (ADR 0047 decision 4, ADR 0066).
 
-    By default this is Markets' own ``ms_markets__index_values__t_<cadence>`` in
-    the Markets namespace. A provider that publishes Index values owns its table
-    (ADR 0047, decision 4): it passes its ``namespace``, its ``storage_app`` and
-    its own declarative ``base``, whose metadata its Alembic provider targets.
-    The table is then ``<storage_app>__index_values__t_<cadence>`` in that
-    namespace, with the same columns, foreign keys, grain and authored identifier
-    ``IndexValuesTS.<cadence>``. Its keys point at Markets' own columns, so no
-    Markets table enters that metadata. The Index dataset catalog discovers it
-    like the Markets table.
+    Declare one class per cadence, at the top level of a module of the provider's
+    repository, with the provider's declarative base::
+
+        class DailyIndexValues(IndexValuesInstance, ProviderBase):
+            __cadence__ = "1d"
+            __metatable_namespace__ = "my-provider"
+            __markets_storage_app__ = "my_provider"
+
+    The cadence is the instance's key: the table is
+    ``<storage_app>__index_values__t_<cadence>`` in the provider's namespace, identified
+    as ``IndexValuesTS.<cadence>``, with the contract's columns, foreign keys, grain and
+    indexes. Its keys point at Markets' own columns, so no Markets table enters the
+    provider's metadata. The Index dataset catalog discovers it like Markets' own.
     """
 
-    components = index_values_storage_identity_components(cadence=cadence)
-    normalized_cadence = components[INDEX_VALUES_CADENCE_COMPONENT]
-    if namespace is None and storage_app is None and base is None:
-        return _configured_index_values_storage(normalized_cadence)
+    __abstract__ = True
+    __core_storage__ = IndexValuesStorage
 
-    from msm.settings import markets_namespace
+    @classmethod
+    def _instance_key(cls) -> str:
+        cadence = owner_attribute(cls, "__cadence__")
+        if cadence in (None, ""):
+            raise ValueError(
+                f"{cls.__name__} must declare __cadence__: an Index-value table holds one "
+                "cadence, such as 1m or 1d."
+            )
+        return index_values_storage_identity_components(cadence=str(cadence))[
+            INDEX_VALUES_CADENCE_COMPONENT
+        ]
 
-    app = str(storage_app or "").strip()
-    if not app or app == MARKETS_TABLE_APP:
-        raise ValueError(
-            "A provider Index-value table needs its own storage_app; "
-            f"{MARKETS_TABLE_APP!r} names the Markets table."
+    @classmethod
+    def _instance_cadence(cls) -> str:
+        return cls._instance_key()
+
+    @classmethod
+    def _instance_table_name(cls, key: str, storage_app: str) -> str:
+        if storage_app == MARKETS_TABLE_APP:
+            raise ValueError(
+                f"{cls.__name__}: a provider Index-value table needs its own storage_app; "
+                f"{MARKETS_TABLE_APP!r} names the Markets table."
+            )
+        return markets_table_name(storage_app, "index_values", suffix=key)
+
+    @classmethod
+    def _instance_hash_components(cls, key: str) -> dict[str, str]:
+        return index_values_storage_identity_components(cadence=key)
+
+    @classmethod
+    def _instance_description(cls, key: str) -> str:
+        storage_app = str(owner_attribute(cls, "__markets_storage_app__")).strip()
+        return (
+            f"Index value history at {key} cadence published by "
+            f"{storage_app}, keyed by (time_index, index_identifier)."
         )
-    return _provider_index_values_storage(
-        normalized_cadence, markets_namespace(namespace), app, base or MarketsBase
-    )
 
-
-@lru_cache(maxsize=64)
-def _configured_index_values_storage(
-    normalized_cadence: str,
-) -> type[PlatformTimeIndexMetaTable]:
-    components = index_values_storage_identity_components(cadence=normalized_cadence)
-    table_name = index_values_output_table_name(cadence=normalized_cadence)
-    table = _copy_index_values_table(table_name)
-    class_suffix = re.sub(r"[^a-zA-Z0-9_]+", "_", normalized_cadence)
-    return type(
-        f"IndexValuesStorage_{class_suffix}",
-        (MarketsTimeIndexMetaTableMixin, MarketsBase),
-        {
-            "__module__": __name__,
-            "__table__": table,
-            "__metatable_identifier__": f"IndexValuesTS.{normalized_cadence}",
-            "__metatable_description__": (
-                "Canonical Index value history at "
-                f"{normalized_cadence} cadence, keyed by "
-                "(time_index, index_identifier), for custom and formula observables."
-            ),
-            "__metatable_extra_hash_components__": components,
-            "__time_index_name__": IndexValuesStorage.__time_index_name__,
-            "__cadence__": normalized_cadence,
-            "__index_names__": list(IndexValuesStorage.__index_names__),
-        },
-    )
-
-
-@lru_cache(maxsize=64)
-def _provider_index_values_storage(
-    normalized_cadence: str,
-    namespace: str,
-    storage_app: str,
-    base: type[Any],
-) -> type[PlatformTimeIndexMetaTable]:
-    from msm.settings import markets_identifier
-
-    components = index_values_storage_identity_components(cadence=normalized_cadence)
-    table_name = markets_table_name(storage_app, "index_values", suffix=normalized_cadence)
-    authored_identifier = f"IndexValuesTS.{normalized_cadence}"
-    table = _copy_index_values_table(
-        table_name,
-        metadata=base.metadata,
-        info={
-            "namespace": namespace,
-            "identifier": markets_identifier(authored_identifier, namespace=namespace),
-            "markets_storage_app": storage_app,
-        },
-    )
-    class_suffix = re.sub(r"[^a-zA-Z0-9_]+", "_", f"{storage_app}_{normalized_cadence}")
-    return type(
-        f"IndexValuesStorage_{class_suffix}",
-        (MarketsTimeIndexMetaTableMixin, base),
-        {
-            "__module__": __name__,
-            "__table__": table,
-            "__metatable_identifier__": authored_identifier,
-            "__metatable_namespace__": namespace,
-            "__markets_storage_app__": storage_app,
-            "__metatable_description__": (
-                f"Index value history at {normalized_cadence} cadence published by "
-                f"{storage_app}, keyed by (time_index, index_identifier)."
-            ),
-            "__metatable_extra_hash_components__": components,
-            "__time_index_name__": IndexValuesStorage.__time_index_name__,
-            "__cadence__": normalized_cadence,
-            "__index_names__": list(IndexValuesStorage.__index_names__),
-        },
-    )
+    @classmethod
+    def _instance_table(cls, table_name: str, metadata: Any, info: dict[str, Any]) -> Table:
+        return _copy_index_values_table(table_name, metadata=metadata, info=info)
 
 
 def require_cadenced_index_values_storage(
@@ -278,7 +233,7 @@ def require_cadenced_index_values_storage(
     if cadence in (None, ""):
         raise ValueError(
             "canonical Index values require a cadence-specific storage table; "
-            "build one with configured_index_values_storage(cadence=...)"
+            "declare one with a class statement on IndexValuesInstance and its __cadence__"
         )
     normalized_cadence = index_values_storage_identity_components(cadence=str(cadence))[
         INDEX_VALUES_CADENCE_COMPONENT
@@ -289,13 +244,13 @@ def require_cadenced_index_values_storage(
     ):
         raise ValueError(
             "canonical Index values require cadence-specific storage hash components; "
-            "build the table with configured_index_values_storage(cadence=...)"
+            "declare the table with a class statement on IndexValuesInstance"
         )
     identifier = str(getattr(output_table, "__metatable_identifier__", ""))
     if not identifier.endswith(f"IndexValuesTS.{normalized_cadence}"):
         raise ValueError(
             "canonical Index values require a cadence-specific IndexValuesTS identifier; "
-            "build the table with configured_index_values_storage(cadence=...)"
+            "declare the table with a class statement on IndexValuesInstance"
         )
     return normalized_cadence
 
@@ -355,11 +310,63 @@ def _copy_index_values_table(
     return table
 
 
+class _MarketsIndexValues(MarketsTimeIndexMetaTableMixin, MarketsBase):
+    """Markets' own Index-value table at one cadence (ADR 0066, decision 6).
+
+    Markets declares one class per cadence below, and its revision ``0039`` creates
+    their tables. A cadence Markets doesn't declare has no Markets table: a provider
+    that publishes another declares its own on :class:`IndexValuesInstance` (ADR 0047,
+    decision 4).
+    """
+
+    __abstract__ = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # Before the declarative mapping, which reads __table__ from the class.
+        cadence = index_values_storage_identity_components(cadence=cls.__dict__["__cadence__"])[
+            INDEX_VALUES_CADENCE_COMPONENT
+        ]
+        cls.__table__ = _copy_index_values_table(index_values_output_table_name(cadence=cadence))
+        cls.__metatable_identifier__ = f"IndexValuesTS.{cadence}"
+        cls.__metatable_description__ = (
+            f"Canonical Index value history at {cadence} cadence, keyed by "
+            "(time_index, index_identifier), for custom and formula observables."
+        )
+        cls.__metatable_extra_hash_components__ = index_values_storage_identity_components(
+            cadence=cadence
+        )
+        cls.__time_index_name__ = IndexValuesStorage.__time_index_name__
+        cls.__cadence__ = cadence
+        cls.__index_names__ = list(IndexValuesStorage.__index_names__)
+        super().__init_subclass__(**kwargs)
+
+
+class IndexValues1m(_MarketsIndexValues):
+    """Markets' ``ms_markets__index_values__t_1m``: Index values at a one-minute cadence."""
+
+    __cadence__ = "1m"
+
+
+class IndexValues1h(_MarketsIndexValues):
+    """Markets' ``ms_markets__index_values__t_1h``: Index values at a one-hour cadence."""
+
+    __cadence__ = "1h"
+
+
+class IndexValues1d(_MarketsIndexValues):
+    """Markets' ``ms_markets__index_values__t_1d``: Index values at a daily cadence."""
+
+    __cadence__ = "1d"
+
+
 __all__ = [
     "INDEX_VALUES_CADENCE_COMPONENT",
     "INDEX_VALUES_STORAGE_NAME_COMPONENT",
+    "IndexValues1d",
+    "IndexValues1h",
+    "IndexValues1m",
+    "IndexValuesInstance",
     "IndexValuesStorage",
-    "configured_index_values_storage",
     "index_values_storage_identity_components",
     "index_values_output_table_name",
     "require_cadenced_index_values_storage",

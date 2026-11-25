@@ -1,14 +1,14 @@
+"""An interpolation's source is an instance or a table reference (ADR 0066, decision 4)."""
+
 from __future__ import annotations
 
 import pytest
 from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from pydantic import ValidationError
 
-from msm_portfolios.configuration import PricesConfiguration
 from msm_portfolios.contrib.prices.updaters import (
     InterpolatedPrices,
     InterpolatedPricesConfig,
-    _resolve_interpolated_source_prices,
     _source_time_indexed_profile_cadence,
 )
 
@@ -24,151 +24,59 @@ def _api_price_source() -> TimeIndexTableRef:
         output_table=TimeIndexMetaTable.model_construct(
             uid=SOURCE_TIME_INDEX_META_TABLE_UID,
             data_source_uid="source-data-source",
+            physical_table_name="my_provider__bars__t_1d",
             time_indexed_profile=_Profile(),
         )
     )
 
 
-def test_prices_configuration_uses_time_index_meta_table_uid() -> None:
-    assert "source_time_index_meta_table_uid" in PricesConfiguration.model_fields
-    assert "bar_frequency_id" not in PricesConfiguration.model_fields
-    assert "markets_time_series" not in PricesConfiguration.model_fields
-    assert "source_bars_data_node" not in PricesConfiguration.model_fields
-
-    configuration = PricesConfiguration(
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-        source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
+def _configuration(**changed) -> InterpolatedPricesConfig:
+    return InterpolatedPricesConfig(
+        **{
+            "upsample_frequency_id": "1d",
+            "intraday_bar_interpolation_rule": "ffill",
+            "asset_list": ["example-asset-btc"],
+            **changed,
+        }
     )
 
-    assert str(configuration.source_time_index_meta_table_uid) == (SOURCE_TIME_INDEX_META_TABLE_UID)
 
+def test_the_source_is_an_instance_or_a_table_reference() -> None:
+    source_price = _api_price_source()
 
-def test_prices_configuration_requires_source_time_index_meta_table_uid() -> None:
-    with pytest.raises(ValidationError):
-        PricesConfiguration(
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-        )
+    configuration = _configuration(source_price_instance=source_price)
 
-
-def test_prices_configuration_rejects_user_supplied_bar_frequency_id() -> None:
-    with pytest.raises(ValidationError):
-        PricesConfiguration(
-            bar_frequency_id="1d",
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-            source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
-        )
-
-
-def test_interpolated_prices_config_accepts_source_storage_uid() -> None:
-    assert "source_time_index_meta_table_uid" in InterpolatedPricesConfig.model_fields
-    assert "source_price_instance" in InterpolatedPricesConfig.model_fields
+    assert configuration.source_price_instance is source_price
+    assert "source_time_index_meta_table_uid" not in InterpolatedPricesConfig.model_fields
     assert "bar_frequency_id" not in InterpolatedPricesConfig.model_fields
     assert "source_bars_data_node" not in InterpolatedPricesConfig.model_fields
 
-    configuration = InterpolatedPricesConfig(
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-        source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
-        asset_list=["example-asset-btc"],
-    )
 
-    assert str(configuration.source_time_index_meta_table_uid) == (SOURCE_TIME_INDEX_META_TABLE_UID)
-    assert configuration.source_price_instance is None
+def test_a_configuration_without_a_source_is_refused() -> None:
+    with pytest.raises(ValidationError, match="source_price_instance"):
+        _configuration()
 
 
-def test_interpolated_prices_config_accepts_source_price_instance() -> None:
-    source_price = _api_price_source()
-
-    configuration = InterpolatedPricesConfig(
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-        source_price_instance=source_price,
-        asset_list=["example-asset-btc"],
-    )
-
-    assert configuration.source_price_instance is source_price
-    assert configuration.source_time_index_meta_table_uid is None
-
-
-def test_interpolated_prices_config_rejects_missing_source() -> None:
-    with pytest.raises(ValidationError, match="requires exactly one source"):
-        InterpolatedPricesConfig(
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-            asset_list=["example-asset-btc"],
-        )
-
-
-def test_interpolated_prices_config_rejects_two_sources() -> None:
-    with pytest.raises(ValidationError, match="requires exactly one source"):
-        InterpolatedPricesConfig(
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-            source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
+def test_a_source_table_uid_is_refused() -> None:
+    with pytest.raises(ValidationError, match="source_time_index_meta_table_uid"):
+        _configuration(
             source_price_instance=_api_price_source(),
-            asset_list=["example-asset-btc"],
+            source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
         )
 
 
 def test_interpolated_prices_config_rejects_user_supplied_bar_frequency_id() -> None:
     with pytest.raises(ValidationError):
-        InterpolatedPricesConfig(
-            bar_frequency_id="1d",
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-            source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
-            asset_list=["example-asset-btc"],
-        )
+        _configuration(source_price_instance=_api_price_source(), bar_frequency_id="1d")
 
 
 def test_source_time_indexed_profile_cadence_is_canonicalized() -> None:
-    assert (
-        _source_time_indexed_profile_cadence(
-            _api_price_source(),
-            source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
-        )
-        == "1d"
-    )
+    assert _source_time_indexed_profile_cadence(_api_price_source().output_table) == "1d"
 
 
-def test_interpolated_prices_resolves_source_instance_as_dependency() -> None:
+def test_interpolated_prices_reads_its_source_as_a_dependency() -> None:
     source_price = _api_price_source()
-    configuration = InterpolatedPricesConfig(
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-        source_price_instance=source_price,
-        asset_list=["example-asset-btc"],
-    )
-
-    resolved_source, source_uid = _resolve_interpolated_source_prices(configuration)
     node = object.__new__(InterpolatedPrices)
-    node.bars_ts = resolved_source
+    node.bars_ts = _configuration(source_price_instance=source_price).source_price_instance
 
-    assert resolved_source is source_price
-    assert source_uid == SOURCE_TIME_INDEX_META_TABLE_UID
     assert node.dependencies() == {"bars_ts": source_price}
-
-
-def test_interpolated_prices_resolves_source_uid_as_api_dependency(monkeypatch) -> None:
-    source_price = _api_price_source()
-
-    def from_uid(uid: str) -> TimeIndexTableRef:
-        assert uid == SOURCE_TIME_INDEX_META_TABLE_UID
-        return source_price
-
-    monkeypatch.setattr(TimeIndexTableRef, "from_uid", from_uid)
-
-    configuration = InterpolatedPricesConfig(
-        upsample_frequency_id="1d",
-        intraday_bar_interpolation_rule="ffill",
-        source_time_index_meta_table_uid=SOURCE_TIME_INDEX_META_TABLE_UID,
-        asset_list=["example-asset-btc"],
-    )
-
-    resolved_source, source_uid = _resolve_interpolated_source_prices(configuration)
-
-    assert resolved_source is source_price
-    assert source_uid == SOURCE_TIME_INDEX_META_TABLE_UID

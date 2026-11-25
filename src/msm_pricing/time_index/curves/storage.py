@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.storage_instances import TimeIndexInstance
 from msm_pricing.models.curves import CurveTable
 
 CURVE_IDENTIFIER_DIMENSION = "curve_identifier"
@@ -97,4 +98,11 @@ class DiscountCurvesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["CURVE_IDENTIFIER_DIMENSION", "DiscountCurvesStorage"]
+class DiscountCurvesInstance(TimeIndexInstance):
+    """The base of an owner's own ``DiscountCurvesTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = DiscountCurvesStorage
+
+
+__all__ = ["CURVE_IDENTIFIER_DIMENSION", "DiscountCurvesInstance", "DiscountCurvesStorage"]

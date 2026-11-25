@@ -4,10 +4,11 @@ import datetime as dt
 from typing import Any
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 import metatables as dc
 from metatables import (
+    BaseConfiguration,
     TimeIndexTableUpdater,
     TimeIndexTableUpdateConfig,
     PlatformTimeIndexMetaTable,
@@ -38,11 +39,13 @@ class PortfolioCanonicalUpdaterConfiguration(TimeIndexTableUpdateConfig):
     """Update-scoped configuration base for canonical Portfolios updaters."""
 
 
-class SignalWeightsConfiguration(BaseModel):
-    """The configuration of a ``SignalWeights`` node: the signal's own configuration.
+class SignalWeightsConfiguration(BaseConfiguration):
+    """The configuration of a signal: the signal's own configuration.
 
     A signal's identity is ``signal_uid``, the hash of its class and
-    ``signal_configuration``; the node is bound to no table (ADR 0060).
+    ``signal_configuration``. A computed signal (``SignalWeights``) is a MetaTables node,
+    and this is the configuration its update hash is computed from; the table it writes
+    is no part of either.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

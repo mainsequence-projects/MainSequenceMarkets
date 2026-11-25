@@ -25,7 +25,6 @@ from examples.msm.assets.utils import (  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     ASSET_UNIQUE_IDENTIFIERS,
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
-    INTERPOLATED_PRICES_STORAGE,
     MIGRATION_COMMAND,
     NAMESPACE,
     PORTFOLIO_EXAMPLE_RUNTIME_MODELS,
@@ -35,6 +34,8 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     SIGNAL_TIME_INDEX,
     SOURCE_PRICE_CADENCE,
     TIME_INDEX,
+    EqualWeightInterpolatedPrices,
+    EqualWeightSignalWeights,
 )
 
 import msm_portfolios  # noqa: E402
@@ -253,9 +254,12 @@ def build_portfolio_configuration(
 
 
 def build_signal_weights_node() -> FixedWeights:
+    """The computed signal: its own node, writing the example's signal table."""
+
     signal_configuration = build_fixed_weights_config()
     return FixedWeights.from_signal_configuration(
         signal_configuration,
+        output_table=EqualWeightSignalWeights,
         namespace=NAMESPACE,
     )
 
@@ -283,7 +287,7 @@ def build_interpolated_prices_node(
             source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
         ),
-        output_table=INTERPOLATED_PRICES_STORAGE,
+        output_table=EqualWeightInterpolatedPrices,
         hash_namespace=NAMESPACE,
     )
 
@@ -306,10 +310,10 @@ def resolve_source_prices_storage(runtime: Any) -> str:
     return str(handle.meta_table_uid)
 
 
-def assert_interpolated_prices_storage_registered() -> Any:
-    """Fail clearly when the example's own table was not migrated first."""
+def assert_example_storage_registered(storage: Any, description: str) -> Any:
+    """Fail clearly when one of the example's own tables was not migrated first."""
 
-    table_name = INTERPOLATED_PRICES_STORAGE.__table__.name
+    table_name = storage.__table__.name
     matches = TimeIndexMetaTable.filter_by_body(
         physical_table_name__in=[table_name],
         limit=1,
@@ -317,13 +321,21 @@ def assert_interpolated_prices_storage_registered() -> Any:
     )
     if not matches:
         raise RuntimeError(
-            f"The example's interpolated-price table is missing: {table_name}. "
-            f"Apply its committed revision first: {MIGRATION_COMMAND}"
+            f"The example's {description} table is missing: {table_name}. "
+            f"Apply its committed revisions first: {MIGRATION_COMMAND}"
         )
 
     meta_table = matches[0]
-    INTERPOLATED_PRICES_STORAGE._bind_meta_table(meta_table)
+    storage._bind_meta_table(meta_table)
     return meta_table
+
+
+def assert_interpolated_prices_storage_registered() -> Any:
+    return assert_example_storage_registered(EqualWeightInterpolatedPrices, "interpolated-price")
+
+
+def assert_signal_weights_storage_registered() -> Any:
+    return assert_example_storage_registered(EqualWeightSignalWeights, "signal")
 
 
 def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataFrame:
@@ -383,6 +395,8 @@ def print_result_summary(result: dict[str, Any], *, run_updaters: bool) -> None:
     print_detail("source_prices_table_update_uid", result["source_prices_table_update_uid"])
     print_detail("interpolated_prices_table_update_uid", result["interpolated_prices_table_update_uid"])
     print_detail("calendar_events_table_update_uid", result["calendar_events_table_update_uid"])
+    print_detail("signal_weights_output_table", result["signal_weights_output_table"])
+    print_detail("signal_weights_table_update_uid", result["signal_weights_table_update_uid"])
     print_detail("published_signal_weights_rows", result["published_signal_weights_rows"])
     print_detail("published_portfolio_weights_rows", result["published_portfolio_weights_rows"])
     print_detail("published_portfolio_values_rows", result["published_portfolio_values_rows"])
@@ -411,8 +425,9 @@ def build_equal_weight_portfolio(
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
     source_prices_storage_uid = resolve_source_prices_storage(runtime)
     source_prices_cadence = SOURCE_PRICE_CADENCE
-    interpolated_prices_storage = INTERPOLATED_PRICES_STORAGE
+    interpolated_prices_storage = EqualWeightInterpolatedPrices
     interpolated_prices_meta_table = assert_interpolated_prices_storage_registered()
+    assert_signal_weights_storage_registered()
     source_bars_node = build_source_bars_node()
     interpolated_prices_node = build_interpolated_prices_node(source_bars_node)
     signal_weights_node = build_signal_weights_node()
@@ -459,8 +474,12 @@ def build_equal_weight_portfolio(
     print_step(5, "Running the portfolio and publishing its series to Markets (ADR 0060).")
     if run_updaters:
         # One joined MetaTables run (issue #133): the source bars, the interpolated
-        # prices and the calendar events run once, then the rebalance (which publishes
-        # the signal first) and the ledger; the weights and values are published after.
+        # prices, the calendar events and the signal run once, then the rebalance and the
+        # ledger; the weights and values are published after. The signal is its own node:
+        # it writes the example's signal table and publishes the same rows to Markets.
+        # On a hosted runtime, node_job="<the producer's node Job>" runs each of these
+        # nodes in its own Job run, independent ones at the same time (ADR 0067); the
+        # examples run on the local runtime, which refuses it.
         portfolio_run = run_portfolio(
             portfolio_configuration,
             namespace=NAMESPACE,
@@ -477,6 +496,8 @@ def build_equal_weight_portfolio(
 
         calendar_events_table_update_uid = str(calendar_events_node.table_update.uid)
         print_detail("calendar_events_table_update_uid", calendar_events_table_update_uid)
+        signal_weights_table_update_uid = str(signal_weights_node.table_update.uid)
+        print_detail("signal_weights_table_update_uid", signal_weights_table_update_uid)
 
         from msm_portfolios.api import (
             PortfolioValuesSeries,
@@ -500,10 +521,12 @@ def build_equal_weight_portfolio(
         print_detail("source_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("interpolated_prices_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("calendar_events_table_update_uid", "skipped (--no-run-updaters)")
+        print_detail("signal_weights_table_update_uid", "skipped (--no-run-updaters)")
         print_detail("published series", "skipped (--no-run-updaters)")
         source_prices_table_update_uid = None
         interpolated_prices_table_update_uid = None
         calendar_events_table_update_uid = None
+        signal_weights_table_update_uid = None
         published_signal_weights_rows = None
         published_portfolio_weights_rows = None
         published_portfolio_values_rows = None
@@ -527,6 +550,8 @@ def build_equal_weight_portfolio(
         "source_prices_table_update_uid": source_prices_table_update_uid,
         "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
         "calendar_events_table_update_uid": calendar_events_table_update_uid,
+        "signal_weights_output_table": EqualWeightSignalWeights.__table__.name,
+        "signal_weights_table_update_uid": signal_weights_table_update_uid,
         "published_signal_weights_rows": published_signal_weights_rows,
         "published_portfolio_weights_rows": published_portfolio_weights_rows,
         "published_portfolio_values_rows": published_portfolio_values_rows,

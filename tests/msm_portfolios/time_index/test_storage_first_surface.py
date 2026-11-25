@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pandas as pd
 import pytest
 
@@ -69,10 +71,15 @@ def test_portfolio_nodes_expose_storage_first_surface(monkeypatch) -> None:
 
 
 def test_published_nodes_validate_against_their_markets_storage() -> None:
-    """ADR 0060: the nodes of the three series publish; their storage is Markets' own."""
+    """ADR 0060: the nodes of the two portfolio series publish; their storage is Markets'
+    own. A computed signal is a node bound to its producer's own table, and publishes too.
+    """
 
     registered = set(portfolio_sqlalchemy_models())
-    for node_cls in (PortfolioWeights, PortfolioValues, SignalWeights):
+    assert SignalWeights._required_output_table() in registered
+    output_table = inspect.signature(SignalWeights.__init__).parameters["output_table"]
+    assert output_table.default is inspect.Parameter.empty
+    for node_cls in (PortfolioWeights, PortfolioValues):
         output_table = node_cls._required_output_table()
         assert output_table in registered
         assert node_cls._column_dtypes_map_for_storage() == storage_column_dtypes_map(output_table)
@@ -127,13 +134,7 @@ def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> No
         )
     )
 
-    assert (
-        _source_time_indexed_profile_cadence(
-            source_price,
-            source_time_index_meta_table_uid="source-uid",
-        )
-        == "1d"
-    )
+    assert _source_time_indexed_profile_cadence(source_price.output_table) == "1d"
 
 
 def test_interpolated_prices_mapping_scope_uses_canonical_asset_identifier(monkeypatch) -> None:

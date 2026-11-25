@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from msm.time_index.indices import configured_index_values_storage, normalize_index_values_frame
+from msm.time_index.indices import IndexValues1d, normalize_index_values_frame
 
 
-DAILY_INDEX_VALUES = configured_index_values_storage(cadence="1d")
 INDEX_IDENTIFIER = "OPTION-DELTA-HEDGED-PERFORMANCE"
 
 
@@ -22,7 +21,7 @@ def publish_portfolio_values(portfolio_values: pd.DataFrame) -> pd.DataFrame:
     source["observation_status"] = "ready"
     source["source_as_of"] = source["time_index"]
     source["metadata_json"] = None
-    return normalize_index_values_frame(source, output_table=DAILY_INDEX_VALUES)
+    return normalize_index_values_frame(source, output_table=IndexValues1d)
 
 
 def run() -> dict[str, object]:

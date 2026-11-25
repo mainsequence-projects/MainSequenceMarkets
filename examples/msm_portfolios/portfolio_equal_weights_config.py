@@ -1,9 +1,11 @@
-"""The equal-weight example's configuration, and the one table it owns.
+"""The equal-weight example's configuration, and the two tables it owns.
 
-The example is a producer: it declares its interpolated-price table on its own base, in its
-own namespace, and migrates it with its own provider (`portfolio_equal_weights_migrations`).
-The table's key comes from the configuration alone, so the committed revision creates it in
-every Environment.
+The example is a producer: it declares its interpolated-price table and its signal table
+with class statements on its own base, in its own namespace, and migrates them with its own
+provider (`portfolio_equal_weights_migrations`), which lists the two classes. Each table's
+key comes from the configuration alone, so the committed revisions create them in every
+Environment. A node Job run imports each class by its address, such as
+`examples.msm_portfolios.portfolio_equal_weights_config:EqualWeightInterpolatedPrices`.
 """
 
 from __future__ import annotations
@@ -21,12 +23,12 @@ if __package__ in {None, ""}:
 
 from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from metatables import sqlalchemy_naming_convention  # noqa: E402
-from msm.storage_instances import configured_time_index_instance  # noqa: E402
 from msm_portfolios.time_index.prices.storage import (  # noqa: E402
     ExternalPricesStorage,
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance  # noqa: E402
 
 NAMESPACE = "mainsequence.examples.portfolios"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-equal-weight-portfolio"
@@ -52,20 +54,34 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-# Another source, cadence, upsample frequency or rule is another table, and another revision.
-INTERPOLATED_PRICES_STORAGE = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=interpolated_prices_instance_key(
+class EqualWeightInterpolatedPrices(InterpolatedPricesInstance, ProviderBase):
+    """The interpolated prices of the example's configuration.
+
+    Another source, cadence, upsample frequency or rule is another table: another class,
+    and another revision.
+    """
+
+    __instance_key__ = interpolated_prices_instance_key(
         source_table_name=ExternalPricesStorage.__table__.name,
         source_cadence=SOURCE_PRICE_CADENCE,
         upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
         intraday_bar_interpolation_rule=PRICE_INTERPOLATION_RULE,
-    ),
-    cadence=PRICE_UPSAMPLE_FREQUENCY_ID,
-    namespace=PROVIDER_NAMESPACE,
-    storage_app=PROVIDER_STORAGE_APP,
-    base=ProviderBase,
-)
+    )
+    __metatable_namespace__ = PROVIDER_NAMESPACE
+    __markets_storage_app__ = PROVIDER_STORAGE_APP
+    __cadence__ = PRICE_UPSAMPLE_FREQUENCY_ID
+
+
+class EqualWeightSignalWeights(SignalWeightsInstance, ProviderBase):
+    """The computed signal's own table.
+
+    FixedWeights writes its rows here and publishes the same rows to Markets'
+    SignalWeightsTS. Every signal the example computes shares it.
+    """
+
+    __instance_key__ = "signals"
+    __metatable_namespace__ = PROVIDER_NAMESPACE
+    __markets_storage_app__ = PROVIDER_STORAGE_APP
 
 PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
     "AssetType",
@@ -91,7 +107,8 @@ PORTFOLIO_EXAMPLE_RUNTIME_MODELS = [
 __all__ = [
     "ASSET_UNIQUE_IDENTIFIERS",
     "CRYPTO_CALENDAR_UNIQUE_IDENTIFIER",
-    "INTERPOLATED_PRICES_STORAGE",
+    "EqualWeightInterpolatedPrices",
+    "EqualWeightSignalWeights",
     "MIGRATION_COMMAND",
     "MIGRATION_PROVIDER",
     "NAMESPACE",

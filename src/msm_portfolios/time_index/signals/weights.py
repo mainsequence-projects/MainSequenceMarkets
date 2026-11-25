@@ -1,15 +1,39 @@
+"""A portfolio's signal: a computed node with its own table, or a published series.
+
+Every signal is a ``SignalWeightsSource``: its identity (``signal_uid``, the hash of its
+class and configuration), how long a weight holds (``maximum_forward_fill``), its assets,
+and the reads a rebalance makes of its weights (``get_df_between_dates``,
+``get_last_observation`` and ``first_observation_time``). There are two kinds:
+
+- **Computed** (``SignalWeights`` and its subclasses). A MetaTables node: its update
+  computes the weights from what its ``dependencies()`` name, writes the new rows to the
+  producer's own ``SignalWeightsTS`` instance (its ``output_table``) and publishes them
+  to Markets' ``SignalWeightsTS`` (ADR 0060, amended on 2026-11-24). A portfolio's
+  rebalance depends on it with an edge, so it runs first, and reads its rows from that
+  table.
+- **Published** (``ApplicationWeights``). Its weights arrive only by publication. It has
+  no node and no edge, and a rebalance reads it from Markets.
+"""
+
 from __future__ import annotations
 
-from typing import Any, ClassVar
+import contextlib
+from collections.abc import Iterator
+from contextvars import ContextVar
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
 import metatables.updaters.configuration as update_configuration
+from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.identity import stable_identity_payload
+from msm.storage_instances import STORAGE_CONTRACT_COMPONENT
 
 from ..base import (
+    AssetScopedPortfolioCanonicalUpdater,
+    OutputTable,
     SignalWeightsConfiguration,
     _class_import_path,
     _drop_excluded_keys,
@@ -26,93 +50,50 @@ from ..constants import (
     SIGNAL_UID_EXCLUDED_CONFIGURATION_KEYS,
 )
 from ..metadata import emit_signal_metadata, extract_signal_description
-from msm_portfolios.series_nodes import PublishedSeriesNode
+from msm.time_index.assets.asset_indexed import asset_scope_identifier
+from msm_portfolios.series_nodes import PublishedSeriesReader, publish_new_rows
 from .storage import SignalWeightsStorage
 
+SIGNAL_WEIGHTS_SERIES = PublishedSeriesReader(
+    "signal-weights", key_column=SIGNAL_UID, asset_column=ASSET_IDENTIFIER
+)
+"""Markets' ``SignalWeightsTS``, through ``SignalWeightsSeries``."""
 
-class SignalWeights(PublishedSeriesNode):
-    """A signal's weights, published as ``SignalWeightsSeries`` (ADR 0060, decision 5).
 
-    A subclass computes weights in ``_calculate_signal_weights()``; ``run()`` publishes
-    them under the signal's ``signal_uid``, after creating its ``SignalMetadata`` row.
-    Its progress is the published series: ``_latest_signal_time_index_value()`` is the
-    signal's last stored time and ``_signal_asset_start_date(asset)`` an asset's.
+class SignalWeightsSource:
+    """What every signal is, computed or published.
 
-    ``dependencies()`` names the updaters and tables the calculation reads. The
-    portfolio's ``PortfolioRebalance`` declares them as its own and computes the signal
-    before it reads it, so one joined run refreshes them once for every portfolio that
-    needs them (issue #133).
+    A subclass reads its weights with ``get_df_between_dates`` and
+    ``get_last_observation``, as any time-index source does, and answers
+    ``first_observation_time``. ``SignalWeights`` reads them from its own table and
+    ``ApplicationWeights`` from Markets.
     """
 
-    series_resource = "signal-weights"
-    key_column = SIGNAL_UID
-    computes_weights: ClassVar[bool] = True
-    """Whether ``run()`` computes the weights; ``False`` when they arrive by publication."""
+    # Not annotated: a published signal is a pydantic model, which would make an annotated
+    # class attribute of a base one of its fields.
+    signal_configuration = None
 
-    def __init__(
-        self,
-        config: SignalWeightsConfiguration | None = None,
+    @classmethod
+    def default_config(
+        cls,
         *,
-        namespace: str | None = None,
-    ):
-        super().__init__(config, namespace=namespace)
-        self.signal_configuration = self.config.signal_configuration
-        self._progress_by_asset: dict[str, pd.Timestamp] | None = None
-
-    def set_signal_weights_frame(
-        self,
-        signal_weights_frame: pd.DataFrame,
-        *,
-        signal: Any | None = None,
         signal_configuration: Any | None = None,
-        signal_description: str | None = None,
-        metadata_updater: Any | None = None,
-    ) -> SignalWeights:
-        """Attach runtime signal inputs without changing the signal's identity."""
-        self._signal_weights_frame = signal_weights_frame
-        if signal is not None and signal_configuration is not None:
-            raise ValueError("Pass either signal or signal_configuration, not both.")
-        resolved_signal_configuration = (
-            signal_configuration if signal_configuration is not None else signal
-        )
-        if resolved_signal_configuration is not None:
-            self.signal_configuration = resolved_signal_configuration
-        self._signal_description = signal_description
-        self._signal_metadata_updater = metadata_updater
-        return self
+    ) -> SignalWeightsConfiguration:
+        return SignalWeightsConfiguration(signal_configuration=signal_configuration)
 
-    def series_key(self) -> str:
-        return self.signal_uid
+    @classmethod
+    def from_signal_configuration(cls, signal_configuration: Any, **kwargs: Any) -> Any:
+        """The signal of ``signal_configuration``; ``kwargs`` go to the constructor."""
 
-    def dependencies(self) -> dict[str, Any]:
-        """The updaters and tables the calculation reads; none by default."""
+        return cls(config=cls.default_config(signal_configuration=signal_configuration), **kwargs)
 
-        return {}
+    @classmethod
+    def _validate_config(cls, config: Any) -> SignalWeightsConfiguration:
+        if not isinstance(config, SignalWeightsConfiguration):
+            raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
+        return config
 
-    def run(self) -> Any:
-        """Write the signal's metadata if it is new or changed, then publish its new weights."""
-
-        self._progress_by_asset = None
-        self._ensure_signal_metadata()
-        try:
-            return super().run()
-        finally:
-            self._progress_by_asset = None
-
-    def update(self) -> pd.DataFrame:
-        raw_frame = self._calculate_signal_weights()
-        if _is_canonical_frame(raw_frame, output_table=SignalWeightsStorage):
-            return self.validate_frame(raw_frame)
-        return normalize_signal_weights_frame(raw_frame, signal_uid=self.signal_uid)
-
-    def _calculate_signal_weights(self) -> pd.DataFrame:
-        signal_weights_frame = getattr(self, "_signal_weights_frame", None)
-        if signal_weights_frame is not None:
-            return signal_weights_frame
-
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement _calculate_signal_weights()."
-        )
+    # Identity ------------------------------------------------------------------------
 
     def _signal_uid_payload(self) -> dict[str, Any]:
         if self.signal_configuration is None:
@@ -131,17 +112,15 @@ class SignalWeights(PublishedSeriesNode):
     def signal_uid(self) -> str:
         return self._resolve_signal_uid()
 
-    def _ensure_signal_metadata(self) -> None:
-        if self.signal_configuration is None:
-            return
+    @staticmethod
+    def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
+        return canonical_signal_configuration(signal)
 
-        emit_signal_metadata(
-            signal_uid=self.signal_uid,
-            signal_description=(
-                getattr(self, "_signal_description", None) or extract_signal_description(self)
-            ),
-            updater=getattr(self, "_signal_metadata_updater", None),
-        )
+    @staticmethod
+    def compute_signal_uid(signal: Any) -> str:
+        return compute_signal_uid(signal)
+
+    # What the signal says about its weights ------------------------------------------
 
     def get_explanation(self):
         return f"{self.__class__.__name__}: canonical Portfolios signal weights."
@@ -154,44 +133,21 @@ class SignalWeights(PublishedSeriesNode):
     def get_asset_list(self) -> None | list:
         return None
 
-    def get_update_asset_list(self) -> None | list:
-        return self.get_asset_list()
+    def first_observation_time(self) -> pd.Timestamp | None:
+        """The time of the signal's first observation, or ``None`` before it has one.
 
-    def _latest_signal_time_index_value(self) -> pd.Timestamp | None:
-        """The signal's last published time, or ``None`` before its first observation."""
+        A rebalance's first run starts there (#138).
+        """
 
-        last_time = self.reader.bounds(self.signal_uid).last_time
-        return None if last_time is None else pd.Timestamp(last_time)
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement first_observation_time()."
+        )
 
-    def _signal_asset_latest_time_index_value(self, asset) -> pd.Timestamp | None:
-        """The time of the signal's last published row of ``asset``."""
+    @classmethod
+    def _asset_unique_identifier(cls, asset: Any) -> str:
+        return asset_scope_identifier(asset, identity_dimension=ASSET_IDENTIFIER)
 
-        if getattr(self, "_progress_by_asset", None) is None:
-            latest = self.reader.last([self.signal_uid], by="asset")
-            self._progress_by_asset = (
-                {}
-                if latest.empty
-                else {
-                    str(asset_identifier): pd.Timestamp(time)
-                    for time, _signal, asset_identifier in latest.index
-                }
-            )
-        return self._progress_by_asset.get(str(self._asset_unique_identifier(asset)))
-
-    def _signal_asset_start_date(self, asset):
-        latest_value = self._signal_asset_latest_time_index_value(asset)
-        if latest_value is not None:
-            return latest_value
-        return self.OFFSET_START
-
-    def rows_after_last_observation(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """``frame`` without the rows at or before the signal's last published time."""
-
-        latest = self._latest_signal_time_index_value()
-        if latest is None or frame is None or frame.empty:
-            return frame
-        times = pd.to_datetime(frame.index.get_level_values("time_index"), utc=True)
-        return frame[times > latest]
+    # Interpolation -------------------------------------------------------------------
 
     def interpolate_index(
         self,
@@ -202,8 +158,8 @@ class SignalWeights(PublishedSeriesNode):
         """
         Get interpolated signal weights for a time index.
 
-        The weights are read from the published series, or from ``signal_weights_node``
-        when given. Signal weights are valid only for a bounded duration, enforced by
+        The weights are read from this signal, or from ``signal_weights_node`` when given.
+        Signal weights are valid only for a bounded duration, enforced by
         maximum_forward_fill().
         """
         weights_source = self if signal_weights_node is None else signal_weights_node
@@ -223,7 +179,7 @@ class SignalWeights(PublishedSeriesNode):
         weights = pd.concat([seeds, weights]).sort_index() if not seeds.empty else weights
 
         if len(weights) == 0:
-            self.logger.warning("No weights data in index interpolation")
+            _logger().warning("No weights data in index interpolation")
             return pd.DataFrame()
 
         weights = self._normalize_signal_weights_time_index(weights)
@@ -253,7 +209,7 @@ class SignalWeights(PublishedSeriesNode):
         weights_reindex[invalid_forward_fills] = np.nan
 
         if weights_reindex.isna().values.any():
-            self.logger.info("Could not fully interpolate for signal weights")
+            _logger().info("Could not fully interpolate for signal weights")
 
         weights_reindex = weights_reindex.loc[new_index]
         weights_reindex.index.name = "time_index"
@@ -351,43 +307,211 @@ class SignalWeights(PublishedSeriesNode):
             )
         return normalized
 
-    @classmethod
-    def default_config(
-        cls,
+
+class SignalWeights(SignalWeightsSource, AssetScopedPortfolioCanonicalUpdater):
+    """A computed signal: a MetaTables node with its own table, which also publishes.
+
+    ``output_table`` is the producer's own ``SignalWeightsTS`` instance, declared with a
+    class statement on ``SignalWeightsInstance`` and migrated by the producer's provider,
+    as its interpolated-price table is. It holds the rows of every
+    signal the producer computes, keyed by ``signal_uid``. Markets' own
+    ``SignalWeightsTS`` is refused: only publishing writes it.
+
+    A subclass computes its weights in ``_calculate_signal_weights()``, from the updaters
+    and tables ``dependencies()`` names; MetaTables runs those updaters first. ``update()``
+    writes the signal's ``SignalMetadata`` row when it is missing or changed, keeps the
+    rows after the signal's last row in its table, publishes them to Markets'
+    ``SignalWeightsTS`` (``SignalWeightsSeries``, with ADR 0060's publish rules and
+    manager check) and returns them for MetaTables to write. A failed publish writes
+    nothing; a write that fails after the publish is computed again by the next run, and
+    Markets leaves out the rows it already has.
+
+    Its progress is its table's update statistics: ``_latest_signal_time_index_value()``
+    is the signal's last row there, and ``_signal_asset_start_date(asset)`` an asset's.
+    Its ``signal_uid`` is derived from its class and configuration only, never from its
+    table or namespace.
+    """
+
+    def __init__(
+        self,
+        config: SignalWeightsConfiguration | None = None,
         *,
-        signal_configuration: Any | None = None,
-    ) -> SignalWeightsConfiguration:
-        return SignalWeightsConfiguration(signal_configuration=signal_configuration)
+        output_table: OutputTable,
+        namespace: str | None = None,
+    ):
+        _require_signal_weights_instance(output_table, signal_class=self.__class__)
+        resolved_config = self._validate_config(config or self.default_config())
+        self.signal_configuration = resolved_config.signal_configuration
+        super().__init__(resolved_config, namespace=namespace, output_table=output_table)
 
     @classmethod
     def from_signal_configuration(
         cls,
         signal_configuration: Any,
         *,
+        output_table: OutputTable,
         namespace: str | None = None,
     ) -> SignalWeights:
         return cls(
             config=cls.default_config(signal_configuration=signal_configuration),
+            output_table=output_table,
             namespace=namespace,
         )
 
     @classmethod
-    def _validate_config(cls, config: Any) -> SignalWeightsConfiguration:
-        if not isinstance(config, SignalWeightsConfiguration):
-            raise TypeError(f"{cls.__name__} requires a SignalWeightsConfiguration.")
-        return config
-
-    @classmethod
     def _required_output_table(cls) -> type[SignalWeightsStorage]:
+        """The storage contract; the node writes the producer's own instance of it."""
+
         return SignalWeightsStorage
 
-    @staticmethod
-    def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
-        return canonical_signal_configuration(signal)
+    def set_signal_weights_frame(
+        self,
+        signal_weights_frame: pd.DataFrame,
+        *,
+        signal: Any | None = None,
+        signal_configuration: Any | None = None,
+        signal_description: str | None = None,
+        metadata_updater: Any | None = None,
+    ) -> SignalWeights:
+        """Attach runtime signal inputs without changing the signal's identity."""
+        self._signal_weights_frame = signal_weights_frame
+        if signal is not None and signal_configuration is not None:
+            raise ValueError("Pass either signal or signal_configuration, not both.")
+        resolved_signal_configuration = (
+            signal_configuration if signal_configuration is not None else signal
+        )
+        if resolved_signal_configuration is not None:
+            self.signal_configuration = resolved_signal_configuration
+        self._signal_description = signal_description
+        self._signal_metadata_updater = metadata_updater
+        return self
 
-    @staticmethod
-    def compute_signal_uid(signal: Any) -> str:
-        return compute_signal_uid(signal)
+    def dependencies(self) -> dict[str, TimeIndexTableUpdater | TimeIndexTableRef]:
+        """The updaters and tables the calculation reads; none by default.
+
+        MetaTables runs these updaters before the signal, once per run however many
+        portfolios read the signal.
+        """
+
+        return {}
+
+    def update(self) -> pd.DataFrame:
+        """The signal's new rows: published to Markets, then written to its own table."""
+
+        self._ensure_signal_metadata()
+        frame = self.rows_after_last_observation(self._computed_rows())
+        publish_new_rows(SIGNAL_WEIGHTS_SERIES, frame, publisher=self.__class__.__name__)
+        return frame
+
+    def _computed_rows(self) -> pd.DataFrame:
+        raw_frame = self._calculate_signal_weights()
+        if _is_canonical_frame(raw_frame, output_table=self.output_table):
+            return self.validate_frame(raw_frame, output_table=self.output_table)
+        return normalize_signal_weights_frame(
+            raw_frame, signal_uid=self.signal_uid, output_table=self.output_table
+        )
+
+    def _calculate_signal_weights(self) -> pd.DataFrame:
+        signal_weights_frame = getattr(self, "_signal_weights_frame", None)
+        if signal_weights_frame is not None:
+            return signal_weights_frame
+
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement _calculate_signal_weights()."
+        )
+
+    def _ensure_signal_metadata(self) -> None:
+        if self.signal_configuration is None:
+            return
+
+        emit_signal_metadata(
+            signal_uid=self.signal_uid,
+            signal_description=(
+                getattr(self, "_signal_description", None) or extract_signal_description(self)
+            ),
+            updater=getattr(self, "_signal_metadata_updater", None),
+        )
+
+    # Progress, from the table's update statistics --------------------------------------
+
+    def first_observation_time(self) -> pd.Timestamp | None:
+        """The time of the signal's first row in its table, or ``None`` before it has one.
+
+        Read from the table's statistics when called (one request), so a rebalance that
+        runs after this node in the same graph sees the rows it just wrote.
+        """
+
+        statistics = self.output_metadata.get_data_updates()
+        first = _min_in_nested_values((statistics.index_min or {}).get(self.signal_uid))
+        return None if first is None else pd.Timestamp(first)
+
+    def _signal_progress(self) -> Any:
+        statistics = getattr(self, "update_statistics", None)
+        progress = getattr(statistics, "index_progress", None)
+        return progress.get(self.signal_uid) if isinstance(progress, dict) else None
+
+    def _latest_signal_time_index_value(self) -> pd.Timestamp | None:
+        """The time of the signal's last row in its table, or ``None`` before its first."""
+
+        latest = self._max_in_nested_values(self._signal_progress())
+        return None if latest is None else pd.Timestamp(latest)
+
+    def _signal_asset_latest_time_index_value(self, asset) -> pd.Timestamp | None:
+        """The time of the signal's last row of ``asset`` in its table."""
+
+        progress = self._signal_progress()
+        if not isinstance(progress, dict):
+            return None
+        latest = self._max_in_nested_values(progress.get(str(self._asset_unique_identifier(asset))))
+        return None if latest is None else pd.Timestamp(latest)
+
+    def _signal_asset_start_date(self, asset):
+        latest_value = self._signal_asset_latest_time_index_value(asset)
+        if latest_value is not None:
+            return latest_value
+        return self.get_offset_start()
+
+    def rows_after_last_observation(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """``frame`` without the rows at or before the signal's last row in its table.
+
+        Markets never restates a published observation, so the table takes no row before
+        the signal's last one either, and both hold the same observations.
+        """
+
+        latest = self._latest_signal_time_index_value()
+        if latest is None or frame is None or frame.empty:
+            return frame
+        times = pd.to_datetime(frame.index.get_level_values("time_index"), utc=True)
+        return frame[times > latest]
+
+
+def _require_signal_weights_instance(output_table: Any, *, signal_class: type) -> None:
+    """Refuse a table that is not a producer's own ``SignalWeightsTS`` instance."""
+
+    contract = SignalWeightsStorage.__markets_authored_identifier__
+    identity = getattr(output_table, "__metatable_extra_hash_components__", None) or {}
+    if identity.get(STORAGE_CONTRACT_COMPONENT) != contract:
+        raise ValueError(
+            f"{signal_class.__name__} writes its producer's own {contract} instance; "
+            f"output_table={getattr(output_table, '__name__', output_table)!s} is not one. "
+            "Declare it with a class statement on SignalWeightsInstance and the producer's "
+            "base, and migrate it with the producer's provider. Markets' own "
+            f"{contract} is written only by publishing (ADR 0060)."
+        )
+
+
+def _min_in_nested_values(value: Any) -> Any:
+    if isinstance(value, dict):
+        found = [_min_in_nested_values(child) for child in value.values()]
+        found = [item for item in found if item is not None]
+        return min(found) if found else None
+    return value
+
+
+def _logger() -> Any:
+    from msm_portfolios import logger
+
+    return logger
 
 
 def canonical_signal_configuration(signal: Any) -> dict[str, Any]:
@@ -416,9 +540,10 @@ def normalize_signal_weights_frame(
     signal_weights_frame: pd.DataFrame,
     *,
     signal_uid: str,
+    output_table: OutputTable | None = None,
 ) -> pd.DataFrame:
-    """Normalize signal output into canonical SignalWeights rows."""
-    required_columns = list(SignalWeights._column_dtypes_map_for_storage())
+    """Normalize signal output into canonical rows of ``output_table`` (the contract by default)."""
+    required_columns = list(SignalWeights._column_dtypes_map_for_storage(output_table))
     flat = _reset_frame_index(signal_weights_frame)
     if flat.empty:
         flat = _empty_flat_frame(column_names=required_columns)
@@ -432,11 +557,11 @@ def normalize_signal_weights_frame(
         required_columns=required_columns,
         frame_name="SignalWeights",
     )
-    return SignalWeights.validate_frame(flat[required_columns])
+    return SignalWeights.validate_frame(flat[required_columns], output_table=output_table)
 
 
 def _signal_configuration_payload(signal: Any) -> dict[str, Any]:
-    if isinstance(signal, SignalWeights):
+    if isinstance(signal, SignalWeightsSource):
         return signal._signal_uid_payload()
 
     build_configuration = getattr(signal, "build_configuration", None)
@@ -467,6 +592,44 @@ def _signal_configuration_payload(signal: Any) -> dict[str, Any]:
     )
 
 
-@update_configuration.serialize_argument.register(SignalWeights)
-def _serialize_signal_weights_argument(value: SignalWeights, pickle_ts: bool = False) -> dict:
-    return canonical_signal_configuration(value)
+_signal_identity_payloads: ContextVar[bool] = ContextVar(
+    "msm_signal_identity_payloads", default=False
+)
+
+
+@contextlib.contextmanager
+def signal_identity_payloads() -> Iterator[None]:
+    """Serialize a signal as its ``signal_uid`` payload in the enclosed calls.
+
+    A portfolio's identity names its signal by class and configuration (its
+    ``signal_uid``), never by a node's update hash or table, which differ between
+    namespaces and Environments (``compute_portfolio_configuration_hash``).
+    """
+
+    token = _signal_identity_payloads.set(True)
+    try:
+        yield
+    finally:
+        _signal_identity_payloads.reset(token)
+
+
+@update_configuration.serialize_argument.register(SignalWeightsSource)
+def _serialize_signal_weights_argument(value: SignalWeightsSource) -> dict:
+    """A signal in a configuration, saved in a form MetaTables rebuilds (ADR 0067, decision 4).
+
+    In an updater's configuration a computed signal is the updater it is, saved by its
+    update, and a published one is the pydantic model it is. A node Job run rebuilds the
+    rebalance with them. In an identity payload it is its ``signal_uid`` payload
+    (``signal_identity_payloads``).
+    """
+
+    if _signal_identity_payloads.get():
+        return canonical_signal_configuration(value)
+    for form in (TimeIndexTableUpdater, BaseModel):
+        if isinstance(value, form):
+            return update_configuration.serialize_argument.dispatch(form)(value)
+    raise TypeError(
+        f"{type(value).__name__} is neither a computed signal (a SignalWeights updater) nor a "
+        "published one (a pydantic model, as ApplicationWeights), so a node Job run could "
+        "not rebuild it."
+    )

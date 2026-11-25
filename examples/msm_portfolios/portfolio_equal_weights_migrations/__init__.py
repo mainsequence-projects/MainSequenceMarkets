@@ -1,6 +1,7 @@
-"""The equal-weight example's own migrations: its interpolated-price table, and no Markets table.
+"""The equal-weight example's own migrations: its interpolated-price and signal tables, and
+no Markets table.
 
-Apply the committed revision after Markets' own migrations, in each database:
+Apply the committed revisions after Markets' own migrations, in each database:
 
     metatables --local migrations upgrade \\
         --provider examples.msm_portfolios.portfolio_equal_weights_migrations:migration head
@@ -32,9 +33,10 @@ from metatables.migrations import (  # noqa: E402
 )
 
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
-    INTERPOLATED_PRICES_STORAGE,
     PROVIDER_NAMESPACE,
     PROVIDER_STORAGE_APP,
+    EqualWeightInterpolatedPrices,
+    EqualWeightSignalWeights,
     ProviderBase,
 )
 
@@ -55,7 +57,7 @@ migration = build_metatable_migration_provider(
     version_location_prefix=f"{MODULE}:versions",
     target_metadata=ProviderBase.metadata,
     alembic_registry=EqualWeightExampleAlembicVersion,
-    metatable_models=[INTERPOLATED_PRICES_STORAGE],
+    metatable_models=[EqualWeightInterpolatedPrices, EqualWeightSignalWeights],
 )
 
 __all__ = ["EqualWeightExampleAlembicVersion", "migration"]

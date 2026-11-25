@@ -20,8 +20,8 @@ from sqlalchemy.orm import DeclarativeBase
 from metatables import sqlalchemy_naming_convention
 from msm_portfolios.time_index import PortfolioValues, PortfolioWeights
 from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_event_ledger_storage,
-    configured_portfolio_rebalance_state_storage,
+    PortfolioEventLedgerInstance,
+    PortfolioRebalanceStateInstance,
 )
 from msm_portfolios.time_index.portfolios.rebalance import PortfolioRebalanceStateStorage
 from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
@@ -35,16 +35,16 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-def _rebalance_instance():
-    return configured_portfolio_rebalance_state_storage(
-        instance_key="engine", namespace="my-app", storage_app="my_app", base=ProviderBase
-    )
+class EngineRebalanceState(PortfolioRebalanceStateInstance, ProviderBase):
+    __instance_key__ = "engine"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
 
 
-def _ledger_instance():
-    return configured_portfolio_event_ledger_storage(
-        instance_key="engine", namespace="my-app", storage_app="my_app", base=ProviderBase
-    )
+class EngineEventLedger(PortfolioEventLedgerInstance, ProviderBase):
+    __instance_key__ = "engine"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
 
 
 def _engine(values: PortfolioValues):
@@ -57,8 +57,8 @@ def _engine(values: PortfolioValues):
 
 
 def test_the_nodes_bind_the_rebalance_state_and_ledger_to_the_applications_tables() -> None:
-    rebalance = _rebalance_instance()
-    ledger = _ledger_instance()
+    rebalance = EngineRebalanceState
+    ledger = EngineEventLedger
     with (
         _built_updaters() as updaters,
         _bound(PortfolioRebalanceStateStorage, CORE_REBALANCE_UID),

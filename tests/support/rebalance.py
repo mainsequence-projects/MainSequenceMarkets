@@ -196,6 +196,11 @@ class PublishedTable(TimeIndexTableUpdater):
             mask &= frame[name].astype(str).isin([str(value) for value in values])
         return frame[mask].set_index(self.index)
 
+    def first_observation_time(self) -> pd.Timestamp | None:
+        """The first visible row's time, as a signal answers its first observation."""
+        frame = self._published()
+        return None if frame.empty else utc(frame["time_index"].min())
+
     def get_last_observation(self, *, dimension_range_map, **_kwargs) -> pd.DataFrame:
         frame = self._published()
         selected = []
@@ -276,8 +281,8 @@ class IncrementalRebalance:
         node._portfolio_configuration = SimpleNamespace()
         node._portfolio_identifier = "portfolio"
         signals.signal_uid = SIGNAL_UID
-        # A published signal: the rebalance reads it and never computes it.
-        signals.computes_weights = False
+        # The rebalance reads the signal and never runs it: a computed signal is its own
+        # node, which ran before it.
         node.signal_weights = signals
         node.rebalance_strategy = strategy
         node.valuation_source = prices

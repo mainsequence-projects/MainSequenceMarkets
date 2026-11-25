@@ -60,9 +60,9 @@ class IndexValuesUpdater(IndexTimestampedUpdater):
     @classmethod
     def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
         raise NotImplementedError(
-            "IndexValuesUpdater requires a cadence-specific storage table; "
-            "pass output_table=configured_index_values_storage(cadence=...) "
-            "or override _required_output_table() in a cadence-specific producer"
+            "IndexValuesUpdater requires a cadence-specific storage table; pass "
+            "output_table= the provider's class declared on IndexValuesInstance with its "
+            "__cadence__, or override _required_output_table() in a cadence-specific producer"
         )
 
     def update(self) -> pd.DataFrame:

@@ -147,6 +147,8 @@ nav:
       - Policies And Rebalance Strategies For Portfolios And Accounts: ADR/0063-a-policy-base-for-portfolios-and-accounts.md
       - An Order Has Its Own Row: ADR/0064-an-order-has-its-own-row.md
       - Every Portfolio Keeps A Ledger: ADR/0065-every-portfolio-keeps-a-ledger.md
+      - A Producer Declares Its Tables As Classes: ADR/0066-a-producer-declares-its-tables-as-classes.md
+      - Portfolio Runs In Parallel: ADR/0067-portfolio-runs-in-parallel.md
       - Command Center Asset Monitor Helpers: ADR/0034-command-center-asset-monitor-helpers.md
       - Execution Engine:
           - Execution Engine Architecture: ADR/execution_engine/0001-execution-engine-architecture.md

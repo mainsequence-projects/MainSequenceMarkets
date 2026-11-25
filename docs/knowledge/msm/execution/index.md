@@ -73,7 +73,7 @@ written = write_execution(
             "trades": [{"trade_time": now, "trade_identifier": "fill-1", "quantity": 10.0}],
         }
     ],
-    orders_table=MyOrders,           # the application's instances (msm.storage_instances)
+    orders_table=MyOrders,           # the application's classes on OrdersInstance etc.
     order_events_table=MyOrderEvents,
     trades_table=MyTrades,
 )

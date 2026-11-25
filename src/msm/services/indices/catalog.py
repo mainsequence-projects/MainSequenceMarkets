@@ -6,16 +6,19 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import Float, Integer, Numeric, String, and_, cast, exists, func, or_, select
+from sqlalchemy import column as column_clause
+from sqlalchemy import table as table_clause
+from sqlalchemy.sql import TableClause
 
 from metatables import MetaTable, TimeIndexMetaTable
 
 from msm.api.base import operation_result_rows
 from msm.api.indices import Index, IndexType
 from msm.analytics.indices import IndexFormulaInput
+from msm.base import markets_table_name, normalize_metatable_schema
 from msm.time_index.indices.storage import (
-    INDEX_VALUES_CADENCE_COMPONENT,
-    INDEX_VALUES_STORAGE_NAME_COMPONENT,
-    configured_index_values_storage,
+    IndexValuesStorage,
+    index_values_storage_identity_components,
 )
 from msm.models import (
     AssetTable,
@@ -318,42 +321,42 @@ def dataset_summary(
     index: Index,
     dataset: IndexDatasetDescriptor,
 ) -> IndexDatasetSummary:
-    model, handle = _dataset_model_and_handle(context, dataset)
+    values = _dataset_table(dataset).c
     aggregate = select(
         func.count().label("row_count"),
-        func.min(model.time_index).label("earliest_time_index"),
-        func.max(model.time_index).label("latest_time_index"),
-    ).where(model.index_identifier == index.unique_identifier)
+        func.min(values.time_index).label("earliest_time_index"),
+        func.max(values.time_index).label("latest_time_index"),
+    ).where(values.index_identifier == index.unique_identifier)
     try:
         aggregate_rows = operation_result_rows(
             execute_markets_operation(
                 compile_markets_statement(
                     aggregate,
-                    context=handle,
+                    context=context,
                     operation="select",
                 ),
-                context=handle,
+                context=context,
             )
         )
         aggregate_row = aggregate_rows[0] if aggregate_rows else {}
         latest_statement = (
             select(
-                model.value,
-                model.observation_status,
-                model.source_as_of,
+                values.value,
+                values.observation_status,
+                values.source_as_of,
             )
-            .where(model.index_identifier == index.unique_identifier)
-            .order_by(model.time_index.desc())
+            .where(values.index_identifier == index.unique_identifier)
+            .order_by(values.time_index.desc())
             .limit(1)
         )
         latest_rows = operation_result_rows(
             execute_markets_operation(
                 compile_markets_statement(
                     latest_statement,
-                    context=handle,
+                    context=context,
                     operation="select",
                 ),
-                context=handle,
+                context=context,
             )
         )
         latest = latest_rows[0] if latest_rows else {}
@@ -397,32 +400,32 @@ def read_index_values(
         raise ValueError("order must be asc or desc")
     if not 1 <= limit <= 5000:
         raise ValueError("limit must be between 1 and 5000")
-    model, handle = _dataset_model_and_handle(context, dataset)
+    values = _dataset_table(dataset).c
     statement = (
         select(
-            model.time_index,
-            model.index_identifier,
-            model.value,
-            model.definition_uid,
-            model.observation_status,
-            model.source_as_of,
-            model.metadata_json,
+            values.time_index,
+            values.index_identifier,
+            values.value,
+            values.definition_uid,
+            values.observation_status,
+            values.source_as_of,
+            values.metadata_json,
         )
         .where(
-            model.index_identifier == index.unique_identifier,
-            model.time_index >= start,
-            model.time_index <= end,
+            values.index_identifier == index.unique_identifier,
+            values.time_index >= start,
+            values.time_index <= end,
         )
-        .order_by(model.time_index.asc() if order == "asc" else model.time_index.desc())
+        .order_by(values.time_index.asc() if order == "asc" else values.time_index.desc())
         .limit(limit)
     )
     result = execute_markets_operation(
         compile_markets_statement(
             statement,
-            context=handle,
+            context=context,
             operation="select",
         ),
-        context=handle,
+        context=context,
     )
     return IndexValuesResult(
         dataset=dataset,
@@ -657,18 +660,7 @@ def _canonical_descriptor(
         cadence = str(getattr(profile, "cadence", "") or "").strip().lower()
     if not cadence or cadence != cadence_from_identifier:
         return None
-    model = _index_values_model(meta_table, cadence)
-    if model is None:
-        return None
-    if identifier != markets_identifier(
-        model.__metatable_identifier__, namespace=model.__metatable_namespace__
-    ):
-        return None
-    components = getattr(model, "__metatable_extra_hash_components__", {})
-    if (
-        components.get(INDEX_VALUES_STORAGE_NAME_COMPONENT) != "index_values"
-        or components.get(INDEX_VALUES_CADENCE_COMPONENT) != cadence
-    ):
+    if _index_values_table(meta_table, cadence) is None:
         return None
     physical_table_name = str(getattr(meta_table, "physical_table_name", ""))
     columns = tuple(_column_names(meta_table))
@@ -679,8 +671,10 @@ def _canonical_descriptor(
     )
     if not {"time_index", "index_identifier"}.issubset(index_names):
         return None
+    # The contract's key: the registration is an IndexValuesTS table, whose index_identifier
+    # references Markets' Index, and its own foreign keys, when it lists them, must say so.
     foreign_key = require_index_foreign_key(
-        model,
+        IndexValuesStorage,
         source_column="index_identifier",
         join_kind="unique_identifier",
     )
@@ -722,57 +716,53 @@ def _canonical_descriptor(
     )
 
 
-def _index_values_model(meta_table: Any, cadence: str) -> type[Any] | None:
-    """The storage model of a discovered ``IndexValuesTS.<cadence>`` table.
+def _index_values_table(meta_table: Any, cadence: str) -> TableClause | None:
+    """The table of a discovered ``IndexValuesTS.<cadence>`` registration, read through it.
 
     Markets' own ``ms_markets__index_values__t_<cadence>``, or a provider's
-    ``<storage_app>__index_values__t_<cadence>`` in the provider's namespace
-    (ADR 0047, decision 4), built by the same factory so its columns, foreign
-    keys and grain are the contract's. ``None`` for any other table.
+    ``<storage_app>__index_values__t_<cadence>`` in the provider's namespace (ADR 0047,
+    decision 4). A reader never declares another owner's table (ADR 0066, decision 7):
+    the statement names the registered physical table, and its columns have the types
+    of the ``IndexValuesTS`` contract the registration is checked against. Nothing is
+    added to any metadata. ``None`` for any other table.
     """
 
-    physical_table_name = str(getattr(meta_table, "physical_table_name", ""))
     try:
-        markets_model = configured_index_values_storage(cadence=cadence)
+        index_values_storage_identity_components(cadence=cadence)
     except ValueError:
         return None
-    if physical_table_name == markets_model.__table__.name:
-        return markets_model
-    storage_app, separator, _ = physical_table_name.partition("__index_values__")
+    physical_table_name = str(getattr(meta_table, "physical_table_name", ""))
     namespace = str(getattr(meta_table, "namespace", "") or "")
+    storage_app, separator, _ = physical_table_name.partition("__index_values__")
     if not separator or not namespace:
         return None
-    try:
-        model = configured_index_values_storage(
-            cadence=cadence, namespace=namespace, storage_app=storage_app
-        )
-    except ValueError:
+    if physical_table_name != markets_table_name(storage_app, "index_values", suffix=cadence):
         return None
-    return model if model.__table__.name == physical_table_name else None
+    identifier = str(getattr(meta_table, "identifier", ""))
+    authored = f"{IndexValuesStorage.__markets_authored_identifier__}.{cadence}"
+    if identifier != markets_identifier(authored, namespace=namespace):
+        return None
+    return table_clause(
+        physical_table_name,
+        *(column_clause(item.name, item.type) for item in IndexValuesStorage.__table__.columns),
+        schema=normalize_metatable_schema(getattr(meta_table, "physical_schema", None)),
+    )
 
 
-def _dataset_model_and_handle(
-    context: MarketsOperationContext,
-    dataset: IndexDatasetDescriptor,
-) -> tuple[type[Any], MarketsMetaTableHandle]:
+def _dataset_table(dataset: IndexDatasetDescriptor) -> TableClause:
+    """The registered table of a canonical dataset, checked again against the contract."""
+
     matches = TimeIndexMetaTable.filter_by_body(uid__in=[dataset.meta_table_uid], limit=1, offset=0)
     if not matches:
         raise LookupError(f"Canonical Index dataset {dataset.meta_table_uid!r} is not visible")
     meta_table = matches[0]
     verified = _canonical_descriptor(meta_table, actor=None)
-    model = _index_values_model(meta_table, dataset.cadence)
-    if verified is None or verified.meta_table_uid != dataset.meta_table_uid or model is None:
+    values = _index_values_table(meta_table, dataset.cadence)
+    if verified is None or verified.meta_table_uid != dataset.meta_table_uid or values is None:
         raise ValueError(
             "Selected MetaTable no longer satisfies the canonical Index dataset contract"
         )
-    handle = MarketsMetaTableHandle(
-        model=model,
-        meta_table=meta_table,
-        limits=context.limits,
-        data_source_uid=context.data_source_uid,
-        timeout=context.timeout,
-    )
-    return model, handle
+    return values
 
 
 def _formula_summary(

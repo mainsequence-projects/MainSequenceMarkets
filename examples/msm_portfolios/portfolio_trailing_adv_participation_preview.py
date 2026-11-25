@@ -166,8 +166,8 @@ def transition_summary(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--daily-liquidity-table-uid", required=True)
-    parser.add_argument("--execution-bars-table-uid", required=True)
+    parser.add_argument("--daily-liquidity-table-name", required=True)
+    parser.add_argument("--execution-bars-table-name", required=True)
     parser.add_argument("--signal-time", required=True, type=parse_utc_timestamp)
     parser.add_argument("--start", required=True, type=parse_utc_timestamp)
     parser.add_argument("--end", required=True, type=parse_utc_timestamp)
@@ -205,8 +205,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     weights = target_weights(args.target)
     strategy = build_trailing_adv_strategy(
-        daily_liquidity_table_uid=args.daily_liquidity_table_uid,
-        execution_bars_table_uid=args.execution_bars_table_uid,
+        daily_liquidity_table_name=args.daily_liquidity_table_name,
+        execution_bars_table_name=args.execution_bars_table_name,
     )
     observed_inputs = load_observed_inputs(
         strategy,

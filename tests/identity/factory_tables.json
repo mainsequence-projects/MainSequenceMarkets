@@ -1,0 +1,1491 @@
+{
+  "account_holdings": {
+    "authored_identifier": "AccountHoldingsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_4cb5ca8571de050103e2c03a73d1d882",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__accountholdingsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "account_uid UUID NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "holdings_set_uid UUID NOT NULL",
+      "is_trade_snapshot BOOLEAN",
+      "quantity FLOAT",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time TIMESTAMP WITH TIME ZONE",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__account_uid__ms_d97e672ab4 FOREIGN KEY(account_uid) REFERENCES ms_markets__account (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__asset_identifie_946fe347fd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__holdings_set_ui_68a7b19b9b FOREIGN KEY(holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__accountholdingsts__main__time_index__ac_883be7e73c ON my_app__accountholdingsts__main (time_index, account_uid, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__accountholdingsts__main (",
+      "time_index DATETIME NOT NULL",
+      "account_uid CHAR(32) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "holdings_set_uid CHAR(32) NOT NULL",
+      "is_trade_snapshot BOOLEAN",
+      "quantity FLOAT",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time DATETIME",
+      "extra_details JSON",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__account_uid__ms_d97e672ab4 FOREIGN KEY(account_uid) REFERENCES ms_markets__account (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__asset_identifie_946fe347fd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__holdings_set_ui_68a7b19b9b FOREIGN KEY(holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__accountholdingsts__main__time_index__ac_883be7e73c ON my_app__accountholdingsts__main (time_index, account_uid, asset_identifier)"
+    ],
+    "description": "Timestamped account holdings storage keyed by (time_index, account_uid, asset_identifier). Each row is one asset position in an account holdings set. quantity is a positive magnitude and direction stores the long/short side. Instance 'main' of AccountHoldingsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "AccountHoldingsTS"
+    },
+    "index_names": [
+      "time_index",
+      "account_uid",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-app.AccountHoldingsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.AccountHoldingsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "938a0aa298780854087d23d85f151f18cbb07e6dbdf2c97e494ade164e9f1fdf",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__accountholdingsts__main",
+    "time_index_name": "time_index"
+  },
+  "asset_pricing_details": {
+    "authored_identifier": "AssetPricingDetailsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_provider_aa6fbc3268864c397202ecbc60a8d956",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__assetpricingdetailsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "instrument_dump JSONB NOT NULL",
+      "instrument_type VARCHAR(128) NOT NULL",
+      "serialization_format VARCHAR(128) NOT NULL",
+      "pricing_package_version VARCHAR(64)",
+      "source VARCHAR(255)",
+      "metadata JSONB",
+      "CONSTRAINT fk__my_provider__assetpricingdetailsts__main__asset_9a3d8dafff FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__assetpricingdetailsts__main__time_88101c9b97 ON my_provider__assetpricingdetailsts__main (time_index, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__assetpricingdetailsts__main (",
+      "time_index DATETIME NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "instrument_dump JSON NOT NULL",
+      "instrument_type VARCHAR(128) NOT NULL",
+      "serialization_format VARCHAR(128) NOT NULL",
+      "pricing_package_version VARCHAR(64)",
+      "source VARCHAR(255)",
+      "metadata JSON",
+      "CONSTRAINT fk__my_provider__assetpricingdetailsts__main__asset_9a3d8dafff FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__assetpricingdetailsts__main__time_88101c9b97 ON my_provider__assetpricingdetailsts__main (time_index, asset_identifier)"
+    ],
+    "description": "Timestamped asset pricing-detail storage keyed by (time_index, asset_identifier). Stores serialized pricing instrument payloads and serialization metadata for canonical assets. User-facing pricing-detail writes upsert this table; writes without an explicit timestamp also update AssetCurrentPricingDetailsTable for fast runtime instrument loading. Instance 'main' of AssetPricingDetailsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "AssetPricingDetailsTS"
+    },
+    "index_names": [
+      "time_index",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.AssetPricingDetailsTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.AssetPricingDetailsTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "894284ec29da9313d0590e43cc1fcec118397229c525d863fbf6b517deed0fd4",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__assetpricingdetailsts__main",
+    "time_index_name": "time_index"
+  },
+  "discount_curves": {
+    "authored_identifier": "DiscountCurvesTS.main",
+    "cadence": "1d",
+    "contract_hash": "mt_my_provider_d527bb6e5fba71450a70ccc6a7136021",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__discountcurvests__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "curve_identifier VARCHAR(255) NOT NULL",
+      "curve VARCHAR NOT NULL",
+      "key_nodes TEXT",
+      "metadata_json JSONB",
+      "CONSTRAINT fk__my_provider__discountcurvests__main__curve_ident_d2f2c0b4e8 FOREIGN KEY(curve_identifier) REFERENCES ms_markets__curve (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__discountcurvests__main__time_index_bf3bac0c60 ON my_provider__discountcurvests__main (time_index, curve_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__discountcurvests__main (",
+      "time_index DATETIME NOT NULL",
+      "curve_identifier VARCHAR(255) NOT NULL",
+      "curve VARCHAR NOT NULL",
+      "key_nodes TEXT",
+      "metadata_json JSON",
+      "CONSTRAINT fk__my_provider__discountcurvests__main__curve_ident_d2f2c0b4e8 FOREIGN KEY(curve_identifier) REFERENCES ms_markets__curve (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__discountcurvests__main__time_index_bf3bac0c60 ON my_provider__discountcurvests__main (time_index, curve_identifier)"
+    ],
+    "description": "Timestamped discount-curve storage keyed by (time_index, curve_identifier). Stores compressed curve payloads that reconstruct discount term structures for pricing workflows, compressed key-node input quote provenance used to build each curve observation, and optional structured metadata. Each curve identity links back to the Curve MetaTable. Instance 'main' of DiscountCurvesTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "DiscountCurvesTS"
+    },
+    "index_names": [
+      "time_index",
+      "curve_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.DiscountCurvesTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.DiscountCurvesTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "a1b14bbc583c643f1914c8cbc0ea6fe5632f8bc6f8bcdc957db970ff59a741d2",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__discountcurvests__main",
+    "time_index_name": "time_index"
+  },
+  "discount_curves_example_provider": {
+    "authored_identifier": "DiscountCurvesTS.main",
+    "cadence": "1d",
+    "contract_hash": "mt_example_provider_78e9611f6fe41017788dba93c415dd55",
+    "ddl_postgresql": [
+      "CREATE TABLE example_provider__discountcurvests__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "curve_identifier VARCHAR(255) NOT NULL",
+      "curve VARCHAR NOT NULL",
+      "key_nodes TEXT",
+      "metadata_json JSONB",
+      "CONSTRAINT fk__example_provider__discountcurvests__main__curve_c3494447ec FOREIGN KEY(curve_identifier) REFERENCES ms_markets__curve (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__example_provider__discountcurvests__main__time_516ecdab99 ON example_provider__discountcurvests__main (time_index, curve_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE example_provider__discountcurvests__main (",
+      "time_index DATETIME NOT NULL",
+      "curve_identifier VARCHAR(255) NOT NULL",
+      "curve VARCHAR NOT NULL",
+      "key_nodes TEXT",
+      "metadata_json JSON",
+      "CONSTRAINT fk__example_provider__discountcurvests__main__curve_c3494447ec FOREIGN KEY(curve_identifier) REFERENCES ms_markets__curve (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__example_provider__discountcurvests__main__time_516ecdab99 ON example_provider__discountcurvests__main (time_index, curve_identifier)"
+    ],
+    "description": "Timestamped discount-curve storage keyed by (time_index, curve_identifier). Stores compressed curve payloads that reconstruct discount term structures for pricing workflows, compressed key-node input quote provenance used to build each curve observation, and optional structured metadata. Each curve identity links back to the Curve MetaTable. Instance 'main' of DiscountCurvesTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "DiscountCurvesTS"
+    },
+    "index_names": [
+      "time_index",
+      "curve_identifier"
+    ],
+    "info": {
+      "identifier": "example-provider.DiscountCurvesTS.main",
+      "markets_storage_app": "example_provider",
+      "namespace": "example-provider"
+    },
+    "metatable_identifier": "example-provider.DiscountCurvesTS.main",
+    "namespace": "example-provider",
+    "registration_request_sha256": "afbf0476ac2a7b96dfdc4f4f8e8a17da2546432f7a562dec66a4d367ab866d92",
+    "storage_app": "example_provider",
+    "storage_layout": null,
+    "table_name": "example_provider__discountcurvests__main",
+    "time_index_name": "time_index"
+  },
+  "external_prices": {
+    "authored_identifier": "ExternalPricesTS.kept",
+    "cadence": "1d",
+    "contract_hash": "mt_ns_cadence_2742f71c597965913ff3167e86c87581",
+    "ddl_postgresql": [
+      "CREATE TABLE ns_cadence__externalpricests__kept (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time TIMESTAMP WITH TIME ZONE",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__ns_cadence__externalpricests__kept__asset_identi_d84234ffa1 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__ns_cadence__externalpricests__kept__time_index_a1e9eb5885 ON ns_cadence__externalpricests__kept (time_index, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE ns_cadence__externalpricests__kept (",
+      "time_index DATETIME NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time DATETIME",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__ns_cadence__externalpricests__kept__asset_identi_d84234ffa1 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__ns_cadence__externalpricests__kept__time_index_a1e9eb5885 ON ns_cadence__externalpricests__kept (time_index, asset_identifier)"
+    ],
+    "description": "Timestamped externally supplied price bars keyed by (time_index, asset_identifier). Stores normalized OHLCV bars used as source price inputs for portfolio interpolation and construction workflows. Instance 'kept' of ExternalPricesTS.",
+    "extra_hash_components": {
+      "instance_key": "kept",
+      "storage_contract": "ExternalPricesTS"
+    },
+    "index_names": [
+      "time_index",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "ns-cadence.ExternalPricesTS.kept",
+      "markets_storage_app": "ns_cadence",
+      "namespace": "ns-cadence"
+    },
+    "metatable_identifier": "ns-cadence.ExternalPricesTS.kept",
+    "namespace": "ns-cadence",
+    "registration_request_sha256": "a6939a073b92ecbdf4d76e0a91f3de1478fd9bf9e72d5c0d25eedf9328e2a2d3",
+    "storage_app": "ns_cadence",
+    "storage_layout": null,
+    "table_name": "ns_cadence__externalpricests__kept",
+    "time_index_name": "time_index"
+  },
+  "index_fixings": {
+    "authored_identifier": "IndexFixingsTS.main",
+    "cadence": "1d",
+    "contract_hash": "mt_my_provider_820b238a9a4ed8be184adc820748e652",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__indexfixingsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "rate FLOAT",
+      "CONSTRAINT fk__my_provider__indexfixingsts__main__index_identif_d330cc7b73 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__indexfixingsts__main__time_index_5e9394bbe4 ON my_provider__indexfixingsts__main (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__indexfixingsts__main (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "rate FLOAT",
+      "CONSTRAINT fk__my_provider__indexfixingsts__main__index_identif_d330cc7b73 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__indexfixingsts__main__time_index_5e9394bbe4 ON my_provider__indexfixingsts__main (time_index, index_identifier)"
+    ],
+    "description": "Timestamped interest-rate index fixing storage keyed by (time_index, index_identifier). Stores observed index fixing rates used by pricing workflows for floating-rate bonds, swaps, and curve-linked analytics. Instance 'main' of IndexFixingsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "IndexFixingsTS"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.IndexFixingsTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.IndexFixingsTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "ad1f4a98c31a18e3fb631883a8e04c7ba2bdacd03692b6d1be920a1ec75d09ac",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__indexfixingsts__main",
+    "time_index_name": "time_index"
+  },
+  "interpolated_prices_equal_weights_example": {
+    "authored_identifier": "InterpolatedPricesTS.022eb14e1d71b6a7",
+    "cadence": "1d",
+    "contract_hash": "mt_equal_weight_example_eddfb78d84d3183da9bc18d5dc8dc8ae",
+    "ddl_postgresql": [
+      "CREATE TABLE equal_weight_example__interpolatedpricests__t_022eb14e1d71b6a7 (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time TIMESTAMP WITH TIME ZONE",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__equal_weight_example__interpolatedpricests__t_02_dfa8dcd112 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__equal_weight_example__interpolatedpricests__t_0_cd3e7c118b ON equal_weight_example__interpolatedpricests__t_022eb14e1d71b6a7 (time_index, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE equal_weight_example__interpolatedpricests__t_022eb14e1d71b6a7 (",
+      "time_index DATETIME NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time DATETIME",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__equal_weight_example__interpolatedpricests__t_02_dfa8dcd112 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__equal_weight_example__interpolatedpricests__t_0_cd3e7c118b ON equal_weight_example__interpolatedpricests__t_022eb14e1d71b6a7 (time_index, asset_identifier)"
+    ],
+    "description": "Timestamped interpolated-price storage keyed by (time_index, asset_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation flags for asset price feeds used by portfolio workflows. Instance '022eb14e1d71b6a7' of InterpolatedPricesTS.",
+    "extra_hash_components": {
+      "instance_key": "022eb14e1d71b6a7",
+      "storage_contract": "InterpolatedPricesTS"
+    },
+    "index_names": [
+      "time_index",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "equal-weight-example.InterpolatedPricesTS.022eb14e1d71b6a7",
+      "markets_storage_app": "equal_weight_example",
+      "namespace": "equal-weight-example"
+    },
+    "metatable_identifier": "equal-weight-example.InterpolatedPricesTS.022eb14e1d71b6a7",
+    "namespace": "equal-weight-example",
+    "registration_request_sha256": "608cafa158393ed40ca05aa2ad79cb5782c7f955f2042380af466112500f1f36",
+    "storage_app": "equal_weight_example",
+    "storage_layout": null,
+    "table_name": "equal_weight_example__interpolatedpricests__t_022eb14e1d71b6a7",
+    "time_index_name": "time_index"
+  },
+  "interpolated_prices_pinned": {
+    "authored_identifier": "InterpolatedPricesTS.0597b45ae2d0ae00",
+    "cadence": "1d",
+    "contract_hash": "mt_pinned_app_1f09b6893379084c59d85b7112f5b80f",
+    "ddl_postgresql": [
+      "CREATE TABLE pinned_app__interpolatedpricests__t_0597b45ae2d0ae00 (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time TIMESTAMP WITH TIME ZONE",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__pinned_app__interpolatedpricests__t_0597b45ae2d0_300dc30e21 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__pinned_app__interpolatedpricests__t_0597b45ae2d_b4a827b42f ON pinned_app__interpolatedpricests__t_0597b45ae2d0ae00 (time_index, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE pinned_app__interpolatedpricests__t_0597b45ae2d0ae00 (",
+      "time_index DATETIME NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "open_time DATETIME",
+      "open FLOAT",
+      "high FLOAT",
+      "low FLOAT",
+      "close FLOAT",
+      "volume FLOAT",
+      "trade_count FLOAT",
+      "vwap FLOAT",
+      "interpolated BOOLEAN",
+      "CONSTRAINT fk__pinned_app__interpolatedpricests__t_0597b45ae2d0_300dc30e21 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__pinned_app__interpolatedpricests__t_0597b45ae2d_b4a827b42f ON pinned_app__interpolatedpricests__t_0597b45ae2d0ae00 (time_index, asset_identifier)"
+    ],
+    "description": "Timestamped interpolated-price storage keyed by (time_index, asset_identifier). Stores OHLCV bars, VWAP, trade count, and interpolation flags for asset price feeds used by portfolio workflows. Instance '0597b45ae2d0ae00' of InterpolatedPricesTS.",
+    "extra_hash_components": {
+      "instance_key": "0597b45ae2d0ae00",
+      "storage_contract": "InterpolatedPricesTS"
+    },
+    "index_names": [
+      "time_index",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "pinned-app.InterpolatedPricesTS.0597b45ae2d0ae00",
+      "markets_storage_app": "pinned_app",
+      "namespace": "pinned-app"
+    },
+    "metatable_identifier": "pinned-app.InterpolatedPricesTS.0597b45ae2d0ae00",
+    "namespace": "pinned-app",
+    "registration_request_sha256": "b2505b914510555d6cb4788c27e45187f6bcd2bcbb11de483fe0070c86e7d4f2",
+    "storage_app": "pinned_app",
+    "storage_layout": null,
+    "table_name": "pinned_app__interpolatedpricests__t_0597b45ae2d0ae00",
+    "time_index_name": "time_index"
+  },
+  "markets_index_values_1d": {
+    "authored_identifier": "IndexValuesTS.1d",
+    "cadence": "1d",
+    "contract_hash": "mt_mainsequence_markets_d9e42fbcdd4916907c56ac4a9e925261",
+    "ddl_postgresql": [
+      "CREATE TABLE ms_markets__index_values__t_1d (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1d__definition_uid_72895f3c43 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1d__index_identifier_1fe142575d FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__definition_uid ON ms_markets__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__index_identifier_e673aae886 ON ms_markets__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__observation_status ON ms_markets__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1d__time_index__ind_88c17df072 ON ms_markets__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE ms_markets__index_values__t_1d (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1d__definition_uid_72895f3c43 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1d__index_identifier_1fe142575d FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__definition_uid ON ms_markets__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__index_identifier_e673aae886 ON ms_markets__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1d__observation_status ON ms_markets__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1d__time_index__ind_88c17df072 ON ms_markets__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "description": "Canonical Index value history at 1d cadence, keyed by (time_index, index_identifier), for custom and formula observables.",
+    "extra_hash_components": {
+      "cadence": "1d",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "IndexValuesTS",
+      "markets_storage_app": "ms_markets",
+      "namespace": "mainsequence.markets"
+    },
+    "metatable_identifier": "IndexValuesTS.1d",
+    "namespace": "mainsequence.markets",
+    "registration_request_sha256": "18b2f9b6a3e046d2bf41c9a8318f9332bf53550410941c949ee0c3caa1bb9e5e",
+    "storage_app": "ms_markets",
+    "storage_layout": null,
+    "table_name": "ms_markets__index_values__t_1d",
+    "time_index_name": "time_index"
+  },
+  "markets_index_values_1h": {
+    "authored_identifier": "IndexValuesTS.1h",
+    "cadence": "1h",
+    "contract_hash": "mt_mainsequence_markets_b40bb8c700d8c01f97f23a4fe917ca32",
+    "ddl_postgresql": [
+      "CREATE TABLE ms_markets__index_values__t_1h (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1h__definition_uid_b1cc6654de FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1h__index_identifier_2290c7f7d7 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__definition_uid ON ms_markets__index_values__t_1h (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__index_identifier_d50e47f45a ON ms_markets__index_values__t_1h (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__observation_status ON ms_markets__index_values__t_1h (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1h__time_index__ind_d40651044f ON ms_markets__index_values__t_1h (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE ms_markets__index_values__t_1h (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1h__definition_uid_b1cc6654de FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1h__index_identifier_2290c7f7d7 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__definition_uid ON ms_markets__index_values__t_1h (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__index_identifier_d50e47f45a ON ms_markets__index_values__t_1h (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1h__observation_status ON ms_markets__index_values__t_1h (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1h__time_index__ind_d40651044f ON ms_markets__index_values__t_1h (time_index, index_identifier)"
+    ],
+    "description": "Canonical Index value history at 1h cadence, keyed by (time_index, index_identifier), for custom and formula observables.",
+    "extra_hash_components": {
+      "cadence": "1h",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "IndexValuesTS",
+      "markets_storage_app": "ms_markets",
+      "namespace": "mainsequence.markets"
+    },
+    "metatable_identifier": "IndexValuesTS.1h",
+    "namespace": "mainsequence.markets",
+    "registration_request_sha256": "b782310f52cebabb15e1ed3a2b0fa1cd8a15c232aced93e086947b360bba05bb",
+    "storage_app": "ms_markets",
+    "storage_layout": null,
+    "table_name": "ms_markets__index_values__t_1h",
+    "time_index_name": "time_index"
+  },
+  "markets_index_values_1m": {
+    "authored_identifier": "IndexValuesTS.1m",
+    "cadence": "1m",
+    "contract_hash": "mt_mainsequence_markets_ec904625902729d0cdfcbb3bcac27b35",
+    "ddl_postgresql": [
+      "CREATE TABLE ms_markets__index_values__t_1m (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1m__definition_uid_0e8277cd2a FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1m__index_identifier_24953d78bc FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__definition_uid ON ms_markets__index_values__t_1m (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__index_identifier_dda9d66c29 ON ms_markets__index_values__t_1m (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__observation_status ON ms_markets__index_values__t_1m (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1m__time_index__ind_e7ed797d86 ON ms_markets__index_values__t_1m (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE ms_markets__index_values__t_1m (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__ms_markets__index_values__t_1m__definition_uid_0e8277cd2a FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__ms_markets__index_values__t_1m__index_identifier_24953d78bc FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__definition_uid ON ms_markets__index_values__t_1m (definition_uid)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__index_identifier_dda9d66c29 ON ms_markets__index_values__t_1m (index_identifier, time_index)",
+      "CREATE INDEX ix__ms_markets__index_values__t_1m__observation_status ON ms_markets__index_values__t_1m (observation_status)",
+      "CREATE UNIQUE INDEX uix__ms_markets__index_values__t_1m__time_index__ind_e7ed797d86 ON ms_markets__index_values__t_1m (time_index, index_identifier)"
+    ],
+    "description": "Canonical Index value history at 1m cadence, keyed by (time_index, index_identifier), for custom and formula observables.",
+    "extra_hash_components": {
+      "cadence": "1m",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "IndexValuesTS",
+      "markets_storage_app": "ms_markets",
+      "namespace": "mainsequence.markets"
+    },
+    "metatable_identifier": "IndexValuesTS.1m",
+    "namespace": "mainsequence.markets",
+    "registration_request_sha256": "a39296a8a59cc923c10dbed51fabbf48333ebc0d9e801f2ae8826cee9cf3988e",
+    "storage_app": "ms_markets",
+    "storage_layout": null,
+    "table_name": "ms_markets__index_values__t_1m",
+    "time_index_name": "time_index"
+  },
+  "my_provider_index_values_1d": {
+    "authored_identifier": "IndexValuesTS.1d",
+    "cadence": "1d",
+    "contract_hash": "mt_my_provider_3aa6f9f1aedb85ccfcdfa9b7025d35dd",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__index_values__t_1d (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__my_provider__index_values__t_1d__definition_uid_c563dac0a8 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__index_values__t_1d__index_identifie_3be5df1a4d FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__definition_uid ON my_provider__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__index_identifie_4d3c6c6e7c ON my_provider__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__observation_status ON my_provider__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__my_provider__index_values__t_1d__time_index__in_f43b2c7523 ON my_provider__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__index_values__t_1d (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__my_provider__index_values__t_1d__definition_uid_c563dac0a8 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__index_values__t_1d__index_identifie_3be5df1a4d FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__definition_uid ON my_provider__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__index_identifie_4d3c6c6e7c ON my_provider__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__my_provider__index_values__t_1d__observation_status ON my_provider__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__my_provider__index_values__t_1d__time_index__in_f43b2c7523 ON my_provider__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "description": "Index value history at 1d cadence published by my_provider, keyed by (time_index, index_identifier).",
+    "extra_hash_components": {
+      "cadence": "1d",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.IndexValuesTS.1d",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.IndexValuesTS.1d",
+    "namespace": "my-provider",
+    "registration_request_sha256": "6d0c07100a50231605a5dce548694591491e734ece78d1e344b1660782dade9a",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__index_values__t_1d",
+    "time_index_name": "time_index"
+  },
+  "order_events": {
+    "authored_identifier": "OrderEventsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_62aa1e55147d3b6e5a0cbe743e85e0ce",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__ordereventsts__main (",
+      "event_time TIMESTAMP WITH TIME ZONE NOT NULL",
+      "order_uid UUID NOT NULL",
+      "order_status VARCHAR",
+      "event_metadata JSONB",
+      "CONSTRAINT fk__my_app__ordereventsts__main__order_uid__ms_marke_de8bfb2016 FOREIGN KEY(order_uid) REFERENCES ms_markets__order (uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__ordereventsts__main__event_time__order_uid ON my_app__ordereventsts__main (event_time, order_uid)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__ordereventsts__main (",
+      "event_time DATETIME NOT NULL",
+      "order_uid CHAR(32) NOT NULL",
+      "order_status VARCHAR",
+      "event_metadata JSON",
+      "CONSTRAINT fk__my_app__ordereventsts__main__order_uid__ms_marke_de8bfb2016 FOREIGN KEY(order_uid) REFERENCES ms_markets__order (uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__ordereventsts__main__event_time__order_uid ON my_app__ordereventsts__main (event_time, order_uid)"
+    ],
+    "description": "Timestamped order-event storage keyed by (event_time, order_uid). Used to persist status transitions and event metadata of an order. Instance 'main' of OrderEventsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "OrderEventsTS"
+    },
+    "index_names": [
+      "event_time",
+      "order_uid"
+    ],
+    "info": {
+      "identifier": "my-app.OrderEventsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.OrderEventsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "82557050fdeca94aa1e47cc2d3649ae98419e0f832e9ec77fcc3368cd0fbd7ff",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__ordereventsts__main",
+    "time_index_name": "event_time"
+  },
+  "orders": {
+    "authored_identifier": "OrdersTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_f263d670d96941ef7e299b9908fccea5",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__ordersts__main (",
+      "order_time TIMESTAMP WITH TIME ZONE NOT NULL",
+      "order_uid UUID NOT NULL",
+      "order_remote_id VARCHAR",
+      "status VARCHAR",
+      "filled_quantity FLOAT",
+      "filled_price FLOAT",
+      "comments VARCHAR",
+      "venue_metadata JSONB",
+      "CONSTRAINT fk__my_app__ordersts__main__order_uid__ms_markets__order__uid FOREIGN KEY(order_uid) REFERENCES ms_markets__order (uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__ordersts__main__order_time__order_uid ON my_app__ordersts__main (order_time, order_uid)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__ordersts__main (",
+      "order_time DATETIME NOT NULL",
+      "order_uid CHAR(32) NOT NULL",
+      "order_remote_id VARCHAR",
+      "status VARCHAR",
+      "filled_quantity FLOAT",
+      "filled_price FLOAT",
+      "comments VARCHAR",
+      "venue_metadata JSON",
+      "CONSTRAINT fk__my_app__ordersts__main__order_uid__ms_markets__order__uid FOREIGN KEY(order_uid) REFERENCES ms_markets__order (uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__ordersts__main__order_time__order_uid ON my_app__ordersts__main (order_time, order_uid)"
+    ],
+    "description": "Timestamped order-state storage keyed by order_time and order_uid. Used to persist what a broker or venue reports about an order over time; the order itself is its Order row. Instance 'main' of OrdersTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "OrdersTS"
+    },
+    "index_names": [
+      "order_time",
+      "order_uid"
+    ],
+    "info": {
+      "identifier": "my-app.OrdersTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.OrdersTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "a9e7fa6bd7f83ecbbbd09f22bc2d15ce69e06a6c152ce5a578d46bfc04584bde",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__ordersts__main",
+    "time_index_name": "order_time"
+  },
+  "portfolio_calendar_events": {
+    "authored_identifier": "PortfolioCalendarEventsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_provider_771bf148cb022b4d9156c237aade8ced",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__portfoliocalendareventsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "calendar_identifier VARCHAR(255) NOT NULL",
+      "session_label VARCHAR(64) NOT NULL",
+      "event_type VARCHAR(32) NOT NULL",
+      "local_date VARCHAR(10) NOT NULL",
+      "CONSTRAINT fk__my_provider__portfoliocalendareventsts__main__ca_2da71dc8fd FOREIGN KEY(calendar_identifier) REFERENCES ms_markets__calendar (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__portfoliocalendareventsts__main__t_d04cf85b47 ON my_provider__portfoliocalendareventsts__main (time_index, calendar_identifier, session_label, event_type)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__portfoliocalendareventsts__main (",
+      "time_index DATETIME NOT NULL",
+      "calendar_identifier VARCHAR(255) NOT NULL",
+      "session_label VARCHAR(64) NOT NULL",
+      "event_type VARCHAR(32) NOT NULL",
+      "local_date VARCHAR(10) NOT NULL",
+      "CONSTRAINT fk__my_provider__portfoliocalendareventsts__main__ca_2da71dc8fd FOREIGN KEY(calendar_identifier) REFERENCES ms_markets__calendar (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_provider__portfoliocalendareventsts__main__t_d04cf85b47 ON my_provider__portfoliocalendareventsts__main (time_index, calendar_identifier, session_label, event_type)"
+    ],
+    "description": "Persisted calendar session events projected onto their actual UTC open or close timestamps. Rows are keyed by time, calendar, session label, and event type for explicit use as a rebalance-strategy dependency. Instance 'main' of the PortfolioCalendarEventsTS contract.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "PortfolioCalendarEventsTS"
+    },
+    "index_names": [
+      "time_index",
+      "calendar_identifier",
+      "session_label",
+      "event_type"
+    ],
+    "info": {
+      "identifier": "my-provider.PortfolioCalendarEventsTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.PortfolioCalendarEventsTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "ce11889dc6ea31f52922fe07c2cb714da7dfd8d2a584f6c7eb22d6359979ece8",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__portfoliocalendareventsts__main",
+    "time_index_name": "time_index"
+  },
+  "portfolio_event_ledger": {
+    "authored_identifier": "PortfolioEventLedgerTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_provider_96e08815ed32cac49d024cdc75bba8c0",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__portfolioeventledgerts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "event_identifier VARCHAR(64) NOT NULL",
+      "event_revision VARCHAR(64) NOT NULL",
+      "record_identifier VARCHAR(64) NOT NULL",
+      "observed_at TIMESTAMP WITH TIME ZONE NOT NULL",
+      "event_type VARCHAR(64) NOT NULL",
+      "event_status VARCHAR(32) NOT NULL",
+      "phase VARCHAR(32) NOT NULL",
+      "event_sequence BIGINT NOT NULL",
+      "record_sequence BIGINT NOT NULL",
+      "event_record_count INTEGER NOT NULL",
+      "event_digest VARCHAR(64) NOT NULL",
+      "source_identifier VARCHAR(255) NOT NULL",
+      "source_revision VARCHAR(255) NOT NULL",
+      "model_identifier VARCHAR(255) NOT NULL",
+      "model_version VARCHAR(64) NOT NULL",
+      "supersedes_event_revision VARCHAR(64)",
+      "causal_event_identifiers TEXT",
+      "input_state_identifier VARCHAR(64) NOT NULL",
+      "ledger_state_identifier VARCHAR(64) NOT NULL",
+      "terms_version VARCHAR(255)",
+      "valuation_references TEXT NOT NULL",
+      "record_kind VARCHAR(32) NOT NULL",
+      "position_identifier VARCHAR(255)",
+      "obligation_identifier VARCHAR(255)",
+      "state_identifier VARCHAR(255)",
+      "asset_identifier VARCHAR(255)",
+      "balance_role VARCHAR(64)",
+      "quantity_delta FLOAT",
+      "quantity_unit VARCHAR(64)",
+      "amount_delta FLOAT",
+      "amount_asset_identifier VARCHAR(255)",
+      "price FLOAT",
+      "price_asset_identifier VARCHAR(255)",
+      "eligible_quantity FLOAT",
+      "recognized_pnl FLOAT",
+      "nav_before FLOAT",
+      "nav_after FLOAT",
+      "valuation_asset_identifier VARCHAR(255)",
+      "state_schema_version INTEGER",
+      "extension_payload TEXT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__amoun_3a9a8c1e21 FOREIGN KEY(amount_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__asset_b3e3e53249 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__portf_bfabebbb61 FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__price_14c16a566c FOREIGN KEY(price_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__valua_659e487a1a FOREIGN KEY(valuation_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__portfolioeventledgerts__main__portf_1767a3f3dc ON my_provider__portfolioeventledgerts__main (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__my_provider__portfolioeventledgerts__main__time_41e04b29c7 ON my_provider__portfolioeventledgerts__main (time_index, portfolio_identifier, event_identifier, event_revision, record_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__portfolioeventledgerts__main (",
+      "time_index DATETIME NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "event_identifier VARCHAR(64) NOT NULL",
+      "event_revision VARCHAR(64) NOT NULL",
+      "record_identifier VARCHAR(64) NOT NULL",
+      "observed_at DATETIME NOT NULL",
+      "event_type VARCHAR(64) NOT NULL",
+      "event_status VARCHAR(32) NOT NULL",
+      "phase VARCHAR(32) NOT NULL",
+      "event_sequence BIGINT NOT NULL",
+      "record_sequence BIGINT NOT NULL",
+      "event_record_count INTEGER NOT NULL",
+      "event_digest VARCHAR(64) NOT NULL",
+      "source_identifier VARCHAR(255) NOT NULL",
+      "source_revision VARCHAR(255) NOT NULL",
+      "model_identifier VARCHAR(255) NOT NULL",
+      "model_version VARCHAR(64) NOT NULL",
+      "supersedes_event_revision VARCHAR(64)",
+      "causal_event_identifiers TEXT",
+      "input_state_identifier VARCHAR(64) NOT NULL",
+      "ledger_state_identifier VARCHAR(64) NOT NULL",
+      "terms_version VARCHAR(255)",
+      "valuation_references TEXT NOT NULL",
+      "record_kind VARCHAR(32) NOT NULL",
+      "position_identifier VARCHAR(255)",
+      "obligation_identifier VARCHAR(255)",
+      "state_identifier VARCHAR(255)",
+      "asset_identifier VARCHAR(255)",
+      "balance_role VARCHAR(64)",
+      "quantity_delta FLOAT",
+      "quantity_unit VARCHAR(64)",
+      "amount_delta FLOAT",
+      "amount_asset_identifier VARCHAR(255)",
+      "price FLOAT",
+      "price_asset_identifier VARCHAR(255)",
+      "eligible_quantity FLOAT",
+      "recognized_pnl FLOAT",
+      "nav_before FLOAT",
+      "nav_after FLOAT",
+      "valuation_asset_identifier VARCHAR(255)",
+      "state_schema_version INTEGER",
+      "extension_payload TEXT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__amoun_3a9a8c1e21 FOREIGN KEY(amount_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__asset_b3e3e53249 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__portf_bfabebbb61 FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__price_14c16a566c FOREIGN KEY(price_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfolioeventledgerts__main__valua_659e487a1a FOREIGN KEY(valuation_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__portfolioeventledgerts__main__portf_1767a3f3dc ON my_provider__portfolioeventledgerts__main (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__my_provider__portfolioeventledgerts__main__time_41e04b29c7 ON my_provider__portfolioeventledgerts__main (time_index, portfolio_identifier, event_identifier, event_revision, record_identifier)"
+    ],
+    "description": "Versioned portfolio accounting event records. Complete event envelopes and typed economic records support deterministic restart and corrected replay. Instance 'main' of the PortfolioEventLedgerTS contract.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "PortfolioEventLedgerTS"
+    },
+    "index_names": [
+      "time_index",
+      "portfolio_identifier",
+      "event_identifier",
+      "event_revision",
+      "record_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.PortfolioEventLedgerTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.PortfolioEventLedgerTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "6b8a21576243fa7bd947b7de3ad60ea164293f8fffffd380d230d65ea8e3c2a1",
+    "storage_app": "my_provider",
+    "storage_layout": {
+      "identity_dimensions": [
+        "portfolio_identifier",
+        "event_identifier",
+        "event_revision",
+        "record_identifier"
+      ],
+      "index_progress": {
+        "grain": [
+          "portfolio_identifier",
+          "event_identifier",
+          "event_revision",
+          "record_identifier"
+        ]
+      },
+      "secondary_indexes": [
+        {
+          "columns": [
+            "portfolio_identifier",
+            "event_identifier",
+            "event_revision",
+            "record_identifier"
+          ],
+          "name": "portfolio_event_ledger_identity"
+        }
+      ],
+      "tail_delete": {
+        "scope_dimensions": [
+          "portfolio_identifier",
+          "event_identifier",
+          "event_revision",
+          "record_identifier"
+        ]
+      },
+      "time_index": {
+        "name": "time_index"
+      },
+      "uniqueness": {
+        "columns": [
+          "time_index",
+          "portfolio_identifier",
+          "event_identifier",
+          "event_revision",
+          "record_identifier"
+        ]
+      },
+      "version": 1
+    },
+    "table_name": "my_provider__portfolioeventledgerts__main",
+    "time_index_name": "time_index"
+  },
+  "portfolio_rebalance_state": {
+    "authored_identifier": "PortfolioRebalanceStateTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_provider_15a76017cc9d74bb0e79d8eb96af97e4",
+    "ddl_postgresql": [
+      "CREATE TABLE my_provider__portfoliorebalancestatets__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "rebalance_intent_id VARCHAR(64) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "target_signal_time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "event_source VARCHAR(255) NOT NULL",
+      "execution_status VARCHAR(32) NOT NULL",
+      "target_weight FLOAT NOT NULL",
+      "weight_before FLOAT NOT NULL",
+      "weight_after FLOAT NOT NULL",
+      "executed_weight_delta FLOAT NOT NULL",
+      "remaining_weight_delta FLOAT NOT NULL",
+      "execution_price FLOAT",
+      "executed_quantity FLOAT",
+      "executed_notional FLOAT",
+      "observed_volume FLOAT",
+      "observed_available_liquidity FLOAT",
+      "strategy_state TEXT NOT NULL",
+      "CONSTRAINT fk__my_provider__portfoliorebalancestatets__main__as_cab6cd9efd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfoliorebalancestatets__main__po_0485844e5f FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__portfoliorebalancestatets__main__po_e07b03bb93 ON my_provider__portfoliorebalancestatets__main (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__my_provider__portfoliorebalancestatets__main__t_7ea1ed43c6 ON my_provider__portfoliorebalancestatets__main (time_index, portfolio_identifier, rebalance_intent_id, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_provider__portfoliorebalancestatets__main (",
+      "time_index DATETIME NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "rebalance_intent_id VARCHAR(64) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "target_signal_time_index DATETIME NOT NULL",
+      "event_source VARCHAR(255) NOT NULL",
+      "execution_status VARCHAR(32) NOT NULL",
+      "target_weight FLOAT NOT NULL",
+      "weight_before FLOAT NOT NULL",
+      "weight_after FLOAT NOT NULL",
+      "executed_weight_delta FLOAT NOT NULL",
+      "remaining_weight_delta FLOAT NOT NULL",
+      "execution_price FLOAT",
+      "executed_quantity FLOAT",
+      "executed_notional FLOAT",
+      "observed_volume FLOAT",
+      "observed_available_liquidity FLOAT",
+      "strategy_state TEXT NOT NULL",
+      "CONSTRAINT fk__my_provider__portfoliorebalancestatets__main__as_cab6cd9efd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_provider__portfoliorebalancestatets__main__po_0485844e5f FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__my_provider__portfoliorebalancestatets__main__po_e07b03bb93 ON my_provider__portfoliorebalancestatets__main (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__my_provider__portfoliorebalancestatets__main__t_7ea1ed43c6 ON my_provider__portfoliorebalancestatets__main (time_index, portfolio_identifier, rebalance_intent_id, asset_identifier)"
+    ],
+    "description": "Event-driven portfolio rebalance state keyed by event timestamp, portfolio, target intent, and asset. Rows record target activation, partial execution, remaining weight, observed execution capacity, and strategy-owned restart state. Instance 'main' of the PortfolioRebalanceStateTS contract.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "PortfolioRebalanceStateTS"
+    },
+    "index_names": [
+      "time_index",
+      "portfolio_identifier",
+      "rebalance_intent_id",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-provider.PortfolioRebalanceStateTS.main",
+      "markets_storage_app": "my_provider",
+      "namespace": "my-provider"
+    },
+    "metatable_identifier": "my-provider.PortfolioRebalanceStateTS.main",
+    "namespace": "my-provider",
+    "registration_request_sha256": "2bf9410ce56a93be69c426c2db13be267dbc0f33c09f89a2ddde758ad4a15919",
+    "storage_app": "my_provider",
+    "storage_layout": null,
+    "table_name": "my_provider__portfoliorebalancestatets__main",
+    "time_index_name": "time_index"
+  },
+  "portfolio_rebalance_state_pinned": {
+    "authored_identifier": "PortfolioRebalanceStateTS.pinned_identity",
+    "cadence": null,
+    "contract_hash": "mt_mainsequence_markets_634915c158521c38a2c1a6af0d04ec5b",
+    "ddl_postgresql": [
+      "CREATE TABLE pinned_app__portfoliorebalancestatets__pinned_identity (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "rebalance_intent_id VARCHAR(64) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "target_signal_time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "event_source VARCHAR(255) NOT NULL",
+      "execution_status VARCHAR(32) NOT NULL",
+      "target_weight FLOAT NOT NULL",
+      "weight_before FLOAT NOT NULL",
+      "weight_after FLOAT NOT NULL",
+      "executed_weight_delta FLOAT NOT NULL",
+      "remaining_weight_delta FLOAT NOT NULL",
+      "execution_price FLOAT",
+      "executed_quantity FLOAT",
+      "executed_notional FLOAT",
+      "observed_volume FLOAT",
+      "observed_available_liquidity FLOAT",
+      "strategy_state TEXT NOT NULL",
+      "CONSTRAINT fk__pinned_app__portfoliorebalancestatets__pinned_id_a942ebc9e6 FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__pinned_app__portfoliorebalancestatets__pinned_id_e551d2ebb2 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__pinned_app__portfoliorebalancestatets__pinned_id_67413ae330 ON pinned_app__portfoliorebalancestatets__pinned_identity (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__pinned_app__portfoliorebalancestatets__pinned_i_3a075f4d94 ON pinned_app__portfoliorebalancestatets__pinned_identity (time_index, portfolio_identifier, rebalance_intent_id, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE pinned_app__portfoliorebalancestatets__pinned_identity (",
+      "time_index DATETIME NOT NULL",
+      "portfolio_identifier VARCHAR(255) NOT NULL",
+      "rebalance_intent_id VARCHAR(64) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "target_signal_time_index DATETIME NOT NULL",
+      "event_source VARCHAR(255) NOT NULL",
+      "execution_status VARCHAR(32) NOT NULL",
+      "target_weight FLOAT NOT NULL",
+      "weight_before FLOAT NOT NULL",
+      "weight_after FLOAT NOT NULL",
+      "executed_weight_delta FLOAT NOT NULL",
+      "remaining_weight_delta FLOAT NOT NULL",
+      "execution_price FLOAT",
+      "executed_quantity FLOAT",
+      "executed_notional FLOAT",
+      "observed_volume FLOAT",
+      "observed_available_liquidity FLOAT",
+      "strategy_state TEXT NOT NULL",
+      "CONSTRAINT fk__pinned_app__portfoliorebalancestatets__pinned_id_a942ebc9e6 FOREIGN KEY(portfolio_identifier) REFERENCES ms_markets__portfolio (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__pinned_app__portfoliorebalancestatets__pinned_id_e551d2ebb2 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__pinned_app__portfoliorebalancestatets__pinned_id_67413ae330 ON pinned_app__portfoliorebalancestatets__pinned_identity (portfolio_identifier, time_index)",
+      "CREATE UNIQUE INDEX uix__pinned_app__portfoliorebalancestatets__pinned_i_3a075f4d94 ON pinned_app__portfoliorebalancestatets__pinned_identity (time_index, portfolio_identifier, rebalance_intent_id, asset_identifier)"
+    ],
+    "description": "Event-driven portfolio rebalance state keyed by event timestamp, portfolio, target intent, and asset. Rows record target activation, partial execution, remaining weight, observed execution capacity, and strategy-owned restart state. Instance 'pinned_identity' of the PortfolioRebalanceStateTS contract.",
+    "extra_hash_components": {
+      "instance_key": "pinned_identity",
+      "storage_contract": "PortfolioRebalanceStateTS"
+    },
+    "index_names": [
+      "time_index",
+      "portfolio_identifier",
+      "rebalance_intent_id",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "PortfolioRebalanceStateTS.pinned_identity",
+      "markets_storage_app": "pinned_app",
+      "namespace": "mainsequence.markets"
+    },
+    "metatable_identifier": "PortfolioRebalanceStateTS.pinned_identity",
+    "namespace": "mainsequence.markets",
+    "registration_request_sha256": "c7828742b7f6f2055139c90e30177bf6cab560a53832e650a3f1242138fdd763",
+    "storage_app": "pinned_app",
+    "storage_layout": null,
+    "table_name": "pinned_app__portfoliorebalancestatets__pinned_identity",
+    "time_index_name": "time_index"
+  },
+  "provider_index_values_1d": {
+    "authored_identifier": "IndexValuesTS.1d",
+    "cadence": "1d",
+    "contract_hash": "mt_index_values_example_0b3a8f723c0a7f69219b6db5ea60fa9a",
+    "ddl_postgresql": [
+      "CREATE TABLE index_values_example__index_values__t_1d (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__index_values_example__index_values__t_1d__defini_c0770e3353 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__index_values_example__index_values__t_1d__index_56214904e3 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__definition_uid ON index_values_example__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__index_6ffa25980a ON index_values_example__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__observ_8621939838 ON index_values_example__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__index_values_example__index_values__t_1d__time_a84b206791 ON index_values_example__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE index_values_example__index_values__t_1d (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__index_values_example__index_values__t_1d__defini_c0770e3353 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__index_values_example__index_values__t_1d__index_56214904e3 FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__definition_uid ON index_values_example__index_values__t_1d (definition_uid)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__index_6ffa25980a ON index_values_example__index_values__t_1d (index_identifier, time_index)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1d__observ_8621939838 ON index_values_example__index_values__t_1d (observation_status)",
+      "CREATE UNIQUE INDEX uix__index_values_example__index_values__t_1d__time_a84b206791 ON index_values_example__index_values__t_1d (time_index, index_identifier)"
+    ],
+    "description": "Index value history at 1d cadence published by index_values_example, keyed by (time_index, index_identifier).",
+    "extra_hash_components": {
+      "cadence": "1d",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "index-values-example.IndexValuesTS.1d",
+      "markets_storage_app": "index_values_example",
+      "namespace": "index-values-example"
+    },
+    "metatable_identifier": "index-values-example.IndexValuesTS.1d",
+    "namespace": "index-values-example",
+    "registration_request_sha256": "a00547b28354f58efbaf51a2d0bed8d2b5c3a836695a81d2cc7082c7c25301be",
+    "storage_app": "index_values_example",
+    "storage_layout": null,
+    "table_name": "index_values_example__index_values__t_1d",
+    "time_index_name": "time_index"
+  },
+  "provider_index_values_1m": {
+    "authored_identifier": "IndexValuesTS.1m",
+    "cadence": "1m",
+    "contract_hash": "mt_index_values_example_daf3687542ae3f17c8efb8b012d9388d",
+    "ddl_postgresql": [
+      "CREATE TABLE index_values_example__index_values__t_1m (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid UUID",
+      "observation_status VARCHAR(32)",
+      "source_as_of TIMESTAMP WITH TIME ZONE",
+      "metadata_json JSON",
+      "CONSTRAINT fk__index_values_example__index_values__t_1m__defini_1fa9ff7f83 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__index_values_example__index_values__t_1m__index_42e5bdf8cb FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__definition_uid ON index_values_example__index_values__t_1m (definition_uid)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__index_7cc9106773 ON index_values_example__index_values__t_1m (index_identifier, time_index)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__observ_e78a0574b2 ON index_values_example__index_values__t_1m (observation_status)",
+      "CREATE UNIQUE INDEX uix__index_values_example__index_values__t_1m__time_48052301e6 ON index_values_example__index_values__t_1m (time_index, index_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE index_values_example__index_values__t_1m (",
+      "time_index DATETIME NOT NULL",
+      "index_identifier VARCHAR(255) NOT NULL",
+      "value FLOAT NOT NULL",
+      "definition_uid CHAR(32)",
+      "observation_status VARCHAR(32)",
+      "source_as_of DATETIME",
+      "metadata_json JSON",
+      "CONSTRAINT fk__index_values_example__index_values__t_1m__defini_1fa9ff7f83 FOREIGN KEY(definition_uid) REFERENCES ms_markets__indexformuladefinition (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__index_values_example__index_values__t_1m__index_42e5bdf8cb FOREIGN KEY(index_identifier) REFERENCES ms_markets__index (unique_identifier) ON DELETE RESTRICT",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__definition_uid ON index_values_example__index_values__t_1m (definition_uid)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__index_7cc9106773 ON index_values_example__index_values__t_1m (index_identifier, time_index)",
+      "CREATE INDEX ix__index_values_example__index_values__t_1m__observ_e78a0574b2 ON index_values_example__index_values__t_1m (observation_status)",
+      "CREATE UNIQUE INDEX uix__index_values_example__index_values__t_1m__time_48052301e6 ON index_values_example__index_values__t_1m (time_index, index_identifier)"
+    ],
+    "description": "Index value history at 1m cadence published by index_values_example, keyed by (time_index, index_identifier).",
+    "extra_hash_components": {
+      "cadence": "1m",
+      "storage_name": "index_values"
+    },
+    "index_names": [
+      "time_index",
+      "index_identifier"
+    ],
+    "info": {
+      "identifier": "index-values-example.IndexValuesTS.1m",
+      "markets_storage_app": "index_values_example",
+      "namespace": "index-values-example"
+    },
+    "metatable_identifier": "index-values-example.IndexValuesTS.1m",
+    "namespace": "index-values-example",
+    "registration_request_sha256": "c3aa17833b2da4a5e0ab1d861b45ea3cb280d32bdac8061246fd7c71bbee04a6",
+    "storage_app": "index_values_example",
+    "storage_layout": null,
+    "table_name": "index_values_example__index_values__t_1m",
+    "time_index_name": "time_index"
+  },
+  "signal_weights_equal_weights_example": {
+    "authored_identifier": "SignalWeightsTS.signals",
+    "cadence": null,
+    "contract_hash": "mt_equal_weight_example_29f9141992c026687fc52ae612732531",
+    "ddl_postgresql": [
+      "CREATE TABLE equal_weight_example__signalweightsts__signals (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "signal_uid VARCHAR(255) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "signal_weight FLOAT",
+      "CONSTRAINT fk__equal_weight_example__signalweightsts__signals_1e72e3d64f FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__equal_weight_example__signalweightsts__signals_29bd881dfb FOREIGN KEY(signal_uid) REFERENCES ms_markets__signalmetadata (signal_uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__equal_weight_example__signalweightsts__signals_ed46ca479e ON equal_weight_example__signalweightsts__signals (time_index, signal_uid, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE equal_weight_example__signalweightsts__signals (",
+      "time_index DATETIME NOT NULL",
+      "signal_uid VARCHAR(255) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "signal_weight FLOAT",
+      "CONSTRAINT fk__equal_weight_example__signalweightsts__signals_1e72e3d64f FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__equal_weight_example__signalweightsts__signals_29bd881dfb FOREIGN KEY(signal_uid) REFERENCES ms_markets__signalmetadata (signal_uid) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__equal_weight_example__signalweightsts__signals_ed46ca479e ON equal_weight_example__signalweightsts__signals (time_index, signal_uid, asset_identifier)"
+    ],
+    "description": "Timestamped signal weight storage keyed by (time_index, signal_uid, asset_identifier). Stores raw signal allocation weights for signaled assets before portfolio execution. Instance 'signals' of SignalWeightsTS.",
+    "extra_hash_components": {
+      "instance_key": "signals",
+      "storage_contract": "SignalWeightsTS"
+    },
+    "index_names": [
+      "time_index",
+      "signal_uid",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "equal-weight-example.SignalWeightsTS.signals",
+      "markets_storage_app": "equal_weight_example",
+      "namespace": "equal-weight-example"
+    },
+    "metatable_identifier": "equal-weight-example.SignalWeightsTS.signals",
+    "namespace": "equal-weight-example",
+    "registration_request_sha256": "351127ef11011b7a7c9ebf07f2c541af6a3291731913dbffea2ac5122e77ce16",
+    "storage_app": "equal_weight_example",
+    "storage_layout": null,
+    "table_name": "equal_weight_example__signalweightsts__signals",
+    "time_index_name": "time_index"
+  },
+  "target_positions": {
+    "authored_identifier": "TargetPositionsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_c880cdd8a5fa8e35886c1c651d93af02",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__targetpositionsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "position_set_uid UUID NOT NULL",
+      "target_type VARCHAR(32) NOT NULL",
+      "target_uid UUID NOT NULL",
+      "asset_uid UUID",
+      "portfolio_uid UUID",
+      "weight_notional_exposure FLOAT",
+      "single_asset_quantity FLOAT",
+      "metadata_json JSONB",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__asset_uid__ms_m_890a6635fd FOREIGN KEY(asset_uid) REFERENCES ms_markets__asset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__portfolio_uid_29087dd150 FOREIGN KEY(portfolio_uid) REFERENCES ms_markets__portfolio (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__position_set_ui_f1b956fb3b FOREIGN KEY(position_set_uid) REFERENCES ms_markets__positionset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__targetpositionsts__main__time_index__po_8fb0994d58 ON my_app__targetpositionsts__main (time_index, position_set_uid, target_type, target_uid)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__targetpositionsts__main (",
+      "time_index DATETIME NOT NULL",
+      "position_set_uid CHAR(32) NOT NULL",
+      "target_type VARCHAR(32) NOT NULL",
+      "target_uid CHAR(32) NOT NULL",
+      "asset_uid CHAR(32)",
+      "portfolio_uid CHAR(32)",
+      "weight_notional_exposure FLOAT",
+      "single_asset_quantity FLOAT",
+      "metadata_json JSON",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__asset_uid__ms_m_890a6635fd FOREIGN KEY(asset_uid) REFERENCES ms_markets__asset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__portfolio_uid_29087dd150 FOREIGN KEY(portfolio_uid) REFERENCES ms_markets__portfolio (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__position_set_ui_f1b956fb3b FOREIGN KEY(position_set_uid) REFERENCES ms_markets__positionset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__targetpositionsts__main__time_index__po_8fb0994d58 ON my_app__targetpositionsts__main (time_index, position_set_uid, target_type, target_uid)"
+    ],
+    "description": "Timestamped account target-allocation storage keyed by (time_index, position_set_uid, target_type, target_uid). Each row is one target exposure in a PositionSetTable snapshot and references exactly one concrete target: either a direct AssetTable row or a core PortfolioTable row. Instance 'main' of TargetPositionsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "TargetPositionsTS"
+    },
+    "index_names": [
+      "time_index",
+      "position_set_uid",
+      "target_type",
+      "target_uid"
+    ],
+    "info": {
+      "identifier": "my-app.TargetPositionsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.TargetPositionsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "2e39d279d1de978c26b8a6f3f2ab62169140aa7d952babd1c52885238e8f9787",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__targetpositionsts__main",
+    "time_index_name": "time_index"
+  },
+  "trades": {
+    "authored_identifier": "TradesTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_5ab3e7446273c1769c69071913f042af",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__tradests__main (",
+      "trade_time TIMESTAMP WITH TIME ZONE NOT NULL",
+      "trade_identifier VARCHAR NOT NULL",
+      "account_identifier VARCHAR(255) NOT NULL",
+      "order_uid UUID",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "trade_side BIGINT",
+      "quantity FLOAT",
+      "price FLOAT",
+      "commission FLOAT",
+      "commission_asset_identifier VARCHAR(255)",
+      "settlement_cost FLOAT",
+      "settlement_asset_identifier VARCHAR(255)",
+      "comments VARCHAR",
+      "venue_metadata JSONB",
+      "CONSTRAINT fk__my_app__tradests__main__account_identifier__ms_m_3a8b20f953 FOREIGN KEY(account_identifier) REFERENCES ms_markets__account (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__asset_identifier__ms_mar_ac64524405 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__commission_asset_identif_266df0f07b FOREIGN KEY(commission_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__order_uid__account_ident_f8b09d1041 FOREIGN KEY(order_uid, account_identifier, asset_identifier) REFERENCES ms_markets__order (uid, account_identifier, asset_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__settlement_asset_identif_575128bad5 FOREIGN KEY(settlement_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__tradests__main__trade_time__trade_identifier ON my_app__tradests__main (trade_time, trade_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__tradests__main (",
+      "trade_time DATETIME NOT NULL",
+      "trade_identifier VARCHAR NOT NULL",
+      "account_identifier VARCHAR(255) NOT NULL",
+      "order_uid CHAR(32)",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "trade_side BIGINT",
+      "quantity FLOAT",
+      "price FLOAT",
+      "commission FLOAT",
+      "commission_asset_identifier VARCHAR(255)",
+      "settlement_cost FLOAT",
+      "settlement_asset_identifier VARCHAR(255)",
+      "comments VARCHAR",
+      "venue_metadata JSON",
+      "CONSTRAINT fk__my_app__tradests__main__account_identifier__ms_m_3a8b20f953 FOREIGN KEY(account_identifier) REFERENCES ms_markets__account (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__asset_identifier__ms_mar_ac64524405 FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__commission_asset_identif_266df0f07b FOREIGN KEY(commission_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__order_uid__account_ident_f8b09d1041 FOREIGN KEY(order_uid, account_identifier, asset_identifier) REFERENCES ms_markets__order (uid, account_identifier, asset_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__tradests__main__settlement_asset_identif_575128bad5 FOREIGN KEY(settlement_asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CREATE UNIQUE INDEX uix__my_app__tradests__main__trade_time__trade_identifier ON my_app__tradests__main (trade_time, trade_identifier)"
+    ],
+    "description": "Timestamped trade-execution storage keyed by trade_time and trade_identifier. Used to persist fills, prices, commissions, and settlement facts; a fill of an order names it by order_uid. Instance 'main' of TradesTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "TradesTS"
+    },
+    "index_names": [
+      "trade_time",
+      "trade_identifier"
+    ],
+    "info": {
+      "identifier": "my-app.TradesTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.TradesTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "a90e536fc6f19afba99fbea80f924030fe15fbfa79b4a800babcbb19bc23fd18",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__tradests__main",
+    "time_index_name": "trade_time"
+  },
+  "virtual_fund_holdings": {
+    "authored_identifier": "VirtualFundHoldingsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_92721c3de32830ec5ce74519489395fa",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__virtualfundholdingsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "virtual_fund_uid UUID NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "virtual_fund_holdings_set_uid UUID NOT NULL",
+      "source_account_holdings_set_uid UUID NOT NULL",
+      "allocated_quantity FLOAT NOT NULL",
+      "allocation_strategy VARCHAR(64) NOT NULL",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time TIMESTAMP WITH TIME ZONE",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__asset_ident_61e95887cc FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__source_acco_773e4becdd FOREIGN KEY(source_account_holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_2593b0824d FOREIGN KEY(virtual_fund_holdings_set_uid) REFERENCES ms_markets__virtualfundholdingsset (uid) ON DELETE CASCADE",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_3dfea0bc3d FOREIGN KEY(virtual_fund_uid) REFERENCES ms_markets__virtualfund (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__virtualfundholdingsts__main__time_index_e2ac475736 ON my_app__virtualfundholdingsts__main (time_index, virtual_fund_uid, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__virtualfundholdingsts__main (",
+      "time_index DATETIME NOT NULL",
+      "virtual_fund_uid CHAR(32) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "virtual_fund_holdings_set_uid CHAR(32) NOT NULL",
+      "source_account_holdings_set_uid CHAR(32) NOT NULL",
+      "allocated_quantity FLOAT NOT NULL",
+      "allocation_strategy VARCHAR(64) NOT NULL",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time DATETIME",
+      "extra_details JSON",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__asset_ident_61e95887cc FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__source_acco_773e4becdd FOREIGN KEY(source_account_holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_2593b0824d FOREIGN KEY(virtual_fund_holdings_set_uid) REFERENCES ms_markets__virtualfundholdingsset (uid) ON DELETE CASCADE",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_3dfea0bc3d FOREIGN KEY(virtual_fund_uid) REFERENCES ms_markets__virtualfund (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__virtualfundholdingsts__main__time_index_e2ac475736 ON my_app__virtualfundholdingsts__main (time_index, virtual_fund_uid, asset_identifier)"
+    ],
+    "description": "Timestamped virtual-fund allocation storage keyed by (time_index, virtual_fund_uid, asset_identifier). Each row is a positive allocated quantity from a source account holdings set, with direction storing the long/short side. Instance 'main' of VirtualFundHoldingsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "VirtualFundHoldingsTS"
+    },
+    "index_names": [
+      "time_index",
+      "virtual_fund_uid",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-app.VirtualFundHoldingsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.VirtualFundHoldingsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "d4ac182c66ccab8c764de331400d7f3ef9cdd040f7b1650252daf40d97380eab",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__virtualfundholdingsts__main",
+    "time_index_name": "time_index"
+  }
+}

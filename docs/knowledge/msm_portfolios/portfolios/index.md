@@ -153,9 +153,9 @@ Portfolios answer these questions:
 - `msm_portfolios.recipes`: what an application reuses around the series:
   publish a signal, read history, run a portfolio, end a signal, delete its
   private rows.
-- `msm_portfolios.time_index.contract_instances`: factories that build an
-  application's private state tables (rebalance state, calendar events, event
-  ledger) in its own namespace.
+- `msm_portfolios.time_index.contract_instances`: the contract bases an
+  application declares its private state tables on (rebalance state, calendar
+  events, event ledger), in its own namespace.
 - `msm_portfolios.series_history`: `SeriesHistoryPublish`, the object
   `msm series publish` runs to publish an application's existing history to
   Markets.
@@ -527,9 +527,12 @@ Markets reads and writes only its own tables (ADR 0060). Signal weights,
 portfolio weights and portfolio values of a registered signal or portfolio are
 stored once, in `SignalWeightsStorage`, `PortfolioWeightsStorage` and
 `PortfoliosStorage`. An application publishes their rows to Markets and reads
-them back from Markets; it has no table for them and keeps no copy. Publishing
-shares the rows with every reader of Markets, so a portfolio that must not be
-shared is not registered. The skill
+them back from Markets; it has no table for them and keeps no copy. The one
+exception is a signal it computes: that signal is its own node, which writes the
+application's own signal table and publishes the same rows
+([A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)).
+Publishing shares the rows with every reader of Markets, so a portfolio that
+must not be shared is not registered. The skill
 `.agents/skills/ms_markets/platform/producer_boundary/SKILL.md` teaches the
 pattern to an application that builds on ms-markets.
 
@@ -583,9 +586,9 @@ creates has no manager.
 
 ### The Engine Publishes
 
-`SignalWeights` and its subclasses, `PortfolioWeights` and `PortfolioValues`
-are not `TimeIndexTableUpdater`s: they are bound to no table and MetaTables
-keeps no update record of them (`msm_portfolios.series_nodes`).
+`PortfolioWeights` and `PortfolioValues` are not `TimeIndexTableUpdater`s:
+they are bound to no table and MetaTables keeps no update record of them
+(`msm_portfolios.series_nodes`).
 `run()` computes `update()` and publishes the rows through the series row
 class; it runs nothing else. A node's progress is the series itself
 (`bounds` and `last`). A row at or before the key's last stored time is not
@@ -609,23 +612,162 @@ the ledger's `initial_nav` (`close`, so a portfolio starts at 1), its change
 several portfolios share runs once, and every node runs after what it reads:
 
 ```text
-prices, calendar events, strategy and signal inputs   (each shared node once)
-        -> PortfolioRebalance of each portfolio        (publishes a computed signal, then reads it)
-        -> PortfolioEngine of each portfolio           (the heads)
+prices, calendar events, strategy inputs, signal inputs  (each shared node once)
+        -> computed signals                       (each writes its table and publishes)
+        -> PortfolioRebalance of each portfolio   (reads its signal)
+        -> PortfolioEngine of each portfolio      (the heads)
 then, per portfolio: PortfolioWeights.run(), PortfolioValues.run()
 ```
 
-A signal is a published series, not a MetaTables node. A signal that computes
-its weights is computed and published by the rebalance that reads it, before it
-reads it, and the updaters its `dependencies()` names are the rebalance's
-`signal.<name>` dependencies, so they join the graph too. A signal whose weights
-arrive by publication (`ApplicationWeights`) is only read.
+A computed signal is a node of that graph: the rebalance depends on it, so it
+runs first, once however many portfolios read it
+([A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)). A
+signal whose weights arrive only by publication (`ApplicationWeights`) is no
+node and has no edge: the rebalance reads it from Markets.
+
+### A Computed Signal Is Its Own Node
+
+The owner decided on 2026-11-24 that a signal its producer computes is an
+independent time series, updated by its own node, for example every minute
+([ADR 0060](../../../ADR/0060-producers-publish-markets-reads-only-its-own-tables.md),
+decisions 2 and 5 amended). The rebalance applies its own rules (say weekly) and
+uses the latest observation at or before each rebalance date.
+
+- **The node.** `SignalWeights` and its subclasses (`FixedWeights`, `MarketCap`,
+  `ExternalWeights`, `IntradayTrend`, `ETFReplicator`) are MetaTables updaters.
+  Their `output_table=` is the producer's own `SignalWeightsTS` instance, which
+  holds every signal it computes, keyed by `signal_uid`. Markets' own table is
+  refused: only publishing writes it.
+- **Its update.** It writes the signal's `SignalMetadata` row when that is
+  missing or changed. It keeps the computed rows after the signal's last row in
+  its table, publishes them to Markets' `SignalWeightsTS` (`SignalWeightsSeries`,
+  with the publish rules and the manager check), and returns them, and MetaTables
+  writes them to the table.
+- **Failures.** A failed publish writes nothing. A write that fails after the
+  publish is computed again by the next run, and Markets leaves out the rows it
+  has.
+- **Its progress.** The table's update statistics. Its `dependencies()` are its own
+  inputs, which MetaTables runs before it.
+- **The rebalance.** `PortfolioRebalance.dependencies()` names it as
+  `signal_weights`. The rebalance reads its window, and each asset's last row
+  before it, from the signal's table, and never runs or publishes a signal.
+- **A first run.** It starts at the signal's first observation, from the table's
+  statistics.
+- **Its identity.** Its `signal_uid` is its class and configuration, never its
+  table or namespace.
+
+```python
+# my_provider/tables.py
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance
+
+
+class ProviderSignalWeights(SignalWeightsInstance, ProviderBase):  # its own base
+    __instance_key__ = "signals"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+```
+
+```python
+from msm_portfolios.contrib.signals import FixedWeights
+from my_provider.tables import ProviderSignalWeights
+
+signal = FixedWeights.from_signal_configuration(
+    fixed_weights_configuration,
+    output_table=ProviderSignalWeights,
+    namespace="my-provider",
+)
+```
+
+Both kinds of signal are `SignalWeightsSource`s: the `signal_uid`, how long a weight
+holds (`maximum_forward_fill`), the asset list, interpolation and
+`first_observation_time`. `signal_weights_instance` takes either.
 
 A failed node stops only the portfolios that need it. `run_portfolios` answers
 `ran`, a `PortfolioRun` for each portfolio that ran, and `failed`, each portfolio
 the preflight refused, whose node or a dependency failed, or whose publication
 failed, with its position, identifier and reason. `run_portfolio` is the same
 for one portfolio and raises what stopped it.
+
+### A Producer's Own Updaters And Parallel Runs
+
+`run_portfolios(..., updaters=[...], node_job=None, max_parallel_nodes=-1)`
+([ADR 0067](../../../ADR/0067-portfolio-runs-in-parallel.md)):
+
+- **`updaters`.** The producer's own updaters run in the same invocation, as heads
+  next to the ledgers, so what they share with a portfolio runs once. Each one's
+  MetaTables `UpdaterOutcome` is in `PortfolioRuns.updaters`, in the order given.
+  One that fails stops only what needs it; the portfolios still publish.
+- **`node_job` and `max_parallel_nodes`.** They go to MetaTables' `run_updaters`
+  unchanged, and neither is part of any identity.
+  - Without `node_job`, the default, every node runs in this process, one after
+    another.
+  - With it, each node runs in its own run of that Job, and independent nodes run
+    at the same time, up to `max_parallel_nodes` (`-1`, no limit).
+  - The weights and values are published in this process after the graph, either
+    way: a ledger that ran in a node Job run is read from its table.
+
+```text
+run_portfolios([A, B], updaters=[X], node_job="Updater node", max_parallel_nodes=4)
+
+  bars ─> prices ─┬─> rebalance A ─> ledger A ─┐
+  calendar events ┼─> rebalance B ─> ledger B ─┼─> publish A, then B (this process)
+                  └─> X                        │
+  (each box one node Job run; independent ones at the same time)
+```
+
+A node Job run is a new process. MetaTables rebuilds the node's updater from its
+saved configuration and imports its classes by their address. A run in which a node
+cannot be rebuilt is refused before anything starts: every portfolio fails with that
+error, and every updater's outcome is `not_run`.
+
+- **Tables.** Every table of the graph is a top-level class statement (ADR 0066).
+- **Signals.** A rebalance saves a computed signal by its update and a published
+  `ApplicationWeights` as its pydantic model. A node Job run rebuilds both.
+- **The rebalance's portfolio.** `PortfolioRebalanceConfiguration.portfolio_identifier`
+  saves the portfolio the run resolved, outside the update hash, so the rebuilt
+  rebalance needs no resolver.
+- **Shared reads.** One runtime lookup, one read of each calendar and the rows
+  passed between nodes apply inside one Job run. Another node's result is read from
+  its table.
+
+Node Job mode needs a hosted runtime, so develop and test without `node_job`. The
+producer declares the node Job in its workflow file, next to the Job that calls
+`run_portfolios`, which needs `runner` access to it (`sized_runner` when a node
+declares its size):
+
+```yaml
+resources:
+  - key: updater-node
+    kind: job
+    spec:
+      name: Updater node          # the node_job argument
+      execution_path: jobs/run_updater_node.py
+      cpu_request: "1"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+  - key: run-portfolios
+    kind: job
+    spec:
+      name: Run portfolios
+      execution_path: jobs/run_portfolios.py
+    access:
+      resources:
+        - key: updater-node
+          policy: runner
+```
+
+```python
+# jobs/run_updater_node.py
+from msm_portfolios.node_job import run_node
+
+if __name__ == "__main__":
+    run_node()
+```
+
+`run_node()` runs MetaTables' `run_updater_node()` inside the same per-run scopes as
+`run_portfolios`. A node Job run is a workload of the producer's branch, so a
+computed signal it publishes has the same manager as the Job that created it
+(`branch:<uid>`, ADR 0060).
 
 `PortfolioWeights.run()` and `PortfolioValues.run()` publish what the ledger holds
 and run nothing. `PortfolioValues.run()` answers `portfolio_weights`,
@@ -647,32 +789,32 @@ it calls one.
 | `signal_history(signal_uids, *, latest=0)` | First and last observation of many signals in one call; with `latest`, each signal's latest observations as a time by asset matrix. |
 | `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
 | `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
-| `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a signal with no observation. |
-| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None)` | Runs every portfolio's ledger in one joined MetaTables run from each signal's first observation (shared prices, calendar events and inputs once, each rebalance, each ledger), creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran` and `failed` (see "Running portfolios"). |
-| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
+| `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a published signal with no observation. A computed signal is computed by the run. |
+| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, updaters=(), node_job=None, max_parallel_nodes=-1)` | Runs every portfolio's ledger, and the producer's own `updaters`, in one joined MetaTables run from each signal's first observation (shared prices, calendar events, computed signals and inputs once, each rebalance, each ledger), in this process or in node Jobs. Creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran`, `failed` and `updaters` (see "Running portfolios"). |
+| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ..., node_job=None, max_parallel_nodes=-1)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
 | `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
-| `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. |
+| `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=(), signals=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. A computed signal's table refuses `end_signal` until its rows are deleted. |
 
 ## Private State Tables
 
 Rebalance state, calendar events and the event ledger are private to the
-application that runs the portfolio. `msm_portfolios.time_index.contract_instances`
-builds them as instances of the `PortfolioRebalanceStateTS`,
-`PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` contracts, in the
-application's own MetaTables namespace, migrated by its own Alembic provider.
-ms-markets owns each contract: columns, dtypes, nullability, time index and
-index names.
+application that runs the portfolio. It declares each one with a class statement
+on the contract's base in `msm_portfolios.time_index.contract_instances`
+(`PortfolioRebalanceStateInstance`, `PortfolioCalendarEventsInstance`,
+`PortfolioEventLedgerInstance`), in its own MetaTables namespace, migrated by its
+own Alembic provider. ms-markets owns each contract: columns, dtypes, nullability,
+time index, index names, foreign keys, lookup indexes and storage layout.
 
 ```python
+# my_provider/tables.py
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm_portfolios.time_index import PortfolioValues
 from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_event_ledger_storage,
-    configured_portfolio_rebalance_state_storage,
+    PortfolioEventLedgerInstance,
+    PortfolioRebalanceStateInstance,
 )
 
 
@@ -680,53 +822,60 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
-    instance_key="main",
-    namespace="my-provider",
-    storage_app="my_provider",
-    base=ProviderBase,
-)
-ProviderEventLedgerStorage = configured_portfolio_event_ledger_storage(
-    instance_key="main",
-    namespace="my-provider",
-    storage_app="my_provider",
-    base=ProviderBase,
-)
+class ProviderRebalanceState(PortfolioRebalanceStateInstance, ProviderBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+
+
+class ProviderEventLedger(PortfolioEventLedgerInstance, ProviderBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+```
+
+```python
+from msm_portfolios.time_index import PortfolioValues
+from my_provider.tables import ProviderEventLedger, ProviderRebalanceState
 
 values = PortfolioValues(
     portfolio_configuration=portfolio_configuration,
-    rebalance_output_table=ProviderRebalanceStateStorage,
-    event_ledger_output_table=ProviderEventLedgerStorage,
+    rebalance_output_table=ProviderRebalanceState,
+    event_ledger_output_table=ProviderEventLedger,
 )
 ```
 
-`namespace`, `storage_app` and `base` are required and an empty value is refused:
-a factory never builds in Markets' namespace, app or base by default.
+Each class is a `class` statement at the top level of a module of the
+application's repository, never one a function returns or one in the script that
+is run: a node Job run in another process imports it by its address
+(`my_provider.tables:ProviderRebalanceState`, ADR 0066). Its own attributes say
+which instance it is: `__instance_key__`, `__metatable_namespace__` and
+`__markets_storage_app__` are required, and none falls back to Markets' own
+namespace or app. The class also inherits the application's declarative base.
 
-Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
-`<storage_app>__<contract>__<instance_key>` and whose MetaTable identifier is
-`<Contract>.<instance_key>`, prefixed with the namespace when it is not the
-default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). `base=` is
-the application's own declarative base, and its Alembic provider targets that
-base's metadata. The instance's foreign keys point at Markets' own column
+Its table is `<storage_app>__<contract>__<instance_key>` and its MetaTable
+identifier `<Contract>.<instance_key>`, prefixed with the namespace when it is not
+the default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). The
+application's Alembic provider targets its base's metadata and lists the classes
+as `metatable_models`. The instance's foreign keys point at Markets' own column
 objects and no Markets table is copied into that metadata, so autogenerate
-changes the application's tables only.
-`configured_portfolio_calendar_events_storage` and
-`configured_portfolio_event_ledger_storage` take the same arguments.
-`configured_time_index_instance` (`msm.storage_instances`) builds an instance
-of any other Markets storage, with the same three required arguments, and takes
-`cadence=` for a storage that declares none.
+changes the application's tables only. `msm.storage_instances` describes the
+other contracts' bases (`TradesInstance`, `SignalWeightsInstance`,
+`InterpolatedPricesInstance`, `DiscountCurvesInstance` and others), each declared
+the same way; `__cadence__` is for a contract that declares none.
 
 Bind the engine to them with `rebalance_output_table=` and
 `event_ledger_output_table=` on `PortfolioValues`, `PortfolioWeights` and
-`run_portfolio`, and with `output_table=` on the calendar events updater. `namespace=` on a node is the MetaTables
+`run_portfolio`, and with `output_table=` on the calendar events updater and on a
+computed signal (its `SignalWeightsTS` instance,
+[A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)). `namespace=` on a node is the MetaTables
 hash namespace of the chain, not a table's namespace; a private table's
-namespace comes from its factory. `InterpolatedPrices` requires `output_table=`,
+namespace comes from its class. `InterpolatedPrices` requires `output_table=`,
 the application's own table of that interpolation configuration
 ([The Table Of An Interpolation Configuration](#the-table-of-an-interpolation-configuration)).
 
-A private table may reference a registry row with a physical foreign key (the
-factories give each instance the contract's keys to
+A private table may reference a registry row with a physical foreign key (each
+contract gives its instances its keys to
 `Portfolio.unique_identifier`, `Asset` and `Calendar`) and declares its delete
 action. That key points from the application to Markets and is the only
 coupling between them. Markets does not discover, count or name the table:
@@ -808,8 +957,9 @@ depend on where a provider's code lives.
 | An observation at or before the signal's last stored time is refused (`ValueError`) and nothing is written. | The nodes publish only rows newer than the last stored one, and a portfolio that already rebalanced on an observation is not recomputed, so a restatement would never reach it. |
 | Weights are stored as given: no normalisation, negatives allowed; they must be finite numbers. | Whether weights sum to one, or may be short, is the provider's rule. |
 
-The signal has no dependencies, reads no price and values nothing. Its
-weights stand until the next observation (`maximum_forward_fill` is 36,500
+The signal is no node: nothing computes it, it reads no price and values
+nothing, and a rebalance reads it from Markets. Its weights stand until the next
+observation (`maximum_forward_fill` is 36,500
 days), and `get_asset_list()` is every asset it has published. When the
 portfolio trades is the rebalance strategy's decision, from the latest
 observation at or before each event. The signal offers no HTTP route of its
@@ -821,7 +971,8 @@ observation (`signal_time_index`, timezone-aware), so new weights or a new time
 are a new signal. State a time after the portfolio's first observed price: a
 rebalance sizes its shares with the last prices before its earliest moment, and
 refuses without one. `ExternalWeights` stays the signal for weights in a CSV
-artifact keyed by FIGI.
+artifact keyed by FIGI. Both are computed signals: each is its own node with the
+producer's signal table as `output_table=`.
 
 ## Repair legacy midnight-indexed portfolio values
 
@@ -993,8 +1144,8 @@ operation deletes the other side of the relationship.
 
 Portfolio time-index-table output is separate from registry MetaTables. These storage
 classes are registered through the same catalog bootstrap, after their FK target
-MetaTables. The exception is the table of `InterpolatedPrices`, which its producer
-declares and migrates:
+MetaTables. The exceptions are the tables of `InterpolatedPrices` and of a computed
+signal, which their producer declares and migrates:
 
 ```text
 +-----------------------------+             writes             +--------------------------------------+
@@ -1002,7 +1153,8 @@ declares and migrates:
 | PortfolioRebalance          |------------------------------->| PortfolioRebalanceStateStorage       |
 | PortfolioEngine             |------------------------------->| PortfolioEventLedgerStorage          |
 | PortfolioWeights            |------------------------------->| PortfolioWeightsStorage              |
-| SignalWeights               |------------------------------->| SignalWeightsStorage                 |
+| SignalWeights               |------------------------------->| producer's SignalWeightsTS           |
+|                             |        and publishes to        | Markets' SignalWeightsStorage        |
 | PortfolioValues             |------------------------------->| PortfoliosStorage                    |
 | PortfolioAnalytics         |------------------------------->| PortfolioAnalyticsStorage           |
 | External price updaters     |------------------------------->| ExternalPricesStorage                |
@@ -1019,9 +1171,10 @@ declares and migrates:
 +-----------------------------+                                +--------------------------------------+
 ```
 
-`PortfolioWeights`, `SignalWeights` and `PortfolioValues` write through the
-series operations ([Published Series](#published-series)); the other nodes are
-`TimeIndexTableUpdater`s bound to their table.
+`PortfolioWeights` and `PortfolioValues` write through the series operations
+([Published Series](#published-series)). The other nodes are `TimeIndexTableUpdater`s
+bound to their table; a computed signal (`SignalWeights`) also publishes the rows it
+writes.
 
 `SignalMetadataTable.signal_description` is descriptive text for humans. Store
 plain text or Markdown, not HTML tags; rendering belongs to the consuming UI.
@@ -1121,11 +1274,12 @@ instead of importing or constructing the producer that wrote it.
 
 If persistent interpolation is needed, `InterpolatedPrices` is built before the
 portfolio and then passed into `PortfolioBuildConfiguration` like any other
-dependency. `InterpolatedPricesConfig` accepts either `source_price_instance`
-or `source_time_index_meta_table_uid`. Use `source_price_instance` when the
-source price `TimeIndexTableUpdater` or `TimeIndexTableRef` is already part of the graph. Use
-`source_time_index_meta_table_uid` when attaching an already registered
-compatible source table through `TimeIndexTableRef.from_uid(...)`.
+dependency. A price source is an updater instance or a table name (ADR 0066):
+`InterpolatedPricesConfig.source_price_instance` is the source price
+`TimeIndexTableUpdater` when the graph writes the bars, or a reference to another
+owner's registered table by its physical name,
+`TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. The
+name is the same in every Environment, and the table's UID is not.
 `InterpolatedPrices` validates the registered source cadence, exposes the
 resolved source from `dependencies()`, and writes only the table of its own
 configuration, which it takes as `output_table=`.
@@ -1174,13 +1328,13 @@ application that interpolates: it declares the table on its own base and migrate
 with its own provider.
 
 ```python
+# my_app/tables.py
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 
@@ -1189,19 +1343,20 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-MyInterpolatedPrices = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=interpolated_prices_instance_key(
+class MyInterpolatedPrices(InterpolatedPricesInstance, Base):
+    __instance_key__ = interpolated_prices_instance_key(
         source_table_name="my_app__bars_1d",  # MyBars.__table__.name
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
-    ),
-    cadence="1d",  # the upsample frequency
-    namespace="my-app",
-    storage_app="my_app",
-    base=Base,
-)
+    )
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
+    __cadence__ = "1d"  # the upsample frequency
+
+
+# One class per configuration; a dictionary is fine for looking them up.
+INTERPOLATED_PRICES_BY_PROFILE = {("1d", "ffill"): MyInterpolatedPrices}
 ```
 
 The table is `<storage_app>__interpolatedpricests__<key>`, identified as
@@ -1212,11 +1367,15 @@ revision creates it in every Environment.
 
 `InterpolatedPrices(..., output_table=MyInterpolatedPrices)` writes there. It computes
 the key from its own configuration and the registered source, and refuses a class of
-another contract, key or cadence, and a table registered with another cadence. After
+another contract, key or cadence, and a table registered with another cadence. The
+class is a `class` statement at the top level of a module of the application's
+repository, so a node Job run in another process imports it by its address
+(`my_app.tables:MyInterpolatedPrices`), and the application's migration provider lists
+it as one of its `metatable_models`. After
 correcting a class, run its provider's `metatables migrations upgrade`, which registers
 the class's cadence. Its update identity does not include the table.
 
-A change of any of the four values needs a new table: declare it, commit its revision,
+A change of any of the four values needs a new table: declare its class, commit its revision,
 and run interpolation to fill it. A first run starts at the updater's `offset_start`,
 2017-07-20 by default: give an earlier one before that run when the source holds older
 bars. The key holds no data source or schema, so two sources with one table name in
@@ -1246,8 +1405,9 @@ Execution-side event selection and capacity are owned by the configured rebalanc
 strategy.
 
 For a custom valuation source, register or migrate the source storage outside
-portfolio core, then pass the registered `TimeIndexMetaTable` UID through
-`TimeIndexTableRef.from_uid(...)`. The source table must keep its real
+portfolio core, then refer to it by its physical name with
+`TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. The
+source table must keep its real
 value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
@@ -1280,10 +1440,13 @@ price_source = InterpolatedPrices(
         upsample_frequency_id="1d",
     ),
     # Keyed by the source of these bars: see portfolio_equal_weights_config.py.
-    output_table=INTERPOLATED_PRICES_STORAGE,
+    output_table=EqualWeightInterpolatedPrices,
 )
 
-signal_weights = FixedWeights.from_signal_configuration(...)
+# The signal's own table: see portfolio_equal_weights_config.py.
+signal_weights = FixedWeights.from_signal_configuration(
+    ..., output_table=EqualWeightSignalWeights
+)
 calendar_events = PortfolioCalendarEvents(
     config=PortfolioCalendarEventsConfiguration(
         calendar_identifier="CRYPTO_24_7",
@@ -1315,17 +1478,20 @@ portfolio_configuration = PortfolioConfiguration(
     portfolio_markets_configuration=PortfolioMarketsConfig(...),
 )
 
-# One joined MetaTables run: the source bars, the interpolated prices and the
-# calendar events once, then the rebalance and the ledger; then weights and values.
+# One joined MetaTables run: the source bars, the interpolated prices, the calendar
+# events and the signal once, then the rebalance and the ledger; then weights and values.
 run = recipes.run_portfolio(portfolio_configuration, portfolio_resolver=resolver)
 ```
 
-For a user-owned fair-value source, the same portfolio configuration uses the
-source UID directly and keeps the valuation column explicit. A source given as a
-`TimeIndexTableRef` counts as adjusted ([Price level and asset events](#price-level-and-asset-events)):
+For a user-owned fair-value source, the same portfolio configuration refers to the
+source table by its physical name and keeps the valuation column explicit. A source
+given as a `TimeIndexTableRef` counts as adjusted
+([Price level and asset events](#price-level-and-asset-events)):
 
 ```python
-valuation_source = TimeIndexTableRef.from_uid(fair_value_table_uid)
+valuation_source = TimeIndexTableRef.from_physical_identity(
+    schema="public", table_name="my_provider__fairvaluests"
+)
 
 portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(
@@ -1339,11 +1505,10 @@ portfolio_configuration = PortfolioConfiguration(
 )
 ```
 
-`PortfolioRebalance.dependencies()` is the valuation source (and FX source) the
-strategy trades at, unless it has bars of its own, merged with the typed sources the
-strategy declares and, for a signal that computes its weights, the signal's own
-inputs as `signal.<name>`. It computes and publishes such a signal before it reads
-it, and only reads a signal whose weights arrive by publication. It
+`PortfolioRebalance.dependencies()` is a computed signal (`signal_weights`), the
+valuation source (and FX source) the strategy trades at, unless it has bars of its own,
+and the typed sources the strategy declares. It reads the signal and never runs it: a
+computed signal from its own table, a published one from Markets. It
 validates those observations against the strategy's required grain and fields and
 persists the resulting state. `PortfolioEngine.dependencies()` is the rebalance
 state, the valuation source, the FX source and the inputs the valuation and
