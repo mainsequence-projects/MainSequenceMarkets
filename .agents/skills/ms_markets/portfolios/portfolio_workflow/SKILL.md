@@ -306,8 +306,7 @@ valuation source, FX, lifecycle inputs --------------> PortfolioEngine --> event
                                                                                 optional PortfolioAnalytics
 ```
 
-No portfolio node constructs `InterpolatedPrices` from
-`AssetsConfiguration`/`PricesConfiguration`. If persistent interpolation is
+No portfolio node constructs `InterpolatedPrices`. If persistent interpolation is
 needed, prepare or attach the interpolation node first and pass it as
 `PortfolioBuildConfiguration.valuation_source_instance`. The ledger values each
 held asset at its last observation at or before each ledger time, at source

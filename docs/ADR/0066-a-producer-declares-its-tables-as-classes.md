@@ -396,9 +396,20 @@ and, with decision 6, Markets' own form (`cadence=`); the Index catalog's
 to another owner's table with `TimeIndexTableRef.from_physical_identity(schema=...,
 table_name=...)`. `InterpolatedPrices` and a computed signal still refuse a table whose
 contract, key or cadence differs; their messages name the base to declare it on.
-`InterpolatedPricesConfig.source_time_index_meta_table_uid` stays, and so does ADR 0030's
-description of it: removing the field would rotate the pinned `InterpolatedPrices` update
-hash.
+
+- **The UID source, removed on 2026-11-25.** The first implementation kept
+  `InterpolatedPricesConfig.source_time_index_meta_table_uid`, because removing it rotates
+  the pinned `InterpolatedPrices` update hash. The owner had it removed: no real portfolio
+  exists yet, so the rotation costs nothing.
+  - `source_price_instance` is now required: the updater that writes the bars, or a
+    `TimeIndexTableRef` to one table by its physical name. A UID is refused.
+  - The pinned `InterpolatedPrices` update hash and pre-rename hash rotate, and so do the
+    revisions of the three bar strategies that hold it.
+  - A signal's UID and a portfolio's configuration hash do not change.
+  - `PricesConfiguration` and `AssetsConfiguration` (`msm_portfolios.configuration`), which
+    nothing used and which also held the UID, are removed.
+  - MetaTables itself hashes a `TimeIndexTableRef` in a configuration by its table and data
+    source UIDs (`metatables.updaters.configuration`), however the reference was looked up.
 
 **Decision 5.** The equal-weights and Index-value example providers list their classes as
 `metatable_models`.

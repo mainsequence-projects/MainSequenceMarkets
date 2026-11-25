@@ -134,13 +134,7 @@ def test_interpolated_prices_accepts_registered_top_level_source_cadence() -> No
         )
     )
 
-    assert (
-        _source_time_indexed_profile_cadence(
-            source_price,
-            source_time_index_meta_table_uid="source-uid",
-        )
-        == "1d"
-    )
+    assert _source_time_indexed_profile_cadence(source_price.output_table) == "1d"
 
 
 def test_interpolated_prices_mapping_scope_uses_canonical_asset_identifier(monkeypatch) -> None:

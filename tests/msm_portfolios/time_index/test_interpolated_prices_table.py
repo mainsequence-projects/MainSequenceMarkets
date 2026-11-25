@@ -87,8 +87,7 @@ def _registered(table: type, uid: str = PRICES_TABLE_UID, **metadata: Any):
 
 
 def _configuration(**changed: Any) -> InterpolatedPricesConfig:
-    if "source_time_index_meta_table_uid" not in changed:
-        changed.setdefault("source_price_instance", _bars())
+    changed.setdefault("source_price_instance", _bars())
     return InterpolatedPricesConfig(
         **{
             "asset_list": ["ASSET_A"],
@@ -140,8 +139,7 @@ def test_the_key_needs_the_source_and_the_rule(argument, empty) -> None:
 # The updater -----------------------------------------------------------------------------------
 
 
-def test_one_table_serves_a_configuration_whatever_uid_its_source_has(monkeypatch) -> None:
-    monkeypatch.setattr(TimeIndexTableRef, "from_uid", classmethod(lambda cls, uid: _bars(uid)))
+def test_one_table_serves_a_configuration_whatever_uid_its_source_has() -> None:
     table = _table()
 
     assert table.__table__.name == schema_table_name(
@@ -150,14 +148,11 @@ def test_one_table_serves_a_configuration_whatever_uid_its_source_has(monkeypatc
     assert table.__metatable_identifier__ == f"my-provider.InterpolatedPricesTS.{_key()}"
     with _registered(table):
         for uid in (DEVELOPMENT_BARS_UID, PRODUCTION_BARS_UID):
-            for source in (
-                {"source_price_instance": _bars(uid)},
-                {"source_time_index_meta_table_uid": uid},
-            ):
-                prices = InterpolatedPrices(_configuration(**source), output_table=table)
+            source = _bars(uid)
+            prices = InterpolatedPrices(_configuration(source_price_instance=source), output_table=table)
 
-                assert prices.output_table is table
-                assert prices.source_time_index_meta_table_uid == uid
+            assert prices.output_table is table
+            assert prices.bars_ts is source
 
 
 def test_the_bound_table_is_where_rows_land_and_not_the_update_identity() -> None:

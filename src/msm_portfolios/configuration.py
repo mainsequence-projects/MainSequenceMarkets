@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from typing import Annotated, Any
 
 import metatables.updaters.configuration as update_configuration
@@ -17,7 +16,6 @@ from pydantic import (
 )
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
-from msm_portfolios.asset_scope import require_asset_category_scope
 from msm_portfolios.accounting.configuration import PortfolioAccountingConfiguration
 from msm_portfolios.time_index import (
     REBALANCE_STRATEGY_UID_EXCLUDED_CONFIGURATION_KEYS,
@@ -135,147 +133,6 @@ class MarketsTimeSeries(PortfolioConfigBaseModel):
         ),
         examples=["provider_1d_bars"],
     )
-
-
-class PricesConfiguration(PortfolioConfigBaseModel):
-    """
-    Configuration for price handling and interpolation/upsampling.
-
-    This config controls *how Portfolios fetches and shapes prices*.
-    It is distinct from signal-weight validity, which is controlled by
-    `SignalWeightsSource.maximum_forward_fill()`.
-
-    Attributes:
-        upsample_frequency_id: Target frequency after interpolation (e.g., "1d", "15m").
-        intraday_bar_interpolation_rule: Interpolation rule for gaps ("ffill" or "None").
-        is_live: Whether the feed should be treated as live (may be ignored by some nodes).
-        source_time_index_meta_table_uid:
-            Registered TimeIndexMetaTable UID that stores normalized source bars.
-            The source bar frequency is read from the registered table's
-            time_indexed_profile.cadence.
-        forward_fill_to_now: If True, extend interpolated prices up to `datetime.now(UTC)` by forward-fill.
-    """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
-
-    upsample_frequency_id: str = Field(
-        default="1d",
-        description=(
-            "Frequency identifier for the *interpolated/upsampled* series produced by Portfolios. "
-            "For daily portfolios, this is typically '1d'. For intraday portfolios, e.g. '15m'."
-        ),
-        examples=["1d", "15m", "30m"],
-    )
-
-    intraday_bar_interpolation_rule: str = Field(
-        default="ffill",
-        description=(
-            "Interpolation rule used to fill gaps in intraday (minute-level) bars. "
-            "Supported values in Portfolios code paths are typically 'ffill' or 'None'."
-        ),
-        examples=["ffill", "None"],
-    )
-
-    is_live: bool = Field(
-        default=False,
-        description=(
-            "Marks whether this prices configuration is intended for live/streaming usage. "
-            "Some helpers may ignore this flag; it is primarily descriptive/config-level metadata."
-        ),
-        examples=[False, True],
-    )
-
-    source_time_index_meta_table_uid: uuid.UUID | str = Field(
-        ...,
-        description=(
-            "UID of the registered TimeIndexMetaTable that stores normalized source bars. "
-            "Portfolios resolves this UID through TimeIndexTableRef.from_uid(...) "
-            "so price sources are recoverable across processes without passing a live TimeIndexTableUpdater instance. "
-            "The source bar frequency is read from the table's time_indexed_profile.cadence."
-        ),
-        examples=["00000000-0000-0000-0000-000000000000"],
-    )
-
-    forward_fill_to_now: bool = Field(
-        default=False,
-        description=(
-            "If True, portfolio price interpolation extends the time index up to 'now' (UTC) "
-            "and forward-fills the last known price. Useful for live dashboards. "
-            "Does NOT make signal weights valid beyond their maximum_forward_fill."
-        ),
-        examples=[False, True],
-    )
-
-
-class AssetsConfiguration(PortfolioConfigBaseModel):
-    """
-    Configuration for the asset universe and price field selection.
-
-    Attributes:
-        assets_category_unique_id:
-            Optional AssetCategory unique id. If provided, Portfolios will use that category
-            as the universe for both prices and portfolio construction.
-            If None, the signal node is expected to define its own universe via get_asset_list().
-        price_type:
-            Which source valuation field to use. Portfolio core reads
-            ``PortfolioBuildConfiguration.valuation_column`` instead.
-        prices_configuration:
-            Pricing configuration used to fetch and interpolate/upsample bars.
-    """
-
-    assets_category_unique_id: str | None = Field(
-        default=None,
-        description=(
-            "AssetCategory unique identifier used as the portfolio/signal universe. "
-            "msm does not resolve this identifier directly; callers should resolve "
-            "the category through MetaTable services and pass asset_list."
-        ),
-        examples=["crypto", "etfs", None],
-    )
-
-    asset_list: list[Any] | None = Field(
-        default=None,
-        description=(
-            "Resolved asset scope for portfolio updaters. Items may be strings, mappings, "
-            "or objects with an asset_identifier field."
-        ),
-        json_schema_extra={"hash_excluded": True},
-    )
-
-    price_type: str = Field(
-        default="close",
-        min_length=1,
-        description=(
-            "Source valuation field. Portfolio core uses "
-            "PortfolioBuildConfiguration.valuation_column."
-        ),
-        examples=["close", "fair_value", "nav"],
-    )
-
-    prices_configuration: PricesConfiguration = Field(
-        ...,
-        description=(
-            "Price-source and interpolation configuration used by Portfolios when building/interpolating prices."
-        ),
-        examples=[
-            {
-                "upsample_frequency_id": "1d",
-                "intraday_bar_interpolation_rule": "ffill",
-                "source_time_index_meta_table_uid": "00000000-0000-0000-0000-000000000000",
-                "forward_fill_to_now": False,
-            }
-        ],
-    )
-
-    def get_asset_list(self) -> list[Any]:
-        """
-        Return the explicit asset scope for this configuration.
-        """
-        return require_asset_category_scope(
-            asset_list=self.asset_list,
-            asset_category_unique_id=self.assets_category_unique_id,
-            context="AssetsConfiguration",
-        )
 
 
 class BacktestingWeightsConfig(PortfolioConfigBaseModel):

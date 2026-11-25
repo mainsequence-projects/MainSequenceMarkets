@@ -300,8 +300,10 @@ PINNED_UPDATE_HASHES = {
     # Rotated in 3.0.0 when the classes moved to msm.time_index and
     # msm_portfolios.contrib.prices.updaters (ADR 0048).
     "asset_snapshot": "assetsnapshot_6eb60d0a440e8ab0b9794f1f5d3e42eb",
-    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130).
-    "interpolated_prices": "interpolatedprices_c2d1d020889b41e2644db7b8dae0ef0c",
+    # Rotated in 5.0.0 for the positional configuration this is built with (MetaTables#130),
+    # and in 6.2.0 when InterpolatedPricesConfig lost source_time_index_meta_table_uid: a
+    # source is an instance or a table reference (ADR 0066, decision 4).
+    "interpolated_prices": "interpolatedprices_17f41f4e488cba69925cc39974325a66",
 }
 
 
@@ -323,19 +325,21 @@ PINNED_NESTED_PORTFOLIO_CONFIGURATION_HASHES = {
 PINNED_STRATEGY_REVISIONS = {
     # Every revision rotated with the next-observed-price fill rule (issue #89, ADR 0058).
     # The three on interpolated prices rotated again in 5.0.0, with that updater's hash.
-    # The four bar strategies rotated again with their execution_policy (#90).
+    # The four bar strategies rotated again with their execution_policy (#90). The three on
+    # interpolated prices rotated again in 6.2.0, with that updater's hash (ADR 0066,
+    # decision 4).
     "immediate_signal": "4bb1737493f36ab0a848c48692c2308f5cd370e997f18e32636af967d80ce409",
     "liquidity_constrained_on_asset_snapshot": (
         "9dd3eb51d6a50fe2440247bc77998a02d5cc660f28ca27900d1ce100db881058"
     ),
     "time_weighted_on_interpolated_prices": (
-        "412e686b88ae429af19b286a090dfaefcb91a8f5c01f91b8944398967a34b622"
+        "fb718570aabcdca257a57b57319615eda35466409c9b32e6555a32b61790437c"
     ),
     "volume_participation_on_interpolated_prices": (
-        "c91e357c91bb54300d007b947d4e06a75221c98cb353e1f0cc53ba92abefc637"
+        "d934bab227aa741048884705dc84c33ef03a4f855d37a34ca3fa13c108939cf7"
     ),
     "trailing_average_daily_volume_on_asset_snapshot": (
-        "5c8ad355978746656c7e3ac74c829a46662cd61f161ee0adb2a431182e00cf2a"
+        "4e90a28ab354c44e68e7f2c3267621dacbf4469cd3b885fe480062a4a4bdd473"
     ),
 }
 

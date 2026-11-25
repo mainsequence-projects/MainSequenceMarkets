@@ -56,6 +56,15 @@ imports by its address
 - **The Index catalog declares no table it discovers** (ADR 0066, decision 7). It reads a
   provider's (or Markets') `IndexValuesTS.<cadence>` table by the registered physical name,
   with the contract's column types, and builds no class on Markets' base.
+- **Breaking: an interpolation's source is an instance or a table reference** (ADR 0066,
+  decision 4).
+  - `InterpolatedPricesConfig.source_price_instance` is required: the updater that writes
+    the bars, or `TimeIndexTableRef.from_physical_identity(schema=..., table_name=...)`.
+  - `source_time_index_meta_table_uid`, which looked the source up by a UID that differs
+    in each Environment, is removed and refused.
+  - **Identity rotation.** The `InterpolatedPrices` update hash rotates, and so do the
+    revisions of the time-weighted, volume-participation and trailing-ADV strategies on
+    it. Signal UIDs and portfolio configuration hashes are unchanged.
 - **A portfolio's table reference uses the physical name** in the docs and examples
   (`TimeIndexTableRef.from_physical_identity(schema=..., table_name=...)`). The
   custom-valuation and trailing-ADV examples take `--source-table-name`,
@@ -132,6 +141,9 @@ imports by its address
   cadence the first time it was asked for, or a provider's (`namespace=`, `storage_app=`,
   `base=`). Use `IndexValues1m`, `IndexValues1h` or `IndexValues1d`, or the provider's own
   class on `IndexValuesInstance`. Nothing builds a table class during a run.
+- **Breaking: `PricesConfiguration` and `AssetsConfiguration`**
+  (`msm_portfolios.configuration`). Nothing used them, and `PricesConfiguration` required
+  the source table's UID. An interpolation is configured with `InterpolatedPricesConfig`.
 - **Breaking: `SignalWeights.computes_weights` and `SignalWeights.run()`.** A computed signal
   is a node and a published one is not. `ApplicationWeights` is no longer a published node: it
   has no `run()`, `update()`, `dependencies()`, `OFFSET_START` or `namespace` argument, and
