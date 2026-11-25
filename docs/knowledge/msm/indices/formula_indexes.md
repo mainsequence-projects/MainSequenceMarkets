@@ -192,7 +192,7 @@ registered storage classes for every source MetaTable:
 from msm.time_index.indices import (
     FormulaIndexUpdater,
     FormulaIndexUpdaterConfiguration,
-    configured_index_values_storage,
+    IndexValues1d,
 )
 
 config = FormulaIndexUpdaterConfiguration(
@@ -200,10 +200,7 @@ config = FormulaIndexUpdaterConfiguration(
     source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
-node = FormulaIndexUpdater(
-    config,
-    configured_index_values_storage(cadence="1d"),
-)
+node = FormulaIndexUpdater(config, IndexValues1d)
 ```
 
 Construction fails unless the registered storage UIDs exactly match the

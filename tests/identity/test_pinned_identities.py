@@ -36,7 +36,7 @@ from pydantic import Field
 
 from metatables import TimeIndexTableUpdateConfig, TimeIndexTableUpdater
 from msm.time_index.assets import AssetSnapshot
-from msm.time_index.indices import configured_index_values_storage
+from msm.time_index.indices import IndexValues1d
 import msm.identity as identity
 from msm.identity import pre_rename_update_hash
 from msm.settings import DEFAULT_MARKETS_NAMESPACE
@@ -102,6 +102,9 @@ PINNED_TABLE_NAMES = {
     "IndexTable": "ms_markets__index",
     "IndexTypeTable": "ms_markets__indextype",
     "IndexValuesStorage": "ms_markets__indexvaluests",
+    "IndexValues1m": "ms_markets__index_values__t_1m",
+    "IndexValues1h": "ms_markets__index_values__t_1h",
+    "IndexValues1d": "ms_markets__index_values__t_1d",
     "IssuerTable": "ms_markets__issuer",
     "OpenFigiAssetDetailsTable": "ms_markets__openfigiassetdetails",
     "OrderEventsStorage": "ms_markets__ordereventsts",
@@ -168,6 +171,9 @@ PINNED_METATABLE_IDENTIFIERS = {
     "IndexTable": "Index",
     "IndexTypeTable": "IndexType",
     "IndexValuesStorage": "IndexValuesTS",
+    "IndexValues1m": "IndexValuesTS.1m",
+    "IndexValues1h": "IndexValuesTS.1h",
+    "IndexValues1d": "IndexValuesTS.1d",
     "IssuerTable": "Issuer",
     "OpenFigiAssetDetailsTable": "OpenFigiAssetDetails",
     "OrderEventsStorage": "OrderEventsTS",
@@ -404,7 +410,7 @@ class PinnedRebalanceState(PortfolioRebalanceStateInstance, PinnedBase):
 
 
 CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
-    "index_values_1d": lambda: configured_index_values_storage(cadence="1d"),
+    "index_values_1d": lambda: IndexValues1d,
     "interpolated_prices_1d_ffill": lambda: PinnedInterpolatedPrices,
     "rebalance_state_contract_instance": lambda: PinnedRebalanceState,
 }

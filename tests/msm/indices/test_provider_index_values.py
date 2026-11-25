@@ -22,8 +22,8 @@ from msm.models import IndexTable
 from msm.services.indices import catalog as catalog_service
 from msm.services.indices import discover_canonical_datasets, read_index_values
 from msm.time_index.indices.storage import (
+    IndexValues1d,
     IndexValuesInstance,
-    configured_index_values_storage,
     require_cadenced_index_values_storage,
 )
 
@@ -64,10 +64,9 @@ def _meta_table(*, identifier: str, namespace: str, physical_table_name: str) ->
 
 
 def test_markets_keeps_its_table_and_a_provider_declares_its_own() -> None:
-    markets = configured_index_values_storage(cadence="1d")
+    markets = IndexValues1d
     provider = ProviderDailyIndexValues
 
-    assert markets is configured_index_values_storage(cadence="1d")
     assert markets.__table__.name == "ms_markets__index_values__t_1d"
     assert provider.__table__.name == "my_provider__index_values__t_1d"
     assert provider.__metatable_namespace__ == "my_provider"
@@ -117,7 +116,7 @@ def test_a_provider_table_needs_its_own_storage_app_and_a_cadence() -> None:
 
 
 def _registrations(monkeypatch) -> list[SimpleNamespace]:
-    markets = configured_index_values_storage(cadence="1d")
+    markets = IndexValues1d
     provider_table = _meta_table(
         identifier="my_provider.IndexValuesTS.1d",
         namespace="my_provider",

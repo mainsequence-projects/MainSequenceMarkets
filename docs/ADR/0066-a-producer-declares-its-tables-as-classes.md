@@ -2,9 +2,8 @@
 
 ## Status
 
-Accepted (2026-11-25) and implemented for 6.2.0, except decision 6, which goes back to the
-owner: see "Implementation Notes". Drafted at the owner's request on 2026-11-24, and
-rebuilt on 2026-11-25 on
+Accepted (2026-11-25) and implemented for 6.2.0: see "Implementation Notes". Drafted at the
+owner's request on 2026-11-24, and rebuilt on 2026-11-25 on
 [#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142).
 
 - **The owner's decisions.** The decisions marked (owner) are the owner's.
@@ -12,6 +11,8 @@ rebuilt on 2026-11-25 on
   - On 2026-11-25: Markets declares its own tables (decision 6), a reader never declares
     another owner's table (decision 7), and a producer's tables are classes it declares,
     as #142 asks (decision 1).
+  - Later on 2026-11-25: Markets declares 1m, 1h and 1d, created by its deployment's
+    migration (decision 6).
 - **What it replaces.** The first version of this ADR had producers declare their tables in a
   `TableCatalog` object and look them up by their settings. The owner withdrew that on
   2026-11-25: it duplicated MetaTables' migration provider, and a node's instance already
@@ -224,6 +225,8 @@ Markets is one more producer (ADR 0060, decision 5):
   Markets' own migrations.
 - Which cadences exist is a declaration, never decided by the first request for one.
 - A cadence Markets doesn't declare is refused.
+- **The set (owner, 2026-11-25).** Markets declares `1m`, `1h` and `1d`, a fixed set in a
+  revision, which the deployment's migration creates.
 
 ### 7. A reader never declares another owner's table (owner)
 
@@ -304,8 +307,6 @@ Each of these calls a factory, or tells the reader to.
   name, identifier and DDL as its factory (decision 3).
 - **Existing producers.** How many keep their tables in dictionaries keyed by configuration,
   which now need one class per entry.
-- **Markets' own per-cadence tables.** How each one is created today. Markets' migrations
-  don't list them, and this was not checked further.
 
 ## Implementation Notes
 
@@ -354,19 +355,15 @@ Each of these calls a factory, or tells the reader to.
     method as the others, and the class statements match.
   - Account allocation lines, asset snapshots, and portfolio state, analytics and cash flows
     have no base.
-- These are the contracts the code, docs, examples and tests declared instances of. The
-  factory accepted any core storage; the other Markets time-index storages (account
-  holdings, target positions, virtual-fund holdings, allocation lines, asset snapshots,
-  portfolio state, analytics and cash flows) have no base yet. Each would be one more
-  four-line class statement next to its core.
 - `msm` imports no other package: the portfolio and pricing bases live in their packages.
   A class depends on nothing but its module's imports, so import order does not matter.
 
 **Removed.** `configured_time_index_instance`; `configured_contract_instance_storage` and its
 three `configured_portfolio_*_storage` factories, with `PORTFOLIO_STORAGE_CONTRACTS`,
-`PortfolioStorageContract` and the `contract_instance_*` helpers; the provider form of
-`configured_index_values_storage` (`namespace=`, `storage_app=`, `base=`); the Index
-catalog's `_index_values_model` and `_dataset_model_and_handle`.
+`PortfolioStorageContract` and the `contract_instance_*` helpers;
+`configured_index_values_storage`, the provider form (`namespace=`, `storage_app=`, `base=`)
+and, with decision 6, Markets' own form (`cadence=`); the Index catalog's
+`_index_values_model` and `_dataset_model_and_handle`.
 
 **Decision 3, the same tables.**
 
@@ -378,7 +375,13 @@ catalog's `_index_values_model` and `_dataset_model_and_handle`.
   registration request without `authoring.table_model` (the class's import address, which is
   what changes) and its PostgreSQL and SQLite DDL.
   `tests/identity/test_storage_instances.py` checks that the class statements build the same
-  21; they do. The pinned identities in `tests/identity` are unchanged.
+  21; they do. The pinned identities in `tests/identity` are unchanged. The account
+  holdings, target positions and virtual-fund holdings tables were captured the same way
+  when their bases were added, for 24.
+- The SQLite DDL is rendered with MetaTables' SQLite rules (`metatables.migrations.sqlite`,
+  which renders `JSONB` as `JSON`), as a migration creates the table. Any migration in the
+  process registers those rules, so the test registers them first; without that, a migration
+  test run earlier in the same process changed the rendering of ten pinned `JSONB` columns.
 - One finding: the generic factory made a table's foreign keys in the order of a set, which
   differed between processes; `TradesTS`, with five keys, came out in another order on
   different runs. The names and clauses were always the same, and so is the database's
@@ -400,24 +403,33 @@ hash.
 **Decision 5.** The equal-weights and Index-value example providers list their classes as
 `metatable_models`.
 
-**Decision 6, not done: it goes back to the owner.**
+**Decision 6.**
 
-- No Markets revision creates an `ms_markets__index_values__t_<cadence>` table: revisions
-  `0017` to `0038` create `ms_markets__indexvaluests` (`0018`) and no per-cadence one, and
-  MetaTables refuses to register a platform-managed table outside a migration. The factory
-  built only the Python class, so none of these tables exists in any Environment from
-  Markets' code.
-- Nothing in `src`, `apps` or `jobs` names a cadence for them. The only caller in `src` was
-  the Index catalog, with the cadence of a table it discovered. The examples use Markets'
-  `1m` (`extension_owned_index_storage.py`) and `1d` (`delta_hedged_option_index.py`); the
-  docs, the tutorial and the skill `1d` and `1m`; the tests `1d`, `1m` and `1h`.
-- So the set Markets must declare is not in the code. The options: Markets declares none and
-  every publisher declares its own table on `IndexValuesInstance` (ADR 0047, decision 4); or
-  it declares a set the owner names, as class statements created by a new revision `0039`.
-- Until then `configured_index_values_storage(cadence=...)` still builds Markets' own class
-  when first asked, and the two examples, `docs/knowledge/msm/indices/formula_indexes.md`,
-  `docs/knowledge/msm/indices/index.md`'s custom publication and the tutorial's formula step
-  still show it. Its three tables are pinned with the others.
+- **Before.** No Markets revision created an `ms_markets__index_values__t_<cadence>` table.
+  `configured_index_values_storage(cadence=...)` built the class the first time a cadence was
+  asked for, and MetaTables refuses to register a platform-managed table outside a
+  migration, so no Environment had one from Markets' code. Nothing in `src`, `apps` or `jobs`
+  named a cadence; the examples, docs and tests used `1m`, `1h` and `1d`.
+- **The set.** The owner fixed it on 2026-11-25: `1m`, `1h` and `1d`, built by the
+  deployment's migration.
+- **The classes.** `IndexValues1m`, `IndexValues1h` and `IndexValues1d`
+  (`msm.time_index.indices.storage`) are class statements on a private Markets base that
+  builds each table from its `__cadence__`, as the function did. Their three tables stay
+  pinned in `factory_tables.json`, and the class statements match them.
+- **The migration.** Revision `0039` creates the three tables, with the contract's columns,
+  keys and indexes. Markets' migration provider lists the classes after `IndexValuesStorage`.
+  - On SQLite and on PostgreSQL (TimescaleDB 2.22, PostgreSQL 17), the revision ran up, down
+    and up again, and Alembic's comparison found no difference between the three tables and
+    the classes.
+  - On a disposable local runtime, `metatables --local migrations upgrade --provider
+    msm_migrations:migration head` ran `0038 -> 0039`. It registered the three as
+    `IndexValuesTS.1m`, `.1h` and `.1d`, active, time-indexed, with their cadence: 67 active
+    tables and none failed.
+- **Removed.** `configured_index_values_storage`. A cadence Markets doesn't declare has no
+  Markets table: a provider declares its own on `IndexValuesInstance` (ADR 0047, decision 4).
+- **Changed.** The two examples, `docs/knowledge/msm/indices/index.md`,
+  `formula_indexes.md`, the tutorial's formula step and the `indices/index_workflow` skill
+  use the classes.
 
 **Decision 7.** The catalog reads a discovered `IndexValuesTS.<cadence>` registration, Markets'
 or a provider's, through the registration: its statement names the registered physical table

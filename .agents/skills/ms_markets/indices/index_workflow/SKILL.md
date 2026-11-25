@@ -163,8 +163,9 @@ class ProviderDailyIndexValues(IndexValuesInstance, ProviderBase):
     __markets_storage_app__ = "my_provider"
 ```
 
-Markets' own cadence tables are `configured_index_values_storage(cadence="1d")`; which
-cadences Markets declares is not settled yet (ADR 0066, decision 6). The Index catalog
+Markets' own cadence tables are `IndexValues1m`, `IndexValues1h` and `IndexValues1d`
+(`msm.time_index.indices`), which Markets' migrations create (ADR 0066, decision 6). Markets
+has no table at another cadence: declare the provider's own. The Index catalog
 reads a discovered table through its registration and declares nothing for it.
 
 Grain is `(time_index, index_identifier)`. Values contain:

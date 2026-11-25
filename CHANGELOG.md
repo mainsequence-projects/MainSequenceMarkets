@@ -36,7 +36,7 @@ imports by its address
     all on `msm.storage_instances.TimeIndexInstance`.
   - A class built this way has the factory's table: the same physical name, MetaTable
     identifier, `info`, contract hash, registration and DDL, so no migration changes for
-    an existing table. `tests/identity/factory_tables.json` pins 21 tables as the
+    an existing table. `tests/identity/factory_tables.json` pins 24 tables as the
     factories built them. The factory made a generic instance's foreign keys in set order,
     which differed between processes; a class makes them in the order of their columns.
   - A class states none of what its contract gives (its table, identifier, index names,
@@ -103,6 +103,16 @@ imports by its address
 
 ### Added
 
+- **Markets declares its own Index-value tables at 1m, 1h and 1d** (ADR 0066, decision 6).
+  - `IndexValues1m`, `IndexValues1h` and `IndexValues1d` (`msm.time_index.indices`) are
+    class statements for `ms_markets__index_values__t_1m`, `__t_1h` and `__t_1d`.
+  - Revision `0039` creates the three tables, and Markets' migration provider lists the
+    classes, so a deployment's migration creates and registers them. No revision created
+    them before.
+  - Their tables are the ones `configured_index_values_storage` built, pinned with the
+    others.
+  - A cadence Markets doesn't declare has no Markets table. A provider that publishes one
+    declares its own on `IndexValuesInstance`.
 - **`delete_private_series(..., signals=[...])`** deletes a producer's own rows of the given
   signals, such as a computed signal's table, before `end_signal`, which that table's
   `RESTRICT` key refuses while its rows remain.
@@ -118,10 +128,10 @@ imports by its address
   `PortfolioStorageContract`, `portfolio_storage_contract`, `contract_instance_key`,
   `contract_instance_identifier`, `contract_instance_table_name`,
   `contract_instance_identity_components` and the contract-name constants; and the
-  provider form of `configured_index_values_storage` (`namespace=`, `storage_app=`,
-  `base=`). Nothing builds a table class during a run. Markets' own form,
-  `configured_index_values_storage(cadence=...)`, stays until the owner settles which
-  cadences Markets declares (ADR 0066, decision 6).
+  `configured_index_values_storage`, which built Markets' own Index-value table of a
+  cadence the first time it was asked for, or a provider's (`namespace=`, `storage_app=`,
+  `base=`). Use `IndexValues1m`, `IndexValues1h` or `IndexValues1d`, or the provider's own
+  class on `IndexValuesInstance`. Nothing builds a table class during a run.
 - **Breaking: `SignalWeights.computes_weights` and `SignalWeights.run()`.** A computed signal
   is a node and a published one is not. `ApplicationWeights` is no longer a published node: it
   has no `run()`, `update()`, `dependencies()`, `OFFSET_START` or `namespace` argument, and

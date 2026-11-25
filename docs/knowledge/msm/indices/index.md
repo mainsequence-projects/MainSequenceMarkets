@@ -95,9 +95,11 @@ See [Formula And Custom Indexes](formula_indexes.md) for the full workflow.
 
 ## Canonical Values
 
-Stable-frequency publication uses
-`configured_index_values_storage(cadence=...)`. Each cadence has a separate
-MetaTable and physical table with grain:
+Each cadence has a separate MetaTable and physical table. Markets declares
+three, `IndexValues1m`, `IndexValues1h` and `IndexValues1d`
+(`ms_markets__index_values__t_1m`, `__t_1h` and `__t_1d`), which its migrations
+create. A provider that publishes another cadence, or its own table, declares one
+on `IndexValuesInstance`. Each table has the grain:
 
 ```text
 (time_index, index_identifier)
@@ -121,13 +123,14 @@ One identity can publish at several cadences:
 
 ```text
 IndexValuesTS.1m -> ms_markets__index_values__t_1m
+IndexValuesTS.1h -> ms_markets__index_values__t_1h
 IndexValuesTS.1d -> ms_markets__index_values__t_1d
 ```
 
 Frequency is part of dataset identity, not Index identity.
 
-These are Markets' own tables; which cadences Markets declares is not settled yet
-(ADR 0066, decision 6). A provider that publishes Index values owns its table in its
+These are Markets' own tables, the only cadences Markets declares (ADR 0066,
+decision 6). A provider that publishes Index values owns its table in its
 own namespace (ADR 0047, decision 4) and declares it with a class statement on
 `IndexValuesInstance`, one class per cadence, at the top level of a module of its
 repository:
@@ -161,13 +164,9 @@ Custom producers use `IndexValuesUpdater` or
 omitted. Custom publication rejects a non-null `definition_uid`.
 
 ```python
-from msm.time_index.indices import (
-    configured_index_values_storage,
-    normalize_index_values_frame,
-)
+from msm.time_index.indices import IndexValues1d, normalize_index_values_frame
 
-DailyValues = configured_index_values_storage(cadence="1d")
-normalized = normalize_index_values_frame(frame, output_table=DailyValues)
+normalized = normalize_index_values_frame(frame, output_table=IndexValues1d)
 ```
 
 Self-financing and chained performance are custom from the Index perspective.

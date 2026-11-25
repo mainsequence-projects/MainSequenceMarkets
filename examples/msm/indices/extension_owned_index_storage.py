@@ -13,7 +13,7 @@ from sqlalchemy.types import JSON
 from metatables import schema_table_name, sqlalchemy_naming_convention
 
 from msm.base import MarketsTimeIndexMetaTableMixin
-from msm.time_index.indices import IndexValuesUpdater, configured_index_values_storage
+from msm.time_index.indices import IndexValues1m, IndexValuesUpdater
 from msm.time_index.utils.stamped import StampedUpdater
 from msm.models.indices import IndexTable
 
@@ -76,9 +76,6 @@ class ExtensionIndexObservationsUpdater(StampedUpdater):
         return ExtensionIndexObservationsStorage
 
 
-CANONICAL_ONE_MINUTE_VALUES_STORAGE = configured_index_values_storage(cadence="1m")
-
-
 def run() -> dict[str, object]:
     """Normalize extension-owned rows and optionally map `mid` to canonical values."""
 
@@ -112,7 +109,7 @@ def run() -> dict[str, object]:
                 "metadata_json",
             ]
         ],
-        output_table=CANONICAL_ONE_MINUTE_VALUES_STORAGE,
+        output_table=IndexValues1m,
     )
     return {
         "index_identity": {

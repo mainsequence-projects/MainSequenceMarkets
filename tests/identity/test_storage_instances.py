@@ -7,6 +7,11 @@ attributes, MetaTables' contract hash, the SHA-256 of its registration request (
 PostgreSQL and SQLite DDL. The factory made a generic instance's foreign keys in the
 order of a set, which differed between processes, so the pinned DDL lists a table's
 constraint clauses sorted; their names and clauses are the ones it built.
+
+The SQLite DDL is rendered with MetaTables' SQLite rules (``metatables.migrations.sqlite``,
+``JSONB`` as ``JSON`` and ``UUID`` as ``CHAR(32)``), which every migration in the process
+registers. They are registered here, so the DDL doesn't depend on whether a migration ran
+first.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.schema import CreateIndex, CreateTable
 
+import metatables.migrations.sqlite  # noqa: F401  (MetaTables' SQLite DDL rules)
 from metatables import (
     PlatformTimeIndexMetaTable,
     sqlalchemy_naming_convention,
@@ -34,7 +40,7 @@ from metatables import (
 from metatables.models.sqlalchemy_contracts import compute_metatable_contract_hash
 from msm.storage_instances import TimeIndexInstance
 from msm.time_index.execution.storage import TradesInstance
-from msm.time_index.indices.storage import configured_index_values_storage
+from msm.time_index.indices.storage import IndexValues1d, IndexValues1h, IndexValues1m
 from msm.time_index.utils.storage_schema import (
     storage_column_dtypes_map,
     storage_column_nullable_map,
@@ -55,16 +61,12 @@ from tests.support.instance_tables import DECLARED_TABLES
 
 FACTORY_TABLES = json.loads((Path(__file__).parent / "factory_tables.json").read_text())
 
-# Markets' own Index-value tables are still built by configured_index_values_storage
-# (ADR 0066, decision 6); their pins hold it to what it built.
+# Markets' own Index-value tables (ADR 0066, decision 6), declared in Markets' module.
 CHECKED_TABLES: dict[str, Any] = {
     **DECLARED_TABLES,
-    **{
-        f"markets_index_values_{cadence}": (
-            lambda cadence=cadence: configured_index_values_storage(cadence=cadence)
-        )
-        for cadence in ("1d", "1m", "1h")
-    },
+    "markets_index_values_1m": IndexValues1m,
+    "markets_index_values_1h": IndexValues1h,
+    "markets_index_values_1d": IndexValues1d,
 }
 
 

@@ -185,16 +185,15 @@ the two input UIDs:
 from msm.time_index.indices import (
     FormulaIndexUpdater,
     FormulaIndexUpdaterConfiguration,
-    configured_index_values_storage,
+    IndexValues1d,
 )
 
-DailyIndexValues = configured_index_values_storage(cadence="1d")
 config = FormulaIndexUpdaterConfiguration(
     formula_definition_uids=(mixed.definition.uid,),
     source_output_tables=(RateValuesStorage, BondValuesStorage),
     offset_start="2026-01-01T00:00:00Z",
 )
-node = FormulaIndexUpdater(config, DailyIndexValues)
+node = FormulaIndexUpdater(config, IndexValues1d)
 ```
 
 Construction verifies exact source UID coverage, source grain, observable

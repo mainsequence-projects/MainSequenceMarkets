@@ -8,12 +8,12 @@ from pydantic import ValidationError
 
 from msm.time_index.indices import (
     FormulaIndexUpdaterConfiguration,
-    configured_index_values_storage,
+    IndexValues1d,
     normalize_index_values_frame,
 )
 
 
-DAILY_VALUES = configured_index_values_storage(cadence="1d")
+DAILY_VALUES = IndexValues1d
 
 
 def test_formula_updater_configuration_uses_definition_uids_and_storage_classes() -> None:

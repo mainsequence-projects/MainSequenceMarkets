@@ -3,10 +3,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from msm.time_index.indices import configured_index_values_storage, normalize_index_values_frame
+from msm.time_index.indices import IndexValues1h, normalize_index_values_frame
 
 
-VALUES = configured_index_values_storage(cadence="1h")
+VALUES = IndexValues1h
 
 
 def test_custom_index_values_allow_null_definition() -> None:
