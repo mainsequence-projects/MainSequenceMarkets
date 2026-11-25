@@ -36,13 +36,14 @@ each. Each crypto asset's payload names the calendar, so the upsert links it. An
 with no link fails the price update, and the error names it; see
 [An asset that gets price bars needs a trading calendar](01-assets.md#an-asset-that-gets-price-bars-needs-a-trading-calendar).
 
-The example is a producer. It declares the interpolated-price table on its own base,
-in its own namespace, in `portfolio_equal_weights_config.py`, keyed by its configuration:
-the source's table name and cadence, the upsample frequency and the interpolation rule.
-Change one of them and the table is a new one, with a new revision to commit:
-autogenerate it with `metatables migrations revision` once the provider's earlier
-revisions are applied. Next to it, it declares its signal table
-(`SIGNAL_WEIGHTS_STORAGE`), the `FixedWeights` signal's `output_table=`. The run script
+The example is a producer. It declares the interpolated-price table with a class
+statement on its own base, in its own namespace, in `portfolio_equal_weights_config.py`
+(`EqualWeightInterpolatedPrices`), keyed by its configuration: the source's table name
+and cadence, the upsample frequency and the interpolation rule. Change one of them and
+the table is a new one, another class with a new revision to commit: autogenerate it
+with `metatables migrations revision` once the provider's earlier revisions are applied.
+Next to it, it declares its signal table (`EqualWeightSignalWeights`), the `FixedWeights`
+signal's `output_table=`. Its migration provider lists both classes. The run script
 publishes example OHLCV source bars to `ExternalPricesStorage`, interpolates prices, runs
 the `FixedWeights` signal, `PortfolioCalendarEvents`, `PortfolioRebalance`, the
 portfolio's ledger (`PortfolioEngine`), `PortfolioWeights` and `PortfolioValues`, creates
@@ -64,8 +65,8 @@ bars. A focused configuration example is available at
 
 ```bash
 python examples/msm_portfolios/portfolio_custom_valuation_column_example.py \
-  --source-time-index-meta-table-uid <fair-value-time-index-meta-table-uid> \
-  --calendar-events-time-index-meta-table-uid <calendar-events-time-index-meta-table-uid>
+  --source-table-name <fair-value-table-name> \
+  --calendar-events-table-name <calendar-events-table-name>
 ```
 
 Its `CalendarEventSignal` reads the market opens and closes from the second table,
@@ -179,8 +180,13 @@ from msm_portfolios.rebalance_strategy import (
 )
 
 strategy = TrailingAverageDailyVolumeParticipation(
-    daily_liquidity_instance=TimeIndexTableRef.from_uid(daily_table_uid),
-    execution_bars_instance=TimeIndexTableRef.from_uid(intraday_table_uid),
+    # Another owner's tables, by physical name: the same in every Environment.
+    daily_liquidity_instance=TimeIndexTableRef.from_physical_identity(
+        schema="public", table_name=daily_table_name
+    ),
+    execution_bars_instance=TimeIndexTableRef.from_physical_identity(
+        schema="public", table_name=intraday_table_name
+    ),
     daily_vwap_column="vwap",
     daily_volume_column="volume",
     execution_price_column="close",
@@ -205,8 +211,8 @@ registered source tables without persisting portfolio state, run:
 
 ```bash
 python examples/msm_portfolios/portfolio_trailing_adv_participation_preview.py \
-  --daily-liquidity-table-uid <daily-table-uid> \
-  --execution-bars-table-uid <intraday-table-uid> \
+  --daily-liquidity-table-name <daily-table-name> \
+  --execution-bars-table-name <intraday-table-name> \
   --signal-time 2026-01-05T14:25:00Z \
   --start 2026-01-05T14:30:00Z \
   --end 2026-01-05T21:00:00Z \

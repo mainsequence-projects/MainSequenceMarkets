@@ -33,10 +33,10 @@ from metatables.migrations import (  # noqa: E402
 )
 
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
-    INTERPOLATED_PRICES_STORAGE,
     PROVIDER_NAMESPACE,
     PROVIDER_STORAGE_APP,
-    SIGNAL_WEIGHTS_STORAGE,
+    EqualWeightInterpolatedPrices,
+    EqualWeightSignalWeights,
     ProviderBase,
 )
 
@@ -57,7 +57,7 @@ migration = build_metatable_migration_provider(
     version_location_prefix=f"{MODULE}:versions",
     target_metadata=ProviderBase.metadata,
     alembic_registry=EqualWeightExampleAlembicVersion,
-    metatable_models=[INTERPOLATED_PRICES_STORAGE, SIGNAL_WEIGHTS_STORAGE],
+    metatable_models=[EqualWeightInterpolatedPrices, EqualWeightSignalWeights],
 )
 
 __all__ = ["EqualWeightExampleAlembicVersion", "migration"]

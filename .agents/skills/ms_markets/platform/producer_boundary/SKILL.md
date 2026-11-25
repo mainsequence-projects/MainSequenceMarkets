@@ -163,23 +163,27 @@ a callable of yours that attaches the runtime and imports `msm_portfolios.api`.
 
 ## Private state tables
 
-Build the private state tables with the factories of
-`msm_portfolios.time_index.contract_instances`, in the application's own namespace,
-migrated by the application's own provider:
+Declare each private state table with a class statement on a contract base of
+`msm_portfolios.time_index.contract_instances`, at the top level of a module of the
+application (`my_app/tables.py`), in its own namespace, migrated by its own provider:
 
 ```python
 from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_calendar_events_storage,
-    configured_portfolio_event_ledger_storage,
-    configured_portfolio_rebalance_state_storage,
+    PortfolioEventLedgerInstance,
+    PortfolioRebalanceStateInstance,
 )
 
-MyRebalanceState = configured_portfolio_rebalance_state_storage(
-    instance_key="main", namespace="my-app", storage_app="my_app", base=MyBase
-)
-MyEventLedger = configured_portfolio_event_ledger_storage(
-    instance_key="main", namespace="my-app", storage_app="my_app", base=MyBase
-)
+
+class MyRebalanceState(PortfolioRebalanceStateInstance, MyBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
+
+
+class MyEventLedger(PortfolioEventLedgerInstance, MyBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
 ```
 
 `MyBase` is the application's own declarative base, for its hand-written tables too,
@@ -190,26 +194,29 @@ The signals the application computes share one table of its own, an instance of
 `SignalWeightsTS` keyed by `signal_uid`:
 
 ```python
-from msm.storage_instances import configured_time_index_instance
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance
 
-MySignals = configured_time_index_instance(
-    SignalWeightsStorage, instance_key="signals", namespace="my-app", storage_app="my_app",
-    base=MyBase,
-)
+
+class MySignals(SignalWeightsInstance, MyBase):
+    __instance_key__ = "signals"
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
 ```
 
 A signal node refuses Markets' own `SignalWeightsTS`: only publishing writes it.
 
 Bind the engine to them: `rebalance_output_table=` and `event_ledger_output_table=` on
 `run_portfolios`, `run_portfolio`, `PortfolioValues` and `PortfolioWeights`, and `output_table=` on the
-calendar events updater. `configured_time_index_instance` builds an instance of any other
-Markets storage. Every one of these factories requires `namespace`, `storage_app` and
-`base`: none builds in Markets' own by default. An interpolated-price table is such an
-instance, keyed by its configuration (`portfolios/portfolio_workflow`).
+calendar events updater. Each other Markets storage has its own contract base
+(`<Contract>Instance`, `msm.storage_instances`), declared the same way. Every instance
+states `__instance_key__`, `__metatable_namespace__` and `__markets_storage_app__` and
+inherits the application's base: none falls back to Markets' own. A node Job run
+imports each class by `module:qualname`, so never build one in a function or in the
+script that is run. An interpolated-price table is such an instance, keyed by its
+configuration (`portfolios/portfolio_workflow`).
 
-A private table may reference a registry row with a physical foreign key (the
-factories give each instance the contract's keys to `Portfolio.unique_identifier`,
+A private table may reference a registry row with a physical foreign key (each
+contract gives its instances its keys to `Portfolio.unique_identifier`,
 `Asset` and `Calendar`) and declares its delete action. That key points from the
 application to Markets and is the only coupling between them, in the application's
 metadata too: the key passes Markets' own column object, and no Markets table is
@@ -278,7 +285,8 @@ Nothing moves by itself. A person runs, in each Environment:
 - [ ] The application has no table for portfolio weights or values, and no signal table
       but its computed signals' own, which their nodes write and publish every run.
 - [ ] Every read of those series goes through a recipe or a series operation.
-- [ ] Private tables are built with the factories and deleted with
+- [ ] Private tables are class statements on the contract bases, at the top level of a
+      module, listed by the application's provider, and deleted with
       `delete_private_series` before registry deletes.
 - [ ] The metadata the application's provider targets holds no Markets table.
 - [ ] A new Environment needs no person's step for Markets beyond the application's own

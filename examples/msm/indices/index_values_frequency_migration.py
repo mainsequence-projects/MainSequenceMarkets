@@ -1,8 +1,8 @@
 """The provider's own migrations for its 1-minute and daily Index-value tables.
 
-Build cadence-configured models before constructing the provider. This makes
-frequency part of the MetaTable identity and the physical storage table name.
-In a project this provider is `<package>/migrations/__init__.py`, which
+The provider lists its table classes, one class statement per cadence, as
+`metatable_models`: frequency is part of the MetaTable identity and the physical storage
+table name. In a project this provider is `<package>/migrations/__init__.py`, which
 `metatables migrations scaffold` creates with its `env.py` and versions folder.
 """
 

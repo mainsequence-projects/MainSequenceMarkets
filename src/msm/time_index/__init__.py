@@ -26,6 +26,7 @@ _EXPORTS = {
     "IndexTimestampedUpdater": ".indices",
     "IndexTimestampedFrameMixin": ".indices",
     "IndexValuesUpdater": ".indices",
+    "IndexValuesInstance": ".indices",
     "IndexValuesStorage": ".indices",
     "configured_index_values_storage": ".indices",
     "index_values_storage_identity_components": ".indices",

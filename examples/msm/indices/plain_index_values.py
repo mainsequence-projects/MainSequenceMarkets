@@ -1,7 +1,8 @@
 """Publish one Index identity through separate frequency-owned datasets.
 
-The two tables are the provider's own: its namespace, storage app and declarative
-base, migrated by its own provider (`index_values_frequency_migration.py`).
+The two tables are the provider's own: class statements on its declarative base, in its
+namespace and storage app, migrated by its own provider
+(`index_values_frequency_migration.py`), which lists the classes.
 
 This is an identity and storage example. It deliberately does not model the
 instrument or process that supplied the 10-year swap-yield observation.
@@ -15,7 +16,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from metatables import PlatformTimeIndexMetaTable, sqlalchemy_naming_convention
 
-from msm.time_index.indices import IndexValuesUpdater, configured_index_values_storage
+from msm.time_index.indices import IndexValuesInstance, IndexValuesUpdater
 from msm.api.indices import Index
 
 INDEX_IDENTIFIER = "USD_SWAP_10Y"
@@ -29,19 +30,23 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ONE_MINUTE_VALUES_STORAGE = configured_index_values_storage(
-    cadence="1m",
-    namespace=PROVIDER_NAMESPACE,
-    storage_app=PROVIDER_STORAGE_APP,
-    base=ProviderBase,
-)
-DAILY_VALUES_STORAGE = configured_index_values_storage(
-    cadence="1d",
-    namespace=PROVIDER_NAMESPACE,
-    storage_app=PROVIDER_STORAGE_APP,
-    base=ProviderBase,
-)
-FREQUENCY_STORAGE_MODELS = (ONE_MINUTE_VALUES_STORAGE, DAILY_VALUES_STORAGE)
+class OneMinuteIndexValues(IndexValuesInstance, ProviderBase):
+    """`index_values_example__index_values__t_1m`."""
+
+    __cadence__ = "1m"
+    __metatable_namespace__ = PROVIDER_NAMESPACE
+    __markets_storage_app__ = PROVIDER_STORAGE_APP
+
+
+class DailyIndexValues(IndexValuesInstance, ProviderBase):
+    """`index_values_example__index_values__t_1d`."""
+
+    __cadence__ = "1d"
+    __metatable_namespace__ = PROVIDER_NAMESPACE
+    __markets_storage_app__ = PROVIDER_STORAGE_APP
+
+
+FREQUENCY_STORAGE_MODELS = (OneMinuteIndexValues, DailyIndexValues)
 
 
 def reconcile_and_list_dataset_states(index_uid: str):
@@ -70,7 +75,7 @@ class Swap10YOneMinuteUpdater(IndexValuesUpdater):
 
     @classmethod
     def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
-        return ONE_MINUTE_VALUES_STORAGE
+        return OneMinuteIndexValues
 
 
 class Swap10YDailyUpdater(IndexValuesUpdater):
@@ -78,7 +83,7 @@ class Swap10YDailyUpdater(IndexValuesUpdater):
 
     @classmethod
     def _required_output_table(cls) -> type[PlatformTimeIndexMetaTable]:
-        return DAILY_VALUES_STORAGE
+        return DailyIndexValues
 
 
 def run() -> dict[str, object]:
@@ -132,12 +137,12 @@ def run() -> dict[str, object]:
         "frequency_datasets": {
             "1m": {
                 "updater": Swap10YOneMinuteUpdater,
-                "output_table": ONE_MINUTE_VALUES_STORAGE,
+                "output_table": OneMinuteIndexValues,
                 "values": one_minute_values,
             },
             "1d": {
                 "updater": Swap10YDailyUpdater,
-                "output_table": DAILY_VALUES_STORAGE,
+                "output_table": DailyIndexValues,
                 "values": daily_values,
             },
         },

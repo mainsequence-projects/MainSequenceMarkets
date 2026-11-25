@@ -543,9 +543,9 @@ def delete_private_series(
     """Delete the producer's own rows of ``portfolios``, ``calendars``, ``accounts`` or
     ``signals``.
 
-    ``tables`` are the producer's private storage classes (built with
-    ``configured_portfolio_rebalance_state_storage``, ``configured_time_index_instance``
-    and the other factories, bound to its own tables). Each table is cleared of the rows
+    ``tables`` are the producer's private storage classes (class statements on
+    ``PortfolioRebalanceStateInstance``, ``SignalWeightsInstance`` and the other contract
+    bases, bound to its own tables). Each table is cleared of the rows
     whose ``portfolio_identifier``, ``calendar_identifier``, ``account_uid`` or
     ``signal_uid`` is given, in one transaction, a table before the tables it references.
     Run it before the registry delete: a private ``RESTRICT`` key on a registry row

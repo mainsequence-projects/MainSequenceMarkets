@@ -19,10 +19,9 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import TimeIndexMetaTable, sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_pricing.api.market_data_bindings import PricingMarketDataSetBinding
 from msm_pricing.settings import PRICING_CONCEPT_DISCOUNT_CURVES
-from msm_pricing.time_index.curves.storage import DiscountCurvesStorage
+from msm_pricing.time_index.curves.storage import DiscountCurvesInstance, DiscountCurvesStorage
 
 CURVE_IDENTIFIER = "USD-SOFR-DISCOUNT"
 CORE_TABLE_UID = "4e4e4e4e-0000-4000-8000-000000000005"
@@ -33,13 +32,10 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-PROVIDER_DISCOUNT_CURVES = configured_time_index_instance(
-    DiscountCurvesStorage,
-    instance_key="main",
-    namespace="example-provider",
-    storage_app="example_provider",
-    base=ProviderBase,
-)
+class ProviderDiscountCurves(DiscountCurvesInstance, ProviderBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "example-provider"
+    __markets_storage_app__ = "example_provider"
 
 _COUNT_SQL = re.compile(
     r"SELECT COUNT\(\*\) AS count FROM (?P<table>.+) "
@@ -107,7 +103,7 @@ def bind_discount_curve_storages(
         curve_identifiers=core_curve_identifiers,
     )
     provider = StorageTable(
-        PROVIDER_DISCOUNT_CURVES,
+        ProviderDiscountCurves,
         uid=PROVIDER_TABLE_UID,
         curve_identifiers=provider_curve_identifiers,
     )

@@ -18,7 +18,6 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import TimeIndexMetaTable, TimeIndexTableUpdater, sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm.time_index.assets import AssetSnapshot
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm_portfolios.accounting import (
@@ -43,7 +42,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (
 )
 from msm_portfolios.time_index import SignalWeights
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 from msm_portfolios.rebalance_strategy import (
@@ -176,20 +175,18 @@ def _bound(storage: type, uid: str, **metadata: Any) -> Iterator[type]:
                 setattr(storage, name, value)
 
 
-def _interpolated_prices_storage() -> type:
-    return configured_time_index_instance(
-        InterpolatedPricesStorage,
-        instance_key=interpolated_prices_instance_key(
-            source_table_name=AssetSnapshotsStorage.__table__.name,
-            source_cadence="1d",
-            upsample_frequency_id="1d",
-            intraday_bar_interpolation_rule="ffill",
-        ),
-        cadence="1d",
-        namespace="pinned-app",
-        storage_app="pinned_app",
-        base=PinnedBase,
+class PinnedInterpolatedPrices(InterpolatedPricesInstance, PinnedBase):
+    """The pinned interpolated-price table: daily bars of AssetSnapshotsTS, forward filled."""
+
+    __instance_key__ = interpolated_prices_instance_key(
+        source_table_name=AssetSnapshotsStorage.__table__.name,
+        source_cadence="1d",
+        upsample_frequency_id="1d",
+        intraday_bar_interpolation_rule="ffill",
     )
+    __metatable_namespace__ = "pinned-app"
+    __markets_storage_app__ = "pinned_app"
+    __cadence__ = "1d"
 
 
 @contextmanager
@@ -203,7 +200,7 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
             cadence="1d",
             physical_table_name=AssetSnapshotsStorage.__table__.name,
         ),
-        _bound(_interpolated_prices_storage(), PRICES_TABLE_UID, cadence="1d"),
+        _bound(PinnedInterpolatedPrices, PRICES_TABLE_UID, cadence="1d"),
     ):
         asset_snapshot = AssetSnapshot()
         interpolated_prices = InterpolatedPrices(
@@ -213,7 +210,7 @@ def _built_updaters() -> Iterator[dict[str, TimeIndexTableUpdater]]:
                 upsample_frequency_id="1d",
                 asset_list=["ASSET_A", "ASSET_B"],
             ),
-            output_table=_interpolated_prices_storage(),
+            output_table=PinnedInterpolatedPrices,
         )
         yield {"asset_snapshot": asset_snapshot, "interpolated_prices": interpolated_prices}
 

@@ -15,6 +15,7 @@ from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.accounts import AccountTable
 from msm.models.assets.core import AssetTable
 from msm.models.execution import OrderTable
+from msm.storage_instances import TimeIndexInstance
 
 
 def _execution_info(column_name: str) -> dict[str, str]:
@@ -205,4 +206,32 @@ class TradesStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["OrderEventsStorage", "OrdersStorage", "TradesStorage"]
+class OrdersInstance(TimeIndexInstance):
+    """The base of an owner's own ``OrdersTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = OrdersStorage
+
+
+class OrderEventsInstance(TimeIndexInstance):
+    """The base of an owner's own ``OrderEventsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = OrderEventsStorage
+
+
+class TradesInstance(TimeIndexInstance):
+    """The base of an owner's own ``TradesTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = TradesStorage
+
+
+__all__ = [
+    "OrderEventsInstance",
+    "OrderEventsStorage",
+    "OrdersInstance",
+    "OrdersStorage",
+    "TradesInstance",
+    "TradesStorage",
+]

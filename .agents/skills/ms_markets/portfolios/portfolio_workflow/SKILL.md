@@ -216,14 +216,14 @@ other examples can pass a superset model list and avoid starting a second
 incompatible runtime.
 
 `InterpolatedPrices` writes only the table of its configuration, which the producer
-owns. Declare it on the producer's own base, migrate it with the producer's provider,
-and pass it as `output_table=`:
+owns. Declare it with a class statement at the top level of a module of the producer
+(`my_project/tables.py`), on `InterpolatedPricesInstance` and the producer's own base,
+list it in the producer's migration provider, and pass it as `output_table=`:
 
 ```python
 from metatables import sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 from sqlalchemy import MetaData
@@ -234,20 +234,21 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ProjectInterpolatedPrices = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=interpolated_prices_instance_key(
+class ProjectInterpolatedPrices(InterpolatedPricesInstance, Base):
+    __instance_key__ = interpolated_prices_instance_key(
         source_table_name="my_project__bars_1d",  # ProjectBars.__table__.name
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
-    ),
-    cadence="1d",  # the upsample frequency
-    namespace="my-project",
-    storage_app="my_project",
-    base=Base,
-)
+    )
+    __metatable_namespace__ = "my-project"
+    __markets_storage_app__ = "my_project"
+    __cadence__ = "1d"  # the upsample frequency
 ```
+
+- One class per configuration, never one a function returns: a node Job run imports it
+  by `my_project.tables:ProjectInterpolatedPrices`. A dictionary keyed by
+  configuration is fine for looking the classes up.
 
 - The four arguments of `interpolated_prices_instance_key` are the table's whole key.
   The source is its physical table name, never its UID, so one committed revision
@@ -261,8 +262,9 @@ ProjectInterpolatedPrices = configured_time_index_instance(
   source still holds bars. Set an earlier one before that run when older bars matter.
 - A table registered with the wrong cadence is refused. Correct its class and run its
   provider's `metatables migrations upgrade`, which registers the class's cadence.
-- `namespace`, `storage_app` and `base` have no default. A producer never passes
-  Markets' own, and never applies or extends Markets' migrations for this table.
+- `__metatable_namespace__`, `__markets_storage_app__` and the base have no default. A
+  producer never gives Markets' own, and never applies or extends Markets' migrations
+  for this table.
 - This is the price source's schema, not portfolio core registration, and it does
   not mean a portfolio node may construct prices internally.
 
@@ -341,10 +343,11 @@ Rules:
   of renaming the column to `close`. Use
   `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` as the
   reference configuration path.
-- `InterpolatedPricesConfig` accepts either `source_price_instance` or
-  `source_time_index_meta_table_uid`. Use the instance path when the raw/source
-  price node is already in the graph; use the UID path only to attach an
-  already registered compatible source table through `TimeIndexTableRef`.
+- A price source is an updater instance or a table name (ADR 0066). Pass
+  `source_price_instance` the raw/source price node when it is in the graph, or
+  another owner's registered table by its physical name,
+  `TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. Never
+  refer to a table by its UID, which differs in each Environment.
 - `InterpolatedPrices.dependencies()` must expose the resolved source price
   object in both cases.
 - Persistent interpolation belongs to `msm_portfolios.contrib.prices`, not to a
@@ -452,7 +455,7 @@ Rules:
   Running the same window twice publishes nothing.
 - A computed signal (`SignalWeights` and its subclasses) is a `TimeIndexTableUpdater`
   whose `output_table=` is the producer's own `SignalWeightsTS` instance
-  (`configured_time_index_instance(SignalWeightsStorage, ...)`); Markets' own table is
+  (a class statement on `SignalWeightsInstance`); Markets' own table is
   refused. Its update writes the new rows there and publishes them to Markets.
 - Portfolio value timestamps are ledger times: fills, lifecycle events and actual
   valuation-source observations, so sparse weekly rebalances can drive daily

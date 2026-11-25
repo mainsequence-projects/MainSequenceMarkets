@@ -187,10 +187,10 @@ def _require_output_table_of_configuration(
             "InterpolatedPrices writes only the table its configuration produces: the "
             f"{contract} instance with key {instance_key!r} and cadence {cadence!r}. "
             f"output_table={getattr(output_table, '__name__', output_table)!s} has contract, key "
-            f"and cadence {bound!r}. Declare the table with "
-            f"configured_time_index_instance(InterpolatedPricesStorage, "
-            f"instance_key={instance_key!r}, cadence={cadence!r}, namespace=..., storage_app=..., "
-            "base=...) and migrate it with its owner's provider."
+            f"and cadence {bound!r}. Declare the table with a class statement on "
+            f"InterpolatedPricesInstance and the owner's base, with __instance_key__ = "
+            f"{instance_key!r} and __cadence__ = {cadence!r}, and migrate it with its owner's "
+            "provider."
         )
 
 

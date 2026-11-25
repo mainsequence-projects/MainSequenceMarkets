@@ -15,7 +15,7 @@ from examples.msm.assets.utils import EXAMPLE_CRYPTO_ASSETS  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
     NAMESPACE,
-    SIGNAL_WEIGHTS_STORAGE,
+    EqualWeightSignalWeights,
 )
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater  # noqa: E402
 from msm_portfolios.accounting import (  # noqa: E402
@@ -39,7 +39,7 @@ from msm_portfolios.rebalance_strategy import (  # noqa: E402
     ProportionalExecutionCostModel,
 )
 
-FAIR_VALUE_SOURCE_UID_ENV = "MSM_EXAMPLE_FAIR_VALUE_TIME_INDEX_META_TABLE_UID"
+FAIR_VALUE_SOURCE_TABLE_ENV = "MSM_EXAMPLE_FAIR_VALUE_TABLE_NAME"
 FAIR_VALUE_COLUMN = "fair_value"
 PORTFOLIO_UNIQUE_IDENTIFIER = "example-fair-value-portfolio"
 ASSET_UNIQUE_IDENTIFIERS = [payload["unique_identifier"] for payload in EXAMPLE_CRYPTO_ASSETS]
@@ -60,7 +60,7 @@ def build_fixed_weights_signal() -> FixedWeights:
     # example's provider migrates, and publishes the same rows to Markets.
     return FixedWeights.from_signal_configuration(
         signal_config,
-        output_table=SIGNAL_WEIGHTS_STORAGE,
+        output_table=EqualWeightSignalWeights,
         namespace=NAMESPACE,
     )
 
@@ -101,25 +101,29 @@ def build_fair_value_portfolio_configuration(
     )
 
 
-def valuation_source_from_uid(source_time_index_meta_table_uid: str) -> TimeIndexTableRef:
-    if not source_time_index_meta_table_uid.strip():
-        raise ValueError("source_time_index_meta_table_uid cannot be empty.")
-    return TimeIndexTableRef.from_uid(source_time_index_meta_table_uid)
+def table_reference(table_name: str) -> TimeIndexTableRef:
+    """Another owner's registered table, by its physical name (ADR 0066).
+
+    The name is the same in every Environment, and the table's UID is not.
+    """
+
+    if not table_name.strip():
+        raise ValueError("table_name cannot be empty.")
+    return TimeIndexTableRef.from_physical_identity(schema="public", table_name=table_name)
 
 
 def run_configuration_example(
     *,
-    source_time_index_meta_table_uid: str,
-    calendar_events_time_index_meta_table_uid: str,
+    source_table_name: str,
+    calendar_events_table_name: str,
 ) -> dict[str, Any]:
-    valuation_source = valuation_source_from_uid(source_time_index_meta_table_uid)
     portfolio_configuration = build_fair_value_portfolio_configuration(
-        valuation_source=valuation_source,
-        calendar_events=TimeIndexTableRef.from_uid(calendar_events_time_index_meta_table_uid),
+        valuation_source=table_reference(source_table_name),
+        calendar_events=table_reference(calendar_events_table_name),
     )
     return {
         "portfolio_unique_identifier": PORTFOLIO_UNIQUE_IDENTIFIER,
-        "valuation_source_time_index_meta_table_uid": source_time_index_meta_table_uid,
+        "valuation_source_table_name": source_table_name,
         "valuation_column": FAIR_VALUE_COLUMN,
         "portfolio_configuration_hash": compute_portfolio_configuration_hash(
             portfolio_configuration
@@ -130,32 +134,32 @@ def run_configuration_example(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--source-time-index-meta-table-uid",
-        default=os.environ.get(FAIR_VALUE_SOURCE_UID_ENV),
+        "--source-table-name",
+        default=os.environ.get(FAIR_VALUE_SOURCE_TABLE_ENV),
         help=(
-            "UID of a registered asset-indexed TimeIndexMetaTable with "
+            "Physical name of a registered asset-indexed TimeIndexMetaTable with "
             "time_index, asset_identifier, and fair_value columns."
         ),
     )
     parser.add_argument(
-        "--calendar-events-time-index-meta-table-uid",
+        "--calendar-events-table-name",
         required=True,
         help=(
-            "UID of the registered TimeIndexMetaTable that PortfolioCalendarEvents publishes "
-            f"{CRYPTO_CALENDAR_UNIQUE_IDENTIFIER}'s market opens and closes to."
+            "Physical name of the registered TimeIndexMetaTable that PortfolioCalendarEvents "
+            f"publishes {CRYPTO_CALENDAR_UNIQUE_IDENTIFIER}'s market opens and closes to."
         ),
     )
     args = parser.parse_args()
-    if args.source_time_index_meta_table_uid in (None, ""):
+    if args.source_table_name in (None, ""):
         raise RuntimeError(
-            "Pass --source-time-index-meta-table-uid or set "
-            f"{FAIR_VALUE_SOURCE_UID_ENV}. The source table must expose "
+            "Pass --source-table-name or set "
+            f"{FAIR_VALUE_SOURCE_TABLE_ENV}. The source table must expose "
             f"{FAIR_VALUE_COLUMN!r}; the example does not rename it to 'close'."
         )
 
     result = run_configuration_example(
-        source_time_index_meta_table_uid=str(args.source_time_index_meta_table_uid),
-        calendar_events_time_index_meta_table_uid=args.calendar_events_time_index_meta_table_uid,
+        source_table_name=str(args.source_table_name),
+        calendar_events_table_name=args.calendar_events_table_name,
     )
     for key, value in result.items():
         print(f"{key}: {value}")

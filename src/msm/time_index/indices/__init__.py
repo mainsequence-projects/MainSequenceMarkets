@@ -6,6 +6,7 @@ from msm.time_index.indices.timestamped import (
     IndexTimestampedFrameMixin,
 )
 from msm.time_index.indices.storage import (
+    IndexValuesInstance,
     IndexValuesStorage,
     configured_index_values_storage,
     index_values_storage_identity_components,
@@ -21,6 +22,7 @@ __all__ = [
     "FormulaIndexUpdater",
     "FormulaIndexUpdaterConfiguration",
     "IndexValuesUpdater",
+    "IndexValuesInstance",
     "IndexValuesStorage",
     "configured_index_values_storage",
     "index_values_storage_identity_components",

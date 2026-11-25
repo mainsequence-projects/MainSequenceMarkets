@@ -20,11 +20,10 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import TimeIndexMetaTable, UpdateStatistics, sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.api import SignalMetadata, SignalWeightsSeries
 from msm_portfolios.contrib.signals import AUIDWeight, FixedWeights, FixedWeightsConfig
 from msm_portfolios.time_index import SignalWeights, compute_signal_uid
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance, SignalWeightsStorage
 from tests.support.pinned_identities import _bound
 from tests.support.sqlite_markets import _asset, make_sqlite_markets, serve_row_operations
 
@@ -36,14 +35,17 @@ class ProducerBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-def _signal_table(instance_key: str) -> type:
-    return configured_time_index_instance(
-        SignalWeightsStorage,
-        instance_key=instance_key,
-        namespace="my-app",
-        storage_app="my_app",
-        base=ProducerBase,
-    )
+class Producer:
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
+
+
+class ProducerSignals(SignalWeightsInstance, Producer, ProducerBase):
+    __instance_key__ = "signals"
+
+
+class ElsewhereSignals(SignalWeightsInstance, Producer, ProducerBase):
+    __instance_key__ = "elsewhere"
 
 
 @pytest.fixture
@@ -57,7 +59,7 @@ def markets(tmp_path, monkeypatch, sqlite_revisions):
 
 @pytest.fixture
 def signal_table():
-    with _bound(_signal_table("signals"), "a0000000-0000-4000-8000-0000000000cc") as table:
+    with _bound(ProducerSignals, "a0000000-0000-4000-8000-0000000000cc") as table:
         yield table
 
 
@@ -219,7 +221,7 @@ def test_the_node_writes_only_a_producers_own_signal_table() -> None:
 
 
 def test_the_identity_is_the_configuration_not_the_table_or_namespace(signal_table) -> None:
-    with _bound(_signal_table("elsewhere"), "a0000000-0000-4000-8000-0000000000dd") as other:
+    with _bound(ElsewhereSignals, "a0000000-0000-4000-8000-0000000000dd") as other:
         elsewhere = _node(other, namespace="another-namespace")
     here = _node(signal_table)
     stated = object.__new__(FixedWeights)

@@ -9,6 +9,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
+from msm.storage_instances import TimeIndexInstance
 from msm.models.indices import IndexTable
 from msm.settings import INDEX_IDENTIFIER_DIMENSION
 
@@ -59,4 +60,11 @@ class IndexFixingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["IndexFixingsStorage"]
+class IndexFixingsInstance(TimeIndexInstance):
+    """The base of an owner's own ``IndexFixingsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = IndexFixingsStorage
+
+
+__all__ = ["IndexFixingsInstance", "IndexFixingsStorage"]

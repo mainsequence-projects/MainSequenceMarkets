@@ -153,9 +153,9 @@ Portfolios answer these questions:
 - `msm_portfolios.recipes`: what an application reuses around the series:
   publish a signal, read history, run a portfolio, end a signal, delete its
   private rows.
-- `msm_portfolios.time_index.contract_instances`: factories that build an
-  application's private state tables (rebalance state, calendar events, event
-  ledger) in its own namespace.
+- `msm_portfolios.time_index.contract_instances`: the contract bases an
+  application declares its private state tables on (rebalance state, calendar
+  events, event ledger), in its own namespace.
 - `msm_portfolios.series_history`: `SeriesHistoryPublish`, the object
   `msm series publish` runs to publish an application's existing history to
   Markets.
@@ -657,20 +657,23 @@ uses the latest observation at or before each rebalance date.
   table or namespace.
 
 ```python
-from msm.storage_instances import configured_time_index_instance
-from msm_portfolios.contrib.signals import FixedWeights
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+# my_provider/tables.py
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance
 
-ProviderSignalWeightsStorage = configured_time_index_instance(
-    SignalWeightsStorage,
-    instance_key="signals",
-    namespace="my-provider",
-    storage_app="my_provider",
-    base=ProviderBase,  # the application's own base (Private State Tables)
-)
+
+class ProviderSignalWeights(SignalWeightsInstance, ProviderBase):  # its own base
+    __instance_key__ = "signals"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+```
+
+```python
+from msm_portfolios.contrib.signals import FixedWeights
+from my_provider.tables import ProviderSignalWeights
+
 signal = FixedWeights.from_signal_configuration(
     fixed_weights_configuration,
-    output_table=ProviderSignalWeightsStorage,
+    output_table=ProviderSignalWeights,
     namespace="my-provider",
 )
 ```
@@ -715,22 +718,22 @@ it calls one.
 ## Private State Tables
 
 Rebalance state, calendar events and the event ledger are private to the
-application that runs the portfolio. `msm_portfolios.time_index.contract_instances`
-builds them as instances of the `PortfolioRebalanceStateTS`,
-`PortfolioCalendarEventsTS` and `PortfolioEventLedgerTS` contracts, in the
-application's own MetaTables namespace, migrated by its own Alembic provider.
-ms-markets owns each contract: columns, dtypes, nullability, time index and
-index names.
+application that runs the portfolio. It declares each one with a class statement
+on the contract's base in `msm_portfolios.time_index.contract_instances`
+(`PortfolioRebalanceStateInstance`, `PortfolioCalendarEventsInstance`,
+`PortfolioEventLedgerInstance`), in its own MetaTables namespace, migrated by its
+own Alembic provider. ms-markets owns each contract: columns, dtypes, nullability,
+time index, index names, foreign keys, lookup indexes and storage layout.
 
 ```python
+# my_provider/tables.py
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm_portfolios.time_index import PortfolioValues
 from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_event_ledger_storage,
-    configured_portfolio_rebalance_state_storage,
+    PortfolioEventLedgerInstance,
+    PortfolioRebalanceStateInstance,
 )
 
 
@@ -738,42 +741,47 @@ class ProviderBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-ProviderRebalanceStateStorage = configured_portfolio_rebalance_state_storage(
-    instance_key="main",
-    namespace="my-provider",
-    storage_app="my_provider",
-    base=ProviderBase,
-)
-ProviderEventLedgerStorage = configured_portfolio_event_ledger_storage(
-    instance_key="main",
-    namespace="my-provider",
-    storage_app="my_provider",
-    base=ProviderBase,
-)
+class ProviderRebalanceState(PortfolioRebalanceStateInstance, ProviderBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+
+
+class ProviderEventLedger(PortfolioEventLedgerInstance, ProviderBase):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
+```
+
+```python
+from msm_portfolios.time_index import PortfolioValues
+from my_provider.tables import ProviderEventLedger, ProviderRebalanceState
 
 values = PortfolioValues(
     portfolio_configuration=portfolio_configuration,
-    rebalance_output_table=ProviderRebalanceStateStorage,
-    event_ledger_output_table=ProviderEventLedgerStorage,
+    rebalance_output_table=ProviderRebalanceState,
+    event_ledger_output_table=ProviderEventLedger,
 )
 ```
 
-`namespace`, `storage_app` and `base` are required and an empty value is refused:
-a factory never builds in Markets' namespace, app or base by default.
+Each class is a `class` statement at the top level of a module of the
+application's repository, never one a function returns or one in the script that
+is run: a node Job run in another process imports it by its address
+(`my_provider.tables:ProviderRebalanceState`, ADR 0066). Its own attributes say
+which instance it is: `__instance_key__`, `__metatable_namespace__` and
+`__markets_storage_app__` are required, and none falls back to Markets' own
+namespace or app. The class also inherits the application's declarative base.
 
-Each factory returns a `PlatformTimeIndexMetaTable` class whose table is
-`<storage_app>__<contract>__<instance_key>` and whose MetaTable identifier is
-`<Contract>.<instance_key>`, prefixed with the namespace when it is not the
-default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). `base=` is
-the application's own declarative base, and its Alembic provider targets that
-base's metadata. The instance's foreign keys point at Markets' own column
+Its table is `<storage_app>__<contract>__<instance_key>` and its MetaTable
+identifier `<Contract>.<instance_key>`, prefixed with the namespace when it is not
+the default Markets one (`my-provider.PortfolioRebalanceStateTS.main`). The
+application's Alembic provider targets its base's metadata and lists the classes
+as `metatable_models`. The instance's foreign keys point at Markets' own column
 objects and no Markets table is copied into that metadata, so autogenerate
-changes the application's tables only.
-`configured_portfolio_calendar_events_storage` and
-`configured_portfolio_event_ledger_storage` take the same arguments.
-`configured_time_index_instance` (`msm.storage_instances`) builds an instance
-of any other Markets storage, with the same three required arguments, and takes
-`cadence=` for a storage that declares none.
+changes the application's tables only. `msm.storage_instances` describes the
+other contracts' bases (`TradesInstance`, `SignalWeightsInstance`,
+`InterpolatedPricesInstance`, `DiscountCurvesInstance` and others), each declared
+the same way; `__cadence__` is for a contract that declares none.
 
 Bind the engine to them with `rebalance_output_table=` and
 `event_ledger_output_table=` on `PortfolioValues`, `PortfolioWeights` and
@@ -781,12 +789,12 @@ Bind the engine to them with `rebalance_output_table=` and
 computed signal (its `SignalWeightsTS` instance,
 [A Computed Signal Is Its Own Node](#a-computed-signal-is-its-own-node)). `namespace=` on a node is the MetaTables
 hash namespace of the chain, not a table's namespace; a private table's
-namespace comes from its factory. `InterpolatedPrices` requires `output_table=`,
+namespace comes from its class. `InterpolatedPrices` requires `output_table=`,
 the application's own table of that interpolation configuration
 ([The Table Of An Interpolation Configuration](#the-table-of-an-interpolation-configuration)).
 
-A private table may reference a registry row with a physical foreign key (the
-factories give each instance the contract's keys to
+A private table may reference a registry row with a physical foreign key (each
+contract gives its instances its keys to
 `Portfolio.unique_identifier`, `Asset` and `Calendar`) and declares its delete
 action. That key points from the application to Markets and is the only
 coupling between them. Markets does not discover, count or name the table:
@@ -1185,11 +1193,12 @@ instead of importing or constructing the producer that wrote it.
 
 If persistent interpolation is needed, `InterpolatedPrices` is built before the
 portfolio and then passed into `PortfolioBuildConfiguration` like any other
-dependency. `InterpolatedPricesConfig` accepts either `source_price_instance`
-or `source_time_index_meta_table_uid`. Use `source_price_instance` when the
-source price `TimeIndexTableUpdater` or `TimeIndexTableRef` is already part of the graph. Use
-`source_time_index_meta_table_uid` when attaching an already registered
-compatible source table through `TimeIndexTableRef.from_uid(...)`.
+dependency. A price source is an updater instance or a table name (ADR 0066):
+`InterpolatedPricesConfig.source_price_instance` is the source price
+`TimeIndexTableUpdater` when the graph writes the bars, or a reference to another
+owner's registered table by its physical name,
+`TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. The
+name is the same in every Environment, and the table's UID is not.
 `InterpolatedPrices` validates the registered source cadence, exposes the
 resolved source from `dependencies()`, and writes only the table of its own
 configuration, which it takes as `output_table=`.
@@ -1238,13 +1247,13 @@ application that interpolates: it declares the table on its own base and migrate
 with its own provider.
 
 ```python
+# my_app/tables.py
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 
@@ -1253,19 +1262,20 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-MyInterpolatedPrices = configured_time_index_instance(
-    InterpolatedPricesStorage,
-    instance_key=interpolated_prices_instance_key(
+class MyInterpolatedPrices(InterpolatedPricesInstance, Base):
+    __instance_key__ = interpolated_prices_instance_key(
         source_table_name="my_app__bars_1d",  # MyBars.__table__.name
         source_cadence="1d",
         upsample_frequency_id="1d",
         intraday_bar_interpolation_rule="ffill",
-    ),
-    cadence="1d",  # the upsample frequency
-    namespace="my-app",
-    storage_app="my_app",
-    base=Base,
-)
+    )
+    __metatable_namespace__ = "my-app"
+    __markets_storage_app__ = "my_app"
+    __cadence__ = "1d"  # the upsample frequency
+
+
+# One class per configuration; a dictionary is fine for looking them up.
+INTERPOLATED_PRICES_BY_PROFILE = {("1d", "ffill"): MyInterpolatedPrices}
 ```
 
 The table is `<storage_app>__interpolatedpricests__<key>`, identified as
@@ -1276,11 +1286,15 @@ revision creates it in every Environment.
 
 `InterpolatedPrices(..., output_table=MyInterpolatedPrices)` writes there. It computes
 the key from its own configuration and the registered source, and refuses a class of
-another contract, key or cadence, and a table registered with another cadence. After
+another contract, key or cadence, and a table registered with another cadence. The
+class is a `class` statement at the top level of a module of the application's
+repository, so a node Job run in another process imports it by its address
+(`my_app.tables:MyInterpolatedPrices`), and the application's migration provider lists
+it as one of its `metatable_models`. After
 correcting a class, run its provider's `metatables migrations upgrade`, which registers
 the class's cadence. Its update identity does not include the table.
 
-A change of any of the four values needs a new table: declare it, commit its revision,
+A change of any of the four values needs a new table: declare its class, commit its revision,
 and run interpolation to fill it. A first run starts at the updater's `offset_start`,
 2017-07-20 by default: give an earlier one before that run when the source holds older
 bars. The key holds no data source or schema, so two sources with one table name in
@@ -1310,8 +1324,9 @@ Execution-side event selection and capacity are owned by the configured rebalanc
 strategy.
 
 For a custom valuation source, register or migrate the source storage outside
-portfolio core, then pass the registered `TimeIndexMetaTable` UID through
-`TimeIndexTableRef.from_uid(...)`. The source table must keep its real
+portfolio core, then refer to it by its physical name with
+`TimeIndexTableRef.from_physical_identity(schema="public", table_name=...)`. The
+source table must keep its real
 value column name; it should not be reshaped to `close` just to satisfy
 portfolio core. See
 `examples/msm_portfolios/portfolio_custom_valuation_column_example.py` for the
@@ -1344,12 +1359,12 @@ price_source = InterpolatedPrices(
         upsample_frequency_id="1d",
     ),
     # Keyed by the source of these bars: see portfolio_equal_weights_config.py.
-    output_table=INTERPOLATED_PRICES_STORAGE,
+    output_table=EqualWeightInterpolatedPrices,
 )
 
 # The signal's own table: see portfolio_equal_weights_config.py.
 signal_weights = FixedWeights.from_signal_configuration(
-    ..., output_table=SIGNAL_WEIGHTS_STORAGE
+    ..., output_table=EqualWeightSignalWeights
 )
 calendar_events = PortfolioCalendarEvents(
     config=PortfolioCalendarEventsConfiguration(
@@ -1387,12 +1402,15 @@ portfolio_configuration = PortfolioConfiguration(
 run = recipes.run_portfolio(portfolio_configuration, portfolio_resolver=resolver)
 ```
 
-For a user-owned fair-value source, the same portfolio configuration uses the
-source UID directly and keeps the valuation column explicit. A source given as a
-`TimeIndexTableRef` counts as adjusted ([Price level and asset events](#price-level-and-asset-events)):
+For a user-owned fair-value source, the same portfolio configuration refers to the
+source table by its physical name and keeps the valuation column explicit. A source
+given as a `TimeIndexTableRef` counts as adjusted
+([Price level and asset events](#price-level-and-asset-events)):
 
 ```python
-valuation_source = TimeIndexTableRef.from_uid(fair_value_table_uid)
+valuation_source = TimeIndexTableRef.from_physical_identity(
+    schema="public", table_name="my_provider__fairvaluests"
+)
 
 portfolio_configuration = PortfolioConfiguration(
     portfolio_build_configuration=PortfolioBuildConfiguration(

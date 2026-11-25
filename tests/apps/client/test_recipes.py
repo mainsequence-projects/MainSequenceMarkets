@@ -27,7 +27,6 @@ from msm_portfolios.api import (
     SignalMetadata,
     SignalWeightsSeries,
 )
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.contrib.signals import (
     ApplicationWeights,
     ApplicationWeightsConfig,
@@ -53,7 +52,7 @@ from msm_portfolios.time_index.portfolios.rebalance import (
 from msm_portfolios.time_index.portfolios.storage import PortfolioEventLedgerStorage
 from msm_portfolios.rebalance_strategy import ImmediateSignal
 from msm_portfolios.time_index import SignalWeights, compute_portfolio_configuration_hash
-from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
+from msm_portfolios.time_index.signals.storage import SignalWeightsInstance
 from tests.support.metatables_runs import serve_joined_runs
 from tests.support.pinned_identities import _bound
 from tests.support.rebalance import PublishedTable
@@ -549,13 +548,10 @@ class SignalTableBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
 
-SIGNAL_TABLE = configured_time_index_instance(
-    SignalWeightsStorage,
-    instance_key="signals",
-    namespace="an-application",
-    storage_app="an_application",
-    base=SignalTableBase,
-)
+class SignalTable(SignalWeightsInstance, SignalTableBase):
+    __instance_key__ = "signals"
+    __metatable_namespace__ = "an-application"
+    __markets_storage_app__ = "an_application"
 
 
 def test_a_computed_signal_is_its_own_node_that_runs_before_the_rebalance(
@@ -582,7 +578,7 @@ def test_a_computed_signal_is_its_own_node_that_runs_before_the_rebalance(
         return frame
 
     rebalance_state.calculate = calculate_signal
-    with _bound(SIGNAL_TABLE, "a0000000-0000-4000-8000-0000000000cc"):
+    with _bound(SignalTable, "a0000000-0000-4000-8000-0000000000cc"):
         signal = FixedWeights.from_signal_configuration(
             FixedWeightsConfig(
                 asset_unique_identifier_weights=[
@@ -591,7 +587,7 @@ def test_a_computed_signal_is_its_own_node_that_runs_before_the_rebalance(
                 ],
                 signal_time_index=T0,
             ),
-            output_table=SIGNAL_TABLE,
+            output_table=SignalTable,
         )
         configuration = _configuration(signal)
         resolver = Resolver(markets.calendar["uid"])
@@ -629,31 +625,31 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
     tmp_path, monkeypatch, sqlite_revisions
 ):
     from msm_portfolios.time_index.contract_instances import (
-        configured_portfolio_calendar_events_storage,
-        configured_portfolio_rebalance_state_storage,
+        PortfolioCalendarEventsInstance,
+        PortfolioRebalanceStateInstance,
     )
 
     class ProducerBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
-    rebalance = configured_portfolio_rebalance_state_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
-    )
-    events = configured_portfolio_calendar_events_storage(
-        instance_key="private", namespace="my-app", storage_app="my_app", base=ProducerBase
-    )
-    signals = configured_time_index_instance(
-        SignalWeightsStorage,
-        instance_key="private",
-        namespace="my-app",
-        storage_app="my_app",
-        base=ProducerBase,
-    )
+    class Producer:
+        __instance_key__ = "private"
+        __metatable_namespace__ = "my-app"
+        __markets_storage_app__ = "my_app"
+
+    class PrivateRebalanceState(PortfolioRebalanceStateInstance, Producer, ProducerBase):
+        pass
+
+    class PrivateCalendarEvents(PortfolioCalendarEventsInstance, Producer, ProducerBase):
+        pass
+
+    class PrivateSignals(SignalWeightsInstance, Producer, ProducerBase):
+        pass
 
     def prepare(engine):
-        rebalance.__table__.create(engine)
-        events.__table__.create(engine)
-        signals.__table__.create(engine)
+        PrivateRebalanceState.__table__.create(engine)
+        PrivateCalendarEvents.__table__.create(engine)
+        PrivateSignals.__table__.create(engine)
 
     markets = make_sqlite_markets(
         tmp_path, monkeypatch, template=sqlite_revisions.file("head"), prepare=prepare
@@ -669,18 +665,18 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
         )
         _insert(
             markets.engine,
-            rebalance.__table__.name,
+            PrivateRebalanceState.__table__.name,
             time_index=T0,
             portfolio_identifier=identifier,
             asset_identifier="AAA",
             target_signal_time_index=T0,
         )
-    _insert(markets.engine, events.__table__.name, time_index=T0, calendar_identifier="XNYS")
+    _insert(markets.engine, PrivateCalendarEvents.__table__.name, time_index=T0, calendar_identifier="XNYS")
     for signal_uid in ("kept-signal", "ended-signal"):
         _insert(markets.engine, "ms_markets__signalmetadata", signal_uid=signal_uid)
         _insert(
             markets.engine,
-            signals.__table__.name,
+            PrivateSignals.__table__.name,
             time_index=T0,
             signal_uid=signal_uid,
             asset_identifier="AAA",
@@ -688,23 +684,23 @@ def test_delete_private_series_clears_the_producers_rows_in_key_order(
         )
 
     deleted = recipes.delete_private_series(
-        [rebalance, events, signals],
+        [PrivateRebalanceState, PrivateCalendarEvents, PrivateSignals],
         portfolios=["deleted"],
         calendars=["XNYS"],
         signals=["ended-signal"],
     )
 
     assert deleted == {
-        rebalance.__table__.name: 1,
-        events.__table__.name: 1,
-        signals.__table__.name: 1,
+        PrivateRebalanceState.__table__.name: 1,
+        PrivateCalendarEvents.__table__.name: 1,
+        PrivateSignals.__table__.name: 1,
     }
-    assert _rows(markets.engine, f"SELECT signal_uid FROM {signals.__table__.name}") == [
+    assert _rows(markets.engine, f"SELECT signal_uid FROM {PrivateSignals.__table__.name}") == [
         {"signal_uid": "kept-signal"}
     ]
     remaining = _rows(
-        markets.engine, f"SELECT portfolio_identifier FROM {rebalance.__table__.name}"
+        markets.engine, f"SELECT portfolio_identifier FROM {PrivateRebalanceState.__table__.name}"
     )
     assert remaining == [{"portfolio_identifier": "kept"}]
     with pytest.raises(ValueError, match="has none of the columns"):
-        recipes.delete_private_series([events], portfolios=["kept"])
+        recipes.delete_private_series([PrivateCalendarEvents], portfolios=["kept"])

@@ -25,7 +25,6 @@ from examples.msm.assets.utils import (  # noqa: E402
 from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E402
     ASSET_UNIQUE_IDENTIFIERS,
     CRYPTO_CALENDAR_UNIQUE_IDENTIFIER,
-    INTERPOLATED_PRICES_STORAGE,
     MIGRATION_COMMAND,
     NAMESPACE,
     PORTFOLIO_EXAMPLE_RUNTIME_MODELS,
@@ -33,9 +32,10 @@ from examples.msm_portfolios.portfolio_equal_weights_config import (  # noqa: E4
     PRICE_INTERPOLATION_RULE,
     PRICE_UPSAMPLE_FREQUENCY_ID,
     SIGNAL_TIME_INDEX,
-    SIGNAL_WEIGHTS_STORAGE,
     SOURCE_PRICE_CADENCE,
     TIME_INDEX,
+    EqualWeightInterpolatedPrices,
+    EqualWeightSignalWeights,
 )
 
 import msm_portfolios  # noqa: E402
@@ -259,7 +259,7 @@ def build_signal_weights_node() -> FixedWeights:
     signal_configuration = build_fixed_weights_config()
     return FixedWeights.from_signal_configuration(
         signal_configuration,
-        output_table=SIGNAL_WEIGHTS_STORAGE,
+        output_table=EqualWeightSignalWeights,
         namespace=NAMESPACE,
     )
 
@@ -287,7 +287,7 @@ def build_interpolated_prices_node(
             source_price_instance=source_price_instance,
             upsample_frequency_id=PRICE_UPSAMPLE_FREQUENCY_ID,
         ),
-        output_table=INTERPOLATED_PRICES_STORAGE,
+        output_table=EqualWeightInterpolatedPrices,
         hash_namespace=NAMESPACE,
     )
 
@@ -331,11 +331,11 @@ def assert_example_storage_registered(storage: Any, description: str) -> Any:
 
 
 def assert_interpolated_prices_storage_registered() -> Any:
-    return assert_example_storage_registered(INTERPOLATED_PRICES_STORAGE, "interpolated-price")
+    return assert_example_storage_registered(EqualWeightInterpolatedPrices, "interpolated-price")
 
 
 def assert_signal_weights_storage_registered() -> Any:
-    return assert_example_storage_registered(SIGNAL_WEIGHTS_STORAGE, "signal")
+    return assert_example_storage_registered(EqualWeightSignalWeights, "signal")
 
 
 def build_example_daily_bars_frame(asset_identifiers: Sequence[str]) -> pd.DataFrame:
@@ -425,7 +425,7 @@ def build_equal_weight_portfolio(
     print_step(4, "Preparing explicit price, signal, and portfolio updaters.")
     source_prices_storage_uid = resolve_source_prices_storage(runtime)
     source_prices_cadence = SOURCE_PRICE_CADENCE
-    interpolated_prices_storage = INTERPOLATED_PRICES_STORAGE
+    interpolated_prices_storage = EqualWeightInterpolatedPrices
     interpolated_prices_meta_table = assert_interpolated_prices_storage_registered()
     assert_signal_weights_storage_registered()
     source_bars_node = build_source_bars_node()
@@ -547,7 +547,7 @@ def build_equal_weight_portfolio(
         "source_prices_table_update_uid": source_prices_table_update_uid,
         "interpolated_prices_table_update_uid": interpolated_prices_table_update_uid,
         "calendar_events_table_update_uid": calendar_events_table_update_uid,
-        "signal_weights_output_table": SIGNAL_WEIGHTS_STORAGE.__table__.name,
+        "signal_weights_output_table": EqualWeightSignalWeights.__table__.name,
         "signal_weights_table_update_uid": signal_weights_table_update_uid,
         "published_signal_weights_rows": published_signal_weights_rows,
         "published_portfolio_weights_rows": published_portfolio_weights_rows,

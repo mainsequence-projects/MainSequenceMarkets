@@ -53,17 +53,15 @@ from msm_portfolios.time_index import (
     compute_portfolio_configuration_hash,
     compute_signal_uid,
 )
-from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_rebalance_state_storage,
-)
+from msm_portfolios.time_index.contract_instances import PortfolioRebalanceStateInstance
 from tests.support.pinned_identities import (
     LIBRARY_SIGNALS,
     NESTED_PORTFOLIOS,
     PINNED_PRE_RENAME_UPDATE_HASHES,
     STRATEGIES,
     PinnedBase,
+    PinnedInterpolatedPrices,
     _built_updaters,
-    _interpolated_prices_storage,
     _portfolio_configuration,
     _signal,
 )
@@ -399,15 +397,16 @@ NESTED_SIGNALS: dict[str, Callable[[dict[str, Any]], SignalWeights]] = {
 }
 
 
+class PinnedRebalanceState(PortfolioRebalanceStateInstance, PinnedBase):
+    __instance_key__ = "pinned_identity"
+    __metatable_namespace__ = DEFAULT_MARKETS_NAMESPACE
+    __markets_storage_app__ = "pinned_app"
+
+
 CONFIGURED_STORAGE: dict[str, Callable[[], type]] = {
     "index_values_1d": lambda: configured_index_values_storage(cadence="1d"),
-    "interpolated_prices_1d_ffill": _interpolated_prices_storage,
-    "rebalance_state_contract_instance": lambda: configured_portfolio_rebalance_state_storage(
-        instance_key="pinned_identity",
-        namespace=DEFAULT_MARKETS_NAMESPACE,
-        storage_app="pinned_app",
-        base=PinnedBase,
-    ),
+    "interpolated_prices_1d_ffill": lambda: PinnedInterpolatedPrices,
+    "rebalance_state_contract_instance": lambda: PinnedRebalanceState,
 }
 
 

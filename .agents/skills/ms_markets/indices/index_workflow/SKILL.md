@@ -149,11 +149,23 @@ selected Asset or Index currently has observations in the table.
 
 ## Publication
 
-Canonical cadence storage is created with:
+A provider publishes into its own cadence table (ADR 0047, decision 4), one class
+statement per cadence at the top level of a module of its repository, listed by its
+migration provider:
 
 ```python
-configured_index_values_storage(cadence="1d")
+from msm.time_index.indices import IndexValuesInstance
+
+
+class ProviderDailyIndexValues(IndexValuesInstance, ProviderBase):
+    __cadence__ = "1d"
+    __metatable_namespace__ = "my-provider"
+    __markets_storage_app__ = "my_provider"
 ```
+
+Markets' own cadence tables are `configured_index_values_storage(cadence="1d")`; which
+cadences Markets declares is not settled yet (ADR 0066, decision 6). The Index catalog
+reads a discovered table through its registration and declares nothing for it.
 
 Grain is `(time_index, index_identifier)`. Values contain:
 

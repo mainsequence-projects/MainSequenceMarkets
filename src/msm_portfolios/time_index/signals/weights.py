@@ -306,9 +306,9 @@ class SignalWeightsSource:
 class SignalWeights(SignalWeightsSource, AssetScopedPortfolioCanonicalUpdater):
     """A computed signal: a MetaTables node with its own table, which also publishes.
 
-    ``output_table`` is the producer's own ``SignalWeightsTS`` instance, declared with
-    ``configured_time_index_instance(SignalWeightsStorage, ...)`` and migrated by the
-    producer's provider, as its interpolated-price table is. It holds the rows of every
+    ``output_table`` is the producer's own ``SignalWeightsTS`` instance, declared with a
+    class statement on ``SignalWeightsInstance`` and migrated by the producer's provider,
+    as its interpolated-price table is. It holds the rows of every
     signal the producer computes, keyed by ``signal_uid``. Markets' own
     ``SignalWeightsTS`` is refused: only publishing writes it.
 
@@ -489,10 +489,9 @@ def _require_signal_weights_instance(output_table: Any, *, signal_class: type) -
         raise ValueError(
             f"{signal_class.__name__} writes its producer's own {contract} instance; "
             f"output_table={getattr(output_table, '__name__', output_table)!s} is not one. "
-            "Declare it with configured_time_index_instance(SignalWeightsStorage, "
-            "instance_key=..., namespace=..., storage_app=..., base=...) and migrate it with "
-            f"the producer's provider. Markets' own {contract} is written only by publishing "
-            "(ADR 0060)."
+            "Declare it with a class statement on SignalWeightsInstance and the producer's "
+            "base, and migrate it with the producer's provider. Markets' own "
+            f"{contract} is written only by publishing (ADR 0060)."
         )
 
 

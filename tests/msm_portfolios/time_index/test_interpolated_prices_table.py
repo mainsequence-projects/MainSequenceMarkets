@@ -20,10 +20,10 @@ from metatables import (
     schema_table_name,
     sqlalchemy_naming_convention,
 )
-from msm.storage_instances import configured_time_index_instance
 from msm_portfolios.contrib.prices.updaters import InterpolatedPrices, InterpolatedPricesConfig
 from msm_portfolios.time_index.prices.storage import (
-    ExternalPricesStorage,
+    ExternalPricesInstance,
+    InterpolatedPricesInstance,
     InterpolatedPricesStorage,
     interpolated_prices_instance_key,
 )
@@ -45,23 +45,25 @@ def _key(**changed: Any) -> str:
 
 
 def _table(
-    contract: type = InterpolatedPricesStorage,
+    contract: type = InterpolatedPricesInstance,
     *,
     cadence: str | None = "1d",
     storage_app: str = "my_provider",
     **changed: Any,
 ) -> type:
+    """A provider's table, declared on a base of its own for each case."""
+
     class ProviderBase(DeclarativeBase):
         metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 
-    return configured_time_index_instance(
-        contract,
-        instance_key=_key(**changed),
-        cadence=cadence,
-        namespace="my-provider",
-        storage_app=storage_app,
-        base=ProviderBase,
-    )
+    attributes = {
+        "__instance_key__": _key(**changed),
+        "__metatable_namespace__": "my-provider",
+        "__markets_storage_app__": storage_app,
+    }
+    if cadence is not None:
+        attributes["__cadence__"] = cadence
+    return type("ProviderInterpolatedPrices", (contract, ProviderBase), attributes)
 
 
 def _bars(
@@ -198,7 +200,7 @@ def test_the_updater_normalizes_as_the_migration_does(
 
 
 OTHER_TABLES = {
-    "another contract": lambda: _table(ExternalPricesStorage),
+    "another contract": lambda: _table(ExternalPricesInstance),
     "another source": lambda: _table(source_table_name="my_provider__other_bars_1d"),
     "another source cadence": lambda: _table(source_cadence="5m"),
     "another upsample frequency": lambda: _table(upsample_frequency_id="5m"),
@@ -215,7 +217,7 @@ def test_interpolated_prices_refuses_a_table_its_configuration_does_not_produce(
     table = OTHER_TABLES[case]()
     # Bound, so that only the check can refuse it.
     with nullcontext() if table is None else _registered(table):
-        with pytest.raises(ValueError, match="configured_time_index_instance") as refused:
+        with pytest.raises(ValueError, match="class statement on InterpolatedPricesInstance") as refused:
             InterpolatedPrices(_configuration(), output_table=table)
 
     assert _key() in str(refused.value)

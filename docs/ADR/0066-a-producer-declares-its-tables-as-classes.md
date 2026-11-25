@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-11-25), not yet implemented. Drafted at the owner's request on 2026-11-24, and
+Accepted (2026-11-25) and implemented for 6.2.0, except decision 6, which goes back to the
+owner: see "Implementation Notes". Drafted at the owner's request on 2026-11-24, and
 rebuilt on 2026-11-25 on
 [#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142).
 
@@ -305,3 +306,120 @@ Each of these calls a factory, or tells the reader to.
   which now need one class per entry.
 - **Markets' own per-cadence tables.** How each one is created today. Markets' migrations
   don't list them, and this was not checked further.
+
+## Implementation Notes
+
+### 2026-11-25: implemented for 6.2.0
+
+**How a class statement gets its table.**
+
+- `msm.storage_instances.TimeIndexInstance` is the base of every contract's base. A contract's
+  base names its Markets core storage in `__core_storage__` and is abstract. A class that
+  inherits it and is not abstract is an instance: its `__init_subclass__` builds `__table__`
+  on the owner's declarative base before SQLAlchemy maps the class, from the core storage
+  and the owner's attributes, then sets the identifier, namespace, storage app,
+  description, hash components, time index, index names and cadence.
+- The owner's attributes are `__instance_key__`, `__metatable_namespace__`,
+  `__markets_storage_app__` and, where the contract has none, `__cadence__`. They may come
+  from the class or from a mixin of the owner's, wherever that mixin is in the bases; the
+  defaults Markets' and MetaTables' own bases give every table never count.
+- A class is refused when it lacks one of them or the owner's declarative base, when its key
+  is not 1-63 lowercase letters, digits or underscores, when its cadence differs from the
+  one its core declares, when it states what its contract gives (`__table__`,
+  `__tablename__`, `__metatable_identifier__`, hash components, time index, index names,
+  layout), and when its table is already declared on that base.
+- The contract bases are:
+  - `OrdersInstance`, `OrderEventsInstance` and `TradesInstance`
+    (`msm.time_index.execution.storage`);
+  - `IndexValuesInstance` (`msm.time_index.indices.storage`), whose key is its
+    `__cadence__` and whose storage app may not be `ms_markets`;
+  - `ExternalPricesInstance` and `InterpolatedPricesInstance`
+    (`msm_portfolios.time_index.prices.storage`), and `SignalWeightsInstance`
+    (`msm_portfolios.time_index.signals.storage`);
+  - `PortfolioRebalanceStateInstance`, `PortfolioCalendarEventsInstance` and
+    `PortfolioEventLedgerInstance`, on `PortfolioContractInstance`
+    (`msm_portfolios.time_index.contract_instances`), which keep their contract rules: the
+    contract's foreign keys (`__contract_foreign_keys__`), the core's lookup indexes and a
+    copy of its storage layout;
+  - `DiscountCurvesInstance`, `IndexFixingsInstance` and `AssetPricingDetailsInstance`
+    (`msm_pricing.time_index`).
+- These are the contracts the code, docs, examples and tests declared instances of. The
+  factory accepted any core storage; the other Markets time-index storages (account
+  holdings, target positions, virtual-fund holdings, allocation lines, asset snapshots,
+  portfolio state, analytics and cash flows) have no base yet. Each would be one more
+  four-line class statement next to its core.
+- `msm` imports no other package: the portfolio and pricing bases live in their packages.
+  A class depends on nothing but its module's imports, so import order does not matter.
+
+**Removed.** `configured_time_index_instance`; `configured_contract_instance_storage` and its
+three `configured_portfolio_*_storage` factories, with `PORTFOLIO_STORAGE_CONTRACTS`,
+`PortfolioStorageContract` and the `contract_instance_*` helpers; the provider form of
+`configured_index_values_storage` (`namespace=`, `storage_app=`, `base=`); the Index
+catalog's `_index_values_model` and `_dataset_model_and_handle`.
+
+**Decision 3, the same tables.**
+
+- Before the factories were removed, `tests/identity/factory_tables.json` captured 21
+  tables as they built them at 48dda3dc: every contract above, the pinned interpolated-price
+  and rebalance-state tables, the equal-weights example's two tables, provider Index-value
+  tables and Markets' own `1d`, `1m` and `1h` ones. For each: physical name, MetaTable
+  identifiers, `info`, contract attributes, MetaTables' contract hash, the hash of its
+  registration request without `authoring.table_model` (the class's import address, which is
+  what changes) and its PostgreSQL and SQLite DDL.
+  `tests/identity/test_storage_instances.py` checks that the class statements build the same
+  21; they do. The pinned identities in `tests/identity` are unchanged.
+- One finding: the generic factory made a table's foreign keys in the order of a set, which
+  differed between processes; `TradesTS`, with five keys, came out in another order on
+  different runs. The names and clauses were always the same, and so is the database's
+  schema. A class makes them in the order of their columns, and the pins compare the
+  constraint clauses sorted.
+- On a disposable local runtime, the equal-weights example's committed revisions create
+  tables with the same DDL as before, and the registrations differ only in
+  `authoring.table_model` and the foreign keys' target uids of the new runtime. Its
+  provider's `alembic check` stays empty.
+
+**Decision 4.** The docs, the tutorial and the custom-valuation and trailing-ADV examples refer
+to another owner's table with `TimeIndexTableRef.from_physical_identity(schema=...,
+table_name=...)`. `InterpolatedPrices` and a computed signal still refuse a table whose
+contract, key or cadence differs; their messages name the base to declare it on.
+`InterpolatedPricesConfig.source_time_index_meta_table_uid` stays, and so does ADR 0030's
+description of it: removing the field would rotate the pinned `InterpolatedPrices` update
+hash.
+
+**Decision 5.** The equal-weights and Index-value example providers list their classes as
+`metatable_models`.
+
+**Decision 6, not done: it goes back to the owner.**
+
+- No Markets revision creates an `ms_markets__index_values__t_<cadence>` table: revisions
+  `0017` to `0038` create `ms_markets__indexvaluests` (`0018`) and no per-cadence one, and
+  MetaTables refuses to register a platform-managed table outside a migration. The factory
+  built only the Python class, so none of these tables exists in any Environment from
+  Markets' code.
+- Nothing in `src`, `apps` or `jobs` names a cadence for them. The only caller in `src` was
+  the Index catalog, with the cadence of a table it discovered. The examples use Markets'
+  `1m` (`extension_owned_index_storage.py`) and `1d` (`delta_hedged_option_index.py`); the
+  docs, the tutorial and the skill `1d` and `1m`; the tests `1d`, `1m` and `1h`.
+- So the set Markets must declare is not in the code. The options: Markets declares none and
+  every publisher declares its own table on `IndexValuesInstance` (ADR 0047, decision 4); or
+  it declares a set the owner names, as class statements created by a new revision `0039`.
+- Until then `configured_index_values_storage(cadence=...)` still builds Markets' own class
+  when first asked, and the two examples, `docs/knowledge/msm/indices/formula_indexes.md`,
+  `docs/knowledge/msm/indices/index.md`'s custom publication and the tutorial's formula step
+  still show it. Its three tables are pinned with the others.
+
+**Decision 7.** The catalog reads a discovered `IndexValuesTS.<cadence>` registration, Markets'
+or a provider's, through the registration: its statement names the registered physical table
+and schema, with the column types of the `IndexValuesTS` contract that the registration is
+checked against (identifier, name, columns, index names and the key to `Index`). It builds no
+class and adds nothing to any metadata. The registration's own column types are not read:
+MetaTables has no token-to-SQLAlchemy mapping, and the contract's are the ones the reads need.
+
+**MetaTables' node check.** On the equal-weights graph, MetaTables 0.1.83's
+`job_mode.node_arguments` passes `FixedWeights`, `PortfolioCalendarEvents` and the source bars.
+`InterpolatedPrices` is no longer refused for its table class
+(`examples.msm_portfolios.portfolio_equal_weights_config:EqualWeightInterpolatedPrices`); it
+now stops at the updater in its configuration, `source_price_instance`, with the error
+`PortfolioEngine` and `PortfolioRebalance` give for `CalendarEventSignal.calendar_events_instance`
+(MetaTables#164, by the same error; not checked against MetaTables' code).
+

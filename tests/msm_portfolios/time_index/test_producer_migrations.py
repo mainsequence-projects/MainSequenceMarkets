@@ -25,15 +25,14 @@ from msm.base import MarketsBase, MarketsMetaTableMixin
 from msm.models import AssetTable, CalendarTable, IndexTable, PortfolioTable
 from msm.models.index_formulas import IndexFormulaDefinitionTable
 from msm.models.registration import resolve_markets_meta_table_models
-from msm.storage_instances import configured_time_index_instance
-from msm.time_index.indices import configured_index_values_storage
+from msm.time_index.indices import IndexValuesInstance
 from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_calendar_events_storage,
-    configured_portfolio_event_ledger_storage,
-    configured_portfolio_rebalance_state_storage,
+    PortfolioCalendarEventsInstance,
+    PortfolioEventLedgerInstance,
+    PortfolioRebalanceStateInstance,
 )
 from msm_portfolios.time_index.prices.storage import (
-    InterpolatedPricesStorage,
+    InterpolatedPricesInstance,
     interpolated_prices_instance_key,
 )
 
@@ -90,24 +89,38 @@ def test_a_producer_following_the_skill_template_migrates_only_its_own_tables(
             primary_key=True,
         )
 
-    owned = {"namespace": "producer-app", "storage_app": "producer_app", "base": Base}
+    class Producer:
+        __metatable_namespace__ = "producer-app"
+        __markets_storage_app__ = "producer_app"
+
+    class ProducerInterpolatedPrices(InterpolatedPricesInstance, Producer, Base):
+        __instance_key__ = interpolated_prices_instance_key(
+            source_table_name="producer_app__bars_1d",
+            source_cadence="1d",
+            upsample_frequency_id=None,
+            intraday_bar_interpolation_rule="ffill",
+        )
+        __cadence__ = "1d"
+
+    class ProducerRebalanceState(PortfolioRebalanceStateInstance, Producer, Base):
+        __instance_key__ = "main"
+
+    class ProducerCalendarEvents(PortfolioCalendarEventsInstance, Producer, Base):
+        __instance_key__ = "main"
+
+    class ProducerEventLedger(PortfolioEventLedgerInstance, Producer, Base):
+        __instance_key__ = "main"
+
+    class ProducerDailyIndexValues(IndexValuesInstance, Producer, Base):
+        __cadence__ = "1d"
+
     models = [
         FollowedIndexTable,
-        configured_time_index_instance(
-            InterpolatedPricesStorage,
-            instance_key=interpolated_prices_instance_key(
-                source_table_name="producer_app__bars_1d",
-                source_cadence="1d",
-                upsample_frequency_id=None,
-                intraday_bar_interpolation_rule="ffill",
-            ),
-            cadence="1d",
-            **owned,
-        ),
-        configured_portfolio_rebalance_state_storage(instance_key="main", **owned),
-        configured_portfolio_calendar_events_storage(instance_key="main", **owned),
-        configured_portfolio_event_ledger_storage(instance_key="main", **owned),
-        configured_index_values_storage(cadence="1d", **owned),
+        ProducerInterpolatedPrices,
+        ProducerRebalanceState,
+        ProducerCalendarEvents,
+        ProducerEventLedger,
+        ProducerDailyIndexValues,
     ]
     # The provider as the metatable_migrations skill's template builds it: no include hook.
     provider = build_metatable_migration_provider(

@@ -9,16 +9,64 @@ and this project follows versioned releases.
 
 A computed signal is its own node again. In 6.1.0 the rebalance ran a computed signal inside
 its own update; now the signal runs before it, as a node of the same run, and the rebalance
-only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24).
+only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24). A producer
+declares each of its tables with a class statement, which a node Job run in another process
+imports by its address
+([ADR 0066](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0066-a-producer-declares-its-tables-as-classes/),
+[#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142)).
 
 ### Changed
 
+- **Breaking: a producer declares its tables with class statements** (ADR 0066, #142).
+  - Each instance of a Markets time-index storage is a `class` statement at the top level
+    of a module of the producer, on the contract's base and the producer's own
+    declarative base. Its attributes say which instance it is: `__instance_key__`,
+    `__metatable_namespace__`, `__markets_storage_app__` and, where the contract has none,
+    `__cadence__`. An Index-value table is keyed by its `__cadence__`.
+  - The contract bases: `TradesInstance`, `OrdersInstance`, `OrderEventsInstance`
+    (`msm.time_index.execution.storage`), `IndexValuesInstance`
+    (`msm.time_index.indices`), `ExternalPricesInstance`, `InterpolatedPricesInstance`
+    (`msm_portfolios.time_index.prices.storage`), `SignalWeightsInstance`
+    (`msm_portfolios.time_index.signals.storage`), `PortfolioRebalanceStateInstance`,
+    `PortfolioCalendarEventsInstance`, `PortfolioEventLedgerInstance`
+    (`msm_portfolios.time_index.contract_instances`), `DiscountCurvesInstance`,
+    `IndexFixingsInstance` and `AssetPricingDetailsInstance` (`msm_pricing.time_index`),
+    all on `msm.storage_instances.TimeIndexInstance`.
+  - A class built this way has the factory's table: the same physical name, MetaTable
+    identifier, `info`, contract hash, registration and DDL, so no migration changes for
+    an existing table. `tests/identity/factory_tables.json` pins 21 tables as the
+    factories built them. The factory made a generic instance's foreign keys in set order,
+    which differed between processes; a class makes them in the order of their columns.
+  - A class states none of what its contract gives (its table, identifier, index names,
+    layout), and none of its owner's attributes falls back to Markets' own.
+  - The equal-weights example declares `EqualWeightInterpolatedPrices` and
+    `EqualWeightSignalWeights` in place of `INTERPOLATED_PRICES_STORAGE` and
+    `SIGNAL_WEIGHTS_STORAGE`, and its provider lists the two classes. Its committed
+    revisions are unchanged: on a disposable local runtime they create the same tables,
+    with the same registration but the class's import address; the example's first run
+    wrote 2 signal rows to its table and published the same 2, with weights 0.5 and 0.5 at
+    2026-05-24 and values 1.0, 1.0, 0.99982003, 1.0292265 and 1.01942435; its second run
+    wrote nothing. MetaTables 0.1.83's node check (`node_arguments`) no longer refuses
+    `InterpolatedPrices`' table class; it now stops at the updater in its configuration
+    (`source_price_instance`), as `PortfolioEngine` and `PortfolioRebalance` stop at
+    theirs (MetaTables#164).
+  - `plain_index_values.py` declares `OneMinuteIndexValues` and `DailyIndexValues`.
+- **The Index catalog declares no table it discovers** (ADR 0066, decision 7). It reads a
+  provider's (or Markets') `IndexValuesTS.<cadence>` table by the registered physical name,
+  with the contract's column types, and builds no class on Markets' base.
+- **A portfolio's table reference uses the physical name** in the docs and examples
+  (`TimeIndexTableRef.from_physical_identity(schema=..., table_name=...)`). The
+  custom-valuation and trailing-ADV examples take `--source-table-name`,
+  `--calendar-events-table-name`, `--daily-liquidity-table-name` and
+  `--execution-bars-table-name` in place of the UID arguments.
+- **Refusals name the class statement.** `InterpolatedPrices`, a computed signal and the
+  Index-value checks say which base to declare the table on.
 - **Breaking: a computed signal is its own node, with its own table.**
   - `SignalWeights` and its subclasses (`FixedWeights`, `MarketCap`, `ExternalWeights`,
     `IntradayTrend`, `ETFReplicator`) are MetaTables updaters again. Their `output_table=`
-    (required) is the producer's own `SignalWeightsTS` instance,
-    `configured_time_index_instance(SignalWeightsStorage, ...)`, which its provider
-    migrates. Markets' own `SignalWeightsTS` is refused.
+    (required) is the producer's own `SignalWeightsTS` instance, a class on
+    `SignalWeightsInstance`, which its provider migrates. Markets' own `SignalWeightsTS` is
+    refused.
   - A signal's update writes its `SignalMetadata` row when it is missing or changed. It keeps
     the computed rows after the signal's last row in its table, publishes them to Markets'
     `SignalWeightsTS` (`SignalWeightsSeries`, with ADR 0060's rules and manager check), and
@@ -36,7 +84,7 @@ only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24).
     table or namespace. A computed signal's update hash is its class, configuration and
     namespace. `SignalWeightsConfiguration` is a MetaTables `BaseConfiguration`, which refuses
     unknown fields.
-  - The equal-weights example declares its signal table (`SIGNAL_WEIGHTS_STORAGE`), and its
+  - The equal-weights example declares its signal table (`EqualWeightSignalWeights`), and its
     provider's revision `0002` creates it. On a disposable local runtime its first run made 6
     update executions, the signal's included: the signal wrote 2 rows to that table and
     published the same 2 to Markets, with the same rebalance, ledger, weights and values as
@@ -59,6 +107,19 @@ only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24).
 
 ### Removed
 
+- **Breaking: the instance factories** (ADR 0066, decision 2):
+  `msm.storage_instances.configured_time_index_instance`;
+  `configured_contract_instance_storage`, `configured_portfolio_rebalance_state_storage`,
+  `configured_portfolio_calendar_events_storage` and
+  `configured_portfolio_event_ledger_storage`
+  (`msm_portfolios.time_index.contract_instances`), with `PORTFOLIO_STORAGE_CONTRACTS`,
+  `PortfolioStorageContract`, `portfolio_storage_contract`, `contract_instance_key`,
+  `contract_instance_identifier`, `contract_instance_table_name`,
+  `contract_instance_identity_components` and the contract-name constants; and the
+  provider form of `configured_index_values_storage` (`namespace=`, `storage_app=`,
+  `base=`). Nothing builds a table class during a run. Markets' own form,
+  `configured_index_values_storage(cadence=...)`, stays until the owner settles which
+  cadences Markets declares (ADR 0066, decision 6).
 - **Breaking: `SignalWeights.computes_weights` and `SignalWeights.run()`.** A computed signal
   is a node and a published one is not. `ApplicationWeights` is no longer a published node: it
   has no `run()`, `update()`, `dependencies()`, `OFFSET_START` or `namespace` argument, and

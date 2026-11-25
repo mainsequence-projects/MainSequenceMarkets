@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -148,24 +149,13 @@ def test_reconciliation_writes_exact_population_state(monkeypatch) -> None:
         ]
     )
     monkeypatch.setattr(catalog, "discover_canonical_datasets", lambda **_kwargs: (dataset,))
-    monkeypatch.setattr(
-        catalog,
-        "_dataset_model_and_handle",
-        lambda *_args, **_kwargs: (type("Model", (), {})(), object()),
+    values = SimpleNamespace(
+        c=SimpleNamespace(
+            time_index=catalog.IndexTable.uid,
+            index_identifier=catalog.IndexTable.unique_identifier,
+        )
     )
-    model = type(
-        "ValueModel",
-        (),
-        {
-            "time_index": catalog.IndexTable.uid,
-            "index_identifier": catalog.IndexTable.unique_identifier,
-        },
-    )
-    monkeypatch.setattr(
-        catalog,
-        "_dataset_model_and_handle",
-        lambda *_args, **_kwargs: (model, object()),
-    )
+    monkeypatch.setattr(catalog, "_dataset_table", lambda *_args, **_kwargs: values)
     monkeypatch.setattr(
         availability, "compile_markets_statement", lambda statement, **_kwargs: statement
     )

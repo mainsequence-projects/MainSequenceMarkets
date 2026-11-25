@@ -379,12 +379,15 @@ manager publishes to it (`managed_by`, recorded by Markets; any other caller
 gets `MarketsAccessError`, HTTP 403). See
 [Published Series](../../msm_portfolios/portfolios/index.md#published-series).
 
-Other time series a provider produces live in its own namespace.
-`msm.storage_instances.configured_time_index_instance` builds an instance of a
-Markets time-index storage (discount curves, index fixings, pricing details,
-index values, orders, trades ...) with the core storage's columns, foreign keys
-and grain index, under the provider's `namespace`, `storage_app` and Alembic
-`base`, all three required; the provider binds its updater with `output_table=`. Pricing
+Other time series a provider produces live in its own namespace. The provider
+declares its instance of a Markets time-index storage (discount curves, index
+fixings, pricing details, index values, orders, trades ...) with a class statement
+on the contract's base and its own Alembic base, for example
+`class MyTrades(TradesInstance, MyBase)` with `__instance_key__`,
+`__metatable_namespace__` and `__markets_storage_app__` (`msm.storage_instances`).
+The class gets the core storage's columns, foreign keys and grain index; the
+provider's migration provider lists it, and the provider binds its updater with
+`output_table=`. Pricing
 market-data bindings carry such an instance's `storage_table_uid`, and the Index
 dataset catalog its table uid. `msm.storage_copies.copy_time_index_rows` copies
 rows between two tables with the operator's own access, writing only the rows

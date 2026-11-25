@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from msm.base import MarketsBase, MarketsTimeIndexMetaTableMixin
 from msm.models.assets import AssetTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm.storage_instances import TimeIndexInstance
 from msm_portfolios.models.signals import SignalMetadataTable
 
 
@@ -71,4 +72,15 @@ class SignalWeightsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
     )
 
 
-__all__ = ["SignalWeightsStorage"]
+class SignalWeightsInstance(TimeIndexInstance):
+    """The base of an owner's own ``SignalWeightsTS`` table (``msm.storage_instances``).
+
+    A computed signal writes it, keyed by ``signal_uid``; Markets' own ``SignalWeightsTS``
+    is written only by publishing (ADR 0060).
+    """
+
+    __abstract__ = True
+    __core_storage__ = SignalWeightsStorage
+
+
+__all__ = ["SignalWeightsInstance", "SignalWeightsStorage"]

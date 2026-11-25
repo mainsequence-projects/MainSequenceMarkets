@@ -163,9 +163,7 @@ from metatables.migrations import (
 )
 from msm.base import MarketsMetaTableMixin
 from msm.models import IndexTable
-from msm_portfolios.time_index.contract_instances import (
-    configured_portfolio_rebalance_state_storage,
-)
+from msm_portfolios.time_index.contract_instances import PortfolioRebalanceStateInstance
 from sqlalchemy import ForeignKey, MetaData, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -191,9 +189,11 @@ class ProjectMarketTable(ProjectMarketsMetaTableMixin, Base):
     )
 
 
-ProjectRebalanceState = configured_portfolio_rebalance_state_storage(
-    instance_key="main", namespace="my-project", storage_app="my_project", base=Base
-)
+class ProjectRebalanceState(PortfolioRebalanceStateInstance, Base):
+    __instance_key__ = "main"
+    __metatable_namespace__ = "my-project"
+    __markets_storage_app__ = "my_project"
+
 
 ProjectAlembicVersion = build_alembic_version_metatable(
     class_name="ProjectAlembicVersion",
@@ -225,8 +225,11 @@ metadata holds the project's tables and no Markets table:
   Markets table: autogenerate would drop a column that a newer Markets deployment
   added. Its `MetaData` sets no `schema`: Alembic would write that schema onto each
   key to Markets.
-- Every model in `metatable_models` is on `Base`, hand-written or factory-built. A
-  model on another base is missing from the target, so its table is never created
+- Every model in `metatable_models` is a class statement on `Base`: a hand-written
+  table, or an instance of a Markets contract on its `<Contract>Instance` base
+  (`msm.storage_instances`). Each one sits at the top level of a module of the
+  project, so a node Job run imports it by `module:qualname`; nothing builds a table
+  class at run time. A model on another base is missing from the target, so its table is never created
   and the upgrade fails. When the target holds no table at all, MetaTables 0.1.73
   and later refuse to autogenerate. Earlier clients wrote a revision that drops
   every table in the database: read any revision they generated before applying it.
@@ -246,7 +249,7 @@ metadata holds the project's tables and no Markets table:
   `ForeignKey(AssetTable.__table__.c.uid)` for a key to `uid`. SQLAlchemy resolves a
   key given as text only inside one `MetaData`, so
   `ForeignKey("ms_markets__asset.uid")` on `Base` raises `NoReferencedTableError`.
-  The ms-markets instance factories key their instances by column object.
+  The ms-markets contract bases key their instances by column object.
 - Never copy a Markets table into that metadata, with `to_metadata` or as a `Table`
   of the same name. Autogenerate would compare the copy with the deployed table and
   drop whatever the copy lacks.
@@ -280,7 +283,8 @@ or mutate schema. The MetaTables provider already owns schema work.
 - Project tables are listed in the project provider.
 - `target_metadata` is the metadata of the project's own base and holds no Markets
   table; keys to Markets pass column objects.
-- Every project table, hand-written or factory-built, is on that base.
+- Every project table, hand-written or an instance of a Markets contract, is a class
+  statement at the top level of a project module, on that base.
 - A generated revision has operations on the project's tables only.
 - Default PostgreSQL `public` tables are authored as `schema=None`, not
   `schema="public"`.
