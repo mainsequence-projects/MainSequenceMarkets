@@ -7,6 +7,8 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-11-25
+
 A computed signal is its own node again. In 6.1.0 the rebalance ran a computed signal inside
 its own update; now the signal runs before it, as a node of the same run, and the rebalance
 only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24). A producer
