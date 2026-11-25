@@ -9,9 +9,9 @@ MetaTables 0.1.83 runs several updaters in one graph and in parallel. Nothing in
   ADR 0032 (each node of an invocation runs in its own run of a node Job).
 - It would extend `run_portfolios` as [ADR 0065](0065-every-portfolio-keeps-a-ledger.md)
   left it (decision 6 and the implementation note "one joined run").
-- Decision 3 rests on [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md):
-  a producer declares its tables in one catalog, and a run looks them up and never builds
-  one.
+- Decision 3 rests on [ADR 0066](0066-a-producer-declares-its-tables-as-classes.md):
+  a producer declares each of its tables with a class statement, which a node in a new
+  process imports by its address. MetaTables 0.1.84 requires that (its issue 165).
 - Decision 6 needs the owner: it touches the manager rule of
   [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md). The owner decided
   on 2026-11-24 that a computed signal is its own node (ADR 0060, amended for decisions 2
@@ -122,7 +122,7 @@ request:
 
 | Node | Output table | Rebuilds in a node Job run |
 | --- | --- | --- |
-| `PortfolioEngine` | `PortfolioEventLedgerStorage` | No: its strategy's `calendar_events_instance` is a typed updater field, which the check can't validate ([MetaTables#164](https://github.com/mainsequence-projects/MetaTables/issues/164)) |
+| `PortfolioEngine` | `PortfolioEventLedgerStorage` | No: its strategy's `calendar_events_instance` is a typed updater field, which the check couldn't validate. Fixed in MetaTables 0.1.84 ([MetaTables#164](https://github.com/mainsequence-projects/MetaTables/issues/164)), not re-checked here. |
 | `PortfolioRebalance` | `PortfolioRebalanceStateStorage` | No: the same |
 | `InterpolatedPrices` | `msm.storage_instances:InterpolatedPricesStorage_022eb14e1d71b6a7_equal_weight_example` | No: the class isn't importable by that path |
 | `PortfolioCalendarEvents` | `PortfolioCalendarEventsStorage` | Yes |
@@ -134,8 +134,11 @@ The rest of what blocks it:
   `configured_time_index_instance` makes each instance's Python class with `type()`, under the
   module `msm.storage_instances` and a generated name that isn't an attribute of that module.
   So every node that writes a configured instance is refused. The table itself is predefined
-  and migrated by its producer. [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md)
-  decides how producers declare such tables and how a run finds them.
+  and migrated by its producer. MetaTables keeps the rule that a node imports its table
+  classes by address, and opened
+  [#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142).
+  [ADR 0066](0066-a-producer-declares-its-tables-as-classes.md) makes producers declare such
+  tables as classes.
 - **`run_portfolios` has no way to ask for node Jobs.** A producer that calls
   `run_updaters(engines, node_job=...)` itself has to redo the preflight, the start date and the
   publications, from private functions.
@@ -186,23 +189,20 @@ flowchart TB
     G --> PUB["publish A and B<br/>PortfolioRuns.updaters holds X's outcome"]
 ```
 
-### 3. A node Job run finds its output table in the producer's catalog
+### 3. A node in a new process imports its table classes
 
-Per [ADR 0066](0066-a-producer-declares-its-tables-in-one-catalog.md), a producer declares
-every table it writes in one catalog, and a run looks a table up by its settings.
-
-- **How the node finds its table.** The node Job's entry point (decision 5) imports the
-  producer's catalog and looks up the node's output table from the settings in the node's
-  saved configuration. That works for a table per price configuration as well as for a
-  fixed one, with no constant per table.
-- **This depends on MetaTables.** MetaTables' node Job mode today finds an output table only
-  by its import address (`module:qualname`). It has to accept a table that the producer's
-  entry point looks up instead.
+- **Every table is a class.** Per [ADR 0066](0066-a-producer-declares-its-tables-as-classes.md),
+  each producer table is a class statement in the producer's module.
+- **MetaTables imports it.** MetaTables 0.1.84 imports a node's output table class, and the
+  table of any updater passed as an argument, by `module:qualname` (MetaTables ADR 0032, issue
+  165), so the node runs the producer's real classes.
+- **ms-markets adds nothing.** It needs no lookup of its own: the updater instance carries its
+  table class.
 
 ### 4. Every node a portfolio run builds rebuilds in a node Job run
 
-Once MetaTables#164 is fixed, `node_arguments` passes for every updater `run_portfolios` puts
-in the graph:
+With ms-markets on MetaTables 0.1.84, which fixes #164, and with ADR 0066's classes,
+`node_arguments` passes for every updater `run_portfolios` puts in the graph:
 
 - `PortfolioEngine`;
 - `PortfolioRebalance`;
@@ -217,9 +217,9 @@ is fixed under this decision.
 
 ### 5. ms-markets ships the node Job's entry point
 
-A producer's node Job script calls one ms-markets function and passes it the producer's
-catalog (decision 3). The function attaches the Markets runtime the nodes need, finds the
-node's output table in the catalog, then runs MetaTables' `run_updater_node()`.
+A producer's node Job script calls one ms-markets function. It attaches the Markets runtime
+the nodes need, then runs MetaTables' `run_updater_node()`, which imports the node's classes
+itself.
 
 ### 6. Who publishes a computed signal from a node Job run (owner)
 
@@ -319,7 +319,8 @@ reads the prices.
 
 - **The default doesn't change.** Without `node_job`, a run is what it is today. No
   configuration or update identity changes.
-- **Producers declare their tables in a catalog** (ADR 0066), which a node Job run imports.
+- **Producers declare their tables as classes** (ADR 0066), which a node imports by address.
+  ms-markets needs MetaTables 0.1.84 or later.
 - **A producer that uses node Jobs needs deployment work:**
   - a hosted runtime;
   - a node Job declared in its workflow file and deployed;
@@ -340,7 +341,7 @@ reads the prices.
 
 - **Node Job mode end to end.** It needs a hosted runtime; only the rebuild check ran.
 - **The rest of the rebuild check.** What `node_arguments` finds in `PortfolioEngine` and
-  `PortfolioRebalance` after MetaTables#164 is fixed.
+  `PortfolioRebalance` on MetaTables 0.1.84, which fixes #164.
 - **The runtime in a node Job run.** Whether a node Job run needs the Markets runtime
   attached before `run_updater_node()` (decision 5).
 - **The signal refusal.** That a node Job's publish of a computed signal is refused was
