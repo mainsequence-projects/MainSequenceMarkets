@@ -580,7 +580,7 @@ operation recorded by `registry_write` as `end` is, end a selection in two:
 
 ### 2026-11-24: a computed signal is its own node
 
-The amendments to decisions 2 and 5, for 6.1.0 (unreleased):
+The amendments to decisions 2 and 5, for 6.2.0 (unreleased; 6.1.0 shipped with the rebalance running a computed signal):
 
 - **Two kinds of signal, one base.** `SignalWeightsSource`
   (`src/msm_portfolios/time_index/signals/weights.py`) is what both kinds share: the
