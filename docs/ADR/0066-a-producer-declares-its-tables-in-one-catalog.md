@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24.
+Accepted (2026-11-25), not yet implemented. Drafted at the owner's request on 2026-11-24.
 
 - **The owner's decisions.** The decisions marked (owner) were made by the owner that day.
   - One producer already declares its tables a certain way, and that way becomes the standard.
@@ -22,7 +22,7 @@ Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24.
   - the catalog's shape is set (decision 8);
   - the examples, docs and skills to change are listed.
 
-  Decisions 6 to 8 are proposed, not yet the owner's.
+  The owner accepted decisions 6 to 8 on 2026-11-25.
 
 ## Context
 
@@ -179,7 +179,7 @@ flowchart TB
 - **ADR 0060 stands.** Its rules on a producer's namespace, storage app and base, and on
   private tables, are unchanged.
 
-### 6. Markets declares its own tables the same way (proposed)
+### 6. Markets declares its own tables the same way (owner)
 
 Markets is one more producer (ADR 0060, decision 5):
 - Its per-cadence index-value tables are declared in Markets' own catalog and created by
@@ -187,7 +187,7 @@ Markets is one more producer (ADR 0060, decision 5):
 - Which cadences exist is a declaration, never decided by the first request for one.
 - A cadence Markets doesn't declare is refused, like any undeclared table.
 
-### 7. A reader never declares another owner's table (proposed)
+### 7. A reader never declares another owner's table (owner)
 
 A reader that discovers a table it doesn't own reads it through that table's registration
 and declares nothing on its own base. Markets' Index catalog reading a provider's index
@@ -197,7 +197,7 @@ The implementation shows whether the Index catalog's reads, which compile SQL ag
 table's model, work from the registration alone. If they don't, this decision goes back to
 the owner.
 
-### 8. The catalog's shape (proposed)
+### 8. The catalog's shape (owner)
 
 - **Owner settings, once.** `TableCatalog(namespace=..., storage_app=..., base=...)` takes the
   producer's owner settings.
@@ -313,7 +313,6 @@ Each of these calls a builder outside a catalog, or tells the reader to.
 
 ## Not Decided Here
 
-- **Decisions 6 to 8.** They are proposed, and the owner accepts or changes them.
 - **The Index catalog's reads.** Whether they can read a discovered table from its
   registration alone (decision 7).
 
