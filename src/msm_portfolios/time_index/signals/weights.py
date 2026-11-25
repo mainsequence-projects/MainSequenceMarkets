@@ -17,6 +17,9 @@ and the reads a rebalance makes of its weights (``get_df_between_dates``,
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
+from contextvars import ContextVar
 from typing import Any
 
 import numpy as np
@@ -66,7 +69,9 @@ class SignalWeightsSource:
     ``ApplicationWeights`` from Markets.
     """
 
-    signal_configuration: Any = None
+    # Not annotated: a published signal is a pydantic model, which would make an annotated
+    # class attribute of a base one of its fields.
+    signal_configuration = None
 
     @classmethod
     def default_config(
@@ -587,6 +592,44 @@ def _signal_configuration_payload(signal: Any) -> dict[str, Any]:
     )
 
 
+_signal_identity_payloads: ContextVar[bool] = ContextVar(
+    "msm_signal_identity_payloads", default=False
+)
+
+
+@contextlib.contextmanager
+def signal_identity_payloads() -> Iterator[None]:
+    """Serialize a signal as its ``signal_uid`` payload in the enclosed calls.
+
+    A portfolio's identity names its signal by class and configuration (its
+    ``signal_uid``), never by a node's update hash or table, which differ between
+    namespaces and Environments (``compute_portfolio_configuration_hash``).
+    """
+
+    token = _signal_identity_payloads.set(True)
+    try:
+        yield
+    finally:
+        _signal_identity_payloads.reset(token)
+
+
 @update_configuration.serialize_argument.register(SignalWeightsSource)
-def _serialize_signal_weights_argument(value: SignalWeightsSource, pickle_ts: bool = False) -> dict:
-    return canonical_signal_configuration(value)
+def _serialize_signal_weights_argument(value: SignalWeightsSource) -> dict:
+    """A signal in a configuration, saved in a form MetaTables rebuilds (ADR 0067, decision 4).
+
+    In an updater's configuration a computed signal is the updater it is, saved by its
+    update, and a published one is the pydantic model it is. A node Job run rebuilds the
+    rebalance with them. In an identity payload it is its ``signal_uid`` payload
+    (``signal_identity_payloads``).
+    """
+
+    if _signal_identity_payloads.get():
+        return canonical_signal_configuration(value)
+    for form in (TimeIndexTableUpdater, BaseModel):
+        if isinstance(value, form):
+            return update_configuration.serialize_argument.dispatch(form)(value)
+    raise TypeError(
+        f"{type(value).__name__} is neither a computed signal (a SignalWeights updater) nor a "
+        "published one (a pydantic model, as ApplicationWeights), so a node Job run could "
+        "not rebuild it."
+    )

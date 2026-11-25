@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 import pytz
+from pydantic import Field
 
 from metatables import TimeIndexTableRef, TimeIndexTableUpdater
 from msm.time_index.utils.time import normalize_datetime64_ns_utc
@@ -29,6 +30,7 @@ from msm_portfolios.retirement import (
 from ..base import (
     AssetScopedPortfolioCanonicalUpdater,
     OutputTable,
+    PortfolioCanonicalUpdaterConfiguration,
     _empty_flat_frame,
     _require_columns,
     _reset_frame_index,
@@ -44,10 +46,35 @@ from .temporal import (
 )
 
 
+class PortfolioRebalanceConfiguration(PortfolioCanonicalUpdaterConfiguration):
+    """The rebalance's own settings: the portfolio it keeps the state of.
+
+    ``portfolio_identifier`` is the portfolio its run resolved. It is saved with the
+    update, so a node Job run rebuilds the rebalance for that portfolio without the
+    producer's resolver (ADR 0067, decision 4). It is no part of the update hash: the
+    portfolio's configuration is.
+    """
+
+    portfolio_identifier: str | None = Field(
+        default=None,
+        json_schema_extra={"hash_excluded": True},
+    )
+
+
 class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
     """Persist strategy-owned target activation and partial execution state."""
 
     OFFSET_START = datetime(2018, 1, 1, tzinfo=pytz.utc)
+
+    @classmethod
+    def default_config(cls) -> PortfolioRebalanceConfiguration:
+        return PortfolioRebalanceConfiguration()
+
+    @classmethod
+    def _validate_config(cls, config: Any) -> PortfolioRebalanceConfiguration:
+        if not isinstance(config, PortfolioRebalanceConfiguration):
+            raise TypeError(f"{cls.__name__} requires a PortfolioRebalanceConfiguration.")
+        return config
 
     def __init__(
         self,
@@ -71,12 +98,17 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         portfolio: Any | None = None,
         portfolio_resolver: Any | None = None,
     ) -> PortfolioRebalance:
+        if portfolio_identifier is not None:
+            # Saved with the update, outside its hash, for a node Job run to rebuild.
+            self.config = self.config.model_copy(
+                update={"portfolio_identifier": str(portfolio_identifier)}
+            )
         self._rehash_for_portfolio_configuration(portfolio_configuration)
         backtesting = (
             portfolio_configuration.portfolio_build_configuration.backtesting_weights_configuration
         )
         self._portfolio_configuration = portfolio_configuration
-        self._portfolio_identifier = portfolio_identifier
+        self._portfolio_identifier = self.config.portfolio_identifier
         self._portfolio = portfolio
         self._portfolio_resolver = portfolio_resolver
         self.signal_weights = backtesting.signal_weights_instance
@@ -232,9 +264,18 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         )
 
     def _retirement_boundary(self) -> pd.Timestamp | None:
+        """The portfolio's ``retired_at`` (ADR 0049), from the row the run resolved.
+
+        A rebalance rebuilt without one, as in a node Job run, reads its portfolio's row.
+        """
+
         portfolio = getattr(self, "_portfolio", None)
         configuration = getattr(self, "_portfolio_configuration", None)
-        if portfolio is None and configuration is not None:
+        if portfolio is None and getattr(self, "_portfolio_identifier", None):
+            from msm.api.portfolios import Portfolio
+
+            portfolio = Portfolio.get_by_unique_identifier(self._portfolio_identifier)
+        elif portfolio is None and configuration is not None:
             portfolio = get_or_create_portfolio(
                 configuration,
                 portfolio_resolver=getattr(self, "_portfolio_resolver", None),
@@ -840,6 +881,7 @@ def normalize_rebalance_state_frame(
 
 __all__ = [
     "PortfolioRebalance",
+    "PortfolioRebalanceConfiguration",
     "normalize_rebalance_input",
     "normalize_rebalance_state_frame",
     "read_rebalance_input",

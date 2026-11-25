@@ -477,6 +477,9 @@ def build_equal_weight_portfolio(
         # prices, the calendar events and the signal run once, then the rebalance and the
         # ledger; the weights and values are published after. The signal is its own node:
         # it writes the example's signal table and publishes the same rows to Markets.
+        # On a hosted runtime, node_job="<the producer's node Job>" runs each of these
+        # nodes in its own Job run, independent ones at the same time (ADR 0067); the
+        # examples run on the local runtime, which refuses it.
         portfolio_run = run_portfolio(
             portfolio_configuration,
             namespace=NAMESPACE,

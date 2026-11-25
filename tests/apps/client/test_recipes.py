@@ -544,6 +544,138 @@ def test_run_portfolios_lists_a_portfolio_that_cannot_run_and_runs_the_others(
     assert len(rebalance_state.invocations) == 1
 
 
+class Report(Prices):
+    """A producer's own updater that reads the prices and no portfolio needs."""
+
+    def dependencies(self) -> dict:
+        return {"prices": self.prices}
+
+
+def _report(prices: Prices) -> Report:
+    report = Report.build("report", pd.DataFrame(columns=["time_index"]), index=["time_index"])
+    report.prices = prices
+    return report
+
+
+def _two_portfolios(markets, prices: Prices):
+    """Two portfolios on the same prices, each with its own published signal."""
+
+    signals = {name: _signal(name) for name in ("model-a", "model-b")}
+    configurations = {
+        name: _configuration(signal, prices=prices, name=f"{name}-portfolio")
+        for name, signal in signals.items()
+    }
+    resolver = Resolver(
+        markets.calendar["uid"],
+        {
+            compute_portfolio_configuration_hash(configuration): f"{name}-portfolio"
+            for name, configuration in configurations.items()
+        },
+    )
+    for signal in signals.values():
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 0.6, "BBB": 0.4}})
+    return list(configurations.values()), resolver
+
+
+def test_run_portfolios_runs_the_producers_updaters_in_the_same_invocation(
+    markets, rebalance_state
+) -> None:
+    """ADR 0067, decision 2: a producer's updater shares the portfolios' graph."""
+
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+
+    runs = recipes.run_portfolios(configurations, portfolio_resolver=resolver, updaters=[report])
+
+    assert runs.failed == () and len(runs.ran) == 2
+    (outcome,) = runs.updaters
+    assert outcome.updater is report and outcome.state == "succeeded"
+    (invocation,) = rebalance_state.invocations
+    assert invocation.count("prices") == 1
+    assert invocation.index("prices") < invocation.index("report")
+
+
+def test_a_producers_updater_that_fails_stops_no_portfolio(
+    markets, rebalance_state
+) -> None:
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+    calculate = rebalance_state.calculate
+
+    def fail_the_report(updater):
+        if updater is report:
+            raise RuntimeError("the report failed")
+        return calculate(updater)
+
+    rebalance_state.calculate = fail_the_report
+
+    runs = recipes.run_portfolios(configurations, portfolio_resolver=resolver, updaters=[report])
+
+    assert runs.failed == () and len(runs.ran) == 2
+    (outcome,) = runs.updaters
+    assert outcome.state == "failed" and "the report failed" in str(outcome.error)
+
+
+def test_run_portfolios_passes_the_run_settings_to_metatables(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """ADR 0067, decision 1: node_job and max_parallel_nodes go to run_updaters unchanged."""
+
+    import metatables
+
+    run_updaters = metatables.run_updaters
+    settings: list[dict] = []
+
+    def recorded(updaters, **kwargs):
+        settings.append(kwargs)
+        # node_job is refused on a local runtime; the graph runs in this process here.
+        return run_updaters(updaters)
+
+    monkeypatch.setattr(metatables, "run_updaters", recorded)
+    configurations, resolver = _two_portfolios(markets, _prices())
+
+    runs = recipes.run_portfolios(
+        configurations, portfolio_resolver=resolver, node_job="nodes", max_parallel_nodes=4
+    )
+    recipes.run_portfolio(configurations[0], portfolio_resolver=resolver)
+
+    assert runs.failed == ()
+    assert settings == [
+        {"node_job": "nodes", "max_parallel_nodes": 4},
+        {"node_job": None, "max_parallel_nodes": -1},
+    ]
+
+
+def test_a_run_refused_before_it_starts_fails_every_portfolio_and_runs_no_updater(
+    markets, rebalance_state, monkeypatch
+) -> None:
+    """A node a node Job run could not rebuild stops the run before anything starts."""
+
+    import metatables
+    from metatables.updaters.job_mode import NodeRebuildError
+
+    def refused(_updaters, **_kwargs):
+        raise NodeRebuildError("Report: argument 'x' cannot be rebuilt")
+
+    monkeypatch.setattr(metatables, "run_updaters", refused)
+    prices = _prices()
+    report = _report(prices)
+    configurations, resolver = _two_portfolios(markets, prices)
+
+    runs = recipes.run_portfolios(
+        configurations, portfolio_resolver=resolver, updaters=[report], node_job="nodes"
+    )
+
+    assert runs.ran == ()
+    assert [failure.position for failure in runs.failed] == [0, 1]
+    assert all("cannot be rebuilt" in failure.detail for failure in runs.failed)
+    (outcome,) = runs.updaters
+    assert outcome.updater is report and outcome.state == "not_run"
+    assert isinstance(outcome.error, NodeRebuildError)
+
+
 class SignalTableBase(DeclarativeBase):
     metadata = MetaData(naming_convention=sqlalchemy_naming_convention())
 

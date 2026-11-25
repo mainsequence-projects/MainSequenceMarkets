@@ -56,8 +56,8 @@ under the `runtime` and the `remote` row backend:
 | `portfolio_history` | `(portfolio_identifier, *, limit=100, offset=0) -> PortfolioHistory` | A portfolio's values newest first, with the total count |
 | `weights_as_of` | `(portfolio_identifiers, at=None) -> DataFrame` | Each portfolio's latest executed weights at or before `at` |
 | `portfolio_preflight` | `(portfolio_configuration, *, portfolio_identifier=None) -> PortfolioPreflight` | Why a portfolio cannot run yet (a published signal with no observation, a retired portfolio) |
-| `run_portfolios` | `(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None) -> PortfolioRuns` | Runs every portfolio's ledger in one joined MetaTables run (`run_updaters`): a dependency several portfolios share (prices, calendar events, a computed signal and its inputs, a strategy's input) runs once; a computed signal's node writes its table and publishes before the rebalances that read it; then each portfolio publishes the weights and values its ledger projects and creates or updates its `Portfolio` row. Answers `ran` (a `PortfolioRun` each, in the order given) and `failed` (position, identifier, reason, error); a refused or failed portfolio never stops the others. The per-tick call |
-| `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None) -> PortfolioRun` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it |
+| `run_portfolios` | `(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, updaters=(), node_job=None, max_parallel_nodes=-1) -> PortfolioRuns` | Runs every portfolio's ledger, and the producer's own `updaters`, in one joined MetaTables run (`run_updaters`): a dependency they share (prices, calendar events, a computed signal and its inputs, a strategy's input) runs once; a computed signal's node writes its table and publishes before the rebalances that read it; then each portfolio publishes the weights and values its ledger projects and creates or updates its `Portfolio` row. With `node_job`, each node runs in its own run of that Job, independent ones at the same time, up to `max_parallel_nodes` (ADR 0067). Answers `ran` (a `PortfolioRun` each, in the order given), `failed` (position, identifier, reason, error) and `updaters` (each updater's MetaTables outcome); a refused or failed portfolio never stops the others. The per-tick call |
+| `run_portfolio` | `(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, portfolio_description=None, node_job=None, max_parallel_nodes=-1) -> PortfolioRun` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it |
 | `end_signal` | `(signal_uid) -> dict` | Deletes a signal's weights and its metadata in one Markets call |
 | `end_signals` | `(signal_uids) -> dict` | Ends several signals in one Markets call and one transaction; answers `ended`, and `failed` with each refused or missing signal's reason, which never stops the others |
 | `delete_private_series` | `(tables, *, portfolios=(), calendars=(), accounts=(), signals=()) -> dict[str, int]` | Deletes the producer's private rows of the given keys, a table before the tables it references, before the registry delete |
@@ -140,6 +140,30 @@ runs = recipes.run_portfolios(
 for failure in runs.failed:
     print(failure.position, failure.portfolio_identifier, failure.detail)
 ```
+
+On a hosted runtime the same call runs each node in its own run of the producer's node
+Job, independent nodes at the same time (ADR 0067). The producer's other updaters join
+the same graph, so what they share with the portfolios runs once:
+
+```python
+runs = recipes.run_portfolios(
+    [configuration_a, configuration_b],
+    rebalance_output_table=MyRebalanceState,
+    event_ledger_output_table=MyEventLedger,
+    portfolio_resolver=my_resolver,
+    updaters=[my_report],             # outcomes in runs.updaters
+    node_job="Updater node",          # the node Job's spec.name
+    max_parallel_nodes=8,
+)
+```
+
+- The node Job's script is `from msm_portfolios.node_job import run_node; run_node()`.
+  Declare the Job in the workflow file and give the Job that calls `run_portfolios`
+  `runner` access to it (`docs/knowledge/msm_portfolios/portfolios/index.md`,
+  "A Producer's Own Updaters And Parallel Runs").
+- A node Job run is a new process. Every table is a top-level class statement
+  (ADR 0066), and a node reads another node's result from its table only.
+- `node_job` is refused on a local runtime: develop and test without it.
 
 `PortfolioWeights.run()` and `PortfolioValues.run()` publish what the ledger holds and
 run nothing; the recipes are the way to run a portfolio.

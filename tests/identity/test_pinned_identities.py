@@ -275,6 +275,7 @@ PINNED_CONFIGURATION_PATHS = (
     "msm_portfolios.time_index.portfolios.accounting:PortfolioEngineConfiguration",
     "msm_portfolios.time_index.portfolios.analytics:PortfolioAnalyticsConfiguration",
     "msm_portfolios.time_index.portfolios.calendar_events:PortfolioCalendarEventsConfiguration",
+    "msm_portfolios.time_index.portfolios.rebalance:PortfolioRebalanceConfiguration",
     "msm_pricing.time_index.curves:CurveConfig",
     "msm_pricing.time_index.curves:CurveUpdaterConfiguration",
     "msm_pricing.time_index.index_fixings:IndexFixingConfiguration",

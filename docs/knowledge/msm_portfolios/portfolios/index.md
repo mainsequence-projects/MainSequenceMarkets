@@ -688,6 +688,87 @@ the preflight refused, whose node or a dependency failed, or whose publication
 failed, with its position, identifier and reason. `run_portfolio` is the same
 for one portfolio and raises what stopped it.
 
+### A Producer's Own Updaters And Parallel Runs
+
+`run_portfolios(..., updaters=[...], node_job=None, max_parallel_nodes=-1)`
+([ADR 0067](../../../ADR/0067-portfolio-runs-in-parallel.md)):
+
+- **`updaters`.** The producer's own updaters run in the same invocation, as heads
+  next to the ledgers, so what they share with a portfolio runs once. Each one's
+  MetaTables `UpdaterOutcome` is in `PortfolioRuns.updaters`, in the order given.
+  One that fails stops only what needs it; the portfolios still publish.
+- **`node_job` and `max_parallel_nodes`.** They go to MetaTables' `run_updaters`
+  unchanged, and neither is part of any identity.
+  - Without `node_job`, the default, every node runs in this process, one after
+    another.
+  - With it, each node runs in its own run of that Job, and independent nodes run
+    at the same time, up to `max_parallel_nodes` (`-1`, no limit).
+  - The weights and values are published in this process after the graph, either
+    way: a ledger that ran in a node Job run is read from its table.
+
+```text
+run_portfolios([A, B], updaters=[X], node_job="Updater node", max_parallel_nodes=4)
+
+  bars ─> prices ─┬─> rebalance A ─> ledger A ─┐
+  calendar events ┼─> rebalance B ─> ledger B ─┼─> publish A, then B (this process)
+                  └─> X                        │
+  (each box one node Job run; independent ones at the same time)
+```
+
+A node Job run is a new process. MetaTables rebuilds the node's updater from its
+saved configuration and imports its classes by their address. A run in which a node
+cannot be rebuilt is refused before anything starts: every portfolio fails with that
+error, and every updater's outcome is `not_run`.
+
+- **Tables.** Every table of the graph is a top-level class statement (ADR 0066).
+- **Signals.** A rebalance saves a computed signal by its update and a published
+  `ApplicationWeights` as its pydantic model. A node Job run rebuilds both.
+- **The rebalance's portfolio.** `PortfolioRebalanceConfiguration.portfolio_identifier`
+  saves the portfolio the run resolved, outside the update hash, so the rebuilt
+  rebalance needs no resolver.
+- **Shared reads.** One runtime lookup, one read of each calendar and the rows
+  passed between nodes apply inside one Job run. Another node's result is read from
+  its table.
+
+Node Job mode needs a hosted runtime, so develop and test without `node_job`. The
+producer declares the node Job in its workflow file, next to the Job that calls
+`run_portfolios`, which needs `runner` access to it (`sized_runner` when a node
+declares its size):
+
+```yaml
+resources:
+  - key: updater-node
+    kind: job
+    spec:
+      name: Updater node          # the node_job argument
+      execution_path: jobs/run_updater_node.py
+      cpu_request: "1"
+      memory_request: "2"
+      max_runtime_seconds: 3600
+  - key: run-portfolios
+    kind: job
+    spec:
+      name: Run portfolios
+      execution_path: jobs/run_portfolios.py
+    access:
+      resources:
+        - key: updater-node
+          policy: runner
+```
+
+```python
+# jobs/run_updater_node.py
+from msm_portfolios.node_job import run_node
+
+if __name__ == "__main__":
+    run_node()
+```
+
+`run_node()` runs MetaTables' `run_updater_node()` inside the same per-run scopes as
+`run_portfolios`. A node Job run is a workload of the producer's branch, so a
+computed signal it publishes has the same manager as the Job that created it
+(`branch:<uid>`, ADR 0060).
+
 `PortfolioWeights.run()` and `PortfolioValues.run()` publish what the ledger holds
 and run nothing. `PortfolioValues.run()` answers `portfolio_weights`,
 `portfolio_values` (the values' `SeriesPublication`, `None` when nothing was new)
@@ -709,8 +790,8 @@ it calls one.
 | `portfolio_history(portfolio_identifier, *, limit=100, offset=0)` | A portfolio's values newest first, with the total count. |
 | `weights_as_of(portfolio_identifiers, at=None)` | Each portfolio's latest executed weights at or before `at`. |
 | `portfolio_preflight(portfolio_configuration, *, portfolio_identifier=None)` | Why a portfolio cannot run yet, for example a published signal with no observation. A computed signal is computed by the run. |
-| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None)` | Runs every portfolio's ledger in one joined MetaTables run from each signal's first observation (shared prices, calendar events, computed signals and inputs once, each rebalance, each ledger), creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran` and `failed` (see "Running portfolios"). |
-| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ...)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
+| `run_portfolios(portfolio_configurations, *, rebalance_output_table=None, event_ledger_output_table=None, namespace=None, portfolio_resolver=None, updaters=(), node_job=None, max_parallel_nodes=-1)` | Runs every portfolio's ledger, and the producer's own `updaters`, in one joined MetaTables run from each signal's first observation (shared prices, calendar events, computed signals and inputs once, each rebalance, each ledger), in this process or in node Jobs. Creates each `Portfolio` row when it does not exist (its manager is the caller), publishes the weights and values each ledger projects, and answers `ran`, `failed` and `updaters` (see "Running portfolios"). |
+| `run_portfolio(portfolio_configuration, *, rebalance_output_table=None, event_ledger_output_table=None, ..., node_job=None, max_parallel_nodes=-1)` | `run_portfolios` for one portfolio: answers what was written and whether a first rebalance happened, or raises what stopped it. |
 | `end_signal(signal_uid)` | Deletes a signal's weights and its metadata in one Markets call (`SignalMetadata.end`). |
 | `end_signals(signal_uids)` | Ends several signals in one Markets call and one transaction (`SignalMetadata.end_many`); a missing or refused signal is listed in `failed` with the reason and never stops the others. |
 | `delete_private_series(tables, *, portfolios=(), calendars=(), accounts=(), signals=())` | Deletes the application's private rows of the given keys, a table before the tables it references, before the registry delete. A computed signal's table refuses `end_signal` until its rows are deleted. |

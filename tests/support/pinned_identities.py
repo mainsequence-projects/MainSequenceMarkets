@@ -40,7 +40,7 @@ from msm_portfolios.contrib.signals.fixed_weights import (
     FixedWeights,
     FixedWeightsConfig,
 )
-from msm_portfolios.time_index import SignalWeights
+from msm_portfolios.time_index import SignalWeights, SignalWeightsSource
 from msm_portfolios.time_index.prices.storage import (
     InterpolatedPricesInstance,
     interpolated_prices_instance_key,
@@ -78,11 +78,8 @@ class _Source(TimeIndexTableUpdater):
         return {}
 
 
-def _source(update_hash: str) -> _Source:
-    source = object.__new__(_Source)
-    source.update_hash = update_hash
-    source.update_statistics = None
-    source._output_table = SimpleNamespace(
+def _output_table(update_hash: str) -> SimpleNamespace:
+    return SimpleNamespace(
         get_time_index_meta_table=lambda: TimeIndexMetaTable.model_construct(
             uid=f"{update_hash}-table",
             data_source_uid="source",
@@ -90,12 +87,31 @@ def _source(update_hash: str) -> _Source:
         get_data_source_uid=lambda: "source",
         get_meta_table_uid=lambda: f"{update_hash}-table",
     )
+
+
+def _source(update_hash: str) -> _Source:
+    source = object.__new__(_Source)
+    source.update_hash = update_hash
+    source.update_statistics = None
+    source._output_table = _output_table(update_hash)
     return source
 
 
-def _signal(signal_class: type[SignalWeights], configuration: Any) -> SignalWeights:
+def _signal(signal_class: type[SignalWeightsSource], configuration: Any) -> SignalWeightsSource:
+    """The signal of ``configuration``, built without a table.
+
+    A published signal is built as it is. A computed one stands in for its node, with the
+    update hash and table a run gives it: a portfolio's rebalance saves the signal by them
+    (ADR 0067, decision 4). The update hash follows the signal's uid.
+    """
+
+    if not issubclass(signal_class, TimeIndexTableUpdater):
+        return signal_class.from_signal_configuration(configuration)
     signal = object.__new__(signal_class)
     signal.signal_configuration = configuration
+    signal.update_hash = f"{signal_class.__name__.lower()}_{signal.signal_uid}"
+    signal.update_statistics = None
+    signal._output_table = _output_table(signal.update_hash)
     return signal
 
 

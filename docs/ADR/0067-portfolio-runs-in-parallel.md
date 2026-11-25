@@ -2,8 +2,9 @@
 
 ## Status
 
-Proposed (2026-11-24). Drafted at the owner's request on 2026-11-24, after an analysis of how
-MetaTables 0.1.83 runs several updaters in one graph and in parallel. Nothing in it is decided.
+Accepted (2026-11-25) and implemented for 6.2.0: see "Implementation Notes". Drafted at the
+owner's request on 2026-11-24, after an analysis of how MetaTables 0.1.83 runs several updaters
+in one graph and in parallel; the owner asked for its implementation on 2026-11-25.
 
 - It builds on MetaTables ADR 0031 (several updaters run as one invocation) and MetaTables
   ADR 0032 (each node of an invocation runs in its own run of a node Job).
@@ -12,10 +13,11 @@ MetaTables 0.1.83 runs several updaters in one graph and in parallel. Nothing in
 - Decision 3 rests on [ADR 0066](0066-a-producer-declares-its-tables-as-classes.md):
   a producer declares each of its tables with a class statement, which a node in a new
   process imports by its address. MetaTables 0.1.84 requires that (its issue 165).
-- Decision 6 needs the owner: it touches the manager rule of
+- Decision 6 was left to the owner: it touches the manager rule of
   [ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md). The owner decided
   on 2026-11-24 that a computed signal is its own node (ADR 0060, amended for decisions 2
-  and 5); who publishes it from a node Job run is still open.
+  and 5). The code answers who publishes it from a node Job run, so it needs no new rule
+  (decision 6).
 
 ## Context
 
@@ -142,16 +144,16 @@ The rest of what blocks it:
 - **`run_portfolios` has no way to ask for node Jobs.** A producer that calls
   `run_updaters(engines, node_job=...)` itself has to redo the preflight, the start date and the
   publications, from private functions.
-- **A computed signal published from a node Job would be refused.**
-  - A node Job runs as the Job's workload User.
+- **Who publishes a computed signal from a node Job run.**
+  - A computed signal's node publishes its new rows inside its update.
   - The Markets API refuses a publish whose caller isn't the series' manager
     (`manager_refusal`, `src/msm/api/managers.py`).
-  - A computed signal's node publishes its new rows inside its update, so in a node Job run
-    that publish is the workload User's.
+  - The 2026-11-24 draft took the caller to be the node Job's workload User, so the publish
+    would be refused. Decision 6 corrects that: the caller is the branch.
 
 ## Decision
 
-All proposed.
+Accepted on 2026-11-25.
 
 ### 1. `run_portfolios` takes MetaTables' run settings
 
@@ -215,20 +217,50 @@ A test runs that check on a portfolio graph, so a change that breaks it fails in
 stops at the first argument it can't rebuild, so what it finds after #164 isn't known yet. It
 is fixed under this decision.
 
+What it found, and how it was fixed, is in "Implementation Notes":
+
+- **The signal.** A rebalance saves a computed signal by its update and a published one as its
+  pydantic model, which MetaTables rebuilds. A portfolio's identity still names its signal by
+  its `signal_uid`.
+- **The portfolio.** A rebalance saves its portfolio's identifier outside its hash, so a
+  rebuilt one needs no resolver.
+
 ### 5. ms-markets ships the node Job's entry point
 
-A producer's node Job script calls one ms-markets function. It attaches the Markets runtime
-the nodes need, then runs MetaTables' `run_updater_node()`, which imports the node's classes
-itself.
+A producer's node Job script calls one ms-markets function, `msm_portfolios.node_job.run_node()`.
+It runs MetaTables' `run_updater_node()`, which imports the node's classes itself, inside the
+per-run scopes `run_portfolios` gives its nodes: one runtime lookup (#140), one read of each
+calendar (#137) and the rows a node keeps (#139). Nothing else needs attaching: the Markets
+backend is the Job's setting, as for any producer Job.
 
-### 6. Who publishes a computed signal from a node Job run (owner)
+```python
+# jobs/run_updater_node.py, in the producer's repository
+from msm_portfolios.node_job import run_node
+
+if __name__ == "__main__":
+    run_node()
+```
+
+### 6. A node Job run publishes a computed signal as its branch
 
 The owner decided on 2026-11-24 that a computed signal is its own node of the portfolio DAG
 ([ADR 0060](0060-producers-publish-markets-reads-only-its-own-tables.md), amended for
 decisions 2 and 5): its update writes the producer's own signal table and publishes the new
-rows to Markets, and the rebalance only reads the table. In a node Job run that publish is
-the node Job's workload User's, and Markets refuses it unless that User manages the signal.
-Who publishes a computed signal from a node Job run stays open.
+rows to Markets, and the rebalance only reads the table. Who publishes it from a node Job run
+was left open. The code answers it, and nothing new is needed:
+
+- **The caller is the branch.** Markets records and checks a row's manager as the caller's
+  principal (`caller_principal`, `apps/v1/identity.py`). A workload User declared on a code
+  repository branch is `branch:<branch uid>`: every Job, release and Agent of one application
+  in one Environment.
+- **The same manager.** A node Job is a Job of the producer's branch, as the Job that calls
+  `run_portfolios` is. A node Job run publishes a computed signal as the manager that created
+  its `SignalMetadata` row when a Job of the branch created it.
+- **A signal a person created.** One created by a person (`user:<uid>`), say from a laptop
+  against the hosted Markets, is refused in a node Job run as in any Job. An Organization admin
+  assigns it to the branch (`msm registry assign-manager`), as ADR 0060 already says.
+
+This was read in the code, not run on a hosted runtime.
 
 ### 7. What stays as it is
 
@@ -326,7 +358,7 @@ reads the prices.
   - a node Job declared in its workflow file and deployed;
   - `policy: sized_runner` if nodes set their size;
   - grants for the node Job's workload User on the producer's tables and on Markets;
-  - the signal managers of decision 6.
+  - computed signals created by a Job of the branch, or assigned to it (decision 6).
 - **Each node Job run is its own process.** It looks up its runtime and reads its calendar
   and its tables itself. The per-run savings apply inside one Job run only.
 
@@ -337,12 +369,72 @@ reads the prices.
   writing everything at the end of a run is open.
 - **Node sizes.** The sizes ms-markets' nodes declare (`node_resources()`), if any.
 
+## Examples, Docs And Skills To Change
+
+- **Docs.** `docs/knowledge/msm_portfolios/portfolios/index.md`: the recipes table, and a
+  section on a producer's own updaters and parallel runs, with the node Job's workflow
+  declaration and script.
+- **Skills** (`.agents/skills/ms_markets/`): `platform/producer_boundary` (the recipes table
+  and a parallel call) and `portfolios/portfolio_workflow` (running portfolios).
+- **Examples.** `examples/msm_portfolios/portfolio_equal_weights_example.py` says where
+  `node_job` goes. The examples run on the local runtime, which refuses node Job mode, so no
+  example runs one.
+
 ## Not Verified
 
-- **Node Job mode end to end.** It needs a hosted runtime; only the rebuild check ran.
-- **The rest of the rebuild check.** What `node_arguments` finds in `PortfolioEngine` and
-  `PortfolioRebalance` on MetaTables 0.1.84, which fixes #164.
-- **The runtime in a node Job run.** Whether a node Job run needs the Markets runtime
-  attached before `run_updater_node()` (decision 5).
-- **The signal refusal.** That a node Job's publish of a computed signal is refused was
-  read in `manager_refusal`, not run.
+- **Node Job mode end to end.** It needs a hosted runtime. Every node's check and rebuild ran
+  in a test, with MetaTables' update records stood in; no node Job run ran.
+- **The signal's manager.** Decision 6 was read in `caller_principal`, not run.
+
+## Implementation Notes
+
+### 2026-11-25: implemented for 6.2.0
+
+ms-markets requires MetaTables 0.1.84 (`mainsequence-metatable>=0.1.84`).
+
+**Decisions 1 and 2.**
+
+- `run_portfolios` takes `updaters`, `node_job` and `max_parallel_nodes`; `run_portfolio`
+  takes the last two. They go to `run_updaters` unchanged, with the producer's updaters as
+  heads after the ledgers.
+- `PortfolioRuns.updaters` holds each updater's MetaTables `UpdaterOutcome`, in the order
+  given.
+- An error raised before any node starts, such as a node a node Job run could not rebuild,
+  fails every portfolio with it, and each updater's outcome is `not_run`.
+
+**Decision 4: what the check found on MetaTables 0.1.84, and the fixes.**
+
+- **Nodes that passed.** `AssetSnapshot`, `InterpolatedPrices`, `PortfolioCalendarEvents` and
+  the computed signals passed `node_arguments`.
+- **The signal.** `PortfolioRebalance` was refused, and the ledger through it. The portfolio
+  configuration saved its signal as its `signal_uid` payload (class path and configuration),
+  which no MetaTables rebuild turns back into a signal.
+  - A signal in an updater's configuration is now saved in a form MetaTables rebuilds: a
+    computed signal by its update, like any updater, and a published one as the pydantic
+    model it is.
+  - `ApplicationWeights` is a pydantic model of its configuration.
+  - A portfolio's configuration hash still names its signal by its `signal_uid` payload
+    (`signal_identity_payloads`), so it is the same in every namespace and Environment. An
+    update hash and a table UID are not.
+- **The portfolio.** `node_arguments` compares arguments and builds nothing; MetaTables'
+  `rebuild_updater`, run on every node, found the rest.
+  - A rebalance got its portfolio's identifier, row and resolver after construction, so a
+    rebuilt one would have asked a resolver it does not have.
+  - `PortfolioRebalanceConfiguration.portfolio_identifier` now saves the identifier, outside
+    the update hash. MetaTables refreshes a node's saved configuration from the live one
+    before node Job runs start.
+  - A rebalance without the row reads it by its identifier, as the ledger does.
+- **Identities.** The `PortfolioRebalance` and `PortfolioEngine` update hashes change: the
+  signal's saved form and the rebalance's configuration class. Signal UIDs, portfolio
+  configuration hashes and strategy revisions do not; their pins pass unchanged.
+- **The test.** `tests/msm_portfolios/time_index/test_node_job_rebuild.py` covers 11 graphs:
+  the six strategies on `FixedWeights`, and `ImmediateSignal` on `MarketCap`,
+  `ExternalWeights`, `IntradayTrend`, `ETFReplicator` and `ApplicationWeights`.
+  - It runs `node_arguments` and `rebuild_updater` on every node, with the update records
+    stood in from the live graph and every connection refused.
+  - Each rebuilt node has the live node's class, table and update hash.
+
+**Decision 5.** `msm_portfolios.node_job.run_node`, tested in
+`tests/msm_portfolios/test_node_job.py`.
+
+**Decision 6.** No change: see the decision.

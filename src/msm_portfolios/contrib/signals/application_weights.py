@@ -12,11 +12,12 @@ a portfolio's rebalance has no edge to it. The rebalance reads its weights from 
 from __future__ import annotations
 
 import datetime
+from typing import Any, ClassVar
 from collections.abc import Mapping
 from datetime import timedelta
 
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from msm_portfolios.configuration import PortfolioConfigBaseModel
 from msm_portfolios.series_nodes import PublishedSeriesReads
@@ -43,7 +44,7 @@ class ApplicationWeightsConfig(PortfolioConfigBaseModel):
     )
 
 
-class ApplicationWeights(SignalWeightsSource, PublishedSeriesReads):
+class ApplicationWeights(SignalWeightsSource, PublishedSeriesReads, PortfolioConfigBaseModel):
     """Weights an application gives; observations are published, never calculated.
 
     ``publish`` writes one or more observations. Each observation is the whole set
@@ -54,14 +55,24 @@ class ApplicationWeights(SignalWeightsSource, PublishedSeriesReads):
 
     It is read from Markets: ``get_df_between_dates``, ``get_last_observation`` and
     ``first_observation_time`` read its published series.
+
+    It is a pydantic model of its configuration, so a portfolio's rebalance saved by
+    MetaTables rebuilds it in a node Job run (ADR 0067, decision 4).
     """
 
-    series_resource = "signal-weights"
-    key_column = SIGNAL_UID
+    series_resource: ClassVar[str] = "signal-weights"
+    key_column: ClassVar[str] = SIGNAL_UID
 
-    def __init__(self, config: SignalWeightsConfiguration | None = None) -> None:
-        self.config = self._validate_config(config or self.default_config())
-        self.signal_configuration = self.config.signal_configuration
+    config: SignalWeightsConfiguration = Field(default_factory=SignalWeightsConfiguration)
+
+    @field_validator("config", mode="after")
+    @classmethod
+    def _signal_weights_configuration(cls, config: Any) -> SignalWeightsConfiguration:
+        return cls._validate_config(config)
+
+    @property
+    def signal_configuration(self) -> Any:
+        return self.config.signal_configuration
 
     def series_key(self) -> str:
         return self.signal_uid

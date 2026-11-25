@@ -15,9 +15,10 @@ and never sends Markets a table uid.
 ``portfolio_history``       a portfolio's values newest first, with the total count
 ``weights_as_of``           each portfolio's latest weights at or before a time
 ``portfolio_preflight``     why a portfolio cannot run yet
-``run_portfolios``          run many portfolios' chains, computed signals included, in
-                            one joined MetaTables run and publish their weights and
-                            values; list what failed
+``run_portfolios``          run many portfolios' chains, computed signals and the
+                            producer's own updaters included, in one joined MetaTables
+                            run, in this process or in node Jobs, and publish their
+                            weights and values; list what failed
 ``run_portfolio``           the same for one portfolio
 ``end_signal``              delete a signal's weights and metadata in one Markets call
 ``delete_private_series``   delete a producer's private rows of portfolios, calendars,
@@ -325,11 +326,13 @@ class PortfolioRunFailure:
 
 @dataclass(frozen=True)
 class PortfolioRuns:
-    """What ``run_portfolios`` did: each portfolio that ran, in the order given, and
-    each one that failed, with its reason."""
+    """What ``run_portfolios`` did: each portfolio that ran, in the order given, each one
+    that failed, with its reason, and the MetaTables outcome of each of the producer's
+    own ``updaters``, in the order given."""
 
     ran: tuple[PortfolioRun, ...]
     failed: tuple[PortfolioRunFailure, ...]
+    updaters: tuple[Any, ...] = ()
 
 
 def run_portfolios(
@@ -339,6 +342,9 @@ def run_portfolios(
     event_ledger_output_table: Any = None,
     namespace: str | None = None,
     portfolio_resolver: Any = None,
+    updaters: Sequence[Any] = (),
+    node_job: str | None = None,
+    max_parallel_nodes: int = -1,
 ) -> PortfolioRuns:
     """Run many portfolios' chains in one MetaTables run and publish their weights and values.
 
@@ -358,6 +364,18 @@ def run_portfolios(
     A portfolio the preflight refuses, whose row cannot be resolved, whose ledger or a
     dependency it needs fails, or whose publication fails is listed in ``failed`` with
     the reason; it never stops the others.
+
+    ``updaters`` are the producer's own updaters to run in the same graph (ADR 0067,
+    decision 2): heads of the same invocation as the ledgers, so what they share with a
+    portfolio runs once. Each one's MetaTables ``UpdaterOutcome`` is in
+    ``PortfolioRuns.updaters``; one that fails stops only what needs it.
+
+    ``node_job`` and ``max_parallel_nodes`` go to MetaTables' ``run_updaters`` unchanged
+    (ADR 0067, decision 1). Without ``node_job`` every node runs in this process. With it,
+    each node runs in its own run of that Job, independent nodes at the same time, up to
+    ``max_parallel_nodes`` (``-1``, no limit); it needs a hosted runtime and the node Job's
+    script (``msm_portfolios.node_job.run_node``). The weights and values are published
+    here either way, after the graph. Neither is part of any identity.
     """
 
     return _run_portfolios(
@@ -366,6 +384,9 @@ def run_portfolios(
         event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
         portfolio_resolver=portfolio_resolver,
+        updaters=updaters,
+        node_job=node_job,
+        max_parallel_nodes=max_parallel_nodes,
     )
 
 
@@ -377,12 +398,15 @@ def run_portfolio(
     namespace: str | None = None,
     portfolio_resolver: Any = None,
     portfolio_description: str | None = None,
+    node_job: str | None = None,
+    max_parallel_nodes: int = -1,
 ) -> PortfolioRun:
     """Run one portfolio's chain and publish its weights and values, as ``run_portfolios``.
 
     Raises what stopped it: ``ValueError`` for a portfolio ``portfolio_preflight`` finds
     not ready, otherwise its own error or a dependency's. ``portfolio_description``
-    replaces the description the configuration gives.
+    replaces the description the configuration gives. ``node_job`` and
+    ``max_parallel_nodes`` are ``run_portfolios``'.
     """
 
     runs = _run_portfolios(
@@ -391,6 +415,9 @@ def run_portfolio(
         event_ledger_output_table=event_ledger_output_table,
         namespace=namespace,
         portfolio_resolver=portfolio_resolver,
+        updaters=(),
+        node_job=node_job,
+        max_parallel_nodes=max_parallel_nodes,
     )
     if runs.failed:
         raise runs.failed[0].error
@@ -413,6 +440,9 @@ def _run_portfolios(
     event_ledger_output_table: Any,
     namespace: str | None,
     portfolio_resolver: Any,
+    updaters: Sequence[Any],
+    node_job: str | None,
+    max_parallel_nodes: int,
 ) -> PortfolioRuns:
     from msm.api.calendars import calendar_reads
     from msm.repositories.base import one_runtime_lookup
@@ -463,7 +493,12 @@ def _run_portfolios(
             except Exception as error:
                 fail(position, identifier, error)
 
-        errors = _run_ledgers([item.engine for item in prepared])
+        errors, outcomes = _run_graph(
+            [item.engine for item in prepared],
+            list(updaters),
+            node_job=node_job,
+            max_parallel_nodes=max_parallel_nodes,
+        )
         published: dict[int, tuple[Any, Any, Any]] = {}
         for item in prepared:
             error = errors[id(item.engine)]
@@ -491,27 +526,43 @@ def _run_portfolios(
                     first_rebalance=weights is not None and weights.row_count == weights.written,
                 )
             )
-        return PortfolioRuns(ran=tuple(ran), failed=tuple(failed[key] for key in sorted(failed)))
+        return PortfolioRuns(
+            ran=tuple(ran),
+            failed=tuple(failed[key] for key in sorted(failed)),
+            updaters=tuple(outcomes),
+        )
 
 
-def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
-    """Run every ledger in one joined MetaTables run; each one's error, ``None`` if it ran.
+def _run_graph(
+    engines: Sequence[Any],
+    updaters: Sequence[Any],
+    *,
+    node_job: str | None,
+    max_parallel_nodes: int,
+) -> tuple[dict[int, BaseException | None], list[Any]]:
+    """Run the ledgers and the producer's updaters in one joined MetaTables run.
 
-    A node that fails stops only the ledgers that need it (MetaTables ADR 0031). An
-    error raised before any node started stops them all.
+    Answers each ledger's error, ``None`` if it ran, and the outcome of each updater, in
+    order. A node that fails stops only what needs it (MetaTables ADR 0031). An error
+    raised before any node started, such as a node a node Job run could not rebuild, stops
+    them all: each ledger fails with it and each updater's outcome is ``not_run``.
     """
 
-    from metatables import UpdatersFailedError, run_updaters
+    from metatables import UpdaterOutcome, UpdatersFailedError, run_updaters
 
-    if not engines:
-        return {}
+    heads = [*engines, *updaters]
+    if not heads:
+        return {}, []
     try:
-        outcomes = run_updaters(list(engines))
+        outcomes = run_updaters(heads, node_job=node_job, max_parallel_nodes=max_parallel_nodes)
     except UpdatersFailedError as error:
         outcomes = error.outcomes
     except Exception as error:
-        return {id(engine): error for engine in engines}
-    return {
+        return (
+            {id(engine): error for engine in engines},
+            [UpdaterOutcome(updater=updater, state="not_run", error=error) for updater in updaters],
+        )
+    errors = {
         id(engine): (
             None
             if outcome.state == "succeeded"
@@ -520,6 +571,7 @@ def _run_ledgers(engines: Sequence[Any]) -> dict[int, BaseException | None]:
         )
         for engine, outcome in zip(engines, outcomes)
     }
+    return errors, list(outcomes[len(engines):])
 
 
 # Private rows --------------------------------------------------------------------------

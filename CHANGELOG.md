@@ -13,9 +13,32 @@ only reads it (ADR 0060, decisions 2 and 5, amended by the owner on 2026-11-24).
 declares each of its tables with a class statement, which a node Job run in another process
 imports by its address
 ([ADR 0066](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0066-a-producer-declares-its-tables-as-classes/),
-[#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142)).
+[#142](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/142)). A portfolio
+run can run its nodes in parallel, each in its own run of the producer's node Job, with the
+producer's own updaters in the same graph
+([ADR 0067](https://mainsequence-projects.github.io/MainSequenceMarkets/ADR/0067-portfolio-runs-in-parallel/)).
 
 ### Changed
+
+- **Requires `mainsequence-metatable` 0.1.84** (`>=0.1.84,<0.2`). A node Job run imports each
+  table class by its address (MetaTables#165) and rebuilds a typed updater inside a pydantic
+  configuration (MetaTables#164).
+- **Breaking: `ApplicationWeights` is a pydantic model of its configuration** (ADR 0067,
+  decision 4). Its one field is `config`; `signal_configuration` reads it and cannot be set.
+  Build it with `ApplicationWeights.from_signal_configuration(...)`, as before. Its
+  `signal_uid` is unchanged.
+- **A rebalance saves its signal in a form MetaTables rebuilds** (ADR 0067, decision 4).
+  - In an updater's configuration, a computed signal is saved by its update and a published
+    one as its pydantic model, in place of the signal's `signal_uid` payload.
+  - A portfolio's configuration hash still names the signal by that payload, so it is the
+    same in every namespace and Environment.
+  - **Identity rotation.** The `PortfolioRebalance` and `PortfolioEngine` update hashes
+    change. Signal UIDs, portfolio configuration hashes and strategy revisions do not.
+- **Breaking: `PortfolioRebalance` takes a `PortfolioRebalanceConfiguration`.** Its
+  `portfolio_identifier`, set by `set_portfolio_configuration(..., portfolio_identifier=)`,
+  is saved with the update outside its hash, so a node Job run rebuilds the rebalance for
+  its portfolio without the producer's resolver. A rebalance without its `Portfolio` row
+  reads it by that identifier, as the ledger does.
 
 - **Breaking: a producer declares its tables with class statements** (ADR 0066, #142).
   - Each instance of a Markets time-index storage is a `class` statement at the top level
@@ -112,6 +135,20 @@ imports by its address
 
 ### Added
 
+- **Parallel portfolio runs** (ADR 0067).
+  - `run_portfolios` takes `node_job` and `max_parallel_nodes`, and `run_portfolio` does
+    too. They go to MetaTables' `run_updaters` unchanged. With `node_job`, each node runs in
+    its own run of that Job on a hosted runtime, independent nodes at the same time; the
+    weights and values are still published by the caller.
+  - `run_portfolios(..., updaters=[...])` runs the producer's own updaters in the same
+    graph, so what they share with a portfolio runs once. Each one's outcome is in
+    `PortfolioRuns.updaters`; a failure stops only what needs it.
+  - `msm_portfolios.node_job.run_node()` is the node Job's script. It runs MetaTables'
+    `run_updater_node()` inside the run's per-run scopes.
+  - Every node a portfolio run builds passes MetaTables' check and rebuilds with its update
+    hash: tested on 11 graphs, the six strategies and the six signals ms-markets ships.
+  - A node Job run publishes a computed signal as its branch, the same manager as the Job
+    that created it; no new rule is needed.
 - **Markets declares its own Index-value tables at 1m, 1h and 1d** (ADR 0066, decision 6).
   - `IndexValues1m`, `IndexValues1h` and `IndexValues1d` (`msm.time_index.indices`) are
     class statements for `ms_markets__index_values__t_1m`, `__t_1h` and `__t_1d`.

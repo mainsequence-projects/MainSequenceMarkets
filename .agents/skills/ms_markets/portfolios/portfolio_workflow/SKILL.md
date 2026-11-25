@@ -500,6 +500,14 @@ Rules:
   publish what the ledger holds. The three `*_table_update_uid` pointers name update
   records of bound tables, which a publishing node does not have; they are left as
   they are (ADR 0060 leaves their replacement undecided).
+- A producer's own updaters join the same graph with `run_portfolios(..., updaters=[...])`
+  (outcomes in `PortfolioRuns.updaters`). On a hosted runtime,
+  `node_job="<node Job name>"` runs each node in its own run of that Job, independent
+  nodes at the same time, up to `max_parallel_nodes` (ADR 0067). The node Job's script
+  is `msm_portfolios.node_job.run_node()`. A node Job run rebuilds each node from its
+  saved configuration: keep every table a top-level class statement, every typed value
+  inside a pydantic config, and read another node's result from its table only. The
+  weights and values are still published by the calling process.
 - Rerunning before a new execution event or valuation observation must return an
   empty incremental update. Job run time is never an economic timestamp.
 - API reads for a portfolio's signal weights must filter by
