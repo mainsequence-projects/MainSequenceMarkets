@@ -14,6 +14,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from metatables import sqlalchemy_naming_convention
 from msm.settings import DEFAULT_MARKETS_NAMESPACE
+from msm.time_index.accounts.storage import AccountHoldingsInstance, TargetPositionsInstance
+from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsInstance
 from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm.time_index.execution.storage import OrderEventsInstance, OrdersInstance, TradesInstance
 from msm.time_index.indices.storage import IndexValuesInstance
@@ -179,6 +181,18 @@ class MyProviderDailyIndexValues(IndexValuesInstance, Provider, ProviderOwnerBas
     __cadence__ = "1d"
 
 
+
+class AppAccountHoldings(AccountHoldingsInstance, App, AppOwnerBase):
+    __instance_key__ = "main"
+
+
+class AppTargetPositions(TargetPositionsInstance, App, AppOwnerBase):
+    __instance_key__ = "main"
+
+
+class AppVirtualFundHoldings(VirtualFundHoldingsInstance, App, AppOwnerBase):
+    __instance_key__ = "main"
+
 DECLARED_TABLES: dict[str, type] = {
     "interpolated_prices_pinned": PinnedInterpolatedPrices,
     "interpolated_prices_equal_weights_example": EqualWeightsInterpolatedPrices,
@@ -198,5 +212,8 @@ DECLARED_TABLES: dict[str, type] = {
     "provider_index_values_1m": ProviderOneMinuteIndexValues,
     "provider_index_values_1d": ProviderDailyIndexValues,
     "my_provider_index_values_1d": MyProviderDailyIndexValues,
+    "account_holdings": AppAccountHoldings,
+    "target_positions": AppTargetPositions,
+    "virtual_fund_holdings": AppVirtualFundHoldings,
 }
 """Each class by the name of its factory-built table in ``factory_tables.json``."""

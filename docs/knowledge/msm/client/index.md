@@ -381,7 +381,8 @@ gets `MarketsAccessError`, HTTP 403). See
 
 Other time series a provider produces live in its own namespace. The provider
 declares its instance of a Markets time-index storage (discount curves, index
-fixings, pricing details, index values, orders, trades ...) with a class statement
+fixings, pricing details, index values, orders, trades, account holdings, target
+positions, virtual-fund holdings ...) with a class statement
 on the contract's base and its own Alembic base, for example
 `class MyTrades(TradesInstance, MyBase)` with `__instance_key__`,
 `__metatable_namespace__` and `__markets_storage_app__` (`msm.storage_instances`).

@@ -218,9 +218,12 @@ def test_an_owners_base_holds_only_the_owners_tables() -> None:
     """The keys to Markets copy no table, and the owner's metadata still sorts on its own."""
 
     assert sorted(table.name for table in instance_tables.AppOwnerBase.metadata.sorted_tables) == [
+        "my_app__accountholdingsts__main",
         "my_app__ordereventsts__main",
         "my_app__ordersts__main",
+        "my_app__targetpositionsts__main",
         "my_app__tradests__main",
+        "my_app__virtualfundholdingsts__main",
     ]
 
 

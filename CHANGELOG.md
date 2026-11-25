@@ -24,7 +24,9 @@ imports by its address
     `__metatable_namespace__`, `__markets_storage_app__` and, where the contract has none,
     `__cadence__`. An Index-value table is keyed by its `__cadence__`.
   - The contract bases: `TradesInstance`, `OrdersInstance`, `OrderEventsInstance`
-    (`msm.time_index.execution.storage`), `IndexValuesInstance`
+    (`msm.time_index.execution.storage`), `AccountHoldingsInstance`, `TargetPositionsInstance`
+    (`msm.time_index.accounts.storage`), `VirtualFundHoldingsInstance`
+    (`msm.time_index.accounts.virtual_funds.storage`), `IndexValuesInstance`
     (`msm.time_index.indices`), `ExternalPricesInstance`, `InterpolatedPricesInstance`
     (`msm_portfolios.time_index.prices.storage`), `SignalWeightsInstance`
     (`msm_portfolios.time_index.signals.storage`), `PortfolioRebalanceStateInstance`,

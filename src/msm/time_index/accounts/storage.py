@@ -31,6 +31,7 @@ from msm.models.accounts import AccountHoldingsSetTable, AccountTable, PositionS
 from msm.models.assets.core import AssetTable
 from msm.models.portfolios import PortfolioTable
 from msm.settings import ASSET_IDENTIFIER_DIMENSION
+from msm.storage_instances import TimeIndexInstance
 
 
 class AccountHoldingsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
@@ -303,4 +304,23 @@ class TargetPositionsStorage(MarketsTimeIndexMetaTableMixin, MarketsBase):
         return target_type
 
 
-__all__ = ["AccountHoldingsStorage", "TargetPositionsStorage"]
+class AccountHoldingsInstance(TimeIndexInstance):
+    """The base of an owner's own ``AccountHoldingsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = AccountHoldingsStorage
+
+
+class TargetPositionsInstance(TimeIndexInstance):
+    """The base of an owner's own ``TargetPositionsTS`` table (``msm.storage_instances``)."""
+
+    __abstract__ = True
+    __core_storage__ = TargetPositionsStorage
+
+
+__all__ = [
+    "AccountHoldingsInstance",
+    "AccountHoldingsStorage",
+    "TargetPositionsInstance",
+    "TargetPositionsStorage",
+]

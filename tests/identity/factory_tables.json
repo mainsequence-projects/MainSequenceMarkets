@@ -1,4 +1,63 @@
 {
+  "account_holdings": {
+    "authored_identifier": "AccountHoldingsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_4cb5ca8571de050103e2c03a73d1d882",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__accountholdingsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "account_uid UUID NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "holdings_set_uid UUID NOT NULL",
+      "is_trade_snapshot BOOLEAN",
+      "quantity FLOAT",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time TIMESTAMP WITH TIME ZONE",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__account_uid__ms_d97e672ab4 FOREIGN KEY(account_uid) REFERENCES ms_markets__account (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__asset_identifie_946fe347fd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__holdings_set_ui_68a7b19b9b FOREIGN KEY(holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__accountholdingsts__main__time_index__ac_883be7e73c ON my_app__accountholdingsts__main (time_index, account_uid, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__accountholdingsts__main (",
+      "time_index DATETIME NOT NULL",
+      "account_uid CHAR(32) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "holdings_set_uid CHAR(32) NOT NULL",
+      "is_trade_snapshot BOOLEAN",
+      "quantity FLOAT",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time DATETIME",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__account_uid__ms_d97e672ab4 FOREIGN KEY(account_uid) REFERENCES ms_markets__account (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__asset_identifie_946fe347fd FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__accountholdingsts__main__holdings_set_ui_68a7b19b9b FOREIGN KEY(holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__accountholdingsts__main__time_index__ac_883be7e73c ON my_app__accountholdingsts__main (time_index, account_uid, asset_identifier)"
+    ],
+    "description": "Timestamped account holdings storage keyed by (time_index, account_uid, asset_identifier). Each row is one asset position in an account holdings set. quantity is a positive magnitude and direction stores the long/short side. Instance 'main' of AccountHoldingsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "AccountHoldingsTS"
+    },
+    "index_names": [
+      "time_index",
+      "account_uid",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-app.AccountHoldingsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.AccountHoldingsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "938a0aa298780854087d23d85f151f18cbb07e6dbdf2c97e494ade164e9f1fdf",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__accountholdingsts__main",
+    "time_index_name": "time_index"
+  },
   "asset_pricing_details": {
     "authored_identifier": "AssetPricingDetailsTS.main",
     "cadence": null,
@@ -1234,6 +1293,66 @@
     "table_name": "equal_weight_example__signalweightsts__signals",
     "time_index_name": "time_index"
   },
+  "target_positions": {
+    "authored_identifier": "TargetPositionsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_c880cdd8a5fa8e35886c1c651d93af02",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__targetpositionsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "position_set_uid UUID NOT NULL",
+      "target_type VARCHAR(32) NOT NULL",
+      "target_uid UUID NOT NULL",
+      "asset_uid UUID",
+      "portfolio_uid UUID",
+      "weight_notional_exposure FLOAT",
+      "single_asset_quantity FLOAT",
+      "metadata_json JSONB",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__asset_uid__ms_m_890a6635fd FOREIGN KEY(asset_uid) REFERENCES ms_markets__asset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__portfolio_uid_29087dd150 FOREIGN KEY(portfolio_uid) REFERENCES ms_markets__portfolio (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__position_set_ui_f1b956fb3b FOREIGN KEY(position_set_uid) REFERENCES ms_markets__positionset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__targetpositionsts__main__time_index__po_8fb0994d58 ON my_app__targetpositionsts__main (time_index, position_set_uid, target_type, target_uid)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__targetpositionsts__main (",
+      "time_index DATETIME NOT NULL",
+      "position_set_uid CHAR(32) NOT NULL",
+      "target_type VARCHAR(32) NOT NULL",
+      "target_uid CHAR(32) NOT NULL",
+      "asset_uid CHAR(32)",
+      "portfolio_uid CHAR(32)",
+      "weight_notional_exposure FLOAT",
+      "single_asset_quantity FLOAT",
+      "metadata_json JSONB",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__asset_uid__ms_m_890a6635fd FOREIGN KEY(asset_uid) REFERENCES ms_markets__asset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__portfolio_uid_29087dd150 FOREIGN KEY(portfolio_uid) REFERENCES ms_markets__portfolio (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__targetpositionsts__main__position_set_ui_f1b956fb3b FOREIGN KEY(position_set_uid) REFERENCES ms_markets__positionset (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__targetpositionsts__main__time_index__po_8fb0994d58 ON my_app__targetpositionsts__main (time_index, position_set_uid, target_type, target_uid)"
+    ],
+    "description": "Timestamped account target-allocation storage keyed by (time_index, position_set_uid, target_type, target_uid). Each row is one target exposure in a PositionSetTable snapshot and references exactly one concrete target: either a direct AssetTable row or a core PortfolioTable row. Instance 'main' of TargetPositionsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "TargetPositionsTS"
+    },
+    "index_names": [
+      "time_index",
+      "position_set_uid",
+      "target_type",
+      "target_uid"
+    ],
+    "info": {
+      "identifier": "my-app.TargetPositionsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.TargetPositionsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "2e39d279d1de978c26b8a6f3f2ab62169140aa7d952babd1c52885238e8f9787",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__targetpositionsts__main",
+    "time_index_name": "time_index"
+  },
   "trades": {
     "authored_identifier": "TradesTS.main",
     "cadence": null,
@@ -1305,5 +1424,68 @@
     "storage_layout": null,
     "table_name": "my_app__tradests__main",
     "time_index_name": "trade_time"
+  },
+  "virtual_fund_holdings": {
+    "authored_identifier": "VirtualFundHoldingsTS.main",
+    "cadence": null,
+    "contract_hash": "mt_my_app_92721c3de32830ec5ce74519489395fa",
+    "ddl_postgresql": [
+      "CREATE TABLE my_app__virtualfundholdingsts__main (",
+      "time_index TIMESTAMP WITH TIME ZONE NOT NULL",
+      "virtual_fund_uid UUID NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "virtual_fund_holdings_set_uid UUID NOT NULL",
+      "source_account_holdings_set_uid UUID NOT NULL",
+      "allocated_quantity FLOAT NOT NULL",
+      "allocation_strategy VARCHAR(64) NOT NULL",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time TIMESTAMP WITH TIME ZONE",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__asset_ident_61e95887cc FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__source_acco_773e4becdd FOREIGN KEY(source_account_holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_2593b0824d FOREIGN KEY(virtual_fund_holdings_set_uid) REFERENCES ms_markets__virtualfundholdingsset (uid) ON DELETE CASCADE",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_3dfea0bc3d FOREIGN KEY(virtual_fund_uid) REFERENCES ms_markets__virtualfund (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__virtualfundholdingsts__main__time_index_e2ac475736 ON my_app__virtualfundholdingsts__main (time_index, virtual_fund_uid, asset_identifier)"
+    ],
+    "ddl_sqlite": [
+      "CREATE TABLE my_app__virtualfundholdingsts__main (",
+      "time_index DATETIME NOT NULL",
+      "virtual_fund_uid CHAR(32) NOT NULL",
+      "asset_identifier VARCHAR(255) NOT NULL",
+      "virtual_fund_holdings_set_uid CHAR(32) NOT NULL",
+      "source_account_holdings_set_uid CHAR(32) NOT NULL",
+      "allocated_quantity FLOAT NOT NULL",
+      "allocation_strategy VARCHAR(64) NOT NULL",
+      "direction SMALLINT NOT NULL",
+      "target_trade_time DATETIME",
+      "extra_details JSONB",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__asset_ident_61e95887cc FOREIGN KEY(asset_identifier) REFERENCES ms_markets__asset (unique_identifier) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__source_acco_773e4becdd FOREIGN KEY(source_account_holdings_set_uid) REFERENCES ms_markets__accountholdingsset (uid) ON DELETE RESTRICT",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_2593b0824d FOREIGN KEY(virtual_fund_holdings_set_uid) REFERENCES ms_markets__virtualfundholdingsset (uid) ON DELETE CASCADE",
+      "CONSTRAINT fk__my_app__virtualfundholdingsts__main__virtual_fun_3dfea0bc3d FOREIGN KEY(virtual_fund_uid) REFERENCES ms_markets__virtualfund (uid) ON DELETE CASCADE",
+      "CREATE UNIQUE INDEX uix__my_app__virtualfundholdingsts__main__time_index_e2ac475736 ON my_app__virtualfundholdingsts__main (time_index, virtual_fund_uid, asset_identifier)"
+    ],
+    "description": "Timestamped virtual-fund allocation storage keyed by (time_index, virtual_fund_uid, asset_identifier). Each row is a positive allocated quantity from a source account holdings set, with direction storing the long/short side. Instance 'main' of VirtualFundHoldingsTS.",
+    "extra_hash_components": {
+      "instance_key": "main",
+      "storage_contract": "VirtualFundHoldingsTS"
+    },
+    "index_names": [
+      "time_index",
+      "virtual_fund_uid",
+      "asset_identifier"
+    ],
+    "info": {
+      "identifier": "my-app.VirtualFundHoldingsTS.main",
+      "markets_storage_app": "my_app",
+      "namespace": "my-app"
+    },
+    "metatable_identifier": "my-app.VirtualFundHoldingsTS.main",
+    "namespace": "my-app",
+    "registration_request_sha256": "d4ac182c66ccab8c764de331400d7f3ef9cdd040f7b1650252daf40d97380eab",
+    "storage_app": "my_app",
+    "storage_layout": null,
+    "table_name": "my_app__virtualfundholdingsts__main",
+    "time_index_name": "time_index"
   }
 }

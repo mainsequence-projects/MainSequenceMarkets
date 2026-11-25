@@ -331,6 +331,8 @@ Each of these calls a factory, or tells the reader to.
 - The contract bases are:
   - `OrdersInstance`, `OrderEventsInstance` and `TradesInstance`
     (`msm.time_index.execution.storage`);
+  - `AccountHoldingsInstance` and `TargetPositionsInstance` (`msm.time_index.accounts.storage`),
+    and `VirtualFundHoldingsInstance` (`msm.time_index.accounts.virtual_funds.storage`);
   - `IndexValuesInstance` (`msm.time_index.indices.storage`), whose key is its
     `__cadence__` and whose storage app may not be `ms_markets`;
   - `ExternalPricesInstance` and `InterpolatedPricesInstance`
@@ -343,6 +345,15 @@ Each of these calls a factory, or tells the reader to.
     copy of its storage layout;
   - `DiscountCurvesInstance`, `IndexFixingsInstance` and `AssetPricingDetailsInstance`
     (`msm_pricing.time_index`).
+- **Which contracts have a base.** The owner decided on 2026-11-25 that a contract gets a
+  base only when it is used as an instance, with no backward compatibility for the others.
+  - The old factory accepted any core storage. The account holdings, target positions and
+    virtual-fund holdings bases were added the same day, because a producer declares its own
+    instances of them.
+  - Their tables were captured from the factory at 48dda3dc, with the same settings and
+    method as the others, and the class statements match.
+  - Account allocation lines, asset snapshots, and portfolio state, analytics and cash flows
+    have no base.
 - These are the contracts the code, docs, examples and tests declared instances of. The
   factory accepted any core storage; the other Markets time-index storages (account
   holdings, target positions, virtual-fund holdings, allocation lines, asset snapshots,
