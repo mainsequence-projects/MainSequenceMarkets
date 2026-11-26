@@ -7,6 +7,22 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`InterpolatedPrices` reads every new asset's bars, however many assets are new**
+  ([#155](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/155)).
+  MetaTables gives one read at most 100,000 rows, and `InterpolatedPrices` read every
+  asset's new bars in one read. A first run of about 45 new daily assets would fail with
+  `TransferLimitError`. No run has failed this way; the case comes from reading the code.
+  The bars are now read in several reads, each with its own MetaTables budget. A read holds
+  at most 50,000 bars (`BARS_READ_ROWS`) and 100 assets (`BARS_READ_ASSETS`). An asset's
+  bars are counted from its range's start at one bar per source interval. An asset with more
+  bars than one read holds, such as a first run of minute bars, is read in consecutive date
+  windows. The 100-asset limit is there because a read sends its assets a hundred per
+  request, all under one 60 s deadline. From the measured page time, a later run of more
+  than about 1,300 assets would have run out of time. There are no schema, identity or
+  dependency changes.
+
 ## [6.2.4] - 2026-11-26
 
 Patch release 6.2.4. A ledger books a rebalance with the prices and FX rates the

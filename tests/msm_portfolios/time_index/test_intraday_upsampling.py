@@ -148,6 +148,7 @@ def test_update_writes_the_target_bars(source, target, later_run) -> None:
 
         def __init__(self):
             self.bars_ts = SimpleNamespace(get_df_between_dates=self.read_bars)
+            self.bar_frequency_id = f"{source}m"
             self.interpolator = updaters.UpsampleAndInterpolation(f"{source}m", f"{target}m", "ffill")
 
         def read_bars(self, **kwargs):

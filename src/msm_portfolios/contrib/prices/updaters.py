@@ -689,9 +689,74 @@ BARS_READ_PAGE_SIZE = 10_000
 An asset new to the table reads its bars from ``OFFSET_START``. The pages of one read are
 requested one after another under the read's one deadline (60 s), and a page takes about the
 same time however many rows it holds, so the deadline limits requests, not rows. At the
-default 500 rows a first read of ten new assets ran out of time in Production (#123). A read
-still holds at most 100,000 rows, MetaTables' default collection budget.
+default 500 rows a first read of ten new assets ran out of time in Production (#123).
 """
+
+BARS_READ_ROWS = 50_000
+"""The most bars one source-bars read is planned to hold (#155).
+
+MetaTables gives one read 100,000 rows, 64 MiB and 60 s by default, all its pages together.
+The bars of all the assets can be many times that, so ``_bars_reads`` splits them into reads
+of at most this many bars, each with its own budget. The planned count is an upper bound
+taken from the source's cadence, and the other half of the row budget covers bars stamped
+off the cadence's grid, such as daily closes that move with daylight saving. A read holds at
+most five full pages.
+"""
+
+BARS_READ_ASSETS = 100
+"""The most asset ranges one source-bars read holds: what MetaTables sends in one request.
+
+A read of more ranges makes one request per hundred, all under the read's one deadline, so a
+read of a few thousand assets with a bar or two each would run out of time.
+"""
+
+
+def _bars_reads(
+    dimension_range_map: list[dict[str, Any]],
+    *,
+    interval: datetime.timedelta,
+    now: datetime.datetime,
+) -> list[list[dict[str, Any]]]:
+    """Split the source-bars read into reads of at most ``BARS_READ_ROWS`` bars and
+    ``BARS_READ_ASSETS`` assets each (#155).
+
+    A table at a cadence holds at most one bar per asset per interval, so an asset has at
+    most ``(now - start) // interval + 1`` bars from its range's start. The ranges fill a
+    read in order until the next would take it past either limit. An asset with more bars
+    than one read holds is read in windows of ``BARS_READ_ROWS - 1`` intervals, each ending
+    where the next starts; the last is open-ended, as every unsplit range is. An empty map
+    stays one read.
+    """
+    if not dimension_range_map:
+        return [dimension_range_map]
+
+    def most_bars(start: datetime.datetime) -> int:
+        return max((now - start) // interval + 1, 0)
+
+    window = interval * (BARS_READ_ROWS - 1)
+    reads: list[list[dict[str, Any]]] = [[]]
+    bars = 0
+    for asset_range in dimension_range_map:
+        start = asset_range["start_date"]
+        while most_bars(start) > BARS_READ_ROWS:
+            end = start + window
+            if reads[-1]:
+                reads.append([])
+            reads[-1].append(
+                {**asset_range, "start_date": start, "end_date": end, "end_date_operand": "<"}
+            )
+            reads.append([])
+            bars = 0
+            asset_range = {**asset_range, "start_date_operand": ">="}
+            start = end
+        if reads[-1] and (
+            bars + most_bars(start) > BARS_READ_ROWS or len(reads[-1]) == BARS_READ_ASSETS
+        ):
+            reads.append([])
+            bars = 0
+        reads[-1].append({**asset_range, "start_date": start})
+        bars += most_bars(start)
+    return [read for read in reads if read]
 
 
 class InterpolatedPrices(AssetIndexedUpdater):
@@ -897,18 +962,28 @@ class InterpolatedPrices(AssetIndexedUpdater):
         return frames
 
     def get_upsampled_data(self) -> pd.DataFrame:
-        """
-        Main method to get upsampled data for prices.
-        """
-        dimension_range_map = self.get_asset_dimension_range_map_great_or_equal()
+        """Every asset's new bars, upsampled and interpolated.
 
-        raw_data_df = self.bars_ts.get_df_between_dates(
-            dimension_range_map=dimension_range_map,
-            page_size=BARS_READ_PAGE_SIZE,
+        The bars come in as many reads as ``_bars_reads`` plans, each within its own
+        MetaTables budget, however many assets are new (#155).
+        """
+        reads = _bars_reads(
+            self.get_asset_dimension_range_map_great_or_equal(),
+            interval=datetime.timedelta(minutes=string_frequency_to_minutes(self.bar_frequency_id)),
+            now=datetime.datetime.now(datetime.UTC),
         )
-        if raw_data_df.empty:
+        frames = [
+            self.bars_ts.get_df_between_dates(
+                dimension_range_map=read,
+                page_size=BARS_READ_PAGE_SIZE,
+            )
+            for read in reads
+        ]
+        frames = [frame for frame in frames if not frame.empty]
+        if not frames:
             self.logger.info("No new data to interpolate")
             return pd.DataFrame()
+        raw_data_df = pd.concat(frames) if len(frames) > 1 else frames[0]
 
         upsampled_df = self._transform_raw_data_to_upsampled_df(
             raw_data_df.reset_index([ASSET_IDENTIFIER_DIMENSION])
