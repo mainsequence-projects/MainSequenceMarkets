@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import datetime
 import importlib
+import logging
 import os
 from types import SimpleNamespace
 
@@ -12,6 +14,9 @@ os.environ["MAIN_SEQUENCE_PROJECT_UID"] = " "
 os.environ["MAIN_SEQUENCE_PROJECT_ID"] = " "
 os.environ.setdefault("MAINSEQUENCE_ACCESS_TOKEN", "unit-test")
 os.environ.setdefault("MAINSEQUENCE_REFRESH_TOKEN", "unit-test")
+
+from metatables import UpdateStatistics
+from metatables.updaters.runner import UpdateRunner
 
 from msm.time_index.accounts import AccountHoldings
 import msm.time_index.execution as execution_module
@@ -275,3 +280,75 @@ def test_asset_indexed_configuration_only_carries_update_scope() -> None:
     assert "records" not in AssetIndexedUpdaterConfiguration.model_fields
     assert "node_metadata" not in AssetIndexedUpdaterConfiguration.model_fields
     assert "foreign_keys" not in AssetIndexedUpdaterConfiguration.model_fields
+
+
+_TABLE_PROGRESS = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+_OFFSET_START = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+
+class _ScopedAssetNode(AssetIndexedUpdater):
+    OFFSET_START = _OFFSET_START
+
+    @classmethod
+    def _required_output_table(cls):
+        return AssetSnapshotsStorage
+
+    def dependencies(self):
+        return {}
+
+    def update(self):
+        return pd.DataFrame()
+
+
+def _scoped_node(asset_list: list[str]) -> _ScopedAssetNode:
+    node = object.__new__(_ScopedAssetNode)
+    node.asset_list = asset_list
+    node._output_table = AssetSnapshotsStorage
+    node._logger = logging.getLogger(__name__)
+    node.update_statistics = None
+    return node
+
+
+def _shared_table_statistics() -> UpdateStatistics:
+    """A table two nodes write: one wrote A, another wrote B."""
+
+    progress = {"A": _TABLE_PROGRESS, "B": _TABLE_PROGRESS}
+    return UpdateStatistics(
+        global_index_progress={"max": _TABLE_PROGRESS},
+        index_progress=dict(progress),
+        index_min=dict(progress),
+    )
+
+
+def _statistics_seen_by_update(node: _ScopedAssetNode) -> UpdateStatistics:
+    """Start ``node`` the way every run without an override does, and return what
+    ``update()`` sees: MetaTables' runner hands it the table's statistics (#144)."""
+
+    seen: list[UpdateStatistics] = []
+    runner = UpdateRunner([node], update_tree=False)
+    runner._update_local = lambda table_update_run: seen.append(node.update_statistics)
+    runner._execute_started_update(
+        SimpleNamespace(update_statistics=_shared_table_statistics()),
+        override_update_stats=None,
+    )
+    return seen[0]
+
+
+def test_a_run_gives_an_asset_indexed_node_only_its_own_assets_progress() -> None:
+    statistics = _statistics_seen_by_update(_scoped_node(["A", "C"]))
+
+    starts = {
+        asset: date_info["start_date"]
+        for asset, date_info in statistics.get_identity_range_map_great_or_equal().items()
+    }
+    # B belongs to another node; C is not in the table yet.
+    assert starts == {"A": _TABLE_PROGRESS, "C": _OFFSET_START}
+    assert statistics.index_min == {"A": _TABLE_PROGRESS, "C": _OFFSET_START}
+    assert not statistics.are_all_identities_on_fallback_date
+
+
+def test_a_node_whose_assets_the_shared_table_lacks_starts_them_all_at_offset_start() -> None:
+    statistics = _statistics_seen_by_update(_scoped_node(["C", "D"]))
+
+    assert statistics.index_progress == {"C": _OFFSET_START, "D": _OFFSET_START}
+    assert statistics.are_all_identities_on_fallback_date

@@ -476,11 +476,16 @@ class AssetIndexedUpdater(TimeIndexTableUpdater):
         scoped_update_statistics._initial_fallback_date = fallback_date
         return scoped_update_statistics
 
-    def _set_update_statistics(self, update_statistics: UpdateStatistics) -> UpdateStatistics:
-        """Narrow update statistics with market asset scope, outside core TDAG."""
-        scoped_update_statistics = self.scope_update_statistics_to_assets(update_statistics)
-        self.update_statistics = scoped_update_statistics
-        return scoped_update_statistics
+    def prepare_update_statistics(self, update_statistics: UpdateStatistics) -> UpdateStatistics:
+        """Narrow the table's update statistics to this node's assets before ``update()``.
+
+        MetaTables calls this hook on every run without ``override_update_stats``: a
+        node's own ``run()``, ``run_updaters`` and a node Job run. Many nodes can write
+        one table, so its statistics name every asset any of them wrote; this node sees
+        only its own, and an asset the table does not hold yet starts at
+        ``offset_start`` (#144).
+        """
+        return self.scope_update_statistics_to_assets(update_statistics)
 
     def get_last_observation(
         self,

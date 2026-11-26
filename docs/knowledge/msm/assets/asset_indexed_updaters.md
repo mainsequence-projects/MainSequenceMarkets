@@ -25,6 +25,11 @@ market asset.
 - asset scopes can be translated into TimeIndexTableUpdater `dimension_filters`;
 - per-asset update ranges are exposed through helpers such as
   `get_asset_dimension_range_map_great_or_equal(...)`;
+- before `update()`, `prepare_update_statistics` narrows the table's update statistics
+  to the node's `get_asset_list()` on every run without `override_update_stats`
+  (`run()`, `run_updaters`, a node Job run): a node that shares its table with others
+  sees only its own assets' progress, and an asset the table does not hold yet starts at
+  `offset_start`;
 - the default `hash_namespace` is `mainsequence.markets`;
 - the registered storage class declares a foreign key from `asset_identifier` to
   `AssetTable.unique_identifier`.

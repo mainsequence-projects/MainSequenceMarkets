@@ -7,6 +7,17 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **`AssetIndexedUpdater` narrows its update statistics through MetaTables' public hook,
+  `prepare_update_statistics`**
+  ([#144](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/144)). It
+  overrode the private `_set_update_statistics` instead. What a node sees is unchanged: on
+  every run without `override_update_stats` (`run()`, `run_updaters`, a node Job run),
+  `update()` gets only its own assets' progress, and an asset the table does not hold yet
+  starts at `offset_start`. Tests now check it through MetaTables' `UpdateRunner`. A
+  subclass that overrides `prepare_update_statistics` calls `super()` to keep the scope.
+
 ### Fixed
 
 - **`InterpolatedPrices` takes its assets from its source updater when its configuration

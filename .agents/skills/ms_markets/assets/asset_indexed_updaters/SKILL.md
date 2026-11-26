@@ -381,6 +381,13 @@ Use the inherited helpers:
 - `get_asset_dimension_range_map_great_or_equal(...)`
 - `get_last_observation(asset_list=...)`
 
+Before `update()`, `self.update_statistics` names only this node's assets:
+`prepare_update_statistics` narrows the table's statistics to `get_asset_list()` on
+every run without `override_update_stats` (`run()`, `run_updaters`, a node Job run). An
+asset the table does not hold yet starts at `offset_start`. A subclass that overrides
+`prepare_update_statistics` calls `super()`. An `override_update_stats` is used as
+given; build it with `scope_update_statistics_to_assets(...)`.
+
 Do not emit rows for unknown assets. Register or resolve assets through the
 typed asset API before publishing asset-indexed rows.
 
