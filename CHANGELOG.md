@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.1] - 2026-11-26
+
+Patch release 6.2.1: `InterpolatedPrices` takes its assets from its source updater when its
+configuration names none, and `AssetIndexedUpdater` scopes its update statistics through
+MetaTables' public hook. No identity changes.
+
 ### Changed
 
 - **`AssetIndexedUpdater` narrows its update statistics through MetaTables' public hook,
