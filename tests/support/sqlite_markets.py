@@ -232,7 +232,20 @@ def table_reads(engine, operation, table_names) -> dict[str, list[str]]:
 def _insert(engine, table_name: str, **values) -> dict:
     """Insert one row, filling required columns the test does not care about."""
 
+    return _insert_many(engine, table_name, [values])[0]
+
+
+def _insert_many(engine, table_name: str, rows) -> list[dict]:
+    """Insert ``rows`` in one statement, filling required columns the test does not care about."""
+
     table = sa.Table(table_name, sa.MetaData(), autoload_with=engine)
+    filled = [_filled_row(table, values) for values in rows]
+    with engine.begin() as connection:
+        connection.execute(table.insert(), filled)
+    return filled
+
+
+def _filled_row(table, values) -> dict:
     row = dict(values)
     for column in table.columns:
         if column.name in row or column.nullable or column.server_default is not None:
@@ -255,8 +268,6 @@ def _insert(engine, table_name: str, **values) -> dict:
         else:
             length = getattr(column.type, "length", None) or 255
             row[column.name] = f"{uuid.uuid4().hex[:8]}-{column.name}"[:length]
-    with engine.begin() as connection:
-        connection.execute(table.insert(), row)
     return row
 
 

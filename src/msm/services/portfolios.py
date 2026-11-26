@@ -243,25 +243,57 @@ def bulk_delete_portfolio_group_memberships(
     portfolio_group_uids: Sequence[str] | None = None,
     portfolio_uids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    target_uids = _portfolio_group_membership_target_uids(
-        context,
-        uids=uids,
-        portfolio_group_uids=portfolio_group_uids,
-        portfolio_uids=portfolio_uids,
-    )
-    deleted_count = 0
-    for uid in dict.fromkeys(target_uids):
-        if _delete_existing_portfolio_group_membership(context, uid=uid):
-            deleted_count += 1
-    detail = (
-        "No portfolio group memberships matched the deletion request."
-        if deleted_count == 0
-        else (
-            f"Deleted {deleted_count} portfolio group "
-            f"membership{'s' if deleted_count != 1 else ''}."
+    """Delete the selected memberships in one statement and report the rest (issue 152).
+
+    The selection is the memberships of ``uids``, and those whose group is in
+    ``portfolio_group_uids`` and whose portfolio is in ``portfolio_uids``, where an empty
+    filter does not narrow the match. The database resolves it, with no row cap. The
+    answer is the bulk-delete envelope: each deleted membership in ``deleted``, and each
+    of ``uids`` that was not deleted, or whose fate the call cannot tell, with the reason,
+    in ``failed``. ``deleted_count`` counts only the deletes the call can confirm.
+
+    MetaTables returns at most 10,000 of the deleted rows. Past that, ``deleted_count`` is
+    its count of them all and ``deleted`` lists those it returned. A delete MetaTables
+    does not answer is confirmed with one read of what still matches the selection.
+    """
+
+    from metatables import TransferOutcomeUnknown
+
+    from msm.services.bulk_deletion import bulk_delete_response, canonical_uid
+
+    def selected(values: Sequence[str] | None) -> list[str]:
+        return list(dict.fromkeys(canonical_uid(uid) for uid in values or [] if str(uid).strip()))
+
+    selection = {
+        "uids": selected(uids),
+        "portfolio_group_uids": selected(portfolio_group_uids),
+        "portfolio_uids": selected(portfolio_uids),
+    }
+    explicit = selection["uids"]
+    if not any(selection.values()):
+        return _membership_response([], {}, explicit)
+    try:
+        result = portfolio_repository.delete_portfolio_group_memberships(context, **selection)
+    except TransferOutcomeUnknown as error:
+        return _confirm_unknown_membership_delete(context, selection, error)
+    deleted = [{"uid": canonical_uid(row["uid"])} for row in operation_result_rows(result)]
+    found = {row["uid"] for row in deleted}
+    total = max(len(deleted), int(result.get("row_count") or 0))
+    if total == len(deleted):
+        failed = {uid: f"{_label(uid)} was not found." for uid in explicit if uid not in found}
+        return bulk_delete_response(
+            deleted, failed, explicit, singular=_MEMBERSHIP.lower(), plural=_MEMBERSHIPS
         )
+    # The statement deleted every match, and MetaTables returned only part of them: a
+    # selected uid it did not return is gone, deleted now or never there.
+    failed = {uid: _unreturned_reason(uid) for uid in explicit if uid not in found}
+    detail = (
+        f"Deleted {total} {_MEMBERSHIPS}; MetaTables returned {len(deleted)} of them, which "
+        "`deleted` lists."
     )
-    return {"detail": detail, "deleted_count": deleted_count}
+    if failed:
+        detail += f" The call cannot tell the outcome of {len(failed)} selected."
+    return _membership_response(deleted, failed, explicit, detail=detail, deleted_count=total)
 
 
 def list_portfolios_for_group(
@@ -345,63 +377,109 @@ def _portfolio_group_target_uids(
     return target_uids
 
 
-def _portfolio_group_membership_target_uids(
+_MEMBERSHIP = "Portfolio group membership"
+_MEMBERSHIPS = "portfolio group memberships"
+
+
+def _confirm_unknown_membership_delete(
     context: MarketsRepositoryContext,
-    *,
-    uids: Sequence[str] | None,
-    portfolio_group_uids: Sequence[str] | None,
-    portfolio_uids: Sequence[str] | None,
-) -> list[str]:
-    target_uids = [str(uid) for uid in (uids or []) if str(uid).strip()]
-    if portfolio_group_uids or portfolio_uids:
-        group_filter = {str(uid) for uid in (portfolio_group_uids or []) if str(uid).strip()}
-        portfolio_filter = {str(uid) for uid in (portfolio_uids or []) if str(uid).strip()}
-        rows = operation_result_rows(
-            search_portfolio_group_memberships(
-                context,
-                limit=5000,
-            )
-        )
-        for row in rows:
-            if not _membership_row_matches(
-                row,
-                portfolio_group_uids=group_filter,
-                portfolio_uids=portfolio_filter,
-            ):
-                continue
-            target_uids.append(str(row["uid"]))
-    return target_uids
+    selection: Mapping[str, list[str]],
+    error: Exception,
+) -> dict[str, Any]:
+    """After the membership delete got no answer: one read of what still matches.
 
+    `msm.services.bulk_deletion.confirm_unread_delete` reads only the selected uids; a
+    filter selection also matches rows no one named, so this reads the selection itself.
+    Nothing left does not prove the delete committed, since the selection may have matched
+    nothing, so no membership is reported deleted then. A membership left may still go:
+    the server's transaction can outlive the request.
+    """
 
-def _membership_row_matches(
-    row: Mapping[str, Any],
-    *,
-    portfolio_group_uids: set[str],
-    portfolio_uids: set[str],
-) -> bool:
-    if portfolio_group_uids and str(row.get("portfolio_group_uid")) not in portfolio_group_uids:
-        return False
-    if portfolio_uids and str(row.get("portfolio_uid")) not in portfolio_uids:
-        return False
-    return True
+    from mainsequence.client.exceptions import ApiError
+    from mainsequence.logconf import logger
+    from metatables import ApiResolutionError
+    from metatables.contracts.transfer import TransferError
 
-
-def _delete_existing_portfolio_group_membership(
-    context: MarketsRepositoryContext,
-    *,
-    uid: str,
-) -> bool:
-    existing_rows = operation_result_rows(
-        search_portfolio_group_memberships(
-            context,
-            uid=uid,
-            limit=1,
-        )
+    from msm.services.bulk_deletion import (
+        gone_after_unanswered_delete_reason,
+        unconfirmed_delete_reason,
+        unknown_delete_reason,
     )
-    if not existing_rows:
-        return False
-    delete_portfolio_group_membership(context, uid=uid)
-    return True
+
+    explicit = selection["uids"]
+    logger.warning("A membership delete got no answer; reading its selection again.", error=str(error))
+    try:
+        remaining = portfolio_repository.matching_portfolio_group_membership_uids(
+            context, **selection
+        )
+    except (ApiError, ApiResolutionError, TransferError) as read_error:
+        logger.warning("Reading the selection of a delete without an answer failed.", error=str(read_error))
+        failed = {
+            uid: unconfirmed_delete_reason(_label(uid), noun=_MEMBERSHIP, error=read_error)
+            for uid in explicit
+        }
+        detail = (
+            "MetaTables did not answer the delete, and reading the selection again failed "
+            f"too; the call cannot tell which {_MEMBERSHIPS} it deleted. The call may be "
+            "retried."
+        )
+        return _membership_response([], failed, explicit, detail=detail)
+    if not remaining:
+        failed = {uid: gone_after_unanswered_delete_reason(_label(uid)) for uid in explicit}
+        detail = (
+            "MetaTables did not answer the delete, and nothing matching the selection "
+            f"remains; the call cannot tell how many {_MEMBERSHIPS} it deleted."
+        )
+        return _membership_response([], failed, explicit, detail=detail)
+    left = set(remaining)
+    order = list(dict.fromkeys([*explicit, *remaining]))
+    failed = {
+        uid: (
+            unknown_delete_reason(_label(uid), noun=_MEMBERSHIP)
+            if uid in left
+            else f"{_label(uid)} was not found."
+        )
+        for uid in order
+    }
+    detail = (
+        f"MetaTables did not answer the delete, and {_MEMBERSHIPS} matching the selection "
+        "still existed when read again; `failed` lists them. The call may be retried."
+    )
+    return _membership_response([], failed, order, detail=detail)
+
+
+def _label(uid: str) -> str:
+    return f"{_MEMBERSHIP} {uid}"
+
+
+def _unreturned_reason(uid: str) -> str:
+    """Why a selected uid the delete did not return, when MetaTables returned only part of
+    the deleted rows, is not reported deleted."""
+
+    return (
+        f"{_label(uid)}: it no longer exists. This call cannot tell whether it deleted it or "
+        "it never existed."
+    )
+
+
+def _membership_response(
+    deleted: Sequence[dict[str, Any]],
+    failed: dict[str, str],
+    order: Sequence[str],
+    *,
+    detail: str | None = None,
+    deleted_count: int | None = None,
+) -> dict[str, Any]:
+    from msm.services.bulk_deletion import bulk_delete_response
+
+    response = bulk_delete_response(
+        deleted, failed, order, singular=_MEMBERSHIP.lower(), plural=_MEMBERSHIPS
+    )
+    if detail is not None:
+        response["detail"] = detail
+    if deleted_count is not None:
+        response["deleted_count"] = deleted_count
+    return response
 
 
 def _first_operation_row(result: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | None:

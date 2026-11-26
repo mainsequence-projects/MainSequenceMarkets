@@ -107,6 +107,55 @@ identifier:
 }
 ```
 
+## Delete Memberships
+
+```text
+POST /api/v1/portfolio-group/membership/bulk-delete/
+```
+
+The body selects membership rows; it never deletes a portfolio or a group:
+
+```json
+{
+  "uids": ["membership-uid"],
+  "portfolio_group_uids": ["portfolio-group-uid"],
+  "portfolio_uids": []
+}
+```
+
+The selection is the memberships of `uids`, and those whose group is in
+`portfolio_group_uids` and whose portfolio is in `portfolio_uids`; an empty filter does
+not narrow the match, and with both empty only `uids` are selected. The database
+resolves the selection, with no row cap, and deletes it in one statement. The answer is
+the bulk-delete envelope: each deleted membership's `uid` in `deleted`, and each of
+`uids` that was not deleted, with the reason, in `failed`
+([issue 152](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/152)):
+
+```json
+{
+  "detail": "Deleted 1 portfolio group membership. 1 could not be deleted.",
+  "deleted_count": 1,
+  "deleted": [{"uid": "membership-uid"}],
+  "failed": [
+    {"uid": "missing-uid", "detail": "Portfolio group membership missing-uid was not found."}
+  ]
+}
+```
+
+`deleted_count` counts only the deletes the call can confirm, and a selected uid whose
+fate the call cannot tell is in `failed`, never in `deleted`:
+
+- MetaTables returns at most 10,000 rows of one statement. Past that, the statement still
+  deletes every match: `deleted_count` is MetaTables' count of them all, `deleted` lists
+  the 10,000 it returned, and `detail` says so. A selected uid it did not return no longer
+  exists, and the call cannot tell whether it deleted it or it never existed.
+- When MetaTables does not answer the delete, the call reads what still matches the
+  selection. Each membership still matching is in `failed`, with a reason that says the
+  delete may still finish and the call may be retried; a selected uid that is gone is not
+  found. When nothing matches any more, `deleted` stays empty, since the selection may have
+  matched nothing, and each selected uid is reported as no longer existing. When the read
+  fails too, the outcome of each selected uid is unknown.
+
 ## Relationship Lists
 
 ```text

@@ -244,3 +244,50 @@ def test_bulk_delete_portfolio_groups_answers_deleted_and_failed(monkeypatch) ->
         "failed": [],
     }
     assert captured["payload"]["uids"] == [str(group_uid)]
+
+
+def test_bulk_delete_portfolio_group_memberships_answers_deleted_and_failed(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from apps.v1.services import portfolio_groups
+
+    deleted_uid, missing_uid, group_uid = (str(uuid.uuid4()) for _ in range(3))
+    captured: dict[str, object] = {}
+
+    def fake_bulk_delete(context, **kwargs):
+        captured.update(kwargs)
+        return {
+            "detail": "Deleted 1 portfolio group membership. 1 could not be deleted.",
+            "deleted_count": 1,
+            "deleted": [{"uid": deleted_uid}],
+            "failed": [
+                {
+                    "uid": missing_uid,
+                    "detail": f"Portfolio group membership {missing_uid} was not found.",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(portfolio_groups, "_get_runtime", lambda: SimpleNamespace(context=object()))
+    monkeypatch.setattr(portfolio_groups, "_bulk_delete_portfolio_group_memberships", fake_bulk_delete)
+
+    response = TestClient(app).post(
+        "/api/v1/portfolio-group/membership/bulk-delete/",
+        json={"uids": [deleted_uid, missing_uid], "portfolio_group_uids": [group_uid]},
+    )
+
+    # Issue 152: the route answers the bulk-delete envelope, not only the count.
+    assert response.status_code == 200
+    assert response.json() == {
+        "detail": "Deleted 1 portfolio group membership. 1 could not be deleted.",
+        "deleted_count": 1,
+        "deleted": [{"uid": deleted_uid}],
+        "failed": [
+            {"uid": missing_uid, "detail": f"Portfolio group membership {missing_uid} was not found."}
+        ],
+    }
+    assert captured == {
+        "uids": [deleted_uid, missing_uid],
+        "portfolio_group_uids": [group_uid],
+        "portfolio_uids": [],
+    }
