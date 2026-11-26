@@ -507,13 +507,17 @@ def test_writing_an_exposure_to_a_portfolio_creates_its_virtual_fund(sqlite_mark
 
     add([exposure(first, weight_notional_exposure=0.4)], WHEN)
     funds = _rows(
-        engine, "SELECT uid, unique_identifier, account_uid, target_portfolio_uid FROM ms_markets__virtualfund"
+        engine,
+        "SELECT uid, unique_identifier, account_uid, account_target_allocation_uid, "
+        "target_portfolio_uid FROM ms_markets__virtualfund",
     )
     (allocation,) = _rows(engine, "SELECT uid FROM ms_markets__accounttargetallocation")
 
-    assert [(row["account_uid"], row["target_portfolio_uid"]) for row in funds] == [
-        (account.hex, first.hex)
-    ]
+    # The fund names its allocation (issue 157).
+    assert [
+        (row["account_uid"], row["account_target_allocation_uid"], row["target_portfolio_uid"])
+        for row in funds
+    ] == [(account.hex, allocation["uid"], first.hex)]
     # The key is the one an allocation looks the fund up by.
     assert funds[0]["unique_identifier"] == virtual_fund_unique_identifier_for_target(
         account_uid=account,
@@ -530,7 +534,11 @@ def test_writing_an_exposure_to_a_portfolio_creates_its_virtual_fund(sqlite_mark
         ],
         WHEN + dt.timedelta(days=1),
     )
-    later = _rows(engine, "SELECT uid, target_portfolio_uid FROM ms_markets__virtualfund")
+    later = _rows(
+        engine,
+        "SELECT uid, account_target_allocation_uid, target_portfolio_uid FROM ms_markets__virtualfund",
+    )
+    assert {row["account_target_allocation_uid"] for row in later} == {allocation["uid"]}
     assert {row["target_portfolio_uid"]: row["uid"] for row in later} == {
         first.hex: funds[0]["uid"],
         second.hex: next(row["uid"] for row in later if row["target_portfolio_uid"] == second.hex),

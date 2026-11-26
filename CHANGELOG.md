@@ -7,6 +7,38 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Added
+
+- **An account's virtual funds for some portfolios are one read**
+  ([#157](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/157)).
+  `VirtualFund.filter_by_account_target(account_uid, target_portfolio_uids)` answers the
+  account's funds of those portfolios in one SQL statement. The funds belong to the
+  account's stored target allocation, the one whose `unique_identifier` is the account
+  uid, and the same statement finds that allocation. Before, a caller first read the
+  allocation, whose random uid is hashed into each fund's `unique_identifier`, and then
+  the fund. That was two dependent requests per fund under the remote backend. As a
+  public row class method, the read runs remotely as one Markets API request (ADR 0047).
+  A portfolio with no fund there has no row.
+
+### Changed (breaking)
+
+- **A virtual fund names its target allocation** (ADR 0029, #157).
+  `VirtualFundTable.account_target_allocation_uid` is a key to
+  `AccountTargetAllocationTable.uid`. It deletes the fund with its allocation, and it is
+  unique with `target_portfolio_uid`: one fund per allocation and portfolio. It is
+  required on `VirtualFund.create` and `upsert` (`VirtualFundCreate`), and it is in every
+  `VirtualFund` row and Markets API fund payload. The target write and the virtual-fund
+  allocation write set it; an allocation plan carries `account_target_allocation_uid`.
+  The fund key formula is unchanged.
+- **Migration `0040`** adds the column and fills it from each fund's key: the allocation
+  of the fund's account whose `virtual_fund_unique_identifier_for_target(...)` is the
+  fund's `unique_identifier`. It refuses, before changing anything, a database with a
+  fund whose key matches no allocation of its account, and names each such fund. It
+  deletes and rewrites nothing. PostgreSQL then makes the column NOT NULL. SQLite adds it
+  in place, without rebuilding the table, since keys point into it. There it stays
+  nullable, and SQLAlchemy's reflection does not see the key's name or delete action,
+  which SQLite enforces.
+
 ## [6.2.5] - 2026-11-26
 
 Patch release 6.2.5. `InterpolatedPrices` reads its source bars in reads that each fit one

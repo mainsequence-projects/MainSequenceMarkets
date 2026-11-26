@@ -285,7 +285,12 @@ validates their arguments; never hand-write a policy's schema.
 
 Use `virtual_fund_unique_identifier_for_target(...)` for deterministic
 VirtualFund business keys. The key must be based on account, target portfolio,
-and account target allocation identity.
+and account target allocation identity. Every VirtualFund also names its
+allocation in `account_target_allocation_uid`, required on `VirtualFund.create`
+and `upsert`; one fund per allocation and portfolio. To find an account's funds
+for some portfolios, call
+`VirtualFund.filter_by_account_target(account_uid, target_portfolio_uids)`: one
+read, without first reading the account's target allocation.
 
 ## Full Workflow Pattern
 

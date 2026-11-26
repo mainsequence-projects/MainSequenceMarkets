@@ -160,6 +160,7 @@ def seed_account_snapshots(
                 "uid": fund,
                 "unique_identifier": f"fund-{index}",
                 "account_uid": account,
+                "account_target_allocation_uid": allocation,
                 "target_portfolio_uid": portfolio,
             }
             for index, (fund, portfolio) in enumerate(funds)

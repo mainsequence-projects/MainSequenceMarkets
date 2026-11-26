@@ -37,9 +37,14 @@ APPLY_BLOCKER_PORTFOLIO_RETIRED = "portfolio_retired"
 
 @dataclass(frozen=True, slots=True)
 class AccountVirtualFundAllocationInputs:
-    """What an allocation reads, as signed quantities: quantity times direction."""
+    """What an allocation reads, as signed quantities: quantity times direction.
+
+    ``account_target_allocation_uid`` is the target allocation the funds' keys were
+    built from. It is None only for inputs built without one, which have no fund.
+    """
 
     account_uid: str
+    account_target_allocation_uid: str | None
     source_account_holdings_set_uid: str
     holdings: Mapping[str, float]
     fund_targets: Mapping[tuple[str, str], float]
@@ -87,9 +92,14 @@ class AllocationFund:
 
 @dataclass(frozen=True, slots=True)
 class AccountVirtualFundAllocationPlan:
-    """The allocation of one holdings snapshot to the account's virtual funds, in units."""
+    """The allocation of one holdings snapshot to the account's virtual funds, in units.
+
+    ``account_target_allocation_uid`` is the target allocation of the PositionSet, the
+    one every fund of the plan belongs to. It is None only when the plan has no fund.
+    """
 
     account_uid: str
+    account_target_allocation_uid: str | None
     source_account_holdings_set_uid: str
     position_set_uid: str
     valuation_time: dt.datetime
@@ -268,6 +278,7 @@ def plan_from_inputs(
     )
     plan = AccountVirtualFundAllocationPlan(
         account_uid=str(inputs.account_uid),
+        account_target_allocation_uid=inputs.account_target_allocation_uid,
         source_account_holdings_set_uid=str(inputs.source_account_holdings_set_uid),
         position_set_uid=_uid(position_set_uid),
         valuation_time=normalized_time,
@@ -563,16 +574,18 @@ def virtual_fund_holdings_from_plan(
     """Return the virtual funds an applied plan writes, each with its holdings rows.
 
     One entry per fund of the target: ``unique_identifier``,
-    ``target_portfolio_uid`` and ``holdings``, the ``VirtualFundHoldingsStorage``
-    values of each asset the fund was assigned above the policy's quantity
-    tolerance. A fund the account holds nothing of has no holdings row; it still
-    gets its holdings set, and its target is in the allocation's lines.
+    ``account_target_allocation_uid``, ``target_portfolio_uid`` and ``holdings``, the
+    ``VirtualFundHoldingsStorage`` values of each asset the fund was assigned above
+    the policy's quantity tolerance. A fund the account holds nothing of has no
+    holdings row; it still gets its holdings set, and its target is in the
+    allocation's lines.
     """
 
     tolerance = plan.policy.quantity_tolerance
     funds: dict[str, dict[str, Any]] = {
         fund.virtual_fund_unique_identifier: {
             "unique_identifier": fund.virtual_fund_unique_identifier,
+            "account_target_allocation_uid": plan.account_target_allocation_uid,
             "target_portfolio_uid": fund.target_portfolio_uid,
             "holdings": [],
         }
@@ -745,6 +758,11 @@ def build_account_virtual_fund_allocation_inputs(
 
     return AccountVirtualFundAllocationInputs(
         account_uid=_uid(account_uid),
+        account_target_allocation_uid=(
+            None
+            if account_target_allocation_uid in (None, "")
+            else _uid(account_target_allocation_uid)
+        ),
         source_account_holdings_set_uid=_uid(source_account_holdings_set_uid),
         holdings=holdings,
         fund_targets=fund_targets,

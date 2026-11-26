@@ -9,9 +9,16 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from msm.api.accounts import ACCOUNT_HISTORY_DELETE_REFUSAL
-from msm.api.base import MarketsMetaTableRow
+from msm.api.base import MarketsMetaTableRow, operation_result_rows
 from msm.time_index.accounts.storage import AccountHoldingsStorage
-from msm.models import AccountGroupTable, AccountHoldingsSetTable, AccountTable, PortfolioTable
+from msm.models import (
+    AccountAllocationModelTable,
+    AccountGroupTable,
+    AccountHoldingsSetTable,
+    AccountTable,
+    AccountTargetAllocationTable,
+    PortfolioTable,
+)
 
 from msm.time_index.accounts.virtual_funds.storage import VirtualFundHoldingsStorage
 from msm.models import (
@@ -25,12 +32,14 @@ from msm.services.accounts.virtual_fund_holdings import (
 
 
 class VirtualFund(MarketsMetaTableRow):
-    """Typed virtual-fund row bound to an account and portfolio."""
+    """Typed virtual-fund row: an account's sleeve of one portfolio under one target allocation."""
 
     __table__: ClassVar[type[VirtualFundTable]] = VirtualFundTable
     __required_tables__: ClassVar[list[type[Any]]] = [
+        AccountAllocationModelTable,
         AccountGroupTable,
         AccountTable,
+        AccountTargetAllocationTable,
         PortfolioTable,
         VirtualFundTable,
     ]
@@ -39,7 +48,33 @@ class VirtualFund(MarketsMetaTableRow):
 
     unique_identifier: str
     account_uid: uuid.UUID
+    account_target_allocation_uid: uuid.UUID
     target_portfolio_uid: uuid.UUID
+
+    @classmethod
+    def filter_by_account_target(
+        cls,
+        account_uid: uuid.UUID | str,
+        target_portfolio_uids: Sequence[uuid.UUID | str],
+    ) -> list[VirtualFund]:
+        """The account's virtual funds of ``target_portfolio_uids``, in one read.
+
+        The funds of the account's target allocation, the one the target write keeps
+        (its ``unique_identifier`` is the account uid). The same SQL statement finds the
+        allocation and its funds, so the caller need not read the allocation first. A
+        portfolio with no fund there has no row; the rows are ordered by portfolio uid.
+        """
+
+        from msm.repositories.virtual_funds import read_account_target_virtual_funds
+
+        if not target_portfolio_uids:
+            return []
+        result = read_account_target_virtual_funds(
+            cls._active_context(),
+            account_uid=account_uid,
+            target_portfolio_uids=target_portfolio_uids,
+        )
+        return [cls.model_validate(row) for row in operation_result_rows(result)]
 
     @classmethod
     def create(
@@ -114,6 +149,9 @@ class VirtualFundCreate(BaseModel):
 
     unique_identifier: str = Field(min_length=1, max_length=255)
     account_uid: uuid.UUID | str
+    account_target_allocation_uid: uuid.UUID | str = Field(
+        description="AccountTargetAllocationTable.uid of the target allocation the fund belongs to.",
+    )
     target_portfolio_uid: uuid.UUID | str
 
 

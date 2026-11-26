@@ -1463,11 +1463,18 @@ def build_replace_account_target_positions_snapshot_operation(
         created_virtual_funds = (
             postgresql_insert(VirtualFundTable)
             .from_select(
-                ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+                [
+                    "uid",
+                    "unique_identifier",
+                    "account_uid",
+                    "account_target_allocation_uid",
+                    "target_portfolio_uid",
+                ],
                 select(
                     fund_inputs.c.virtual_fund_uid,
                     fund_inputs.c.unique_identifier,
                     cast(account_uid_param, Uuid(as_uuid=True)),
+                    account_target_allocation.c.uid,
                     fund_inputs.c.target_portfolio_uid,
                 )
                 .select_from(
@@ -1832,11 +1839,18 @@ def _target_positions_snapshot_statement_list(
         create_funds.append(
             sqlite_insert(VirtualFundTable)
             .from_select(
-                ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+                [
+                    "uid",
+                    "unique_identifier",
+                    "account_uid",
+                    "account_target_allocation_uid",
+                    "target_portfolio_uid",
+                ],
                 select(
                     fund_inputs.c.virtual_fund_uid,
                     fund_inputs.c.unique_identifier,
                     account_uid_param(),
+                    allocation_lookup(),
                     fund_inputs.c.target_portfolio_uid,
                 )
                 .select_from(fund_inputs)

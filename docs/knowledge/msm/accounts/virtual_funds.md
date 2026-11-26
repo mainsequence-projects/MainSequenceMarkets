@@ -78,8 +78,18 @@ through every step.
 uid PK
 unique_identifier unique
 account_uid FK -> AccountTable.uid
+account_target_allocation_uid FK -> AccountTargetAllocationTable.uid
 target_portfolio_uid FK -> PortfolioTable.uid
+unique (account_target_allocation_uid, target_portfolio_uid)
 ```
+
+A fund is one account's sleeve of one portfolio under one target allocation (ADR
+0029). Its `unique_identifier` is built from the three
+(`virtual_fund_unique_identifier_for_target(...)`), and it is deleted with its
+allocation. `VirtualFund.filter_by_account_target(account_uid, target_portfolio_uids)`
+reads an account's funds of those portfolios in one statement: the funds of the
+allocation the target write keeps, the one whose `unique_identifier` is the account
+uid. The caller does not need that allocation's uid.
 
 `VirtualFundHoldingsSetTable` groups one allocation result. It points at the
 account holdings snapshot it allocates, which makes it 1:1 with the sync:

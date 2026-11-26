@@ -12,14 +12,17 @@ For the runtime model behind these row APIs, see [Core Concepts](../concepts.md)
 ```python
 import msm
 
-from msm.api.accounts import Account
+from msm.api.accounts import Account, AccountAllocationModel, AccountTargetAllocation
 from msm.api.calendars import Calendar
 from msm.api.portfolios import Portfolio
 from msm.api.virtual_funds import VirtualFund
+from msm.services import virtual_fund_unique_identifier_for_target
 
 msm.start_engine(
     models=[
         "Account",
+        "AccountAllocationModel",
+        "AccountTargetAllocation",
         "Calendar",
         "CalendarSessionRule",
         "CalendarException",
@@ -41,9 +44,23 @@ portfolio = Portfolio.upsert(
     unique_identifier="btc-eth-target",
     calendar_uid=calendar.uid,
 )
-virtual_fund = VirtualFund.upsert(
-    unique_identifier="vf-core",
+allocation_model = AccountAllocationModel.upsert(
+    allocation_model_name="balanced-allocation-model"
+)
+account_target_allocation = AccountTargetAllocation.upsert(
+    unique_identifier="account-main-balanced-target",
     account_uid=account.uid,
+    account_allocation_model_uid=allocation_model.uid,
+)
+# A virtual fund is the account's sleeve of one portfolio under one target allocation.
+virtual_fund = VirtualFund.upsert(
+    unique_identifier=virtual_fund_unique_identifier_for_target(
+        account_uid=account.uid,
+        target_portfolio_uid=portfolio.uid,
+        account_target_allocation_uid=account_target_allocation.uid,
+    ),
+    account_uid=account.uid,
+    account_target_allocation_uid=account_target_allocation.uid,
     target_portfolio_uid=portfolio.uid,
 )
 ```
@@ -76,12 +93,7 @@ Use this workflow when publishing and inspecting account positions:
 ## Holdings and target positions
 
 ```python
-from msm.api.accounts import (
-    AccountAllocationModel,
-    AccountHoldingsSet,
-    AccountTargetAllocation,
-    PositionSet,
-)
+from msm.api.accounts import AccountHoldingsSet, PositionSet
 from msm.api.assets import Asset
 from msm.api.portfolios import Portfolio
 from msm.services import build_account_holdings_frame
@@ -101,14 +113,6 @@ holdings = build_account_holdings_frame(
     ],
 )
 
-allocation_model = AccountAllocationModel.upsert(
-    allocation_model_name="balanced-allocation-model"
-)
-account_target_allocation = AccountTargetAllocation.upsert(
-    unique_identifier="account-main-balanced-target",
-    account_uid=account.uid,
-    account_allocation_model_uid=allocation_model.uid,
-)
 position_set = PositionSet.upsert(
     account_target_allocation_uid=account_target_allocation.uid,
     position_set_time="2026-05-25T00:00:00Z",

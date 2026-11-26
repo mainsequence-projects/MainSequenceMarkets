@@ -37,12 +37,13 @@ from msm.repositories.base import (
 )
 from msm.repositories.write_inputs import input_rows
 from msm.repositories.complete_reads import (
+    IN_FILTER_VALUES,
     compile_page,
     page_select,
     read_every_model_row,
     read_every_row,
 )
-from msm.models import VirtualFundHoldingsSetTable, VirtualFundTable
+from msm.models import AccountTargetAllocationTable, VirtualFundHoldingsSetTable, VirtualFundTable
 from msm.time_index.accounts.virtual_funds.storage import (
     AccountAllocationLinesStorage,
     VirtualFundHoldingsStorage,
@@ -59,6 +60,7 @@ def build_create_virtual_fund_operation(
     *,
     unique_identifier: str,
     account_uid: uuid.UUID | str,
+    account_target_allocation_uid: uuid.UUID | str,
     target_portfolio_uid: uuid.UUID | str,
 ) -> MetaTableCompiledSQLOperation:
     statement = (
@@ -66,6 +68,7 @@ def build_create_virtual_fund_operation(
         .values(
             unique_identifier=unique_identifier,
             account_uid=account_uid,
+            account_target_allocation_uid=account_target_allocation_uid,
             target_portfolio_uid=target_portfolio_uid,
         )
         .returning(VirtualFundTable)
@@ -271,6 +274,77 @@ def search_account_virtual_fund_allocation(
     )
 
 
+def build_account_target_virtual_funds_operation(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: uuid.UUID | str,
+    target_portfolio_uids: Sequence[uuid.UUID | str],
+    offset: int = 0,
+) -> MetaTableCompiledSQLOperation:
+    """Select a page of the account's virtual funds of ``target_portfolio_uids``.
+
+    The funds are those of the account's stored target allocation, the one whose
+    ``unique_identifier`` is the account uid (the key the target write upserts it by).
+    The allocation is found by a scalar subquery of the same statement, so a caller
+    that knows only the account and the portfolios reads the funds in one statement.
+    A portfolio with no fund of that allocation has no row.
+    """
+
+    account = uuid.UUID(str(account_uid))
+    stored_allocation = (
+        select(AccountTargetAllocationTable.uid)
+        .where(AccountTargetAllocationTable.unique_identifier == str(account))
+        .limit(1)
+        .scalar_subquery()
+    )
+    statement = (
+        select(*VirtualFundTable.__table__.columns)
+        .where(VirtualFundTable.account_uid == account)
+        .where(VirtualFundTable.account_target_allocation_uid == stored_allocation)
+        .where(
+            VirtualFundTable.target_portfolio_uid.in_(
+                [uuid.UUID(str(portfolio_uid)) for portfolio_uid in target_portfolio_uids]
+            )
+        )
+    )
+    return compile_page(
+        page_select(statement, key=("target_portfolio_uid", "uid"), offset=offset),
+        context=context,
+    )
+
+
+def read_account_target_virtual_funds(
+    context: MarketsRepositoryContext,
+    *,
+    account_uid: uuid.UUID | str,
+    target_portfolio_uids: Sequence[uuid.UUID | str],
+) -> dict[str, Any]:
+    """Every virtual fund of the account's stored target allocation for the portfolios.
+
+    One statement for up to `IN_FILTER_VALUES` portfolios; more are read in batches of
+    that many.
+    """
+
+    portfolios = list(
+        dict.fromkeys(uuid.UUID(str(portfolio_uid)) for portfolio_uid in target_portfolio_uids)
+    )
+    rows: list[dict[str, Any]] = []
+    for start in range(0, len(portfolios), IN_FILTER_VALUES):
+        batch = portfolios[start : start + IN_FILTER_VALUES]
+        rows.extend(
+            read_every_row(
+                lambda offset, batch=batch: build_account_target_virtual_funds_operation(
+                    context,
+                    account_uid=account_uid,
+                    target_portfolio_uids=batch,
+                    offset=offset,
+                ),
+                context=context,
+            )["rows"]
+        )
+    return {"rows": rows, "row_count": len(rows)}
+
+
 def search_virtual_funds_by_unique_identifiers(
     context: MarketsRepositoryContext,
     *,
@@ -380,10 +454,19 @@ def search_account_allocation_lines(
 
 _FUND_INPUT_COLUMNS = (
     ("unique_identifier", String),
+    ("account_target_allocation_uid", Uuid),
     ("target_portfolio_uid", Uuid),
     ("virtual_fund_uid", Uuid),
     ("holdings_set_uid", Uuid),
 )
+_FUND_COLUMNS = [
+    "uid",
+    "unique_identifier",
+    "account_uid",
+    "account_target_allocation_uid",
+    "target_portfolio_uid",
+]
+"""The ``VirtualFundTable`` columns the allocation write inserts."""
 _HOLDING_INPUT_COLUMNS = (
     ("fund_unique_identifier", String),
     ("asset_identifier", String),
@@ -440,6 +523,7 @@ def _allocation_inputs(
     fund_rows = [
         {
             "unique_identifier": fund["unique_identifier"],
+            "account_target_allocation_uid": fund["account_target_allocation_uid"],
             "target_portfolio_uid": fund["target_portfolio_uid"],
             "virtual_fund_uid": fund["virtual_fund_uid"],
             "holdings_set_uid": fund["holdings_set_uid"],
@@ -474,7 +558,8 @@ def build_write_account_virtual_fund_allocation_operation(
     """Write the allocation of one account holdings snapshot atomically (ADR 0054).
 
     ``funds`` are the virtual funds of the account's target. Each gives
-    ``unique_identifier``, ``target_portfolio_uid``, a ``virtual_fund_uid`` to use
+    ``unique_identifier``, the ``account_target_allocation_uid`` its key was built
+    from, ``target_portfolio_uid``, a ``virtual_fund_uid`` to use
     when the fund is new, a ``holdings_set_uid`` and its ``holdings`` rows: what
     the fund was assigned, which may be nothing.
 
@@ -546,11 +631,12 @@ def build_write_account_virtual_fund_allocation_operation(
     if fund_rows:
         fund_inputs = input_rows("fund_inputs", _FUND_INPUT_COLUMNS, fund_rows, postgresql=True)
         funds_insert = postgresql_insert(VirtualFundTable).from_select(
-            ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+            _FUND_COLUMNS,
             select(
                 fund_inputs.c.virtual_fund_uid,
                 fund_inputs.c.unique_identifier,
                 account_uid_param,
+                fund_inputs.c.account_target_allocation_uid,
                 fund_inputs.c.target_portfolio_uid,
             ).where(not_allocated),
         )
@@ -733,11 +819,12 @@ def _virtual_fund_allocation_statement_list(
     else:
         new_funds = fund_inputs()
         funds_insert = sqlite_insert(VirtualFundTable).from_select(
-            ["uid", "unique_identifier", "account_uid", "target_portfolio_uid"],
+            _FUND_COLUMNS,
             select(
                 new_funds.c.virtual_fund_uid,
                 new_funds.c.unique_identifier,
                 account_param(),
+                new_funds.c.account_target_allocation_uid,
                 new_funds.c.target_portfolio_uid,
             )
             .select_from(new_funds)
@@ -865,6 +952,8 @@ def write_account_virtual_fund_allocation(
 
 __all__ = [
     "ALLOCATION_WRITE_GUARD",
+    "build_account_target_virtual_funds_operation",
+    "read_account_target_virtual_funds",
     "build_search_account_allocation_lines_operation",
     "build_search_account_virtual_fund_allocation_operation",
     "build_write_account_virtual_fund_allocation_operation",

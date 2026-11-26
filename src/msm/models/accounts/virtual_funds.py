@@ -14,7 +14,11 @@ from msm.base import (
     new_markets_uid,
 )
 
-from msm.models.accounts import AccountHoldingsSetTable, AccountTable
+from msm.models.accounts import (
+    AccountHoldingsSetTable,
+    AccountTable,
+    AccountTargetAllocationTable,
+)
 from msm.models.portfolios import PortfolioTable
 
 
@@ -25,7 +29,8 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
     __metatable_description__ = (
         "Virtual-fund registry keyed by unique_identifier. A virtual fund is not "
         "an asset or a custody account; it is an account-owned allocation view "
-        "over real account holdings that targets one PortfolioTable row."
+        "over real account holdings that targets one PortfolioTable row, under one "
+        "AccountTargetAllocationTable row."
     )
     __table_args__ = markets_table_args(
         __metatable_identifier__,
@@ -41,6 +46,12 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
         Index(
             None,
             "target_portfolio_uid",
+        ),
+        Index(
+            None,
+            "account_target_allocation_uid",
+            "target_portfolio_uid",
+            unique=True,
         ),
     )
 
@@ -71,6 +82,21 @@ class VirtualFundTable(MarketsMetaTableMixin, MarketsBase):
         info={
             "label": "Account UID",
             "description": "AccountTable.uid for the account that owns this virtual-fund view.",
+        },
+    )
+    account_target_allocation_uid: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            f"{AccountTargetAllocationTable.__table__.fullname}.uid",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        info={
+            "label": "Account Target Allocation UID",
+            "description": (
+                "AccountTargetAllocationTable.uid for the target allocation this fund "
+                "belongs to; unique with target_portfolio_uid."
+            ),
         },
     )
     target_portfolio_uid: Mapped[uuid.UUID] = mapped_column(

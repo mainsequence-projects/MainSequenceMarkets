@@ -37,6 +37,7 @@ Returns `command-center.resource_collection@v1` and exposes
       "uid": "virtual-fund-uid",
       "unique_identifier": "account-alpha__portfolio-sleeve",
       "account_uid": "account-uid",
+      "account_target_allocation_uid": "account-target-allocation-uid",
       "target_portfolio_uid": "portfolio-uid"
     }
   ],
@@ -64,6 +65,7 @@ Returns the core virtual-fund row plus detail-page links:
     "uid": "virtual-fund-uid",
     "unique_identifier": "account-alpha__portfolio-sleeve",
     "account_uid": "account-uid",
+    "account_target_allocation_uid": "account-target-allocation-uid",
     "target_portfolio_uid": "portfolio-uid"
   },
   "tabs": [

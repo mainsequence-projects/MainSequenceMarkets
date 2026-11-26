@@ -11,9 +11,9 @@ This ADR defines the business logic and implementation plan for allocating real
 account holdings into virtual-fund holdings. The first implementation moves
 virtual-fund identity and storage into core `msm`, adds a pure vector planner,
 adds deterministic input resolution from `PositionSetTable.uid`, and adds an
-apply step for feasible plans. The remaining schema follow-up is adding
-`VirtualFundTable.account_target_allocation_uid` so virtual-fund identity is
-relational, not only encoded in the deterministic business key.
+apply step for feasible plans. Revision `0040` adds the schema follow-up,
+`VirtualFundTable.account_target_allocation_uid` (issue 157), so virtual-fund
+identity is relational, not only encoded in the deterministic business key.
 
 ## Context
 
@@ -1153,9 +1153,9 @@ not from arbitrary hardcoded example payloads.
 - [x] Add deterministic virtual-fund identity rules for
       account/portfolio/target-allocation combinations through
       `virtual_fund_unique_identifier_for_target(...)`.
-- [ ] Add `VirtualFundTable.account_target_allocation_uid` and uniqueness on
+- [x] Add `VirtualFundTable.account_target_allocation_uid` and uniqueness on
       `(account_target_allocation_uid, target_portfolio_uid)` in the next schema
-      migration. No allocation-run table is required.
+      migration (revision `0040`, issue 157). No allocation-run table is required.
 - [x] Implement the apply step that converts a feasible plan into
       `VirtualFundHoldingsStorage` rows.
 - [x] Keep `VirtualFund.allocate_from_account_holdings_set(...)` as a low-level

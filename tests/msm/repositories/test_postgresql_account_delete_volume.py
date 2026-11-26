@@ -109,9 +109,16 @@ SEED = [
     "(time_index, account_uid, asset_identifier, holdings_set_uid, direction, quantity) "
     "SELECT h.time_index, h.account_uid, 'ASSET-' || g, h.uid, 1, 100 "
     "FROM ms_markets__accountholdingsset AS h, generate_series(1, :positions) AS g",
-    "INSERT INTO ms_markets__virtualfund (uid, unique_identifier, account_uid, target_portfolio_uid) "
-    "SELECT gen_random_uuid(), a.unique_identifier || '-' || p.unique_identifier, a.uid, p.uid "
-    "FROM ms_markets__account AS a, ms_markets__portfolio AS p",
+    "INSERT INTO ms_markets__accounttargetallocation "
+    "(uid, unique_identifier, account_uid, account_allocation_model_uid, is_active) "
+    "SELECT gen_random_uuid(), a.uid::text, a.uid, m.uid, true "
+    "FROM ms_markets__account AS a, ms_markets__accountallocationmodel AS m",
+    # Each account's funds belong to its target allocation.
+    "INSERT INTO ms_markets__virtualfund "
+    "(uid, unique_identifier, account_uid, account_target_allocation_uid, target_portfolio_uid) "
+    "SELECT gen_random_uuid(), a.unique_identifier || '-' || p.unique_identifier, a.uid, t.uid, p.uid "
+    "FROM ms_markets__account AS a "
+    "JOIN ms_markets__accounttargetallocation AS t ON t.account_uid = a.uid, ms_markets__portfolio AS p",
     "CREATE TEMPORARY TABLE allocated_set ON COMMIT DROP AS "
     "SELECT uid, account_uid, time_index FROM ("
     "  SELECT h.*, row_number() OVER (PARTITION BY account_uid ORDER BY time_index DESC) AS n "
@@ -138,10 +145,6 @@ SEED = [
     "SELECT s.time_index, s.uid, 'direct', s.account_uid, 'ASSET-' || g, s.account_uid, NULL, 80, 1, "
     "80, 1, 'proportional_attribution' "
     "FROM allocated_set AS s, generate_series(1, :positions) AS g",
-    "INSERT INTO ms_markets__accounttargetallocation "
-    "(uid, unique_identifier, account_uid, account_allocation_model_uid, is_active) "
-    "SELECT gen_random_uuid(), a.uid::text, a.uid, m.uid, true "
-    "FROM ms_markets__account AS a, ms_markets__accountallocationmodel AS m",
     "INSERT INTO ms_markets__positionset (uid, account_target_allocation_uid, position_set_time) "
     "SELECT gen_random_uuid(), t.uid, timestamptz '2026-10-01' + s * interval '1 hour' "
     "FROM ms_markets__accounttargetallocation AS t, generate_series(1, :target_sets) AS s",

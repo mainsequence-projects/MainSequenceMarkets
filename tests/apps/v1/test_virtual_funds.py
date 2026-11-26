@@ -14,6 +14,7 @@ def _virtual_fund_row(uid: uuid.UUID | None = None) -> dict[str, str]:
         "uid": str(uid or uuid.uuid4()),
         "unique_identifier": "account-alpha__portfolio-sleeve",
         "account_uid": str(uuid.uuid4()),
+        "account_target_allocation_uid": str(uuid.uuid4()),
         "target_portfolio_uid": str(uuid.uuid4()),
     }
 

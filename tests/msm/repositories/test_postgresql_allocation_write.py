@@ -50,6 +50,9 @@ def test_a_large_allocation_is_written_whole_and_exactly(postgresql_markets) -> 
                 VirtualFundTable.__table__.c.uid,
             )
         ).one()
+        allocation = connection.execute(
+            sa.select(VirtualFundTable.__table__.c.account_target_allocation_uid)
+        ).scalar_one()
         second_portfolio = uuid.uuid4()
         connection.exec_driver_sql(
             "INSERT INTO ms_markets__portfolio "
@@ -63,6 +66,7 @@ def test_a_large_allocation_is_written_whole_and_exactly(postgresql_markets) -> 
     funds = [
         {
             "unique_identifier": name,
+            "account_target_allocation_uid": str(allocation),
             "target_portfolio_uid": str(portfolio),
             "virtual_fund_uid": str(uid),
             "holdings_set_uid": str(uuid.uuid4()),
@@ -120,6 +124,13 @@ def test_a_large_allocation_is_written_whole_and_exactly(postgresql_markets) -> 
             holdings.select().where(holdings.c.source_account_holdings_set_uid == source)
         ).all()
         recorded = connection.execute(stored_lines.select()).all()
+        # The new fund names its allocation, as the one the target write made does.
+        fund_allocations = set(
+            connection.execute(
+                sa.select(VirtualFundTable.__table__.c.account_target_allocation_uid)
+            ).scalars()
+        )
+    assert fund_allocations == {allocation}
     assert sorted(row.asset_identifier for row in held) == sorted(names * 2)
     assert {(row.allocated_quantity, row.direction) for row in held} == {(quantity, -1)}
     assert all(row.extra_details == details and row.time_index == when for row in held)
