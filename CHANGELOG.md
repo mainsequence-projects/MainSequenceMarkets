@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.5] - 2026-11-26
+
+Patch release 6.2.5. `InterpolatedPrices` reads its source bars in reads that each fit one
+MetaTables budget, so a first run with many new assets no longer goes over the 100,000 rows
+MetaTables gives one read. There are no schema, identity or dependency changes.
+
 ### Fixed
 
 - **`InterpolatedPrices` reads every new asset's bars, however many assets are new**
