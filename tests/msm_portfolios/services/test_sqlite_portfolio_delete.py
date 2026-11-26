@@ -16,6 +16,7 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
+from metatables import TransferOutcomeUnknown
 from sqlalchemy.sql.util import find_tables
 
 from msm.models import PortfolioTable
@@ -41,6 +42,7 @@ from tests.support.portfolio_delete import (
     portfolio_markets,
     series_index,
 )
+from tests.support.unanswered_calls import unanswered_reads, unanswered_transaction
 from tests.support.sqlite_markets import (
     WHEN,
     _account,
@@ -710,3 +712,135 @@ def test_a_plan_for_another_selection_is_refused(markets) -> None:
 
     assert _deletes(markets) == []
     assert _exists(markets.engine, first) and _exists(markets.engine, second)
+
+
+# A delete MetaTables does not answer (issue 151) ------------------------------------------
+
+
+def _remove(engine, portfolio: uuid.UUID) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("DELETE FROM ms_markets__portfolio WHERE uid = :uid"), {"uid": portfolio.hex}
+        )
+
+
+def test_a_bulk_delete_that_committed_without_an_answer_is_deleted(markets, monkeypatch) -> None:
+    """The transaction is all or nothing: with every portfolio gone, it committed."""
+
+    engine = markets.engine
+    first, first_identifier = _portfolio_with(engine, *DATASETS)
+    second, second_identifier = _portfolio_with(engine, *DATASETS)
+    plan = plan_portfolio_deletes(markets.context, uids=[first, second])
+    unanswered_transaction(monkeypatch, committed=True)
+    markets.statements.clear()
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[first, second], plan=plan)
+
+    assert result["detail"] == "Deleted 2 portfolios with their datasets."
+    assert [item["uid"] for item in result["deleted"]] == [str(first), str(second)]
+    assert result["deleted"][0]["deleted_rows"] == {key: 1 for key in DATASETS}
+    assert result["failed"] == []
+    # The transaction, then one read of the portfolio rows to confirm it.
+    assert len(_deletes(markets)) == len(DATASETS) + 1
+    (confirm,) = _reads(markets)
+    assert "ms_markets__portfolio" in confirm
+    assert not _exists(engine, first) and set(_dataset_rows(engine, first_identifier).values()) == {0}
+    assert not _exists(engine, second) and set(_dataset_rows(engine, second_identifier).values()) == {0}
+
+
+def test_a_bulk_delete_without_an_answer_that_did_not_commit_may_be_retried(
+    markets, monkeypatch
+) -> None:
+    engine = markets.engine
+    first, first_identifier = _portfolio_with(engine, *DATASETS)
+    second, second_identifier = _portfolio_with(engine, *DATASETS)
+    unanswered_transaction(monkeypatch, committed=False)
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[first, second])
+
+    assert result["detail"] == "No portfolios were deleted. 2 could not be deleted."
+    assert result["deleted"] == []
+    assert result["failed"] == [
+        {
+            "uid": str(uid),
+            "detail": (
+                f"Portfolio {identifier!r}: the outcome of its delete is unknown. MetaTables "
+                "did not answer it, and the portfolio still existed when read again; the "
+                "delete may still finish. The call may be retried."
+            ),
+        }
+        for uid, identifier in ((first, first_identifier), (second, second_identifier))
+    ]
+    assert _exists(engine, first) and _exists(engine, second)
+    assert _dataset_rows(engine, first_identifier) == {key: 1 for key in DATASETS}
+
+    retried = bulk_delete_portfolio_records(markets.context, uids=[first, second])
+
+    assert [item["uid"] for item in retried["deleted"]] == [str(first), str(second)]
+    assert not _exists(engine, first) and not _exists(engine, second)
+
+
+def test_a_portfolio_another_call_deleted_meanwhile_is_not_found(markets, monkeypatch) -> None:
+    """One portfolio left means the transaction did not commit; the gone one is not found."""
+
+    engine = markets.engine
+    kept, kept_identifier = _portfolio_with(engine, *DATASETS)
+    gone, _ = _portfolio_with(engine)
+    unanswered_transaction(monkeypatch, committed=False, before_raising=lambda: _remove(engine, gone))
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[kept, gone])
+
+    assert result["deleted"] == []
+    assert [item["uid"] for item in result["failed"]] == [str(kept), str(gone)]
+    assert result["failed"][0]["detail"].startswith(
+        f"Portfolio {kept_identifier!r}: the outcome of its delete is unknown."
+    )
+    assert result["failed"][1]["detail"] == f"Portfolio {gone} was not found."
+    assert _exists(engine, kept)
+
+
+def test_a_delete_whose_confirming_read_fails_too_may_be_retried(markets, monkeypatch) -> None:
+    engine = markets.engine
+    first, first_identifier = _portfolio_with(engine)
+    second, _ = _portfolio_with(engine)
+    unanswered_transaction(
+        monkeypatch, committed=False, before_raising=lambda: unanswered_reads(monkeypatch)
+    )
+
+    result = bulk_delete_portfolio_records(markets.context, uids=[first, second])
+
+    assert result["deleted"] == []
+    assert [item["uid"] for item in result["failed"]] == [str(first), str(second)]
+    assert result["failed"][0]["detail"] == (
+        f"Portfolio {first_identifier!r}: the outcome of its delete is unknown. MetaTables "
+        "did not answer it, and reading the portfolio again failed too (UnansweredReadError). "
+        "The call may be retried."
+    )
+    assert _exists(engine, first) and _exists(engine, second)
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_one_portfolio_deleted_without_an_answer(markets, monkeypatch, committed) -> None:
+    """The single delete, and a bulk delete of one portfolio, confirm it the same way."""
+
+    engine = markets.engine
+    portfolio, identifier = _portfolio_with(engine, *DATASETS)
+    other, _ = _portfolio_with(engine, *DATASETS)
+    unanswered_transaction(monkeypatch, committed=committed)
+
+    if committed:
+        deleted = delete_portfolio_record(markets.context, uid=portfolio)
+        assert deleted["detail"] == f"Portfolio {identifier!r} deleted with its datasets."
+        assert not _exists(engine, portfolio)
+    else:
+        with pytest.raises(TransferOutcomeUnknown, match="outcome of its delete is unknown") as raised:
+            delete_portfolio_record(markets.context, uid=portfolio)
+        assert isinstance(raised.value.__cause__, TransferOutcomeUnknown)
+        assert _exists(engine, portfolio)
+
+    unanswered_transaction(monkeypatch, committed=committed)
+    result = bulk_delete_portfolio_records(markets.context, uids=[other])
+
+    assert [item["uid"] for item in result["deleted"]] == ([str(other)] if committed else [])
+    assert [item["uid"] for item in result["failed"]] == ([] if committed else [str(other)])
+    assert _exists(engine, other) is not committed

@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 
 import pytest
-from metatables import DataSourceResolutionError
+from metatables import DataSourceResolutionError, MetaTable, TransferOutcomeUnknown
 from sqlalchemy import DateTime, Index, String, select
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -26,6 +26,7 @@ from msm.repositories import (
     MarketsRepositoryContext,
     compile_markets_statement,
 )
+from msm.repositories.base import UnansweredReadError
 from msm.repositories.assets import (
     build_create_asset_operation,
     build_delete_asset_operation,
@@ -58,6 +59,7 @@ from msm.repositories.portfolios import (
     build_upsert_portfolio_group_membership_operation,
     build_upsert_portfolio_group_operation,
 )
+from tests.support.unanswered_calls import UNANSWERED
 
 
 class RepositoryDefaultTable(MarketsMetaTableMixin, MarketsBase):
@@ -786,3 +788,25 @@ def test_asset_delete_operation_compiles_delete() -> None:
     assert operation.operation == "delete"
     assert AssetTable.__table__.name in operation.statement.sql
     assert operation.statement.parameters["uid_1"] == asset_uid
+
+
+@pytest.mark.parametrize("operation", ["select", "delete"])
+def test_only_a_write_without_an_answer_has_an_unknown_outcome(monkeypatch, operation) -> None:
+    """A select MetaTables does not answer wrote nothing: it is a failed read (issue 151)."""
+
+    from msm.repositories import crud
+
+    def unanswered(cls, compiled, *, timeout=None):
+        raise TransferOutcomeUnknown(UNANSWERED)
+
+    monkeypatch.setattr(MetaTable, "execute_operation", classmethod(unanswered))
+    context = _repository_context()
+    asset_uid = uuid.uuid4()
+
+    if operation == "select":
+        with pytest.raises(UnansweredReadError, match="The read got no answer") as raised:
+            crud.get_model_by_uid(context, model=AssetTable, uid=asset_uid)
+        assert not isinstance(raised.value, TransferOutcomeUnknown)
+    else:
+        with pytest.raises(TransferOutcomeUnknown, match="confirm the outcome"):
+            crud.delete_models(context, model=AssetTable, uids=[asset_uid])

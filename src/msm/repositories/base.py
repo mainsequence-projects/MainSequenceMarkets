@@ -16,12 +16,14 @@ from metatables import (
     MetaTableOperationLimits,
     MetaTableTransactionGuardError,
     MetaTableWriteOperation,
+    TransferOutcomeUnknown,
 )
 from metatables.compiled_sql.v1 import (
     GuardedStatement,
     compile_sqlalchemy_statement,
     compile_sqlalchemy_statements,
 )
+from metatables.contracts.transfer import TransferError
 
 from msm.base import MarketsBase
 
@@ -301,13 +303,34 @@ def compile_markets_statements(
     )
 
 
+class UnansweredReadError(TransferError):
+    """A select got no answer from MetaTables: a failed read, which may be sent again.
+
+    MetaTables raises `metatables.TransferOutcomeUnknown` for every ``execute-operation``
+    call without an answer (a 5xx or a lost connection), since that route runs writes
+    too and only ``/read`` is retried. A select writes nothing, so there is no outcome
+    to confirm (MainSequenceMarkets#151).
+    """
+
+
 def execute_markets_operation(
     operation: MetaTableCompiledSQLOperation,
     *,
     context: MarketsOperationContext,
 ) -> dict[str, Any]:
+    """Run one compiled statement.
+
+    A select without an answer raises `UnansweredReadError`; a write without one raises
+    MetaTables' `metatables.TransferOutcomeUnknown`, since it may be stored.
+    """
+
     count_operation()
-    return MetaTable.execute_operation(operation, timeout=context.timeout)
+    try:
+        return MetaTable.execute_operation(operation, timeout=context.timeout)
+    except TransferOutcomeUnknown as error:
+        if operation.operation != "select":
+            raise
+        raise UnansweredReadError(f"The read got no answer: {error}") from error
 
 
 def execute_markets_write(
@@ -341,6 +364,7 @@ __all__ = [
     "MarketsMetaTableHandle",
     "MarketsOperationContext",
     "MarketsRepositoryContext",
+    "UnansweredReadError",
     "compile_markets_statement",
     "compile_markets_statements",
     "execute_markets_operation",

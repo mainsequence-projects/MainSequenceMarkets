@@ -27,6 +27,33 @@ and this project follows versioned releases.
   the ledger reads each missing asset's last row itself. Opening a ledger at its first
   rebalance stays valid. A ledger already stored with the other share count no longer
   replays: its update raises `NotImplementedError` for the corrected events.
+- **A MetaTables call without an answer no longer answers a bare 500**
+  ([#151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)). The
+  MetaTables client raises its own `TransferError` subclasses, not the SDK's `ApiError`,
+  for the statements, transactions and reads the Markets API sends, and the API mapped
+  none of them: a 5xx or a lost connection between it and MetaTables answered "Exception
+  in ASGI application". Now every route answers them as its upstream errors: `503`
+  (`UpstreamApiError`) for a transfer deadline or read retries that ran out and for a
+  select without an answer, `502` for a transfer MetaTables or its client refuses
+  (`TransferLimitError`, `TransferConflictError`), and `500` with the new `error_type`
+  `UpstreamOutcomeUnknownError` for a write without an answer, which may be stored or not:
+  confirm it before sending the request again. `msm.client` raises
+  `metatables.TransferOutcomeUnknown` again for it. A select writes nothing, so
+  `execute_markets_operation` raises `msm.repositories.base.UnansweredReadError`, a failed
+  read, for a select MetaTables does not answer.
+- **Every bulk delete confirms a delete MetaTables does not answer**
+  ([#151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+  `POST /api/v1/portfolio/bulk-delete/` answered 500 for one, so the caller could not tell
+  which portfolios were gone. The portfolio, account (with or without their portfolios),
+  asset-category, portfolio-group and signal bulk deletes now read the selected rows
+  once and answer their envelope. The delete is all or nothing. While a row is still
+  there it did not commit, or not yet: each row still there is in `failed` with a reason
+  that says its outcome is unknown and the call may be retried. With no row left it
+  committed. The portfolio, account and signal deletes, which read their rows first,
+  report them deleted. The asset-category and portfolio-group deletes report each as
+  gone in `failed`, since it may never have existed. The single portfolio, account and
+  signal deletes answer as deleted when the row is gone, and `500`
+  `UpstreamOutcomeUnknownError` otherwise.
 
 ## [6.2.3] - 2026-11-26
 

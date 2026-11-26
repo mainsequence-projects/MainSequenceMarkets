@@ -552,6 +552,14 @@ constraint. Nothing is deleted. The application deletes its own rows first
 exists when the delete runs answers `404`; one renamed in between answers
 `409`.
 
+When MetaTables does not answer the transaction (a 5xx or a lost connection), it
+may have committed or not. The route reads the portfolio row once: when it is
+gone the transaction committed, and the route answers as above. When it is still
+there, or the read fails too, the route answers `500` with `error_type`
+`UpstreamOutcomeUnknownError` ([Upstream Errors](index.md#upstream-errors)): the
+transaction may still finish, so check the portfolio before deleting it again
+([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+
 The statements are plain deletes. After the statement list commits, MetaTables
 rebuilds the update statistics it stores for each time-index table the list
 changed, so the deleted portfolio's progress goes with its rows
@@ -683,3 +691,13 @@ A refusal the checks cannot see, such as a reference written after them or a
 which then deletes nothing. The portfolios are then deleted one per transaction, so
 only the refused one is listed in `failed` and the others are still deleted. A
 MetaTables blocker on the portfolio table itself keeps every portfolio.
+
+When MetaTables does not answer the transaction, the route reads the selected
+portfolio rows once
+([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+The transaction is all or nothing: when none of them is left, it committed and
+they are listed in `deleted`. Otherwise it did not commit, or not yet: each one
+still there is listed in `failed` with a reason that says the delete got no
+answer and the call may be retried, and one another call deleted meanwhile is not
+found. When the read fails too, each is listed in `failed` the same way. The answer
+is still `200`. A retry lists a portfolio that is gone by then as not found.

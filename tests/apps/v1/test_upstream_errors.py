@@ -17,7 +17,15 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from mainsequence.client.exceptions import TransportError
-from metatables import ApiResolutionError, MetaTableTransactionGuardError
+from metatables import (
+    ApiResolutionError,
+    MetaTableTransactionGuardError,
+    TransferConstraintError,
+    TransferDeadlineError,
+    TransferLimitError,
+    TransferOutcomeUnknown,
+    TransferRetryExhausted,
+)
 
 from apps.v1.main import app
 from apps.v1.upstream_errors import (
@@ -25,6 +33,8 @@ from apps.v1.upstream_errors import (
     MAX_REASON_CHARACTERS,
     install_upstream_error_handlers,
 )
+from msm.repositories.base import UnansweredReadError
+from tests.support.unanswered_calls import UNANSWERED
 from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
 from tests.support.markets_runtime import serve_runtime
 
@@ -249,6 +259,76 @@ def test_an_unreachable_metatables_api_is_a_503(client, monkeypatch) -> None:
         "error_type": "UpstreamApiError",
         "upstream_status": None,
     }
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "detail"),
+    [
+        (
+            TransferDeadlineError("transfer_deadline_exceeded"),
+            503,
+            "The upstream API did not answer: transfer_deadline_exceeded",
+        ),
+        (
+            TransferRetryExhausted("Read retry attempts exhausted (HTTP 503)."),
+            503,
+            "The upstream API did not answer: Read retry attempts exhausted (HTTP 503).",
+        ),
+        (
+            UnansweredReadError(f"The read got no answer: {UNANSWERED}"),
+            503,
+            f"The upstream API did not answer: The read got no answer: {UNANSWERED}",
+        ),
+        (
+            TransferLimitError("Server transfer limit exceeded; narrow the selection or use batches."),
+            502,
+            "The upstream API refused the transfer: "
+            "Server transfer limit exceeded; narrow the selection or use batches.",
+        ),
+        (
+            TransferConstraintError("Nothing of the chunk was written.", kind="unique"),
+            502,
+            "The upstream API refused the transfer: Nothing of the chunk was written.",
+        ),
+    ],
+)
+def test_a_metatables_transfer_error_answers_as_an_upstream_error(
+    client, monkeypatch, error, status_code, detail
+) -> None:
+    """The MetaTables client's own errors are not ``ApiError``s (#151)."""
+
+    _fail_bulk_upsert(monkeypatch, error)
+
+    response = client.post(ROWS_ROUTE, json=ROWS_BODY)
+
+    assert response.status_code == status_code
+    assert response.json() == {
+        "detail": detail,
+        "error_type": "UpstreamApiError",
+        "upstream_status": None,
+    }
+    assert "Retry-After" not in response.headers
+
+
+def test_a_write_without_an_answer_asks_to_confirm_it_before_sending_it_again(
+    client, monkeypatch
+) -> None:
+    """The write may be stored or not, so it is not a retryable 503 (#151)."""
+
+    _fail_bulk_upsert(monkeypatch, TransferOutcomeUnknown(UNANSWERED))
+
+    response = client.post(ROWS_ROUTE, json=ROWS_BODY)
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": (
+            "The upstream API did not answer whether the write was done; it may be stored "
+            f"or not. Confirm its outcome before sending the request again: {UNANSWERED}"
+        ),
+        "error_type": "UpstreamOutcomeUnknownError",
+        "upstream_status": None,
+    }
+    assert "Retry-After" not in response.headers
 
 
 def test_credentials_in_a_url_and_long_reasons_do_not_reach_the_caller(client, monkeypatch) -> None:

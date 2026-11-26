@@ -18,6 +18,12 @@ whose `RESTRICT` key references the portfolio is neither discovered nor counted:
 database applies the key when the transaction runs, and its refusal is answered as a
 `PortfolioDeleteConflictError` with the database's message. The application deletes its
 rows first (``msm_portfolios.recipes.delete_private_series``).
+
+A delete transaction MetaTables does not answer (``metatables.TransferOutcomeUnknown``)
+may have committed or not. One read of the portfolio rows tells: the transaction is all or
+nothing, so when none of its portfolios is left they are deleted; otherwise each is
+reported in ``failed`` and the call may be retried (issue 151). The single delete raises
+``TransferOutcomeUnknown`` again when its portfolio is still there.
 """
 
 from __future__ import annotations
@@ -28,11 +34,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mainsequence.logconf import logger as _mainsequence_logger
+from metatables import TransferOutcomeUnknown
 
 from msm.api.http import TableImpact
+from msm.models import PortfolioTable
 from msm.repositories.account_deletion import ACCOUNT_HISTORY_REFERENCES
 from msm.repositories.base import MarketsRepositoryContext
 from msm.api.managers import manager_refusal
+from msm.services.bulk_deletion import confirm_unknown_delete
 from msm_portfolios.repositories import portfolio_deletion as portfolio_deletion_repository
 from msm_portfolios.time_index.portfolios.storage import PORTFOLIO_DATASET_TABLES
 
@@ -176,7 +185,6 @@ def portfolio_delete_impact(
     delete runs. An unavailable impact is a warning.
     """
 
-    from msm.models import PortfolioTable
     from msm.services.table_impact import delete_rows_impact
 
     base = delete_rows_impact(PortfolioTable)
@@ -198,8 +206,9 @@ def delete_portfolio_record(
     Returns ``None`` when the portfolio does not exist. Raises
     `PortfolioDeleteConflictError` when account history references it or the database
     refuses the delete, and ``PermissionError`` when the caller does not manage it; then
-    nothing is deleted. ``deleted_rows`` counts the rows per dataset just before the
-    delete ran.
+    nothing is deleted. Raises ``metatables.TransferOutcomeUnknown`` when MetaTables did
+    not answer the delete and the portfolio is still there, or could not be read again.
+    ``deleted_rows`` counts the rows per dataset just before the delete ran.
     """
 
     portfolio_uid = _canonical_uid(uid)
@@ -246,7 +255,9 @@ def bulk_delete_portfolio_records(
     When the database refuses that transaction, nothing in it was deleted: a reference
     was written since the read, or a key from an application's own table holds rows of
     one of them. The read cannot tell which, so the portfolios are then deleted one per
-    transaction, and only the refused ones are reported in ``failed``.
+    transaction, and only the refused ones are reported in ``failed``. When MetaTables
+    does not answer the transaction, one read of the portfolio rows says whether it
+    committed (issue 151).
     """
 
     target_uids = _unique_uids(uids)
@@ -327,6 +338,8 @@ def _delete_together(
             context,
             portfolios=[(planned.uid, planned.unique_identifier) for planned in allowed],
         )
+    except TransferOutcomeUnknown as exc:
+        return _confirm_unknown_delete(context, allowed, exc)
     except Exception as exc:
         if not _is_delete_conflict(exc):
             raise
@@ -350,7 +363,7 @@ def _delete_each(
     for planned in allowed:
         try:
             done = _delete_planned(context, planned, impact=impact)
-        except (PortfolioDeleteConflictError, PermissionError) as exc:
+        except (PortfolioDeleteConflictError, PermissionError, TransferOutcomeUnknown) as exc:
             refused[planned.uid] = str(exc)
             continue
         if done:
@@ -366,7 +379,11 @@ def _delete_planned(
     *,
     impact: PortfolioDeleteImpact,
 ) -> bool:
-    """Run one portfolio's transaction: ``False`` when it vanished in between."""
+    """Run one portfolio's transaction: ``False`` when it vanished in between.
+
+    Raises ``TransferOutcomeUnknown`` when MetaTables did not answer the transaction and the
+    portfolio is still there, or could not be read again.
+    """
 
     if planned.manager_blocker:
         raise PermissionError(planned.manager_blocker)
@@ -378,6 +395,11 @@ def _delete_planned(
             uid=planned.uid,
             unique_identifier=planned.unique_identifier,
         )
+    except TransferOutcomeUnknown as exc:
+        deleted, failed = _confirm_unknown_delete(context, [planned], exc)
+        if deleted:
+            return True
+        raise TransferOutcomeUnknown(failed[planned.uid]) from exc
     except Exception as exc:
         if not _is_delete_conflict(exc):
             raise
@@ -404,6 +426,24 @@ def _delete_planned(
             "Retry the delete."
         )
     return True
+
+
+def _confirm_unknown_delete(
+    context: MarketsRepositoryContext,
+    planned: Sequence[_PlannedDelete],
+    error: TransferOutcomeUnknown,
+) -> tuple[list[_PlannedDelete], dict[str, str]]:
+    """After a delete transaction without an answer: the deleted ones, and why not the rest."""
+
+    deleted, failed = confirm_unknown_delete(
+        context,
+        model=PortfolioTable,
+        labels={item.uid: item.label for item in planned},
+        noun="Portfolio",
+        error=error,
+    )
+    gone = set(deleted)
+    return [item for item in planned if item.uid in gone], failed
 
 
 def _deleted_response(planned: _PlannedDelete) -> dict[str, Any]:

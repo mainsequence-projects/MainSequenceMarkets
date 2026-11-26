@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from metatables import TransferOutcomeUnknown
 
 from apps.v1.main import app
 from msm.api.assets import Asset
@@ -21,6 +22,7 @@ from msm.api.remote import (
     use_runtime_backend,
 )
 from msm.client import MarketsClient
+from tests.support.unanswered_calls import UNANSWERED
 from tests.support.upstream_errors import STATEMENT_TOO_LONG, sdk_error
 from tests.support.markets_runtime import serve_runtime
 
@@ -117,3 +119,15 @@ def test_a_500_without_the_error_type_is_not_an_invalid_statement() -> None:
         raise_for_error(500, "Internal Server Error", None)
 
     assert not isinstance(raised.value, MarketsInvalidStatementError)
+
+
+def test_a_write_without_an_answer_raises_the_unknown_outcome_again(monkeypatch, remote) -> None:
+    """The runtime backend raises MetaTables' error, so the remote backend does too (#151)."""
+
+    _fail_bulk_upsert(monkeypatch, TransferOutcomeUnknown(UNANSWERED))
+
+    with pytest.raises(TransferOutcomeUnknown, match="Confirm its outcome") as raised:
+        Asset.upsert_many(ROWS)
+
+    assert UNANSWERED in str(raised.value)
+    assert not isinstance(raised.value, MarketsApiError)

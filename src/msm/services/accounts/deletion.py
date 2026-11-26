@@ -12,6 +12,12 @@ A delete sends one read and one MetaTables transaction, and asks MetaTables for 
 impact; only the bulk-delete preflight does (issue 91). The plan, the transaction and
 the answer are public pieces, so that the portfolio package's delete of an account with
 the portfolios only it used runs the same checks and answers the same way.
+
+A transaction MetaTables does not answer (``metatables.TransferOutcomeUnknown``) may have
+committed or not. One read of the account rows tells, as `accounts_delete_unanswered`
+does (issue 151): the transaction is all or nothing, so accounts that are gone were
+deleted with everything it held. A bulk delete reports the others in ``failed``; the
+single delete raises ``TransferOutcomeUnknown`` again.
 """
 
 from __future__ import annotations
@@ -21,12 +27,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from metatables import MetaTableTransactionGuardError
+from metatables import MetaTableTransactionGuardError, TransferOutcomeUnknown
 
 from msm.api.http import TableImpact, TableImpactNode
 from msm.repositories import account_deletion as account_deletion_repository
 from msm.repositories.account_deletion import ACCOUNT_DELETE_GUARD, ACCOUNT_HISTORY_KEYS
 from msm.repositories.base import MarketsCompiledWrite, MarketsRepositoryContext, execute_markets_write
+from msm.services.bulk_deletion import confirm_unknown_delete
 
 from .core import get_account_by_uid
 
@@ -204,6 +211,45 @@ def account_delete_refused(context: MarketsRepositoryContext, plan: Mapping[str,
         )
 
 
+def accounts_delete_unanswered(
+    context: MarketsRepositoryContext,
+    plans: Sequence[Mapping[str, Any]],
+    error: TransferOutcomeUnknown,
+) -> tuple[list[Mapping[str, Any]], dict[str, str]]:
+    """After one transaction for ``plans`` got no answer: the plans it deleted, and why not
+    each other one (issue 151).
+
+    One read of the account rows. When none is left the transaction committed, with every
+    row it held. Otherwise it did not, or not yet, and each account is reported with the
+    reason, which says the call may be retried.
+    """
+
+    from msm.models import AccountTable
+
+    deleted, failed = confirm_unknown_delete(
+        context,
+        model=AccountTable,
+        labels={plan["uid"]: _label(plan) for plan in plans},
+        noun="Account",
+        error=error,
+    )
+    gone = set(deleted)
+    return [plan for plan in plans if plan["uid"] in gone], failed
+
+
+def account_delete_unanswered(
+    context: MarketsRepositoryContext,
+    plan: Mapping[str, Any],
+    error: TransferOutcomeUnknown,
+) -> None:
+    """Return when one account's unanswered transaction committed; else raise
+    ``TransferOutcomeUnknown`` with the reason."""
+
+    deleted, failed = accounts_delete_unanswered(context, [plan], error)
+    if not deleted:
+        raise TransferOutcomeUnknown(failed[plan["uid"]]) from error
+
+
 def account_deleted_response(plan: Mapping[str, Any]) -> dict[str, Any]:
     """The answer for an account whose delete committed."""
 
@@ -296,15 +342,21 @@ def delete_account(
 
     Returns `None` when the account does not exist. Raises
     `AccountDeleteConflictError` when a foreign key refuses the delete; then nothing
-    is deleted. ``deleted_rows`` counts the Markets rows per table just before the
-    delete ran.
+    is deleted. Raises ``metatables.TransferOutcomeUnknown`` when MetaTables did not
+    answer the delete and the account is still there, or could not be read again.
+    ``deleted_rows`` counts the Markets rows per table just before the delete ran.
     """
 
     plan = preflight_account_delete(context, uid=uid)
     if plan is None:
         return None
     check_account_delete_blockers(plan)
-    if not run_account_delete(context, plan).get("rows"):
+    try:
+        result = run_account_delete(context, plan)
+    except TransferOutcomeUnknown as exc:
+        account_delete_unanswered(context, plan, exc)
+        return account_deleted_response(plan)
+    if not result.get("rows"):
         account_delete_refused(context, plan)
         return None
     return account_deleted_response(plan)
@@ -323,7 +375,9 @@ def bulk_delete_accounts(
     missing or that rows of an account not selected block is reported in ``failed``.
     ``table_blockers``, MetaTables' reasons the whole table refuses the delete, report
     every account. When the database refuses the transaction, which then deletes
-    nothing, each account is deleted on its own, so only the refused ones stay.
+    nothing, each account is deleted on its own, so only the refused ones stay. When
+    MetaTables does not answer it, one read of the account rows says whether it
+    committed (`accounts_delete_unanswered`).
     """
 
     target = unique_uids(uids)
@@ -334,13 +388,20 @@ def bulk_delete_accounts(
     }
     allowed, failed = partition_account_deletes(target, plans, table_blockers)
     deleted: list[dict[str, Any]] = []
-    if allowed and run_accounts_delete(context, allowed) is not None:
+    try:
+        together = bool(allowed) and run_accounts_delete(context, allowed) is not None
+    except TransferOutcomeUnknown as exc:
+        gone, unanswered = accounts_delete_unanswered(context, allowed, exc)
+        deleted = [account_deleted_response(plan) for plan in gone]
+        failed.update(unanswered)
+        allowed, together = [], False
+    if together:
         deleted = [account_deleted_response(plan) for plan in allowed]
     else:
         for plan in allowed:
             try:
                 result = delete_account(context, uid=plan["uid"])
-            except AccountDeleteConflictError as exc:
+            except (AccountDeleteConflictError, TransferOutcomeUnknown) as exc:
                 failed[plan["uid"]] = str(exc)
                 continue
             if result is None:
@@ -487,7 +548,9 @@ __all__ = [
     "account_delete_impact",
     "account_delete_plan",
     "account_delete_refused",
+    "account_delete_unanswered",
     "account_deleted_response",
+    "accounts_delete_unanswered",
     "bulk_accounts_response",
     "bulk_delete_accounts",
     "canonical_uid",

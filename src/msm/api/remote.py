@@ -141,6 +141,14 @@ INCOMPLETE_READ_ERROR_TYPE = "IncompleteReadError"
 INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE = "IncompleteReadAfterWriteError"
 """``error_type`` of its ``500`` when a write committed and reading its answer failed."""
 
+UPSTREAM_OUTCOME_UNKNOWN_ERROR_TYPE = "UpstreamOutcomeUnknownError"
+"""``error_type`` of its ``500`` when MetaTables did not answer whether a write was done.
+
+The write may be stored or not: confirm it before sending the request again
+(MainSequenceMarkets#151). ``msm.client`` raises ``metatables.TransferOutcomeUnknown``
+again, as the runtime backend does.
+"""
+
 
 class MarketsOperationUnsupported(MarketsApiError, NotImplementedError):
     """The operation is not offered: the Markets API answers HTTP 501.
@@ -541,6 +549,10 @@ def raise_for_error(status_code: int, detail: str, error_type: str | None) -> No
         raise IncompleteReadError(
             detail, written=error_type == INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE
         )
+    if error_type == UPSTREAM_OUTCOME_UNKNOWN_ERROR_TYPE:
+        from metatables import TransferOutcomeUnknown
+
+        raise TransferOutcomeUnknown(detail)
     if status_code in (401, 403):
         raise MarketsAccessError(detail)
     if status_code == 404:
@@ -575,6 +587,7 @@ __all__ = [
     "INCOMPLETE_READ_ERROR_TYPE",
     "INVALID_STATEMENT_ERROR_TYPE",
     "UPSTREAM_ERROR_TYPE",
+    "UPSTREAM_OUTCOME_UNKNOWN_ERROR_TYPE",
     "WRITE_OPERATIONS",
     "active_remote_backend",
     "decode_arguments",

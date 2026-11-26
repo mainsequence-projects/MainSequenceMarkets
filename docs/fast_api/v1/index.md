@@ -78,7 +78,23 @@ the route does not handle it, the route answers:
 | 502 | `UpstreamApiError` | The upstream API refused the call for another reason (it answered 4xx): permissions, a missing table, a conflict. The same request will be refused again. |
 | 503 | `IncompleteReadError` | A read could not answer every row of one state of its tables: they changed between its pages in each of four reads, or each answer was cut ([issue 115](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/115)). Nothing was written; try again. `Retry-After` is `1`. |
 | 500 | `IncompleteReadAfterWriteError` | The write is stored, and reading its answer back failed in the same way. Read the result again; do not send the write again. |
-| 503 | `UpstreamApiError` | The upstream API failed or could not be reached (5xx, `429`, no answer, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
+| 503 | `UpstreamApiError` | The upstream API failed or could not be reached (5xx, `429`, no answer, a read without an answer, a transfer deadline or retries that ran out, or the MetaTables API could not be located). The request may be tried again; `Retry-After` is passed on when the upstream API sent it. |
+| 500 | `UpstreamOutcomeUnknownError` | MetaTables did not answer a write (a 5xx or a lost connection), so it may be stored or not ([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)). Confirm its outcome before sending the request again. |
+
+The MetaTables client raises its own transfer errors, not the SDK's, for the
+statements, transactions and reads a route sends, and they answer the same way
+with `upstream_status` `null`
+([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)):
+a transfer deadline that ran out (`TransferDeadlineError`), read retries that ran
+out (`TransferRetryExhausted`) and a select without an answer answer `503`; a
+transfer MetaTables or its client refuses (`TransferLimitError`,
+`TransferConflictError`) answers `502`; a write without an answer
+(`TransferOutcomeUnknown`) answers `500` with `UpstreamOutcomeUnknownError`, and
+`msm.client` raises `metatables.TransferOutcomeUnknown` again. A select writes
+nothing, so its missing answer is a failed read, not an unknown outcome. The
+bulk deletes and the portfolio, account and signal deletes confirm a delete without
+an answer themselves; see
+[Command Center Bulk Actions](command_center_bulk_actions.md).
 
 A statement is invalid when MetaTables refuses it (4xx) with one of the codes in
 `INVALID_STATEMENT_CODES` (`apps/v1/upstream_errors.py`): `compiled_sql_database_error`,

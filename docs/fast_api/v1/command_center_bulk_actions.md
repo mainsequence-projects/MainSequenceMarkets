@@ -106,6 +106,19 @@ which then deletes nothing, and each row is then deleted on its own, so only the
 refused ones are reported. The portfolio bulk delete deletes by its preflight's
 counts instead of reading them again.
 
+When MetaTables does not answer the delete (a 5xx or a lost connection), it may have
+committed or not. Every bulk delete then reads the selected rows once and still
+answers `200` with the envelope
+([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+The delete is all or nothing, so while a selected row is still there it did not
+commit, or not yet: each row still there is in `failed` with a reason that says its
+outcome is unknown and the call may be retried, and each row gone is not found. When
+the read fails too, every row is in `failed` the same way. When no row is left, the
+delete committed. The portfolio and account deletes read their rows before deleting,
+so they list each one in `deleted`. The asset-category and portfolio-group deletes do
+not, so a row that is gone may never have existed. Each is listed in `failed` as gone,
+never in `deleted`.
+
 Request validation errors return `422`. Unsupported modes or options return
 `400`. A preflight that discovers missing or protected rows reports them in
 `blockers` and answers `allowed: true` when at least one selected row can still be

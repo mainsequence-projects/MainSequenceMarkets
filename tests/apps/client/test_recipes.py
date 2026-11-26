@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
-from metatables import sqlalchemy_naming_convention
+from metatables import TransferOutcomeUnknown, sqlalchemy_naming_convention
 from msm.api.remote import use_remote_backend, use_runtime_backend
 from msm_portfolios import recipes
 from msm_portfolios.api import (
@@ -63,6 +63,7 @@ from tests.support.sqlite_markets import (
     make_sqlite_markets,
     serve_row_operations,
 )
+from tests.support.unanswered_calls import unanswered_transaction
 
 UTC = dt.UTC
 T0 = dt.datetime(2026, 3, 2, 21, 0, tzinfo=UTC)
@@ -243,6 +244,51 @@ def test_end_signals_keeps_only_the_signal_a_key_the_read_cannot_see_holds(marke
     assert "could not be deleted" in result["failed"][0]["detail"]
     assert SignalWeightsSeries.bounds([kept.signal_uid])[0].row_count == 1
     assert SignalMetadata.filter(signal_uid=gone.signal_uid) == []
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_end_signals_without_an_answer_reads_the_rows_to_confirm(
+    markets, monkeypatch, committed
+) -> None:
+    """Issue 151: the transaction is all or nothing, so one read tells whether it committed."""
+
+    first, second = (
+        ApplicationWeights.from_signal_configuration(
+            ApplicationWeightsConfig(provider="an-application", key=key)
+        )
+        for key in ("model-a", "model-b")
+    )
+    for signal in (first, second):
+        recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 1.0}})
+    unanswered_transaction(monkeypatch, committed=committed)
+
+    result = recipes.end_signals([first.signal_uid, second.signal_uid])
+
+    if committed:
+        assert [item["signal_uid"] for item in result["ended"]] == [first.signal_uid, second.signal_uid]
+        assert all(item["deleted_weights_count"] == 1 for item in result["ended"])
+        assert result["failed"] == []
+        assert SignalMetadata.filter(signal_uid=first.signal_uid) == []
+    else:
+        assert result["ended"] == []
+        assert [item["signal_uid"] for item in result["failed"]] == [first.signal_uid, second.signal_uid]
+        assert result["failed"][0]["detail"] == (
+            f"Signal {first.signal_uid!r}: the outcome of its delete is unknown. MetaTables did "
+            "not answer it, and the signal still existed when read again; the delete may still "
+            "finish. The call may be retried."
+        )
+        assert SignalWeightsSeries.bounds([first.signal_uid])[0].row_count == 1
+
+
+def test_end_signal_without_an_answer_raises_the_unknown_outcome(markets, monkeypatch) -> None:
+    signal = _signal()
+    recipes.publish_signal_weights(signal.signal_uid, {T0: {"AAA": 1.0}})
+    unanswered_transaction(monkeypatch, committed=False)
+
+    with pytest.raises(TransferOutcomeUnknown, match="outcome of its delete is unknown"):
+        recipes.end_signal(signal.signal_uid)
+
+    assert SignalWeightsSeries.bounds([signal.signal_uid])[0].row_count == 1
 
 
 # Portfolios ----------------------------------------------------------------------------------
