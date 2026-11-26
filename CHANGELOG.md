@@ -7,6 +7,14 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.4] - 2026-11-26
+
+Patch release 6.2.4. A ledger books a rebalance with the prices and FX rates the
+rebalance decided it with, even ones older than the ledger's opening. An unanswered
+MetaTables call no longer answers a bare 500 on any route, and every bulk delete still
+answers its envelope after one. The portfolio-group membership bulk delete runs as one
+statement with no row cap. There are no schema, identity or dependency changes.
+
 ### Fixed
 
 - **A ledger books a rebalance sized at its decision with the prices it was decided with,
