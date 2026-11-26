@@ -35,6 +35,8 @@ from msm_portfolios.time_index.constants import ASSET_IDENTIFIER
 from msm_portfolios.time_index.portfolios.accounting import (
     PortfolioEngine,
     PortfolioEngineConfiguration,
+    _Decision,
+    _unpriced,
 )
 from msm_portfolios.time_index.portfolios.run_rows import run_rows
 from msm_portfolios.time_index.portfolios.storage import (
@@ -349,3 +351,40 @@ def test_the_ledger_converts_at_the_last_rate_before_its_opening(opens, in_run) 
     closes_by_time = dict(zip(values["time_index"], values["close"], strict=True))
     assert closes_by_time[utc("2026-11-19T21:00Z")] == pytest.approx(1.0)
     assert closes_by_time[utc("2026-11-20T21:00Z")] == pytest.approx(1.1)
+
+
+def test_a_decision_needs_the_earlier_rows_of_the_items_it_has_no_row_for() -> None:
+    """The ledger opens on 11-19. AAPL has rows from 11-19, MSFT first appears at the 11-20
+    close, between the decisions of 11-20 and 11-23, and SAP never does. Each decision needs
+    the last row before the opening of the items it has no row for by then. A decision
+    made before the opening, on 11-18, needs every item's last row before its earliest
+    moment. A zero target needs none. The rows are read once, flat or indexed."""
+
+    opens = utc("2026-11-19T00:00Z")
+    rows = prices(
+        ("AAPL", "2026-11-19T14:00Z", 1.0),
+        ("AAPL", "2026-11-19T21:00Z", 1.0),
+        ("MSFT", "2026-11-20T21:00Z", 1.0),
+        ("MSFT", "2026-11-23T14:00Z", 1.0),
+    )
+    weights = {"AAPL": 0.3, "MSFT": 0.3, "SAP": 0.3, "IBM": 0.0}
+    decisions = [
+        _Decision(intent_id=intent, earliest=utc(earliest), target_weights=weights)
+        for intent, earliest in (
+            ("before-the-opening", "2026-11-18T15:30Z"),
+            ("before-msft", "2026-11-20T15:30Z"),
+            ("after-msft", "2026-11-23T15:30Z"),
+        )
+    ]
+
+    for frame in (rows, rows.set_index(["time_index", ASSET_IDENTIFIER])):
+        assert _unpriced(
+            decisions,
+            frame,
+            start=opens,
+            key=ASSET_IDENTIFIER,
+            items=lambda decision: decision.sized_assets,
+        ) == {
+            utc("2026-11-18T15:30Z"): ["AAPL", "MSFT", "SAP"],
+            opens: ["MSFT", "SAP"],
+        }

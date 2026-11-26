@@ -873,19 +873,33 @@ def _unpriced(
     otherwise it is the item's last row strictly before the earlier of the decision's
     earliest moment and ``start``. Returns, for each such bound, the items whose last row
     before it is needed.
+
+    An item has a row at or before an instant when its first row is, so ``rows`` are read
+    once, whatever the number of decisions.
     """
 
-    flat = pd.DataFrame() if rows is None or rows.empty else _flat_frame(rows)
-    times = None if flat.empty else pd.to_datetime(flat["time_index"], utc=True)
+    first = _first_times(rows, key=key)
     needed: dict[pd.Timestamp, set[str]] = {}
     for decision in decisions:
-        wanted = {str(item) for item in items(decision)}
-        seen: set[str] = set()
-        if times is not None:
-            seen = set(flat.loc[times <= decision.priced_at, key].astype(str))
-        if wanted - seen:
-            needed.setdefault(min(decision.earliest, start), set()).update(wanted - seen)
+        missing = {
+            str(item)
+            for item in items(decision)
+            if str(item) not in first or first[str(item)] > decision.priced_at
+        }
+        if missing:
+            needed.setdefault(min(decision.earliest, start), set()).update(missing)
     return {before: sorted(values) for before, values in needed.items()}
+
+
+def _first_times(rows: pd.DataFrame | None, *, key: str) -> dict[str, pd.Timestamp]:
+    """Each ``key`` value's first ``time_index`` in ``rows``."""
+
+    if rows is None or rows.empty:
+        return {}
+    flat = _flat_frame(rows)
+    times = pd.to_datetime(flat["time_index"], utc=True)
+    first = times.groupby(flat[key].astype(str).to_numpy(), sort=False).min()
+    return dict(zip(first.index, first, strict=True))
 
 
 def _prices_before_opening(
@@ -963,12 +977,15 @@ def _fx_before_opening(
     """
 
     prices = pd.DataFrame() if valuations.empty else _flat_frame(valuations)
+    quoted: dict[str, set[str]] = {}
+    if not prices.empty:
+        pairs = prices[[ASSET_IDENTIFIER_DIMENSION, "price_asset_identifier"]].astype(str)
+        for asset, quote in pairs.drop_duplicates().itertuples(index=False):
+            quoted.setdefault(asset, set()).add(quote)
 
     def foreign(decision: _Decision) -> set[str]:
-        if prices.empty:
-            return set()
-        rows = prices[prices[ASSET_IDENTIFIER_DIMENSION].astype(str).isin(decision.sized_assets)]
-        return set(rows["price_asset_identifier"].astype(str)) - {currency}
+        found = set().union(*(quoted.get(asset, set()) for asset in decision.sized_assets))
+        return found - {currency}
 
     rates = pd.DataFrame() if fx.empty else _flat_frame(fx)
     if not rates.empty:
