@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from msm.models import PortfolioGroupTable
 from msm.services.bulk_deletion import bulk_delete_rows
 from tests.support.sqlite_markets import _count, _insert
+from tests.support.unanswered_calls import unanswered_write
 
 APPLICATION_TABLE = "provider_ns__groupnotes"
 
@@ -79,3 +82,45 @@ def test_a_blocker_on_the_whole_table_keeps_every_row(sqlite_markets) -> None:
     assert result["deleted"] == [] and _deletes(sqlite_markets) == []
     assert "You cannot write this table." in result["failed"][0]["detail"]
     assert _count(sqlite_markets.engine, "ms_markets__portfoliogroup") == 1
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_a_delete_without_an_answer_never_reports_a_row_it_cannot_confirm(
+    sqlite_markets, monkeypatch, committed
+) -> None:
+    """Issue 151: nothing read the rows before the delete, so a row that is gone after an
+    unanswered delete was deleted by it or never existed, and is not reported deleted."""
+
+    engine = sqlite_markets.engine
+    first, second = _group(engine), _group(engine)
+    missing = str(uuid.uuid4())
+    unanswered_write(monkeypatch, committed=committed)
+
+    result = _delete(sqlite_markets, [first, missing, second])
+
+    assert result["deleted"] == []
+    assert result["detail"] == "No portfolio groups were deleted. 3 could not be deleted."
+    if committed:
+        assert result["failed"] == [
+            {
+                "uid": uid,
+                "detail": (
+                    f"Portfolio group {uid}: it no longer exists. MetaTables did not answer its "
+                    "delete, so this call cannot tell whether it deleted it or it never existed."
+                ),
+            }
+            for uid in (first, missing, second)
+        ]
+        assert _count(engine, "ms_markets__portfoliogroup") == 0
+    else:
+        unknown = (
+            "Portfolio group {}: the outcome of its delete is unknown. MetaTables did not "
+            "answer it, and the portfolio group still existed when read again; the delete "
+            "may still finish. The call may be retried."
+        )
+        assert result["failed"] == [
+            {"uid": first, "detail": unknown.format(first)},
+            {"uid": missing, "detail": f"Portfolio group {missing} was not found."},
+            {"uid": second, "detail": unknown.format(second)},
+        ]
+        assert _count(engine, "ms_markets__portfoliogroup") == 2

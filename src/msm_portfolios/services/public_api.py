@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
+from metatables import TransferOutcomeUnknown
 from sqlalchemy import String, cast, delete, func, or_, select
 
 from msm.models import (
@@ -29,6 +30,7 @@ from msm.repositories.base import (
     with_max_rows,
 )
 from msm.services.assets.reference_details import asset_reference_details
+from msm.services.bulk_deletion import confirm_unknown_delete
 from msm.api.managers import manager_refusal, require_manager
 from msm_portfolios.time_index.portfolios.storage import PortfolioWeightsStorage
 from msm_portfolios.time_index.signals.storage import SignalWeightsStorage
@@ -618,7 +620,9 @@ def delete_signal_metadata_record(
     The signal is named by its row ``uid`` or its ``signal_uid``; ``None`` when it
     does not exist. Only the signal's manager may delete it (ADR 0060). A portfolio
     that still names the signal refuses the delete with ``SignalDeleteConflictError``
-    and nothing is deleted.
+    and nothing is deleted. When MetaTables does not answer the transaction, one read of
+    the row tells whether it committed; ``metatables.TransferOutcomeUnknown`` is raised
+    again when the row is still there or cannot be read (issue 151).
     """
 
     existing = (
@@ -653,10 +657,20 @@ def delete_signal_metadata_record(
         data_source_uid=data_source_uid,
         dialect=dialect,
     )
+    planned = {
+        "uid": signal_metadata_uid,
+        "signal_uid": signal_uid,
+        "weights_count": deleted_weights_count,
+    }
     try:
         rows = _operation_result_rows(
             execute_markets_write(write, context=context, refused_by=(SIGNAL_DELETE_GUARD,))
         )
+    except TransferOutcomeUnknown as exc:
+        ended, failed = _confirm_signals_ended(context, [planned], exc)
+        if not ended:
+            raise TransferOutcomeUnknown(failed[signal_uid]) from exc
+        return ended[0]
     except Exception as exc:
         if _is_delete_conflict(exc):
             raise SignalDeleteConflictError(
@@ -670,13 +684,7 @@ def delete_signal_metadata_record(
             "Signal metadata deletion was blocked by a concurrent change."
         )
 
-    return {
-        "detail": "Signal metadata deleted.",
-        "signal_metadata_uid": str(signal_metadata_uid),
-        "signal_uid": signal_uid,
-        "deleted_count": 1,
-        "deleted_weights_count": deleted_weights_count,
-    }
+    return _ended_signal(planned)
 
 
 def end_signal_metadata_records(
@@ -693,8 +701,9 @@ def end_signal_metadata_records(
     reason and never stops the others. A refusal only the database finds (a portfolio
     written since the read, or a key from an application's own table) refuses the
     transaction, which deletes nothing; each signal is then ended on its own, so only the
-    refused ones stay. ``ended`` holds each ended signal as `delete_signal_metadata_record`
-    answers it.
+    refused ones stay. When MetaTables does not answer the transaction, one read of the
+    rows tells whether it committed (issue 151). ``ended`` holds each ended signal as
+    `delete_signal_metadata_record` answers it.
     """
 
     target = list(dict.fromkeys(str(uid) for uid in signal_uids))
@@ -721,13 +730,17 @@ def end_signal_metadata_records(
             )
         else:
             allowed.append(row)
-    ended = _end_signals_together(context, allowed)
+    try:
+        ended = _end_signals_together(context, allowed)
+    except TransferOutcomeUnknown as exc:
+        ended, unanswered = _confirm_signals_ended(context, allowed, exc)
+        failed.update(unanswered)
     if ended is None:
         ended = []
         for row in allowed:
             try:
                 result = delete_signal_metadata_record(context, signal_uid=row["signal_uid"])
-            except (SignalDeleteConflictError, PermissionError) as exc:
+            except (SignalDeleteConflictError, PermissionError, TransferOutcomeUnknown) as exc:
                 failed[row["signal_uid"]] = str(exc)
                 continue
             if result is None:
@@ -811,16 +824,43 @@ def _end_signals_together(
         return None
     if not _operation_result_rows(result):
         return None
-    return [
-        {
-            "detail": "Signal metadata deleted.",
-            "signal_metadata_uid": str(row["uid"]),
-            "signal_uid": row["signal_uid"],
-            "deleted_count": 1,
-            "deleted_weights_count": row["weights_count"],
-        }
-        for row in rows
-    ]
+    return [_ended_signal(row) for row in rows]
+
+
+def _confirm_signals_ended(
+    context: MarketsRepositoryContext,
+    rows: Sequence[Mapping[str, Any]],
+    error: TransferOutcomeUnknown,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """After the transaction for ``rows`` got no answer: the ended signals, and the reason
+    for each other one by ``signal_uid``; one read of their rows (issue 151)."""
+
+    by_uid = {str(row["uid"]): row for row in rows}
+    deleted, failed = confirm_unknown_delete(
+        context,
+        model=SignalMetadataTable,
+        labels={uid: f"Signal {row['signal_uid']!r}" for uid, row in by_uid.items()},
+        noun="Signal",
+        error=error,
+        not_found={
+            uid: f"No SignalMetadata row has signal_uid {row['signal_uid']!r}."
+            for uid, row in by_uid.items()
+        },
+    )
+    return (
+        [_ended_signal(by_uid[uid]) for uid in deleted],
+        {by_uid[uid]["signal_uid"]: reason for uid, reason in failed.items()},
+    )
+
+
+def _ended_signal(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "detail": "Signal metadata deleted.",
+        "signal_metadata_uid": str(row["uid"]),
+        "signal_uid": row["signal_uid"],
+        "deleted_count": 1,
+        "deleted_weights_count": row["weights_count"],
+    }
 
 
 def delete_signal_weights(

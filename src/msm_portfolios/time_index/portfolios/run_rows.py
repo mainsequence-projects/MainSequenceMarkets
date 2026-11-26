@@ -4,7 +4,8 @@
 them for the nodes of the same run that need the same rows:
 
 - the rebalance keeps the valuation source's rows it read (``ValuationRows``), from the
-  ledger's initial state on, and the ledger books with them;
+  ledger's initial state on, with the last rows it read from before them, and the ledger
+  books with them;
 - the ledger keeps its rows (the stored ledger and the tail it wrote) and the rebalance
   state it read, and the weights and values project them.
 
@@ -29,13 +30,20 @@ from msm.settings import ASSET_IDENTIFIER_DIMENSION
 @dataclass(frozen=True)
 class ValuationRows:
     """The valuation source's rows a rebalance read: of ``assets`` (every asset when
-    ``None``), from ``start`` on, to ``end`` (to the source's last row when ``None``)."""
+    ``None``), from ``start`` on, to ``end`` (to the source's last row when ``None``).
+
+    ``before`` holds the last row strictly before ``start`` of each ``seeded`` asset, the
+    rows the rebalance read for assets with no row in ``frame`` before its own window. An
+    asset of ``seeded`` missing from ``before`` has no row before ``start``.
+    """
 
     source: Any
     start: pd.Timestamp
     end: pd.Timestamp | None
     assets: frozenset[str] | None
     frame: pd.DataFrame
+    before: pd.DataFrame = field(default_factory=pd.DataFrame)
+    seeded: frozenset[str] = frozenset()
 
     def rows(
         self, source: Any, *, start: Any, end: Any, assets: Iterable[str] = ()
@@ -52,6 +60,52 @@ class ValuationRows:
         if self.assets is not None and not set(wanted) <= self.assets:
             return None
         return rows_between(self.frame, start=start, end=end, assets=wanted)
+
+    def last_rows_before(
+        self, source: Any, *, before: Any, assets: Iterable[str]
+    ) -> pd.DataFrame | None:
+        """Each of ``assets``' last row strictly before ``before``, flat, as a read of
+        ``source`` would answer them; ``None`` when this read does not hold them all.
+
+        An asset's last row is in ``frame`` when it has one there before ``before``;
+        otherwise it is its row in ``before``, if the rebalance read it.
+        """
+
+        wanted = sorted({str(asset) for asset in assets})
+        bound = window_bound(before)
+        if source is not self.source or bound < self.start:
+            return None
+        if self.end is not None and bound > self.end:
+            return None
+        if self.assets is not None and not set(wanted) <= self.assets:
+            return None
+        if not wanted:
+            return pd.DataFrame()
+        boundary = pd.Timestamp(before)
+        boundary = (
+            boundary.tz_localize("UTC") if boundary.tzinfo is None else boundary.tz_convert("UTC")
+        )
+        held = _flat(rows_between(self.frame, start=None, end=None, assets=wanted))
+        if not held.empty:
+            held = held[pd.to_datetime(held["time_index"], utc=True) < boundary]
+        found = set() if held.empty else set(held[ASSET_IDENTIFIER_DIMENSION].astype(str))
+        unseen = [asset for asset in wanted if asset not in found]
+        if not set(unseen) <= self.seeded:
+            return None
+        frames = [held]
+        if unseen:
+            frames.append(_flat(rows_between(self.before, start=None, end=None, assets=unseen)))
+        frames = [frame for frame in frames if not frame.empty]
+        if not frames:
+            return pd.DataFrame()
+        combined = pd.concat(frames, ignore_index=True)
+        combined["time_index"] = pd.to_datetime(combined["time_index"], utc=True)
+        return (
+            combined.sort_values("time_index", kind="stable")
+            .groupby(ASSET_IDENTIFIER_DIMENSION, sort=False)
+            .tail(1)
+            .reset_index(drop=True)
+        )
 
 
 @dataclass
@@ -128,6 +182,14 @@ def rows_between(
     if wanted:
         keep &= values(ASSET_IDENTIFIER_DIMENSION).astype(str).isin(wanted)
     return frame[keep]
+
+
+def _flat(frame: pd.DataFrame) -> pd.DataFrame:
+    """``frame`` with its named index levels as columns."""
+
+    if any(name is not None for name in frame.index.names):
+        return frame.reset_index()
+    return frame.reset_index(drop=True)
 
 
 __all__ = ["ValuationRows", "held_rows", "rows_between", "run_rows", "window_bound"]

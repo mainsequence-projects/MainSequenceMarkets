@@ -160,6 +160,14 @@ they answer `ended`, each as `end` answers it, and `failed`, each signal that is
 missing, that the caller does not manage or that a portfolio names, with the
 reason. A refused signal never stops the others.
 
+When MetaTables does not answer the transaction, one read of the signal rows tells
+whether it committed
+([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+With none left, every signal is in `ended`. Otherwise each signal still there is in
+`failed` with a reason that says the outcome is unknown and the call may be retried.
+The route and `end` then answer `500` with `error_type` `UpstreamOutcomeUnknownError`
+([Upstream Errors](index.md#upstream-errors)) for their one signal.
+
 Response:
 
 ```json

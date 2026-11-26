@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import DateTime, Uuid, bindparam, delete, func, insert, or_, select, update
+from sqlalchemy import DateTime, Uuid, and_, bindparam, delete, func, insert, or_, select, update
 
 from metatables import MetaTableCompiledSQLDialect, MetaTableCompiledSQLOperation
 from msm.repositories.base import (
@@ -17,6 +17,7 @@ from msm.repositories.base import (
 )
 from msm.models import PortfolioGroupMembershipTable, PortfolioGroupTable, PortfolioTable
 from msm.repositories.crud import (
+    MAX_STATEMENT_ROWS,
     build_create_model_operation,
     build_delete_model_operation,
     build_get_model_by_uid_operation,
@@ -673,6 +674,107 @@ def delete_portfolio_group_membership_by_pair(
     )
 
 
+def build_delete_portfolio_group_memberships_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str] = (),
+    portfolio_group_uids: Sequence[uuid.UUID | str] = (),
+    portfolio_uids: Sequence[uuid.UUID | str] = (),
+) -> MetaTableCompiledSQLOperation:
+    """Delete a membership selection in one statement, which returns each deleted ``uid``.
+
+    The selection is the memberships of ``uids``, and those whose group is in
+    ``portfolio_group_uids`` and whose portfolio is in ``portfolio_uids``; an empty filter
+    does not narrow the match, and with both empty only ``uids`` are selected. The
+    database resolves it, so no row count caps the delete (MainSequenceMarkets#152).
+    MetaTables returns at most `MAX_STATEMENT_ROWS` of the deleted rows; the result's
+    ``row_count`` counts them all.
+    """
+
+    table = PortfolioGroupMembershipTable
+    statement = (
+        delete(table)
+        .where(_membership_selection(uids, portfolio_group_uids, portfolio_uids))
+        .returning(table.uid.label("uid"))
+    )
+    return compile_markets_statement(
+        statement,
+        context=with_max_rows(context, MAX_STATEMENT_ROWS),
+        operation="delete",
+    )
+
+
+def delete_portfolio_group_memberships(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return execute_markets_operation(
+        build_delete_portfolio_group_memberships_operation(context, **kwargs),
+        context=context,
+    )
+
+
+def build_matching_portfolio_group_membership_uids_operation(
+    context: MarketsRepositoryContext,
+    *,
+    uids: Sequence[uuid.UUID | str] = (),
+    portfolio_group_uids: Sequence[uuid.UUID | str] = (),
+    portfolio_uids: Sequence[uuid.UUID | str] = (),
+) -> MetaTableCompiledSQLOperation:
+    """Read the ``uid`` of each membership the selection matches now, at most
+    `MAX_STATEMENT_ROWS` of them.
+
+    The selection is the one `build_delete_portfolio_group_memberships_operation` deletes.
+    """
+
+    table = PortfolioGroupMembershipTable
+    statement = (
+        select(table.uid.label("uid"))
+        .where(_membership_selection(uids, portfolio_group_uids, portfolio_uids))
+        .limit(MAX_STATEMENT_ROWS)
+    )
+    return compile_markets_statement(
+        statement,
+        context=with_max_rows(context, MAX_STATEMENT_ROWS),
+        operation="select",
+    )
+
+
+def matching_portfolio_group_membership_uids(
+    context: MarketsRepositoryContext,
+    **kwargs: Any,
+) -> list[str]:
+    result = execute_markets_operation(
+        build_matching_portfolio_group_membership_uids_operation(context, **kwargs),
+        context=context,
+    )
+    rows = result.get("rows") if isinstance(result, dict) else result
+    return [str(uuid.UUID(str(row["uid"]))) for row in rows or []]
+
+
+def _membership_selection(
+    uids: Sequence[uuid.UUID | str],
+    portfolio_group_uids: Sequence[uuid.UUID | str],
+    portfolio_uids: Sequence[uuid.UUID | str],
+) -> Any:
+    table = PortfolioGroupMembershipTable
+    matches = []
+    if uids:
+        matches.append(table.uid.in_([uuid.UUID(str(uid)) for uid in uids]))
+    filters = []
+    if portfolio_group_uids:
+        filters.append(
+            table.portfolio_group_uid.in_([uuid.UUID(str(uid)) for uid in portfolio_group_uids])
+        )
+    if portfolio_uids:
+        filters.append(table.portfolio_uid.in_([uuid.UUID(str(uid)) for uid in portfolio_uids]))
+    if filters:
+        matches.append(and_(*filters))
+    if not matches:
+        raise ValueError("Select memberships by uid, portfolio group or portfolio.")
+    return or_(*matches)
+
+
 def build_list_portfolios_for_group_operation(
     context: MarketsRepositoryContext,
     *,
@@ -750,12 +852,14 @@ __all__ = [
     "build_create_portfolio_group_operation",
     "build_delete_portfolio_group_membership_by_pair_operation",
     "build_delete_portfolio_group_membership_operation",
+    "build_delete_portfolio_group_memberships_operation",
     "build_delete_portfolio_group_operation",
     "build_get_portfolio_by_unique_identifier_operation",
     "build_get_portfolio_group_by_uid_operation",
     "build_get_portfolio_group_by_unique_identifier_operation",
     "build_list_portfolio_groups_for_portfolio_operation",
     "build_list_portfolios_for_group_operation",
+    "build_matching_portfolio_group_membership_uids_operation",
     "build_search_portfolio_group_memberships_operation",
     "build_search_portfolio_groups_operation",
     "build_search_portfolios_operation",
@@ -768,11 +872,13 @@ __all__ = [
     "delete_portfolio_group",
     "delete_portfolio_group_membership",
     "delete_portfolio_group_membership_by_pair",
+    "delete_portfolio_group_memberships",
     "get_portfolio_by_unique_identifier",
     "get_portfolio_group_by_uid",
     "get_portfolio_group_by_unique_identifier",
     "list_portfolio_groups_for_portfolio",
     "list_portfolios_for_group",
+    "matching_portfolio_group_membership_uids",
     "search_portfolio_group_memberships",
     "search_portfolio_groups",
     "search_portfolios",

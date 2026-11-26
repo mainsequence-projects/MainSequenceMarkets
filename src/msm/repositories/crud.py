@@ -1081,6 +1081,35 @@ def delete_models(
     )
 
 
+def existing_model_uids(
+    context: MarketsOperationContext,
+    *,
+    model: type[MarketsBase],
+    uids: Sequence[uuid.UUID | str],
+) -> set[str]:
+    """Which of ``uids`` name a row of ``model`` now, as canonical UUID strings; one read.
+
+    A delete whose outcome MetaTables did not answer confirms it this way
+    (MainSequenceMarkets#151).
+    """
+
+    if not uids:
+        return set()
+    identity = _model_identity_attribute(model)
+    statement = select(identity.label("uid")).where(
+        identity.in_([uuid.UUID(str(uid)) for uid in uids])
+    )
+    result = execute_markets_operation(
+        compile_markets_statement(
+            statement,
+            context=with_max_rows(context, len(uids)),
+            operation="select",
+        ),
+        context=context,
+    )
+    return {str(uuid.UUID(str(row["uid"]))) for row in _result_rows(result)}
+
+
 def _model_value_mapping(model: type[MarketsBase], values: Mapping[str, Any]) -> dict[Any, Any]:
     return {_model_attribute(model, key): value for key, value in values.items()}
 
@@ -1256,6 +1285,7 @@ __all__ = [
     "count_model",
     "create_model",
     "delete_model",
+    "existing_model_uids",
     "get_model_by_uid",
     "get_model_by_unique_identifier",
     "search_model",

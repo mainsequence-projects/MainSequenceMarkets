@@ -17,6 +17,7 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
+from metatables import TransferOutcomeUnknown
 from sqlalchemy.sql.util import find_tables
 
 from msm.models import AccountTable
@@ -55,6 +56,7 @@ from tests.support.sqlite_markets import (
     _rows,
     _write_holdings,
 )
+from tests.support.unanswered_calls import unanswered_transaction
 
 ACCOUNT_TABLE_UID = "5a5a5a5a-0000-4000-8000-000000000005"
 ACCOUNT_DELETE_IMPACT = deletion.account_delete_impact
@@ -495,3 +497,63 @@ def test_the_impact_is_asked_once_per_table_and_reused(sqlite_markets, monkeypat
 
     assert calls == ["delete_rows"]
     assert _count(engine, "ms_markets__account") == 0
+
+
+# A delete MetaTables does not answer (issue 151) ------------------------------------------
+
+
+def _unconfirmed(identifier: str) -> str:
+    return (
+        f"Account {identifier!r}: the outcome of its delete is unknown. MetaTables did not "
+        "answer it, and the account still existed when read again; the delete may still "
+        "finish. The call may be retried."
+    )
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_a_delete_without_an_answer_is_confirmed_by_one_read(
+    sqlite_markets, monkeypatch, committed
+) -> None:
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    history = _history(sqlite_markets, account)
+    unanswered_transaction(monkeypatch, committed=committed)
+    sqlite_markets.requests.clear()
+
+    if committed:
+        deleted = delete_account(sqlite_markets.context, uid=account)
+        assert deleted["detail"] == f"Account {history['identifier']!r} deleted with its history."
+        assert set(_account_rows(engine, account, history["identifier"]).values()) == {0}
+    else:
+        with pytest.raises(TransferOutcomeUnknown) as raised:
+            delete_account(sqlite_markets.context, uid=account)
+        assert str(raised.value) == _unconfirmed(history["identifier"])
+        assert 0 not in _account_rows(engine, account, history["identifier"]).values()
+    # The plan's read, the transaction, and one read of the account row.
+    assert sqlite_markets.requests.count("read") == 2
+    assert sqlite_markets.requests[-1] == "read"
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_a_bulk_delete_without_an_answer_reports_what_it_could_not_confirm(
+    sqlite_markets, monkeypatch, committed
+) -> None:
+    engine = sqlite_markets.engine
+    first, second = _account(engine), _account(engine)
+    identifiers = [_history(sqlite_markets, uid)["identifier"] for uid in (first, second)]
+    unanswered_transaction(monkeypatch, committed=committed)
+
+    result = bulk_delete_accounts(sqlite_markets.context, uids=[first, second])
+
+    if committed:
+        assert [item["uid"] for item in result["deleted"]] == [str(first), str(second)]
+        assert result["failed"] == []
+        assert _count(engine, "ms_markets__account") == 0
+    else:
+        assert result["detail"] == "No accounts were deleted. 2 could not be deleted."
+        assert result["deleted"] == []
+        assert result["failed"] == [
+            {"uid": str(uid), "detail": _unconfirmed(identifier)}
+            for uid, identifier in zip((first, second), identifiers)
+        ]
+        assert _count(engine, "ms_markets__account") == 2

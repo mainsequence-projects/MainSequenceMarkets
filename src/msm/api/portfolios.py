@@ -478,6 +478,15 @@ class PortfolioGroupMembership(MarketsMetaTableRow):
         portfolio_group_uids: Sequence[uuid.UUID | str] | None = None,
         portfolio_uids: Sequence[uuid.UUID | str] | None = None,
     ) -> dict[str, Any]:
+        """Delete the selected memberships in one statement and report the rest.
+
+        The selection is the memberships of ``uids``, and those whose group is in
+        ``portfolio_group_uids`` and whose portfolio is in ``portfolio_uids``; an empty
+        filter does not narrow the match. The answer has ``detail``, ``deleted_count``,
+        ``deleted`` (each deleted membership's ``uid``) and ``failed`` (each of ``uids``
+        that was not deleted, with its ``uid`` and ``detail``).
+        """
+
         from msm.services import bulk_delete_portfolio_group_memberships
 
         return bulk_delete_portfolio_group_memberships(

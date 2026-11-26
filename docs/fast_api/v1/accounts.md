@@ -129,6 +129,12 @@ direct account snapshots and virtual-fund-grouped views.
     delete, including orders of other accounts that name its order managers or
     virtual funds of other accounts allocated from its holdings sets; nothing is
     deleted. On PostgreSQL the `409` names the constraint that refused
+  - when MetaTables does not answer the transaction, one read of the account row
+    tells whether it committed: gone, the route answers as deleted, with the
+    portfolios the transaction held; still there, or not readable, it answers
+    `500` with `error_type` `UpstreamOutcomeUnknownError`
+    ([Upstream Errors](index.md#upstream-errors),
+    [issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151))
   - there is no delete for a single virtual fund, target allocation, position
     set or holdings set: an account's history is kept for as long as the account
     exists ([ADR 0049](../../ADR/0049-portfolio-lifecycle-and-account-history.md))
@@ -155,6 +161,11 @@ direct account snapshots and virtual-fund-grouped views.
     An account that is missing or refused never stops the others: the answer,
     `200`, lists each deleted account in `deleted` and each other one, with the
     reason, in `failed`
+  - when MetaTables does not answer the transaction, one read of the selected
+    account rows tells whether it committed: with none left, every account is in
+    `deleted`; otherwise each still there is in `failed` with a reason that says
+    the call may be retried, and one deleted meanwhile is not found
+    ([issue 151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151))
   - `options: {"delete_portfolios": true}` applies the option to every account.
     A portfolio that only selected accounts use goes with them, in the same
     transaction. Any other option, or a value that is not a boolean, answers `400`

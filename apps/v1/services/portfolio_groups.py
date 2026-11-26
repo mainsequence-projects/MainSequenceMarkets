@@ -10,6 +10,7 @@ from apps.v1.schemas.portfolio_groups import (
     PortfolioGroupBulkDeleteResponse,
     PortfolioGroupDeleteResponse,
     PortfolioGroupMembership,
+    PortfolioGroupMembershipBulkDeleteResponse,
 )
 from msm.api.base import operation_result_rows
 from msm.api.http import BulkDeletePreflightResponse
@@ -160,7 +161,9 @@ def remove_portfolio_from_group(
 def bulk_delete_portfolio_group_memberships(
     *,
     payload: Mapping[str, Any],
-) -> PortfolioGroupDeleteResponse:
+) -> PortfolioGroupMembershipBulkDeleteResponse:
+    """Delete the selected memberships in one statement and report the rest (issue 152)."""
+
     runtime = _get_runtime()
     result = _bulk_delete_portfolio_group_memberships(
         runtime.context,
@@ -168,7 +171,7 @@ def bulk_delete_portfolio_group_memberships(
         portfolio_group_uids=[str(uid) for uid in payload.get("portfolio_group_uids", [])],
         portfolio_uids=[str(uid) for uid in payload.get("portfolio_uids", [])],
     )
-    return PortfolioGroupDeleteResponse.model_validate(result)
+    return PortfolioGroupMembershipBulkDeleteResponse.model_validate(result)
 
 
 def list_portfolios_in_group(

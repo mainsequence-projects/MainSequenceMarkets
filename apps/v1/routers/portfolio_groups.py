@@ -10,6 +10,7 @@ from apps.v1.schemas.portfolio_groups import (
     PortfolioGroupDeleteResponse,
     PortfolioGroupMembership,
     PortfolioGroupMembershipBulkDeleteRequest,
+    PortfolioGroupMembershipBulkDeleteResponse,
     PortfolioGroupMembershipRequest,
     Portfolio,
     PortfolioGroupCreateRequest,
@@ -169,11 +170,15 @@ def preflight_portfolio_group_bulk_delete(
 
 @router.post(
     "/membership/bulk-delete/",
-    response_model=PortfolioGroupDeleteResponse,
+    response_model=PortfolioGroupMembershipBulkDeleteResponse,
     summary="Bulk delete portfolio group memberships",
     description=(
-        "Delete membership rows selected by membership uid, portfolio-group uid, or portfolio "
-        "uid without deleting the referenced Portfolio or PortfolioGroup identities."
+        "Delete, in one statement, the memberships of `uids` and those whose group is in "
+        "`portfolio_group_uids` and whose portfolio is in `portfolio_uids` (an empty filter "
+        "does not narrow the match), without deleting the referenced Portfolio or "
+        "PortfolioGroup identities. The database resolves the selection, with no row cap. "
+        "The answer lists each deleted membership in `deleted` and each selected uid that "
+        "was not deleted, with the reason, in `failed`."
     ),
     operation_id="bulkDeletePortfolioGroupMemberships",
 )
@@ -182,7 +187,7 @@ def post_portfolio_group_membership_bulk_delete(
         PortfolioGroupMembershipBulkDeleteRequest,
         Body(description="Bulk delete request for portfolio group memberships."),
     ],
-) -> PortfolioGroupDeleteResponse:
+) -> PortfolioGroupMembershipBulkDeleteResponse:
     return bulk_delete_portfolio_group_memberships(payload=request.model_dump(mode="json"))
 
 

@@ -18,6 +18,10 @@ says why, when account history of another account references it (ADR 0049), when
 caller does not manage it (ADR 0060), or when a foreign key refuses its delete (an
 application's own table that still holds rows of it); then the transaction deletes
 nothing, and a second one deletes the account alone.
+
+A transaction MetaTables does not answer (``metatables.TransferOutcomeUnknown``) is
+confirmed by one read of the account rows, as core's delete confirms it (issue 151): an
+account that is gone was deleted with every portfolio its transaction held.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from metatables import MetaTableTransactionGuardError
+from metatables import MetaTableTransactionGuardError, TransferOutcomeUnknown
 
 from msm.repositories.base import MarketsRepositoryContext
 from msm.services.accounts import deletion as account_deletion
@@ -97,7 +101,9 @@ def delete_account_with_portfolios(
 
     Returns `None` when the account does not exist. Raises
     `msm.services.AccountDeleteConflictError` when a foreign key refuses the account's
-    own delete; then nothing is deleted. Answers as `msm.services.delete_account` does,
+    own delete; then nothing is deleted. Raises ``metatables.TransferOutcomeUnknown``
+    when MetaTables did not answer the delete and the account is still there, or could
+    not be read again. Answers as `msm.services.delete_account` does,
     with ``deleted_portfolios``, each with its ``deleted_rows`` per dataset, and
     ``kept_portfolios``, each with its ``reason``.
     """
@@ -109,30 +115,37 @@ def delete_account_with_portfolios(
     portfolios = plan["portfolios"]
     kept = list(plan["kept_portfolios"])
     try:
-        result = account_deletion.run_account_delete(context, plan, _write(context, plan, portfolios))
-    except MetaTableTransactionGuardError as exc:
-        if exc.label != ACCOUNT_PORTFOLIOS_GUARD:
-            raise
-        # A portfolio was referenced or removed in between; nothing was deleted.
-        kept.extend(_kept(portfolio, PORTFOLIO_CHANGED_REASON) for portfolio in portfolios)
-        portfolios = []
-        result = account_deletion.run_account_delete(context, plan)
-    except AccountDeleteConflictError as exc:
-        if not portfolios:
-            raise
-        # A key the read could not see, such as one from another application's table,
-        # refused the transaction, which deleted nothing. Delete the account alone: if a
-        # key refuses that too, it is the account's own and nothing is deleted.
-        refused = str(exc.__cause__ or exc)
-        result = account_deletion.run_account_delete(context, plan)
-        kept.extend(
-            _kept(
-                portfolio,
-                f"A foreign key refused its delete, so the account was deleted alone: {refused}",
+        try:
+            result = account_deletion.run_account_delete(
+                context, plan, _write(context, plan, portfolios)
             )
-            for portfolio in portfolios
-        )
-        portfolios = []
+        except MetaTableTransactionGuardError as exc:
+            if exc.label != ACCOUNT_PORTFOLIOS_GUARD:
+                raise
+            # A portfolio was referenced or removed in between; nothing was deleted.
+            kept.extend(_kept(portfolio, PORTFOLIO_CHANGED_REASON) for portfolio in portfolios)
+            portfolios = []
+            result = account_deletion.run_account_delete(context, plan)
+        except AccountDeleteConflictError as exc:
+            if not portfolios:
+                raise
+            # A key the read could not see, such as one from another application's table,
+            # refused the transaction, which deleted nothing. Delete the account alone: if a
+            # key refuses that too, it is the account's own and nothing is deleted.
+            refused = str(exc.__cause__ or exc)
+            kept.extend(
+                _kept(
+                    portfolio,
+                    f"A foreign key refused its delete, so the account was deleted alone: {refused}",
+                )
+                for portfolio in portfolios
+            )
+            portfolios = []
+            result = account_deletion.run_account_delete(context, plan)
+    except TransferOutcomeUnknown as exc:
+        # The account gone means the unanswered transaction committed, with ``portfolios``.
+        account_deletion.account_delete_unanswered(context, plan, exc)
+        return _deleted_response(plan, portfolios, kept)
     if not result.get("rows"):
         account_deletion.account_delete_refused(context, plan)
         return None
@@ -163,7 +176,9 @@ def bulk_delete_accounts_with_portfolios(
     every account that may go and those portfolios. An account that is missing or
     blocked is reported in ``failed``; ``table_blockers`` report every account. When the
     database refuses the transaction, which then deletes nothing, each account is
-    deleted on its own with its portfolios, so only the refused ones stay.
+    deleted on its own with its portfolios, so only the refused ones stay. When
+    MetaTables does not answer it, one read of the account rows says whether it
+    committed.
     """
 
     target = account_deletion.unique_uids(uids)
@@ -192,7 +207,18 @@ def bulk_delete_accounts_with_portfolios(
         else None
     )
     deleted: list[dict[str, Any]] = []
-    if allowed and account_deletion.run_accounts_delete(context, allowed, write) is not None:
+    try:
+        together = (
+            bool(allowed) and account_deletion.run_accounts_delete(context, allowed, write) is not None
+        )
+    except TransferOutcomeUnknown as exc:
+        gone, unanswered = account_deletion.accounts_delete_unanswered(context, allowed, exc)
+        deleted = [
+            _deleted_response(plan, owned[plan["uid"]], plan["kept_portfolios"]) for plan in gone
+        ]
+        failed.update(unanswered)
+        allowed, together = [], False
+    if together:
         deleted = [
             _deleted_response(plan, owned[plan["uid"]], plan["kept_portfolios"]) for plan in allowed
         ]
@@ -200,7 +226,7 @@ def bulk_delete_accounts_with_portfolios(
         for plan in allowed:
             try:
                 result = delete_account_with_portfolios(context, uid=plan["uid"])
-            except AccountDeleteConflictError as exc:
+            except (AccountDeleteConflictError, TransferOutcomeUnknown) as exc:
                 failed[plan["uid"]] = str(exc)
                 continue
             if result is None:

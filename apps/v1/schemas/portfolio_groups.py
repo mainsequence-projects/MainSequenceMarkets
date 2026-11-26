@@ -82,6 +82,19 @@ class PortfolioGroupMembershipRequest(BaseModel):
         return self
 
 
+class PortfolioGroupMembershipBulkDeleteResponse(BaseModel):
+    """What a bulk delete of portfolio-group memberships did: the memberships it deleted,
+    in one statement, and each selected membership uid it did not delete, with the
+    reason (issue 152)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    detail: str
+    deleted_count: int = 0
+    deleted: list[BulkDeletedRow] = Field(default_factory=list)
+    failed: list[BulkDeleteFailure] = Field(default_factory=list)
+
+
 class PortfolioGroupMembershipBulkDeleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

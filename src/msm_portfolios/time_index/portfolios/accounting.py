@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -37,7 +39,8 @@ from msm_portfolios.retirement import (
     window_is_empty,
 )
 from ..base import PortfolioCanonicalUpdater, PortfolioCanonicalUpdaterConfiguration
-from .run_rows import held_rows, rows_between
+from .rebalance import _flat_frame, _last_rows_before
+from .run_rows import ValuationRows, held_rows, rows_between
 from .storage import PortfolioEventLedgerStorage
 
 
@@ -335,13 +338,6 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 "PortfolioEngine found no prices for the portfolio's assets in its "
                 "valuation source."
             )
-        fx = pd.DataFrame()
-        if config.fx_source_instance is not None:
-            fx = _validate_declared_input(
-                _read_dependency(config.fx_source_instance, start=start, end=end),
-                contract=FX_INPUT_CONTRACT,
-                name="fx",
-            )
         lifecycle_inputs: dict[str, dict[str, pd.DataFrame]] = {}
         for model in accounting_config.lifecycle_event_model_instances:
             lifecycle_inputs[model.model_identifier] = {
@@ -349,6 +345,37 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 for name in model.declared_dependencies()
             }
         valuation_times = pd.to_datetime(valuations.reset_index()["time_index"], utc=True).unique()
+        decisions = at_decision_rebalances(
+            config.rebalance_strategy_instance, _booked_fills(fills, start)
+        )
+        earlier_valuations = _prices_before_opening(
+            config.valuation_source_instance,
+            decisions=decisions,
+            valuations=valuations,
+            start=start,
+            read=read,
+            valuation_column=config.valuation_column,
+            currency=config.valuation_asset_identifier,
+        )
+        fx = pd.DataFrame()
+        earlier_fx = pd.DataFrame()
+        if config.fx_source_instance is not None:
+            priced = _with_earlier(valuations, earlier_valuations, keys=VALUATION_KEYS)
+            fx = portfolio_fx_rates(
+                config.fx_source_instance,
+                valuations=priced,
+                start=start,
+                end=end,
+                currency=config.valuation_asset_identifier,
+            )
+            earlier_fx = _fx_before_opening(
+                config.fx_source_instance,
+                decisions=decisions,
+                valuations=priced,
+                fx=fx,
+                start=start,
+                currency=config.valuation_asset_identifier,
+            )
         reducer = self.calculate_backtest(
             portfolio_identifier=config.portfolio_identifier,
             accounting_configuration=accounting_config,
@@ -359,6 +386,8 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             fx_observations=fx,
             lifecycle_inputs=lifecycle_inputs,
             valuation_times=valuation_times,
+            earlier_valuations=earlier_valuations,
+            earlier_fx=earlier_fx,
         )
         ledger = reducer.ledger
         existing = self.get_df_between_dates(
@@ -419,12 +448,17 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
         fx_observations: pd.DataFrame | None = None,
         lifecycle_inputs: dict[str, dict[str, pd.DataFrame]] | None = None,
         valuation_times: Any = (),
+        earlier_valuations: pd.DataFrame | None = None,
+        earlier_fx: pd.DataFrame | None = None,
     ) -> PortfolioAccounting:
         """Book the fills ``PortfolioRebalance`` recorded, without external execution ingress.
 
         ``rebalance_state`` is the portfolio's rebalance-state rows. Every row whose
         executed weight changed is a fill, booked at its time and recorded price,
         with quantities sized from the ledger's NAV at that moment.
+        ``earlier_valuations`` and ``earlier_fx`` are rows from before the ledger's
+        window that its at-decision rebalances were decided with (#150); they size those
+        decisions and value nothing.
         """
 
         fx = pd.DataFrame() if fx_observations is None else fx_observations
@@ -443,6 +477,8 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             valuation_observations=valuation_observations,
             fx_observations=fx,
             valuation_asset_identifier=valuation_asset_identifier,
+            earlier_valuations=earlier_valuations,
+            earlier_fx=earlier_fx,
         )
         reducer = PortfolioAccounting(
             portfolio_identifier=portfolio_identifier,
@@ -662,6 +698,10 @@ class _RecordedFillBooker:
     own recorded price; a strategy with its own bars records one fill per slice
     (#90). A rebalance sized at each fill, or without a recorded earliest moment, is
     sized at each fill.
+
+    A rebalance decided before the ledger opens is booked at the opening, still sized
+    with the prices last observed before its earliest moment (#150): ``earlier_valuations``
+    and ``earlier_fx`` hold those older than the ledger's window.
     """
 
     def __init__(
@@ -673,31 +713,28 @@ class _RecordedFillBooker:
         valuation_observations: pd.DataFrame,
         fx_observations: pd.DataFrame,
         valuation_asset_identifier: str,
+        earlier_valuations: pd.DataFrame | None = None,
+        earlier_fx: pd.DataFrame | None = None,
     ) -> None:
         self.strategy = strategy
         self.valuation_observations = valuation_observations
         self.fx_observations = fx_observations
         self.valuation_asset_identifier = str(valuation_asset_identifier)
         start_ts = _utc_timestamp(start)
-        booked = fills[fills["time_index"] >= start_ts] if not fills.empty else fills
+        booked = _booked_fills(fills, start_ts)
         self._fills_by_time: dict[pd.Timestamp, pd.DataFrame] = {
             _utc_timestamp(time_index): group
             for time_index, group in booked.groupby("time_index", sort=True)
         }
-        self._decisions: dict[pd.Timestamp, dict[str, dict[str, float]]] = {}
-        # Sizing at each fill is the execution policy's other choice (ADR 0058).
-        sized_at_decision = strategy.fill_policy().sizing == "at_decision"
-        for intent_id, group in booked.groupby("rebalance_intent_id", sort=True):
-            if not sized_at_decision:
-                break
-            earliest = _recorded_earliest_moment(group)
-            if earliest is None:
-                continue
-            decision_time = max(earliest - pd.Timedelta(1, unit="ns"), start_ts)
-            self._decisions.setdefault(decision_time, {})[str(intent_id)] = {
-                str(row[ASSET_IDENTIFIER_DIMENSION]): float(row["target_weight"])
-                for row in group.to_dict(orient="records")
-            }
+        self._decisions: dict[pd.Timestamp, list[_Decision]] = {}
+        for decision in at_decision_rebalances(strategy, booked):
+            self._decisions.setdefault(max(decision.priced_at, start_ts), []).append(decision)
+        self._decision_valuations = _with_earlier(
+            valuation_observations, earlier_valuations, keys=VALUATION_KEYS
+        )
+        self._decision_fx = _with_earlier(
+            fx_observations, earlier_fx, keys=FX_INPUT_CONTRACT.index_names
+        )
         self._decided: dict[str, dict[str, float]] = {}
         self.event_times = tuple(sorted(set(self._fills_by_time) | set(self._decisions)))
         from msm_portfolios.configuration import compute_strategy_revision
@@ -709,7 +746,7 @@ class _RecordedFillBooker:
                 booked[ASSET_IDENTIFIER_DIMENSION].astype(str).unique()
                 if not booked.empty
                 else (),
-                valuation_observations=valuation_observations,
+                valuation_observations=self._decision_valuations,
             )
         self._model = model
         strategy_name = f"{strategy.__class__.__module__}.{strategy.__class__.__qualname__}"
@@ -718,17 +755,17 @@ class _RecordedFillBooker:
 
     def simulate(self, *, time_index, state, valuation_result):
         timestamp = _utc_timestamp(time_index)
-        for intent_id, target_weights in self._decisions.get(timestamp, {}).items():
+        for decision in self._decisions.get(timestamp, ()):
             quantities = self._model.decision_quantities(
                 valuation_result=valuation_result,
-                time_index=timestamp,
-                target_weights=target_weights,
+                time_index=decision.priced_at,
+                target_weights=decision.target_weights,
                 valuation_asset_identifier=self.valuation_asset_identifier,
-                valuation_observations=self.valuation_observations,
-                fx_observations=self.fx_observations,
+                valuation_observations=self._decision_valuations,
+                fx_observations=self._decision_fx,
             )
             if quantities is not None:
-                self._decided[intent_id] = quantities
+                self._decided[decision.intent_id] = quantities
         fills = self._fills_by_time.get(timestamp)
         if fills is None:
             return _empty_event_batch()
@@ -745,6 +782,275 @@ class _RecordedFillBooker:
             strategy_revision=self._strategy_revision,
             decided_quantities=self._decided.get(intent_id),
         )
+
+
+VALUATION_KEYS = ("time_index", ASSET_IDENTIFIER_DIMENSION)
+
+
+@dataclass(frozen=True)
+class _Decision:
+    """A rebalance sized at its decision (ADR 0058): its intent, earliest moment and targets."""
+
+    intent_id: str
+    earliest: pd.Timestamp
+    target_weights: dict[str, float]
+
+    @property
+    def priced_at(self) -> pd.Timestamp:
+        """The instant it was decided at, just before its earliest moment."""
+        return self.earliest - pd.Timedelta(1, unit="ns")
+
+    @property
+    def sized_assets(self) -> list[str]:
+        """The assets it sizes from a price; a zero target is zero shares."""
+        return sorted(asset for asset, weight in self.target_weights.items() if abs(weight) > 1e-15)
+
+
+def at_decision_rebalances(
+    strategy: RebalanceStrategyBase, fills: pd.DataFrame
+) -> list[_Decision]:
+    """The rebalances of ``fills`` that fix their share counts at their decision.
+
+    Sizing at each fill is the execution policy's other choice (ADR 0058); a rebalance
+    without a recorded earliest moment is sized at each fill too.
+    """
+
+    if fills.empty or strategy.fill_policy().sizing != "at_decision":
+        return []
+    decisions = []
+    for intent_id, group in fills.groupby("rebalance_intent_id", sort=True):
+        earliest = _recorded_earliest_moment(group)
+        if earliest is None:
+            continue
+        decisions.append(
+            _Decision(
+                intent_id=str(intent_id),
+                earliest=earliest,
+                target_weights={
+                    str(row[ASSET_IDENTIFIER_DIMENSION]): float(row["target_weight"])
+                    for row in group.to_dict(orient="records")
+                },
+            )
+        )
+    return decisions
+
+
+def _booked_fills(fills: pd.DataFrame, start: Any) -> pd.DataFrame:
+    """The fills a ledger that opens at ``start`` books: those at or after it."""
+
+    return fills[fills["time_index"] >= _utc_timestamp(start)] if not fills.empty else fills
+
+
+def _with_earlier(
+    window: pd.DataFrame, earlier: pd.DataFrame | None, *, keys: Sequence[str]
+) -> pd.DataFrame:
+    """``window`` and the ``earlier`` rows a decision prices with, one row per ``keys``."""
+
+    if earlier is None or earlier.empty:
+        return window
+    frames = [_flat_frame(frame) for frame in (earlier, window) if not frame.empty]
+    combined = pd.concat(frames, ignore_index=True)
+    combined["time_index"] = pd.to_datetime(combined["time_index"], utc=True).astype(
+        "datetime64[ns, UTC]"
+    )
+    return combined.drop_duplicates(subset=list(keys), keep="last").reset_index(drop=True)
+
+
+def _unpriced(
+    decisions: list[_Decision],
+    rows: pd.DataFrame,
+    *,
+    start: pd.Timestamp,
+    key: str,
+    items: Callable[[_Decision], Any],
+) -> dict[pd.Timestamp, list[str]]:
+    """The rows older than the ledger's window that its decisions price with.
+
+    ``rows`` are the ledger's: every row from its opening ``start`` on, and possibly each
+    item's last row before it. A decision takes each of its ``items`` (assets or
+    currencies, named by ``key``) at its last row at or before the instant it was decided
+    at. That row is in ``rows`` when the item has one there at or before that instant;
+    otherwise it is the item's last row strictly before the earlier of the decision's
+    earliest moment and ``start``. Returns, for each such bound, the items whose last row
+    before it is needed.
+
+    An item has a row at or before an instant when its first row is, so ``rows`` are read
+    once, whatever the number of decisions.
+    """
+
+    first = _first_times(rows, key=key)
+    needed: dict[pd.Timestamp, set[str]] = {}
+    for decision in decisions:
+        missing = {
+            str(item)
+            for item in items(decision)
+            if str(item) not in first or first[str(item)] > decision.priced_at
+        }
+        if missing:
+            needed.setdefault(min(decision.earliest, start), set()).update(missing)
+    return {before: sorted(values) for before, values in needed.items()}
+
+
+def _first_times(rows: pd.DataFrame | None, *, key: str) -> dict[str, pd.Timestamp]:
+    """Each ``key`` value's first ``time_index`` in ``rows``."""
+
+    if rows is None or rows.empty:
+        return {}
+    flat = _flat_frame(rows)
+    times = pd.to_datetime(flat["time_index"], utc=True)
+    first = times.groupby(flat[key].astype(str).to_numpy(), sort=False).min()
+    return dict(zip(first.index, first, strict=True))
+
+
+def _prices_before_opening(
+    source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    decisions: list[_Decision],
+    valuations: pd.DataFrame,
+    start: pd.Timestamp,
+    read: ValuationRows | None,
+    valuation_column: str,
+    currency: str,
+) -> pd.DataFrame:
+    """The prices older than the ledger's opening that its rebalances were decided with.
+
+    A rebalance sizes its shares with each asset's last price before its earliest
+    moment, the price its state records (#150). That price is older than the ledger's
+    window when the rebalance was decided before the ledger opened, or when no price
+    falls between the opening and the decision. In a portfolio run the rows the
+    rebalance kept give it; otherwise, or when they do not hold it, the source is read.
+    """
+
+    needed = _unpriced(
+        decisions,
+        valuations,
+        start=start,
+        key=ASSET_IDENTIFIER_DIMENSION,
+        items=lambda decision: decision.sized_assets,
+    )
+    frames = []
+    for before, assets in sorted(needed.items()):
+        rows = (
+            None if read is None else read.last_rows_before(source, before=before, assets=assets)
+        )
+        if rows is None:
+            rows = _last_rows_before(
+                source,
+                coordinates=tuple({ASSET_IDENTIFIER_DIMENSION: asset} for asset in assets),
+                before=before,
+            )
+        if not rows.empty:
+            frames.append(_flat_frame(rows))
+    if not frames:
+        return pd.DataFrame()
+    raw = pd.concat(frames, ignore_index=True)
+    raw["time_index"] = pd.to_datetime(raw["time_index"], utc=True)
+    raw = raw.drop_duplicates(subset=list(VALUATION_KEYS))
+    return portfolio_valuations(
+        source,
+        valuation_column=valuation_column,
+        currency=currency,
+        start=start,
+        end=start,
+        assets=sorted(set(raw[ASSET_IDENTIFIER_DIMENSION].astype(str))),
+        rows=raw,
+    )
+
+
+def _fx_before_opening(
+    fx_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    decisions: list[_Decision],
+    valuations: pd.DataFrame,
+    fx: pd.DataFrame,
+    start: pd.Timestamp,
+    currency: str,
+) -> pd.DataFrame:
+    """The FX rates its rebalances were decided with that the ledger's rates lack.
+
+    A decision converts each price at its currency's last rate at or before the instant
+    it was decided at (ADR 0059). ``fx`` holds each currency's last rate before the
+    ledger's opening (``portfolio_fx_rates``), so a rate is missing only for a rebalance
+    decided before the opening, with a rate between its decision and the opening.
+    ``valuations`` are the ledger's prices with those older than its window. The ledger
+    reads its FX source itself, in a portfolio run too.
+    """
+
+    prices = pd.DataFrame() if valuations.empty else _flat_frame(valuations)
+    quoted: dict[str, set[str]] = {}
+    if not prices.empty:
+        pairs = prices[[ASSET_IDENTIFIER_DIMENSION, "price_asset_identifier"]].astype(str)
+        for asset, quote in pairs.drop_duplicates().itertuples(index=False):
+            quoted.setdefault(asset, set()).add(quote)
+
+    def foreign(decision: _Decision) -> set[str]:
+        found = set().union(*(quoted.get(asset, set()) for asset in decision.sized_assets))
+        return found - {currency}
+
+    rates = pd.DataFrame() if fx.empty else _flat_frame(fx)
+    if not rates.empty:
+        rates = rates[rates["quote_asset_identifier"].astype(str) == currency]
+    needed = _unpriced(
+        decisions, rates, start=start, key="base_asset_identifier", items=foreign
+    )
+    frames = []
+    for before, currencies in sorted(needed.items()):
+        rows = _last_rows_before(
+            fx_source,
+            coordinates=tuple(
+                {"base_asset_identifier": base, "quote_asset_identifier": currency}
+                for base in currencies
+            ),
+            before=before,
+        )
+        if not rows.empty:
+            frames.append(rows)
+    if not frames:
+        return pd.DataFrame()
+    raw = pd.concat(frames, ignore_index=True)
+    raw = raw.drop_duplicates(subset=list(FX_INPUT_CONTRACT.index_names))
+    return _validate_declared_input(raw, contract=FX_INPUT_CONTRACT, name="fx")
+
+
+def portfolio_fx_rates(
+    fx_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    valuations: pd.DataFrame,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    currency: str,
+) -> pd.DataFrame:
+    """The portfolio's FX rates (ADR 0059): the source's rows from ``start`` to ``end``,
+    and the last rate before ``start`` of each currency ``valuations`` price in other than
+    ``currency``, the portfolio's.
+
+    The rebalance converts at each currency's last rate however old, so the ledger reads
+    the one in force at its opening too (#153). The ledger reads its FX source itself, in
+    a portfolio run too.
+    """
+
+    window = _read_dependency(fx_source, start=start, end=end)
+    prices = pd.DataFrame() if valuations.empty else _flat_frame(valuations)
+    foreign = (
+        []
+        if prices.empty
+        else sorted(set(prices["price_asset_identifier"].astype(str)) - {str(currency)})
+    )
+    before = _last_rows_before(
+        fx_source,
+        coordinates=tuple(
+            {"base_asset_identifier": base, "quote_asset_identifier": str(currency)}
+            for base in foreign
+        ),
+        before=start,
+    )
+    if before.empty:
+        return _validate_declared_input(window, contract=FX_INPUT_CONTRACT, name="fx")
+    frames = [_flat_frame(frame) for frame in (before, window) if not frame.empty]
+    rates = pd.concat(frames, ignore_index=True)
+    rates["time_index"] = pd.to_datetime(rates["time_index"], utc=True)
+    rates = rates.drop_duplicates(subset=list(FX_INPUT_CONTRACT.index_names), keep="last")
+    return _validate_declared_input(rates, contract=FX_INPUT_CONTRACT, name="fx")
 
 
 def default_execution_model(
@@ -1079,6 +1385,7 @@ __all__ = [
     "PortfolioEngineConfiguration",
     "default_execution_model",
     "normalize_portfolio_event_ledger_frame",
+    "portfolio_fx_rates",
     "portfolio_valuations",
     "recorded_fills",
     "require_booked_events",

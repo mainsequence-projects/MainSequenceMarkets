@@ -7,6 +7,88 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.4] - 2026-11-26
+
+Patch release 6.2.4. A ledger books a rebalance with the prices and FX rates the
+rebalance decided it with, even ones older than the ledger's opening. An unanswered
+MetaTables call no longer answers a bare 500 on any route, and every bulk delete still
+answers its envelope after one. The portfolio-group membership bulk delete runs as one
+statement with no row cap. There are no schema, identity or dependency changes.
+
+### Fixed
+
+- **A ledger books a rebalance sized at its decision with the prices it was decided with,
+  even when they are older than the ledger's opening**
+  ([#150](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/150)). A
+  rebalance sized at its decision (ADR 0058) fixes its shares from each asset's last price
+  before its earliest moment. `PortfolioEngine` sized the decision again from its own
+  prices, which start at its `initial_state_time_index`, and booked a decision made before
+  that at the opening, with the prices there. A ledger that opened at its first rebalance
+  then raised "No observed price at or before ..." on every run when no price fell at the
+  opening, so the portfolio was stuck; when a price did, it booked a different share count
+  from the rebalance state's `decision_price`. A ledger that opened before a decision with
+  no price in between raised the same error. Now the ledger takes each asset's last price,
+  and each currency's last FX rate, at or before the instant before the earliest moment,
+  wherever it falls, and books a decision made before the opening at the opening. In a
+  portfolio run the rows the rebalance keeps include the prices it read from before its
+  window, so the ledger finds the price there. Otherwise, and outside a run (a node Job),
+  the ledger reads each missing asset's last row itself. Opening a ledger at its first
+  rebalance stays valid. A ledger already stored with the other share count no longer
+  replays: its update raises `NotImplementedError` for the corrected events.
+- **A ledger converts at each currency's last FX rate, even one older than its opening**
+  ([#153](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/153)). The
+  rebalance converts a price in another currency at that currency's last rate, and reads
+  the one before its window (ADR 0059). `PortfolioEngine` read its FX source only from its
+  `initial_state_time_index` on, so a fill before the first rate after the opening raised
+  "Missing explicit execution FX into ..." on every run, although the rebalance had
+  filled. Now the ledger also reads the last rate before its opening of each currency its
+  prices are in, other than the portfolio's (`portfolio_fx_rates`), and its fills, cash
+  limit and valuations convert at it, in a portfolio run and outside one. A ledger that
+  converted with a rate from its own window converts with the same rate.
+- **A MetaTables call without an answer no longer answers a bare 500**
+  ([#151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)). The
+  MetaTables client raises its own `TransferError` subclasses, not the SDK's `ApiError`,
+  for the statements, transactions and reads the Markets API sends, and the API mapped
+  none of them: a 5xx or a lost connection between it and MetaTables answered "Exception
+  in ASGI application". Now every route answers them as its upstream errors: `503`
+  (`UpstreamApiError`) for a transfer deadline or read retries that ran out and for a
+  select without an answer, `502` for a transfer MetaTables or its client refuses
+  (`TransferLimitError`, `TransferConflictError`), and `500` with the new `error_type`
+  `UpstreamOutcomeUnknownError` for a write without an answer, which may be stored or not:
+  confirm it before sending the request again. `msm.client` raises
+  `metatables.TransferOutcomeUnknown` again for it. A select writes nothing, so
+  `execute_markets_operation` raises `msm.repositories.base.UnansweredReadError`, a failed
+  read, for a select MetaTables does not answer.
+- **Every bulk delete confirms a delete MetaTables does not answer**
+  ([#151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)).
+  `POST /api/v1/portfolio/bulk-delete/` answered 500 for one, so the caller could not tell
+  which portfolios were gone. The portfolio, account (with or without their portfolios),
+  asset-category, portfolio-group and signal bulk deletes now read the selected rows
+  once and answer their envelope. The delete is all or nothing. While a row is still
+  there it did not commit, or not yet: each row still there is in `failed` with a reason
+  that says its outcome is unknown and the call may be retried. With no row left it
+  committed. The portfolio, account and signal deletes, which read their rows first,
+  report them deleted. The asset-category and portfolio-group deletes list each in
+  `failed`, as no longer existing, since it may never have existed. The single
+  portfolio, account and signal deletes answer as deleted when the row is gone, and
+  `500` `UpstreamOutcomeUnknownError` otherwise.
+- **The portfolio-group membership bulk delete deletes its whole selection in one
+  statement and answers the bulk-delete envelope**
+  ([#152](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/152)).
+  `POST /api/v1/portfolio-group/membership/bulk-delete/` read and deleted each membership
+  with two calls of its own, answered only `detail` and `deleted_count`, and found a
+  selection by group or portfolio with one unordered read of 5,000 memberships, so the
+  matches past them stayed. Now the database resolves the selection, with no row cap,
+  and one statement deletes it. The answer adds `deleted` and `failed`
+  (`PortfolioGroupMembershipBulkDeleteResponse`): a selected uid that is not found, or
+  whose fate the call cannot tell, is in `failed`, never in `deleted`, and
+  `deleted_count` counts only the deletes the call can confirm. Past the 10,000 rows
+  MetaTables returns of one statement, `deleted_count` counts every deleted membership
+  and `deleted` lists those it returned. A delete MetaTables does not answer is confirmed
+  with one read of what still matches the selection: each membership still there is in
+  `failed` with an unknown outcome, and when none is left no membership is reported
+  deleted, since the selection may have matched nothing.
+
 ## [6.2.3] - 2026-11-26
 
 Patch release 6.2.3: revision 0039 takes an Index-value table the database already holds

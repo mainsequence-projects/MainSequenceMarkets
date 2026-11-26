@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
+from metatables import TransferOutcomeUnknown
 from sqlalchemy.sql.util import find_tables
 
 from msm.repositories.account_deletion import ACCOUNT_DELETE_TABLES
@@ -56,6 +57,7 @@ from tests.support.sqlite_markets import (
     _write_target,
     table_reads,
 )
+from tests.support.unanswered_calls import unanswered_transaction
 
 PORTFOLIO_TABLES = {
     *DATASETS.values(),
@@ -526,3 +528,57 @@ def test_the_preflight_counts_match_what_the_delete_removes(sqlite_markets) -> N
     assert {
         key: totals_before[table_name] - _count(engine, table_name) for key, table_name in DATASETS.items()
     } == portfolio["row_counts"]
+
+
+# A delete MetaTables does not answer (issue 151) ------------------------------------------
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_a_delete_with_portfolios_without_an_answer_is_confirmed_by_one_read(
+    sqlite_markets, monkeypatch, committed
+) -> None:
+    """The account gone means its transaction committed, with its portfolios."""
+
+    engine = sqlite_markets.engine
+    account = _account(engine)
+    portfolio, identifier = _portfolio_with_data(engine)
+    history = _history(sqlite_markets, account, portfolio)
+    unanswered_transaction(monkeypatch, committed=committed)
+
+    if committed:
+        deleted = delete_account_with_portfolios(sqlite_markets.context, uid=account)
+        assert deleted["detail"] == (
+            f"Account {history['identifier']!r} deleted with its history and 1 portfolio."
+        )
+        assert [item["uid"] for item in deleted["deleted_portfolios"]] == [str(portfolio)]
+        assert not _exists(engine, portfolio)
+    else:
+        with pytest.raises(TransferOutcomeUnknown, match="outcome of its delete is unknown"):
+            delete_account_with_portfolios(sqlite_markets.context, uid=account)
+        assert _exists(engine, portfolio)
+        assert _dataset_rows(engine, identifier) == {key: 1 for key in DATASETS}
+
+
+@pytest.mark.parametrize("committed", [True, False])
+def test_a_bulk_delete_with_portfolios_without_an_answer_reports_what_it_could_not_confirm(
+    sqlite_markets, monkeypatch, committed
+) -> None:
+    engine = sqlite_markets.engine
+    first, second = _account(engine), _account(engine)
+    shared, _shared_identifier = _portfolio_with_data(engine)
+    _history(sqlite_markets, first, shared)
+    _history(sqlite_markets, second, shared)
+    unanswered_transaction(monkeypatch, committed=committed)
+
+    result = bulk_delete_accounts_with_portfolios(sqlite_markets.context, uids=[first, second])
+
+    if committed:
+        assert result["detail"] == "Deleted 2 accounts with their history and 1 portfolio."
+        assert [item["uid"] for item in result["deleted"][0]["deleted_portfolios"]] == [str(shared)]
+        assert result["failed"] == []
+        assert not _exists(engine, shared)
+    else:
+        assert result["deleted"] == []
+        assert [item["uid"] for item in result["failed"]] == [str(first), str(second)]
+        assert all("The call may be retried." in item["detail"] for item in result["failed"])
+        assert _exists(engine, shared)

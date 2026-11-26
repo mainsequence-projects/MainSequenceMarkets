@@ -384,7 +384,8 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         In a portfolio run (``run_rows``) the source is read once for the rebalance and
         its ledger (#139): from the ledger's initial state when that is earlier, and to the
         source's last row unless ``MAX_TD_FROM_LATEST_VALUE`` bounds the window. The rows
-        before ``start`` give each asset's last row; an asset with none there is read.
+        before ``start`` give each asset's last row; an asset with none there is read, and
+        the run keeps that row too, for a ledger decision priced before its opening (#150).
         """
         held = held_rows()
         read_start = start
@@ -406,7 +407,9 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
         read = self.valuation_source.get_df_between_dates(**kwargs)
         read = pd.DataFrame() if read is None else read
         frame = rows_between(read, start=start, end=end)
-        seeds = self._last_prices_before(read, start=start, read_start=read_start, assets=assets)
+        seeds, before, seeded = self._last_prices_before(
+            read, start=start, read_start=read_start, assets=assets
+        )
         if held is not None:
             held.valuations[self._resolve_portfolio_identifier()] = ValuationRows(
                 source=self.valuation_source,
@@ -414,6 +417,8 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
                 end=None if read_end is None else window_bound(read_end),
                 assets=frozenset(assets) if assets else None,
                 frame=read,
+                before=before,
+                seeded=frozenset(seeded),
             )
         flat_frames = [
             _flat_frame(item) for item in (seeds, frame) if item is not None and not item.empty
@@ -445,14 +450,16 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
 
     def _last_prices_before(
         self, read: pd.DataFrame, *, start: Any, read_start: Any, assets: list[str]
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
         """Each asset's last valuation row strictly before ``start``.
 
         Taken from ``read`` (the source from ``read_start`` on); an asset with no row there
-        before ``start`` has its last row before ``read_start`` read.
+        before ``start`` has its last row before ``read_start`` read. Also returns those
+        rows and the assets they were read for, which a portfolio run keeps for the
+        ledger (#150).
         """
         if not assets:
-            return pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame(), []
         earlier = pd.DataFrame()
         if not read.empty:
             flat = _flat_frame(read)
@@ -472,13 +479,14 @@ class PortfolioRebalance(AssetScopedPortfolioCanonicalUpdater):
             before=read_start,
         )
         frames = [item for item in (earlier, before) if not item.empty]
-        if not frames:
-            return pd.DataFrame()
-        return (
+        seeds = (
             pd.concat(frames, ignore_index=True)
             .sort_values("time_index", kind="stable")
             .reset_index(drop=True)
+            if frames
+            else pd.DataFrame()
         )
+        return seeds, before, missing
 
     def _previous_state(self, latest: Any | None) -> pd.DataFrame | None:
         """Return the latest rebalance-state row of every asset of the portfolio.

@@ -19,6 +19,19 @@ A read that could not answer every row of one state of its tables
 write committed, it answers ``500``, ``error_type`` ``IncompleteReadAfterWriteError``: the
 write is stored and must not be sent again.
 
+The MetaTables client raises its own ``TransferError`` subclasses, not ``ApiError``, for
+the statements, transactions and reads it sends (MainSequenceMarkets#151). They answer
+the same way, with ``upstream_status`` ``null``:
+
+- ``503`` for a deadline that ran out (``TransferDeadlineError``), retries that ran out
+  (``TransferRetryExhausted``) and a select without an answer
+  (``msm.repositories.base.UnansweredReadError``);
+- ``502`` for a transfer MetaTables or its client refuses (``TransferLimitError``,
+  ``TransferConflictError``): the same request is refused again;
+- ``500``, ``error_type`` ``UpstreamOutcomeUnknownError``, for a write without an answer
+  (``TransferOutcomeUnknown``): it may be stored or not, so the caller confirms its
+  outcome before sending it again.
+
 The body is ``{"detail", "error_type", "upstream_status"}``, with ``error_type``
 ``UpstreamApiError`` for ``502`` and ``503``. ``detail`` carries the reason the
 upstream API gave and nothing else from the exchange: not the request, whose SQL and
@@ -36,12 +49,19 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mainsequence.client.exceptions import ApiError
-from metatables import ApiResolutionError
+from metatables import (
+    ApiResolutionError,
+    TransferConflictError,
+    TransferLimitError,
+    TransferOutcomeUnknown,
+)
+from metatables.contracts.transfer import TransferError
 from msm.api.remote import (
     INCOMPLETE_READ_AFTER_WRITE_ERROR_TYPE,
     INCOMPLETE_READ_ERROR_TYPE,
     INVALID_STATEMENT_ERROR_TYPE,
     UPSTREAM_ERROR_TYPE,
+    UPSTREAM_OUTCOME_UNKNOWN_ERROR_TYPE,
 )
 from msm.repositories.complete_reads import IncompleteReadError
 
@@ -83,6 +103,7 @@ def install_upstream_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ApiError, _upstream_api_error)
     app.add_exception_handler(ApiResolutionError, _upstream_unreachable)
     app.add_exception_handler(IncompleteReadError, _incomplete_read)
+    app.add_exception_handler(TransferError, _transfer_failed)
 
 
 def _incomplete_read(_request: Request, exc: IncompleteReadError) -> JSONResponse:
@@ -122,6 +143,22 @@ def _upstream_api_error(_request: Request, exc: ApiError) -> JSONResponse:
     if not refused and retry_after:
         headers["Retry-After"] = str(retry_after)
     return _answer(502 if refused else 503, detail, upstream_status, headers)
+
+
+def _transfer_failed(_request: Request, exc: TransferError) -> JSONResponse:
+    reason = _safe(str(exc))
+    if isinstance(exc, TransferOutcomeUnknown):
+        logger.warning("A MetaTables write ended without an answer: %s", reason)
+        detail = (
+            "The upstream API did not answer whether the write was done; it may be stored "
+            f"or not. Confirm its outcome before sending the request again: {reason}"
+        )
+        return _answer(500, detail, None, {}, UPSTREAM_OUTCOME_UNKNOWN_ERROR_TYPE)
+    if isinstance(exc, (TransferLimitError, TransferConflictError)):
+        logger.warning("A MetaTables transfer was refused: %s: %s", type(exc).__name__, reason)
+        return _answer(502, f"The upstream API refused the transfer: {reason}", None, {})
+    logger.warning("A MetaTables transfer failed: %s: %s", type(exc).__name__, reason)
+    return _answer(503, f"The upstream API did not answer: {reason}", None, {})
 
 
 def _upstream_unreachable(_request: Request, exc: ApiResolutionError) -> JSONResponse:
