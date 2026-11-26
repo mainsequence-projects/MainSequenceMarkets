@@ -338,13 +338,6 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
                 "PortfolioEngine found no prices for the portfolio's assets in its "
                 "valuation source."
             )
-        fx = pd.DataFrame()
-        if config.fx_source_instance is not None:
-            fx = _validate_declared_input(
-                _read_dependency(config.fx_source_instance, start=start, end=end),
-                contract=FX_INPUT_CONTRACT,
-                name="fx",
-            )
         lifecycle_inputs: dict[str, dict[str, pd.DataFrame]] = {}
         for model in accounting_config.lifecycle_event_model_instances:
             lifecycle_inputs[model.model_identifier] = {
@@ -364,20 +357,25 @@ class PortfolioEngine(PortfolioCanonicalUpdater):
             valuation_column=config.valuation_column,
             currency=config.valuation_asset_identifier,
         )
-        earlier_fx = (
-            pd.DataFrame()
-            if config.fx_source_instance is None
-            else _fx_before_opening(
+        fx = pd.DataFrame()
+        earlier_fx = pd.DataFrame()
+        if config.fx_source_instance is not None:
+            priced = _with_earlier(valuations, earlier_valuations, keys=VALUATION_KEYS)
+            fx = portfolio_fx_rates(
+                config.fx_source_instance,
+                valuations=priced,
+                start=start,
+                end=end,
+                currency=config.valuation_asset_identifier,
+            )
+            earlier_fx = _fx_before_opening(
                 config.fx_source_instance,
                 decisions=decisions,
-                valuations=_with_earlier(
-                    valuations, earlier_valuations, keys=VALUATION_KEYS
-                ),
+                valuations=priced,
                 fx=fx,
                 start=start,
                 currency=config.valuation_asset_identifier,
             )
-        )
         reducer = self.calculate_backtest(
             portfolio_identifier=config.portfolio_identifier,
             accounting_configuration=accounting_config,
@@ -868,12 +866,13 @@ def _unpriced(
 ) -> dict[pd.Timestamp, list[str]]:
     """The rows older than the ledger's window that its decisions price with.
 
-    ``rows`` are the ledger's, from its opening ``start`` on. A decision takes each of its
-    ``items`` (assets or currencies, named by ``key``) at its last row at or before the
-    instant it was decided at. That row is in ``rows`` when the item has one from
-    ``start`` to that instant; otherwise it is the item's last row strictly before the
-    earlier of the decision's earliest moment and ``start``. Returns, for each such
-    bound, the items whose last row before it is needed.
+    ``rows`` are the ledger's: every row from its opening ``start`` on, and possibly each
+    item's last row before it. A decision takes each of its ``items`` (assets or
+    currencies, named by ``key``) at its last row at or before the instant it was decided
+    at. That row is in ``rows`` when the item has one there at or before that instant;
+    otherwise it is the item's last row strictly before the earlier of the decision's
+    earliest moment and ``start``. Returns, for each such bound, the items whose last row
+    before it is needed.
     """
 
     flat = pd.DataFrame() if rows is None or rows.empty else _flat_frame(rows)
@@ -882,9 +881,8 @@ def _unpriced(
     for decision in decisions:
         wanted = {str(item) for item in items(decision)}
         seen: set[str] = set()
-        if times is not None and decision.priced_at >= start:
-            within = (times >= start) & (times <= decision.priced_at)
-            seen = set(flat.loc[within, key].astype(str))
+        if times is not None:
+            seen = set(flat.loc[times <= decision.priced_at, key].astype(str))
         if wanted - seen:
             needed.setdefault(min(decision.earliest, start), set()).update(wanted - seen)
     return {before: sorted(values) for before, values in needed.items()}
@@ -954,12 +952,14 @@ def _fx_before_opening(
     start: pd.Timestamp,
     currency: str,
 ) -> pd.DataFrame:
-    """The FX rates older than the ledger's opening that its rebalances were decided with.
+    """The FX rates its rebalances were decided with that the ledger's rates lack.
 
     A decision converts each price at its currency's last rate at or before the instant
-    it was decided at (ADR 0059), which can be older than the ledger's window as its
-    prices can. ``valuations`` are the ledger's prices with those older ones. The
-    ledger reads its FX source itself, in a portfolio run too.
+    it was decided at (ADR 0059). ``fx`` holds each currency's last rate before the
+    ledger's opening (``portfolio_fx_rates``), so a rate is missing only for a rebalance
+    decided before the opening, with a rate between its decision and the opening.
+    ``valuations`` are the ledger's prices with those older than its window. The ledger
+    reads its FX source itself, in a portfolio run too.
     """
 
     prices = pd.DataFrame() if valuations.empty else _flat_frame(valuations)
@@ -993,6 +993,47 @@ def _fx_before_opening(
     raw = pd.concat(frames, ignore_index=True)
     raw = raw.drop_duplicates(subset=list(FX_INPUT_CONTRACT.index_names))
     return _validate_declared_input(raw, contract=FX_INPUT_CONTRACT, name="fx")
+
+
+def portfolio_fx_rates(
+    fx_source: TimeIndexTableUpdater | TimeIndexTableRef,
+    *,
+    valuations: pd.DataFrame,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    currency: str,
+) -> pd.DataFrame:
+    """The portfolio's FX rates (ADR 0059): the source's rows from ``start`` to ``end``,
+    and the last rate before ``start`` of each currency ``valuations`` price in other than
+    ``currency``, the portfolio's.
+
+    The rebalance converts at each currency's last rate however old, so the ledger reads
+    the one in force at its opening too (#153). The ledger reads its FX source itself, in
+    a portfolio run too.
+    """
+
+    window = _read_dependency(fx_source, start=start, end=end)
+    prices = pd.DataFrame() if valuations.empty else _flat_frame(valuations)
+    foreign = (
+        []
+        if prices.empty
+        else sorted(set(prices["price_asset_identifier"].astype(str)) - {str(currency)})
+    )
+    before = _last_rows_before(
+        fx_source,
+        coordinates=tuple(
+            {"base_asset_identifier": base, "quote_asset_identifier": str(currency)}
+            for base in foreign
+        ),
+        before=start,
+    )
+    if before.empty:
+        return _validate_declared_input(window, contract=FX_INPUT_CONTRACT, name="fx")
+    frames = [_flat_frame(frame) for frame in (before, window) if not frame.empty]
+    rates = pd.concat(frames, ignore_index=True)
+    rates["time_index"] = pd.to_datetime(rates["time_index"], utc=True)
+    rates = rates.drop_duplicates(subset=list(FX_INPUT_CONTRACT.index_names), keep="last")
+    return _validate_declared_input(rates, contract=FX_INPUT_CONTRACT, name="fx")
 
 
 def default_execution_model(
@@ -1327,6 +1368,7 @@ __all__ = [
     "PortfolioEngineConfiguration",
     "default_execution_model",
     "normalize_portfolio_event_ledger_frame",
+    "portfolio_fx_rates",
     "portfolio_valuations",
     "recorded_fills",
     "require_booked_events",

@@ -27,6 +27,16 @@ and this project follows versioned releases.
   the ledger reads each missing asset's last row itself. Opening a ledger at its first
   rebalance stays valid. A ledger already stored with the other share count no longer
   replays: its update raises `NotImplementedError` for the corrected events.
+- **A ledger converts at each currency's last FX rate, even one older than its opening**
+  ([#153](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/153)). The
+  rebalance converts a price in another currency at that currency's last rate, and reads
+  the one before its window (ADR 0059). `PortfolioEngine` read its FX source only from its
+  `initial_state_time_index` on, so a fill before the first rate after the opening raised
+  "Missing explicit execution FX into ..." on every run, although the rebalance had
+  filled. Now the ledger also reads the last rate before its opening of each currency its
+  prices are in, other than the portfolio's (`portfolio_fx_rates`), and its fills, cash
+  limit and valuations convert at it, in a portfolio run and outside one. A ledger that
+  converted with a rate from its own window converts with the same rate.
 - **A MetaTables call without an answer no longer answers a bare 500**
   ([#151](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/151)). The
   MetaTables client raises its own `TransferError` subclasses, not the SDK's `ApiError`,
@@ -50,10 +60,26 @@ and this project follows versioned releases.
   there it did not commit, or not yet: each row still there is in `failed` with a reason
   that says its outcome is unknown and the call may be retried. With no row left it
   committed. The portfolio, account and signal deletes, which read their rows first,
-  report them deleted. The asset-category and portfolio-group deletes report each as
-  gone in `failed`, since it may never have existed. The single portfolio, account and
-  signal deletes answer as deleted when the row is gone, and `500`
-  `UpstreamOutcomeUnknownError` otherwise.
+  report them deleted. The asset-category and portfolio-group deletes list each in
+  `failed`, as no longer existing, since it may never have existed. The single
+  portfolio, account and signal deletes answer as deleted when the row is gone, and
+  `500` `UpstreamOutcomeUnknownError` otherwise.
+- **The portfolio-group membership bulk delete deletes its whole selection in one
+  statement and answers the bulk-delete envelope**
+  ([#152](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/152)).
+  `POST /api/v1/portfolio-group/membership/bulk-delete/` read and deleted each membership
+  with two calls of its own, answered only `detail` and `deleted_count`, and found a
+  selection by group or portfolio with one unordered read of 5,000 memberships, so the
+  matches past them stayed. Now the database resolves the selection, with no row cap,
+  and one statement deletes it. The answer adds `deleted` and `failed`
+  (`PortfolioGroupMembershipBulkDeleteResponse`): a selected uid that is not found, or
+  whose fate the call cannot tell, is in `failed`, never in `deleted`, and
+  `deleted_count` counts only the deletes the call can confirm. Past the 10,000 rows
+  MetaTables returns of one statement, `deleted_count` counts every deleted membership
+  and `deleted` lists those it returned. A delete MetaTables does not answer is confirmed
+  with one read of what still matches the selection: each membership still there is in
+  `failed` with an unknown outcome, and when none is left no membership is reported
+  deleted, since the selection may have matched nothing.
 
 ## [6.2.3] - 2026-11-26
 

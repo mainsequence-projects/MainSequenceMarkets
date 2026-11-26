@@ -7,6 +7,9 @@ rebalance books it at the opening, and a ledger that opens with no price before 
 decision finds the one before its opening. In a portfolio run the rows the rebalance
 kept give that price; outside one, as in a node Job, the ledger reads it.
 
+The ledger converts every price at its currency's last FX rate, as the rebalance does,
+even one older than its opening (issue #153, ADR 0059).
+
 NYSE closes (21:00 UTC) are 40, 50, 60, 70 and 80 on 2026-11-17, 18, 19, 20 and 23; each
 rebalance targets half of a 10,000 USD NAV unless stated.
 """
@@ -22,6 +25,7 @@ import pandas as pd
 import pytest
 
 from msm_portfolios.accounting import MarketPriceValuationModel, PortfolioAccountingConfiguration
+from msm_portfolios.accounting.projections import project_portfolio_values
 from msm_portfolios.rebalance_strategy import (
     ImmediateSignal,
     InstrumentExecutionSpec,
@@ -74,9 +78,9 @@ class Portfolio:
     rebalance: IncrementalRebalance
     opens: str
 
-    def ledger(self) -> tuple[list[tuple], list[str]]:
-        """Run the ledger on the rebalance state so far: its position deltas, and the
-        reads it made of the price source."""
+    def ledger(self) -> tuple[pd.DataFrame, list[str]]:
+        """Run the ledger on the rebalance state so far: its rows, and the reads it made
+        of the price source."""
 
         node = object.__new__(PortfolioEngine)
         node.config = PortfolioEngineConfiguration(
@@ -111,7 +115,7 @@ class Portfolio:
         finally:
             for name, method in originals.items():
                 setattr(self.source, name, method)
-        return position_deltas(ledger), reads
+        return ledger, reads
 
     def decision_prices(self) -> dict[str, float]:
         """The price each rebalance recorded as its decision price, by signal time."""
@@ -169,8 +173,8 @@ def run_once(*, signal: str, opens: str, in_run: bool) -> tuple[Portfolio, list,
         built = portfolio(storage, signals=[(signal, {"AAPL": 0.5})], opens=opens)
         with run_rows() if in_run else nullcontext():
             built.rebalance.run("2026-11-20T23:00:00Z")
-            deltas, reads = built.ledger()
-    return built, deltas, reads
+            ledger, reads = built.ledger()
+    return built, position_deltas(ledger), reads
 
 
 RUNS = pytest.mark.parametrize("in_run", [False, True], ids=["alone", "in_a_run"])
@@ -235,7 +239,8 @@ def test_in_a_later_run_the_ledger_reads_the_price_the_kept_rows_lack() -> None:
             built.rebalance.run("2026-11-20T23:00:00Z")
             with run_rows() if in_run else nullcontext():
                 built.rebalance.run("2026-11-23T23:00:00Z")
-                return built.ledger()
+                ledger, reads = built.ledger()
+        return position_deltas(ledger), reads
 
     alone, alone_reads = booked(in_run=False)
     shared, shared_reads = booked(in_run=True)
@@ -250,12 +255,10 @@ def test_in_a_later_run_the_ledger_reads_the_price_the_kept_rows_lack() -> None:
     assert shared_reads == ["get_last_observation"]
 
 
-def test_a_rebalance_decided_before_the_opening_converts_at_the_rate_it_was_decided_with() -> None:
-    """SAP closes at 50 EUR. EUR is worth 1.25 USD from the 11-18 close and 2 USD from
-    11-19 20:00. The rebalance decided at 11-19 15:30, the ledger's opening, converts at
-    1.25, so the ledger buys 5,000 / 62.5 = 80 shares at the 11-19 close."""
+def eur_stock() -> ImmediateSignal:
+    """A strategy trading SAP in whole shares quoted in EUR."""
 
-    strategy = ImmediateSignal(
+    return ImmediateSignal(
         calendar_events_instance=calendar(),
         calendar_identifier="XNYS",
         execution_model_instance=TargetWeightExecutionModel(
@@ -273,28 +276,76 @@ def test_a_rebalance_decided_before_the_opening_converts_at_the_rate_it_was_deci
             )
         ),
     )
-    eur_closes = closes("SAP", {"2026-11-18": 50.0, "2026-11-19": 50.0}).assign(
-        price_asset_identifier="EUR"
-    )
-    rates = pd.DataFrame(
+
+
+def eur_rates(*rows: tuple[str, float]) -> pd.DataFrame:
+    """``(time, rate)`` rows of EUR into USD."""
+
+    return pd.DataFrame(
         [
-            (utc("2026-11-18T21:00Z"), "EUR", "USD", 1.25, "fx-0"),
-            (utc("2026-11-19T20:00Z"), "EUR", "USD", 2.0, "fx-1"),
+            (utc(stamp), "EUR", "USD", rate, f"fx-{position}")
+            for position, (stamp, rate) in enumerate(rows)
         ],
         columns=[*FX_INDEX, "rate", "source_revision"],
     )
+
+
+def sap_portfolio(storage, *, opens: str, closes_eur: dict[str, float], rates) -> Portfolio:
+    return portfolio(
+        storage,
+        signals=[("2026-11-19T15:30:00Z", {"SAP": 0.5})],
+        opens=opens,
+        price_rows=closes("SAP", closes_eur).assign(price_asset_identifier="EUR"),
+        fx_rows=rates,
+        strategy=eur_stock(),
+        assets=("SAP",),
+    )
+
+
+def test_a_rebalance_decided_before_the_opening_converts_at_the_rate_it_was_decided_with() -> None:
+    """SAP closes at 50 EUR. EUR is worth 1.25 USD from the 11-18 close and 2 USD from
+    11-19 20:00. The rebalance decided at 11-19 15:30, the ledger's opening, converts at
+    1.25, so the ledger buys 5,000 / 62.5 = 80 shares at the 11-19 close."""
+
     with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
-        built = portfolio(
+        built = sap_portfolio(
             storage,
-            signals=[("2026-11-19T15:30:00Z", {"SAP": 0.5})],
             opens="2026-11-19T15:30:00Z",
-            price_rows=eur_closes,
-            fx_rows=rates,
-            strategy=strategy,
-            assets=("SAP",),
+            closes_eur={"2026-11-18": 50.0, "2026-11-19": 50.0},
+            rates=eur_rates(("2026-11-18T21:00Z", 1.25), ("2026-11-19T20:00Z", 2.0)),
         )
         built.rebalance.run("2026-11-20T23:00:00Z")
-        deltas, _ = built.ledger()
+        ledger, _ = built.ledger()
 
     assert built.decision_prices() == {"2026-11-19T15:30:00+00:00": 62.5}
-    assert deltas == [(utc("2026-11-19T21:00Z"), "SAP", 80.0, 50.0)]
+    assert position_deltas(ledger) == [(utc("2026-11-19T21:00Z"), "SAP", 80.0, 50.0)]
+
+
+@RUNS
+@pytest.mark.parametrize(
+    "opens",
+    ["2026-11-19T15:30:00Z", "2026-11-19T00:00:00Z"],
+    ids=["opening_at_the_signal", "opening_before_the_signal"],
+)
+def test_the_ledger_converts_at_the_last_rate_before_its_opening(opens, in_run) -> None:
+    """SAP closes at 50, 50 and 60 EUR on 11-18, 11-19 and 11-20. The only EUR rate is
+    1.25 USD, at the 11-18 close, before the ledger opens. The ledger converts at it, as
+    the rebalance does: it buys 80 shares at the 11-19 close, and values them at the 11-20
+    close at 80 x 60 x 1.25 = 6,000 USD, for a NAV of 11,000."""
+
+    with _bound(PortfolioRebalanceStateStorage, str(uuid.uuid4())) as storage:
+        built = sap_portfolio(
+            storage,
+            opens=opens,
+            closes_eur={"2026-11-18": 50.0, "2026-11-19": 50.0, "2026-11-20": 60.0},
+            rates=eur_rates(("2026-11-18T21:00Z", 1.25)),
+        )
+        with run_rows() if in_run else nullcontext():
+            built.rebalance.run("2026-11-20T23:00:00Z")
+            ledger, _ = built.ledger()
+
+    assert position_deltas(ledger) == [(utc("2026-11-19T21:00Z"), "SAP", 80.0, 50.0)]
+    values = project_portfolio_values(ledger, initial_nav=10_000.0).reset_index()
+    closes_by_time = dict(zip(values["time_index"], values["close"], strict=True))
+    assert closes_by_time[utc("2026-11-19T21:00Z")] == pytest.approx(1.0)
+    assert closes_by_time[utc("2026-11-20T21:00Z")] == pytest.approx(1.1)
