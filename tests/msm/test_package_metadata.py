@@ -78,8 +78,11 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # (MetaTables#157), and 0.1.82 exports the dtype tokens, sqlalchemy_type_to_token
     # and use_runtime_context, which ms-markets imports from metatables (MetaTables#160),
     # 0.1.83 registers a run's updates and edges with one request each (MetaTables#162),
-    # and 0.1.84 imports a node's table classes by address and rebuilds a typed updater in a
-    # pydantic configuration (MetaTables#165, #164), which a node Job run needs (ADR 0067).
+    # 0.1.84 imports a node's table classes by address and rebuilds a typed updater in a
+    # pydantic configuration (MetaTables#165, #164), which a node Job run needs (ADR 0067),
+    # and 0.1.85's API, which `metatables serve --local` runs, starts and ends a run without
+    # the deployment-wide catalog lock, so the parallel nodes of a node Job run no longer
+    # queue behind every data request (MetaTables#167).
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -99,7 +102,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.81") not in requirement.specifier
     assert Version("0.1.82") not in requirement.specifier
     assert Version("0.1.83") not in requirement.specifier
-    assert Version("0.1.84") in requirement.specifier
+    assert Version("0.1.84") not in requirement.specifier
+    assert Version("0.1.85") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

@@ -7,6 +7,19 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.2] - 2026-11-26
+
+Patch release 6.2.2: ms-markets requires MetaTables 0.1.85. No identity changes.
+
+### Changed
+
+- **Requires `mainsequence-metatable` 0.1.85** (`>=0.1.85,<0.2`). Its API starts and ends
+  a run without the deployment-wide catalog lock (MetaTables#167), so the parallel nodes of
+  a node Job run (ADR 0067) no longer wait behind every data request in the deployment. The
+  client is unchanged: the local API (`metatables serve --local`) runs the fix, and a hosted
+  Environment runs it once its MetaTables API is deployed at 0.1.85. The copied client
+  skills in `.agents/skills/metatables` are those of 0.1.85.
+
 ## [6.2.1] - 2026-11-26
 
 Patch release 6.2.1: `InterpolatedPrices` takes its assets from its source updater when its

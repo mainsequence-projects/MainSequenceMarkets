@@ -180,7 +180,11 @@ if __name__ == "__main__":
 **A library whose producers other projects run** declares no Job. Its producers must
 rebuild in another process from their saved configuration:
 
-- Define the producer and its table class at the top level of an importable module.
+- Declare the producer and its table class with a `class` statement at the top level of
+  an importable module. A table class that a function returns has no import address and
+  is refused, also when it is held in a config or is the table of a producer passed as
+  an argument. A library that offers one table per configuration has its users declare
+  each table as a class.
 - Keep typed values (dates, times, Enums) inside the pydantic config. As separate
   constructor arguments they are saved as text and the run is refused before it starts.
 - Read another producer's result only from its table. A Job run shares no memory with
