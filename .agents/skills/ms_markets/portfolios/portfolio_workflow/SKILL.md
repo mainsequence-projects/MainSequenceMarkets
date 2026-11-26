@@ -205,6 +205,10 @@ One call links them all in one transaction. Do not loop over
   error.
 - The `asset_list` of `InterpolatedPricesConfig` holds identifiers only. A
   `calendar` key in a scope mapping is refused.
+- With neither `asset_list` nor `asset_category_unique_id`, `InterpolatedPrices`
+  interpolates its source updater's `get_asset_list()`. A `TimeIndexTableRef`
+  source names no assets, so it needs one of the two; so does a source updater
+  with no `asset_list` of its own.
 - An `ImmediateSignal` or `CalendarEventSignal` must use the calendar of
   `Portfolio.calendar_uid`. `PortfolioValues` refuses to run when its
   `calendar_identifier` names another calendar.
