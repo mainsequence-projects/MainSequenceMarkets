@@ -7,6 +7,27 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A ledger books a rebalance sized at its decision with the prices it was decided with,
+  even when they are older than the ledger's opening**
+  ([#150](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/150)). A
+  rebalance sized at its decision (ADR 0058) fixes its shares from each asset's last price
+  before its earliest moment. `PortfolioEngine` sized the decision again from its own
+  prices, which start at its `initial_state_time_index`, and booked a decision made before
+  that at the opening, with the prices there. A ledger that opened at its first rebalance
+  then raised "No observed price at or before ..." on every run when no price fell at the
+  opening, so the portfolio was stuck; when a price did, it booked a different share count
+  from the rebalance state's `decision_price`. A ledger that opened before a decision with
+  no price in between raised the same error. Now the ledger takes each asset's last price,
+  and each currency's last FX rate, at or before the instant before the earliest moment,
+  wherever it falls, and books a decision made before the opening at the opening. In a
+  portfolio run the rows the rebalance keeps include the prices it read from before its
+  window, so the ledger finds the price there. Otherwise, and outside a run (a node Job),
+  the ledger reads each missing asset's last row itself. Opening a ledger at its first
+  rebalance stays valid. A ledger already stored with the other share count no longer
+  replays: its update raises `NotImplementedError` for the corrected events.
+
 ## [6.2.3] - 2026-11-26
 
 Patch release 6.2.3: revision 0039 takes an Index-value table the database already holds

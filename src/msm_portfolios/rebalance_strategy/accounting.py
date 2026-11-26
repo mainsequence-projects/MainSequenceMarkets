@@ -273,10 +273,11 @@ class TargetWeightExecutionModel(PositionExecutionModel):
     ) -> dict[str, float]:
         """Return the share counts a rebalance decided at ``time_index`` fixes.
 
-        ``target weight x NAV / price``, rounded down to the lot step. NAV and every
-        price are the last observed at or before ``time_index``, the same set for
-        all assets; the caller passes the instant just before the rebalance's
-        earliest moment. A zero target is zero shares and needs no price.
+        ``target weight x NAV / price``, rounded down to the lot step. Every price and
+        FX rate is the last observed at or before ``time_index``, the same set for all
+        assets; the caller passes the instant just before the rebalance's earliest
+        moment, and the NAV then, or at the ledger's opening for a rebalance decided
+        before it (#150). A zero target is zero shares and needs no price.
         """
         nav = float(valuation_result.nav)
         if not np.isfinite(nav) or nav <= 0.0:
