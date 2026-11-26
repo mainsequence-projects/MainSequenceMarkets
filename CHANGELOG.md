@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.3] - 2026-11-26
+
+Patch release 6.2.3: revision 0039 takes an Index-value table the database already holds
+when it matches the contract, so a deployment whose database has one migrates past it. No
+identity changes.
+
 ### Fixed
 
 - **Revision 0039 takes an Index-value table the database already holds when it matches the
