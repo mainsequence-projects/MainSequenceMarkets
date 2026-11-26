@@ -116,8 +116,9 @@ outcome is unknown and the call may be retried, and each row gone is not found. 
 the read fails too, every row is in `failed` the same way. When no row is left, the
 delete committed. The portfolio and account deletes read their rows before deleting,
 so they list each one in `deleted`. The asset-category and portfolio-group deletes do
-not, so a row that is gone may never have existed. Each is listed in `failed` as gone,
-never in `deleted`.
+not, so a row that is gone may never have existed. Each is listed in `failed`, never in
+`deleted`, with a reason that says it no longer exists and that the call cannot tell
+whether it deleted it.
 
 Request validation errors return `422`. Unsupported modes or options return
 `400`. A preflight that discovers missing or protected rows reports them in

@@ -7,7 +7,9 @@ every selected row that may go, together, and answers one envelope: ``detail``,
 with their own items.
 
 A delete MetaTables does not answer (``metatables.TransferOutcomeUnknown``) may have
-committed or not. `confirm_unknown_delete` reads the rows once to tell (issue 151).
+committed or not. `confirm_unknown_delete` reads the rows once to tell, and
+`confirm_unread_delete` for a delete that read nothing first (issue 151). The reasons they
+give are functions of their own, for another bulk delete to answer the same way.
 """
 
 from __future__ import annotations
@@ -53,9 +55,9 @@ def bulk_delete_rows(
     nothing is sent. When the database refuses the statement, which then deletes nothing,
     each row is deleted on its own, so only the refused ones stay.
 
-    When MetaTables does not answer the statement, `confirm_unknown_delete` reads the rows
+    When MetaTables does not answer the statement, `confirm_unread_delete` reads the rows
     (issue 151). Nothing read them before the delete, so a row that is gone was deleted by
-    it or never existed: it is reported in ``failed`` as gone, never as deleted.
+    it or never existed: it is reported in ``failed``, never as deleted.
     """
 
     target = list(dict.fromkeys(canonical_uid(uid) for uid in uids if str(uid).strip()))
@@ -69,21 +71,12 @@ def bulk_delete_rows(
         try:
             deleted = _returned_rows(delete_models(context, model=model, uids=target))
         except TransferOutcomeUnknown as exc:
-            gone, refused = confirm_unknown_delete(
+            refused = confirm_unread_delete(
                 context,
                 model=model,
                 labels={uid: f"{label} {uid}" for uid in target},
                 noun=label,
                 error=exc,
-            )
-            refused.update(
-                {
-                    uid: (
-                        f"{label} {uid} is gone: MetaTables did not answer its delete, so this "
-                        "call deleted it, or it did not exist."
-                    )
-                    for uid in gone
-                }
             )
         except Exception as exc:
             if not is_delete_conflict(exc):
@@ -125,11 +118,7 @@ def confirm_unknown_delete(
     except (ApiError, ApiResolutionError, TransferError) as read_error:
         logger.warning("Reading the rows of a delete without an answer failed.", error=str(read_error))
         return [], {
-            uid: (
-                f"{label}: the outcome of its delete is unknown. MetaTables did not answer it, "
-                f"and reading the {noun.lower()} again failed too ({type(read_error).__name__}). "
-                "The call may be retried."
-            )
+            uid: unconfirmed_delete_reason(label, noun=noun, error=read_error)
             for uid, label in labels.items()
         }
     if not remaining:
@@ -137,14 +126,62 @@ def confirm_unknown_delete(
     missing = not_found or {}
     return [], {
         uid: (
-            f"{label}: the outcome of its delete is unknown. MetaTables did not answer it, "
-            f"and the {noun.lower()} still existed when read again; the delete may still "
-            "finish. The call may be retried."
+            unknown_delete_reason(label, noun=noun)
             if uid in remaining
             else missing.get(uid, f"{noun} {uid} was not found.")
         )
         for uid, label in labels.items()
     }
+
+
+def confirm_unread_delete(
+    context: MarketsRepositoryContext,
+    *,
+    model: type[Any],
+    labels: Mapping[str, str],
+    noun: str,
+    error: TransferOutcomeUnknown,
+) -> dict[str, str]:
+    """After a delete of rows nothing read first got no answer: why each is not deleted.
+
+    As `confirm_unknown_delete`, with one difference: when none of the rows is left, a
+    uid may never have existed, so none is reported deleted. Each gets
+    `gone_after_unanswered_delete_reason` instead (issue 151).
+    """
+
+    gone, failed = confirm_unknown_delete(context, model=model, labels=labels, noun=noun, error=error)
+    failed.update({uid: gone_after_unanswered_delete_reason(labels[uid]) for uid in gone})
+    return failed
+
+
+def unknown_delete_reason(label: str, *, noun: str) -> str:
+    """Why a row still there after its unanswered delete is not reported deleted."""
+
+    return (
+        f"{label}: the outcome of its delete is unknown. MetaTables did not answer it, and "
+        f"the {noun.lower()} still existed when read again; the delete may still finish. "
+        "The call may be retried."
+    )
+
+
+def unconfirmed_delete_reason(label: str, *, noun: str, error: Exception) -> str:
+    """Why a row is not reported deleted when its delete and the read after it both failed."""
+
+    return (
+        f"{label}: the outcome of its delete is unknown. MetaTables did not answer it, and "
+        f"reading the {noun.lower()} again failed too ({type(error).__name__}). The call may "
+        "be retried."
+    )
+
+
+def gone_after_unanswered_delete_reason(label: str) -> str:
+    """Why a row gone after its unanswered delete, which nothing read before, is not
+    reported deleted."""
+
+    return (
+        f"{label}: it no longer exists. MetaTables did not answer its delete, so this call "
+        "cannot tell whether it deleted it or it never existed."
+    )
 
 
 def bulk_delete_response(
@@ -212,5 +249,9 @@ __all__ = [
     "bulk_delete_rows",
     "canonical_uid",
     "confirm_unknown_delete",
+    "confirm_unread_delete",
+    "gone_after_unanswered_delete_reason",
     "is_delete_conflict",
+    "unconfirmed_delete_reason",
+    "unknown_delete_reason",
 ]

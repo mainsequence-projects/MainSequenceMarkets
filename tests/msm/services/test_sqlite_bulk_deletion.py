@@ -105,8 +105,8 @@ def test_a_delete_without_an_answer_never_reports_a_row_it_cannot_confirm(
             {
                 "uid": uid,
                 "detail": (
-                    f"Portfolio group {uid} is gone: MetaTables did not answer its delete, so "
-                    "this call deleted it, or it did not exist."
+                    f"Portfolio group {uid}: it no longer exists. MetaTables did not answer its "
+                    "delete, so this call cannot tell whether it deleted it or it never existed."
                 ),
             }
             for uid in (first, missing, second)
