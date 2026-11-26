@@ -7,6 +7,26 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.3] - 2026-11-26
+
+Patch release 6.2.3: revision 0039 takes an Index-value table the database already holds
+when it matches the contract, so a deployment whose database has one migrates past it. No
+identity changes.
+
+### Fixed
+
+- **Revision 0039 takes an Index-value table the database already holds when it matches the
+  `IndexValuesTS` contract**
+  ([#147](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/147)). Before
+  0039 no revision created these tables, so a database could already hold one, and 0039's
+  `CREATE TABLE` failed on it: the migration rolled back to 0038 and the deployment kept
+  serving the previous release. Now 0039 creates only the tables that are absent. It takes
+  an existing table as it is, rows included, when the table has exactly the contract's
+  columns, types, nullability, foreign keys and indexes, and nothing else. It refuses one
+  that differs with a `RuntimeError` naming the table and each difference, before it
+  changes anything. A fresh database gets the same DDL as before, and a database already
+  at 0039 does not run it again.
+
 ## [6.2.2] - 2026-11-26
 
 Patch release 6.2.2: ms-markets requires MetaTables 0.1.85. No identity changes.
