@@ -716,6 +716,10 @@ class InterpolatedPrices(AssetIndexedUpdater):
         ``interpolated_prices_instance_key`` computes and whose cadence is the upsample
         frequency (#95). Another table is refused. It is where rows land, and is no part
         of this updater's ``update_hash``.
+
+        With neither ``asset_list`` nor ``asset_category_unique_id``, the assets are the
+        source updater's (#145). A source that names no assets, a ``TimeIndexTableRef``
+        or an updater that is not asset-indexed, is refused here.
         """
         self.interpolation_config = interpolation_config
         for asset in interpolation_config.asset_list or []:
@@ -726,9 +730,16 @@ class InterpolatedPrices(AssetIndexedUpdater):
         source_prices_ts = _assert_source_price_instance(
             interpolation_config.source_price_instance
         )
-        if asset_category_unique_id is None:
-            assert asset_list is not None, (
-                f"asset_category_unique_id={asset_category_unique_id} should not be None or asset_list should be defined"
+        if (
+            asset_list is None
+            and asset_category_unique_id is None
+            and not isinstance(source_prices_ts, AssetIndexedUpdater)
+        ):
+            raise ValueError(
+                "InterpolatedPrices needs asset_list or asset_category_unique_id when its "
+                f"source names no assets: {source_prices_ts.__class__.__name__} is not an "
+                "asset-indexed updater. Without them, the assets are the source updater's "
+                "get_asset_list()."
             )
         source_metadata = _source_output_metadata(
             source_prices_ts, source_context=source_prices_ts.__class__.__name__
@@ -905,8 +916,11 @@ class InterpolatedPrices(AssetIndexedUpdater):
         return upsampled_df
 
     def get_asset_list(self):
-        """
-        Creates mappings from symbols to IDs
+        """The assets to interpolate: the configuration's list, its category's assets, or
+        else the source updater's (#145).
+
+        An update resolves every asset's trading calendar before it reads a bar, so the
+        assets are a list; a source whose own ``get_asset_list()`` is None is refused.
         """
         if self.constructor_asset_list is not None:
             asset_list = self.constructor_asset_list
@@ -916,13 +930,16 @@ class InterpolatedPrices(AssetIndexedUpdater):
                 asset_category_unique_id=self.asset_category_unique_id,
                 context="InterpolatedPrices",
             )
-        elif hasattr(self.bars_ts, "get_asset_list"):
-            asset_list = self.bars_ts.get_asset_list()
         else:
-            raise ValueError(
-                "InterpolatedPrices requires asset_list or asset_category_unique_id "
-                "when the explicit price source does not expose get_asset_list()."
-            )
+            asset_list = self.bars_ts.get_asset_list()
+            if asset_list is None:
+                raise ValueError(
+                    "InterpolatedPrices takes its assets from its source when it has no "
+                    "asset_list or asset_category_unique_id, and the source "
+                    f"{self.bars_ts.__class__.__name__} has none. Give InterpolatedPrices "
+                    "an asset_list or asset_category_unique_id, or give the source an "
+                    "asset_list."
+                )
 
         return asset_list
 

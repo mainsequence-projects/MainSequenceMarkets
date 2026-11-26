@@ -2,17 +2,63 @@
 
 from __future__ import annotations
 
+import socket
+from collections.abc import Iterator
+from contextlib import ExitStack
+
 import pytest
 from metatables import TimeIndexMetaTable, TimeIndexTableRef
 from pydantic import ValidationError
 
+from msm.time_index.assets import AssetSnapshot
+from msm.time_index.assets.snapshots import AssetSnapshotConfiguration
+from msm.time_index.assets.storage import AssetSnapshotsStorage
 from msm_portfolios.contrib.prices.updaters import (
     InterpolatedPrices,
     InterpolatedPricesConfig,
     _source_time_indexed_profile_cadence,
 )
+from tests.support.pinned_identities import (
+    PRICES_TABLE_UID,
+    SOURCE_TABLE_UID,
+    PinnedInterpolatedPrices,
+    _bound,
+)
 
 SOURCE_TIME_INDEX_META_TABLE_UID = "00000000-0000-0000-0000-000000000001"
+
+
+@pytest.fixture
+def bound_tables(monkeypatch) -> Iterator[None]:
+    """The source's and the prices' tables, bound to fake metadata; no request leaves."""
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("The test made a request.")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    with ExitStack() as stack:
+        stack.enter_context(
+            _bound(
+                AssetSnapshotsStorage,
+                SOURCE_TABLE_UID,
+                cadence="1d",
+                physical_table_name=AssetSnapshotsStorage.__table__.name,
+            )
+        )
+        stack.enter_context(_bound(PinnedInterpolatedPrices, PRICES_TABLE_UID, cadence="1d"))
+        yield
+
+
+def _over_source(source) -> InterpolatedPrices:
+    return InterpolatedPrices(
+        _configuration(source_price_instance=source, asset_list=None),
+        output_table=PinnedInterpolatedPrices,
+    )
+
+
+def _snapshots(*assets: str) -> AssetSnapshot:
+    return AssetSnapshot(AssetSnapshotConfiguration(asset_list=list(assets) or None))
 
 
 class _Profile:
@@ -80,3 +126,31 @@ def test_interpolated_prices_reads_its_source_as_a_dependency() -> None:
     node.bars_ts = _configuration(source_price_instance=source_price).source_price_instance
 
     assert node.dependencies() == {"bars_ts": source_price}
+
+
+def test_with_no_assets_named_the_assets_are_the_source_updaters(bound_tables) -> None:
+    prices = _over_source(_snapshots("ASSET_A", "ASSET_B"))
+
+    assert prices.get_asset_list() == ["ASSET_A", "ASSET_B"]
+
+
+def test_the_source_assets_are_part_of_the_identity(bound_tables) -> None:
+    one = _over_source(_snapshots("ASSET_A", "ASSET_B"))
+    other = _over_source(_snapshots("ASSET_A"))
+
+    assert one.update_hash != other.update_hash
+
+
+def test_a_source_updater_without_assets_is_refused_when_they_are_read(bound_tables) -> None:
+    prices = _over_source(_snapshots())
+
+    with pytest.raises(ValueError, match="AssetSnapshot has none"):
+        prices.get_asset_list()
+
+
+def test_a_table_reference_needs_the_assets_named() -> None:
+    with pytest.raises(ValueError, match="TimeIndexTableRef is not an asset-indexed updater"):
+        InterpolatedPrices(
+            _configuration(source_price_instance=_api_price_source(), asset_list=None),
+            output_table=PinnedInterpolatedPrices,
+        )

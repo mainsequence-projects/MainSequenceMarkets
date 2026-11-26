@@ -7,6 +7,36 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.2.1] - 2026-11-26
+
+Patch release 6.2.1: `InterpolatedPrices` takes its assets from its source updater when its
+configuration names none, and `AssetIndexedUpdater` scopes its update statistics through
+MetaTables' public hook. No identity changes.
+
+### Changed
+
+- **`AssetIndexedUpdater` narrows its update statistics through MetaTables' public hook,
+  `prepare_update_statistics`**
+  ([#144](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/144)). It
+  overrode the private `_set_update_statistics` instead. What a node sees is unchanged: on
+  every run without `override_update_stats` (`run()`, `run_updaters`, a node Job run),
+  `update()` gets only its own assets' progress, and an asset the table does not hold yet
+  starts at `offset_start`. Tests now check it through MetaTables' `UpdateRunner`. A
+  subclass that overrides `prepare_update_statistics` calls `super()` to keep the scope.
+
+### Fixed
+
+- **`InterpolatedPrices` takes its assets from its source updater when its configuration
+  names none**
+  ([#145](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/145)). With
+  neither `asset_list` nor `asset_category_unique_id`, the constructor raised an
+  `AssertionError`, so the fallback to the source's `get_asset_list()` never ran. Now the
+  assets are the source's, and the source's assets are part of the updater's identity
+  through the source's update hash. A source that names no assets is refused with a
+  `ValueError`: a `TimeIndexTableRef` or an updater that is not asset-indexed when the
+  updater is built, an asset-indexed updater whose own `get_asset_list()` is None when the
+  assets are read.
+
 ## [6.2.0] - 2026-11-25
 
 A computed signal is its own node again. In 6.1.0 the rebalance ran a computed signal inside
