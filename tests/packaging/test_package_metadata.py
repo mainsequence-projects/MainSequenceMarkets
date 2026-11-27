@@ -31,14 +31,17 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("9.0.5") not in requirement.specifier
     assert Version("9.0.18") not in requirement.specifier
     assert Version("9.0.19") not in requirement.specifier
-    # 9.0.25/26 raise on `team_uids`, 9.0.29 brought access policies, and MetaTables
-    # 0.1.60 and later need 9.0.31, the first SDK whose `Agent` parses platform Agent reads.
+    # 9.0.25/26 raise on `team_uids`, 9.0.29 brought access policies, MetaTables
+    # 0.1.60 and later need 9.0.31, the first SDK whose `Agent` parses platform Agent reads,
+    # and 9.0.43 is the first release that includes the platform's telemetry.
     assert Version("9.0.25") not in requirement.specifier
     assert Version("9.0.26") not in requirement.specifier
     assert Version("9.0.28") not in requirement.specifier
     assert Version("9.0.29") not in requirement.specifier
     assert Version("9.0.30") not in requirement.specifier
-    assert Version("9.0.31") in requirement.specifier
+    assert Version("9.0.31") not in requirement.specifier
+    assert Version("9.0.42") not in requirement.specifier
+    assert Version("9.0.43") in requirement.specifier
     assert Version("9.99.0") in requirement.specifier
     assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
@@ -82,7 +85,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     # pydantic configuration (MetaTables#165, #164), which a node Job run needs (ADR 0067),
     # and 0.1.85's API, which `metatables serve --local` runs, starts and ends a run without
     # the deployment-wide catalog lock, so the parallel nodes of a node Job run no longer
-    # queue behind every data request (MetaTables#167).
+    # queue behind every data request (MetaTables#167), and 0.1.86 is the first release that
+    # includes the platform's telemetry.
     assert Version("0.1.47") not in requirement.specifier
     assert Version("0.1.50") not in requirement.specifier
     assert Version("0.1.56") not in requirement.specifier
@@ -103,7 +107,8 @@ def test_package_metadata_requires_extracted_metatables_client() -> None:
     assert Version("0.1.82") not in requirement.specifier
     assert Version("0.1.83") not in requirement.specifier
     assert Version("0.1.84") not in requirement.specifier
-    assert Version("0.1.85") in requirement.specifier
+    assert Version("0.1.85") not in requirement.specifier
+    assert Version("0.1.86") in requirement.specifier
     assert Version("0.1.99") in requirement.specifier
     assert Version("0.2.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)
