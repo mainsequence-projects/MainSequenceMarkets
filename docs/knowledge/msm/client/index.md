@@ -42,9 +42,25 @@ should list only its own tables in `__required_tables__`.
 `MarketsClient.from_environment()` finds the deployment the way
 MetaTables' `api_endpoint_scope` finds MetaTables: the FastAPI release named `api` (from
 `source_path: api/main.py`) of the `MainSequenceMarkets` CodeRepository in the
-caller's Environment, authenticated with the release token that
-`ResourceRelease.resolve_runtime_access` returns. A 401 refreshes the token
-once. The calling workload sees the release when its workflow grants it
+caller's Environment. Finding it asks the platform for nothing but the release.
+
+The client sends each call through the SDK's `ResourceRelease.call` (SDK ADRs 0041 and
+0042) with its own `httpx.Client`, so its connections are reused. For each call, the SDK:
+
+- reuses the address and token this process keeps while the release is warm, or asks the
+  platform for them, which starts the release, and waits while it starts;
+- bounds the call by the time the current request's caller will still wait, and passes
+  that time on in `Mainsequence-Request-Timeout-Ms`;
+- makes the call a span of the caller's trace. It carries `traceparent` and `baggage`, the
+  Markets API's request lines continue that trace, and the caller's logs get one
+  `dependency.call.completed` or `dependency.call.failed` line with the call's duration
+  and outcome.
+
+A 401 to the token the process kept sends the call once more with a new token, writes
+included: the platform refused the token before the Markets API ran. A 401 to a new token
+raises `MarketsAccessError`.
+
+The calling workload sees the release when its workflow grants it
 `reader` on that repository's branch:
 
 ```yaml
@@ -56,7 +72,7 @@ access:
 
 | Variable | Effect |
 |---|---|
-| `MARKETS_API_URL` | Call this URL instead of discovering one (local development). |
+| `MARKETS_API_URL` | Call this URL instead of discovering one (local development). It is not a release, so its calls carry no trace context. |
 | `MARKETS_API_TOKEN` | Bearer token for `MARKETS_API_URL`; without it the caller's platform session is sent. |
 | `MARKETS_API_RELEASE_UID` | Use this release instead of searching. |
 | `MARKETS_API_RELEASE_NAME`, `MARKETS_API_REPOSITORY_NAME` | Search for another release or repository name. |
@@ -110,6 +126,12 @@ asset pricing details).
 
 Code that catches `ValueError` or `LookupError` behaves the same under both
 backends.
+
+When the Markets API release cannot be called, the SDK's errors reach the caller unchanged,
+and nothing is sent. `ReleaseReadinessTimeoutError` means it was still starting when the
+wait ended. `ReleaseUnavailableError` means the platform says it cannot take requests.
+`ReleaseDeadlineTooShortError` means the current request's caller will not wait long
+enough. All three are `ReleaseCallError`, importable from `mainsequence.client`.
 
 `MarketsUpstreamError` means the Markets API's own call to an API it depends on,
 normally MetaTables, was refused or failed. It is not a fault of the arguments

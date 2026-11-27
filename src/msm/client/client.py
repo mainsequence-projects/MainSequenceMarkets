@@ -46,22 +46,41 @@ VALUES_PAGE_SIZE = 5000
 class MarketsClient:
     """Calls one Markets API deployment as the current process's identity.
 
+    The deployment is either a release, given by ``release_uid``, or an address, given by
+    ``base_url``:
+
+    - A call to a release is sent inside the SDK's ``ResourceRelease.call``. That reuses
+      the address and token this process keeps while the release is warm, or asks the
+      platform and waits while the release starts. It bounds the call by the time the
+      current request's caller will still wait, and passes that time on. It makes the call
+      a span of the caller's trace, with its ``dependency.call.*`` line (SDK ADR 0041 and
+      0042). The SDK's ``ReleaseCallError`` exceptions reach the caller unchanged.
+    - A call to ``base_url`` sends ``headers`` and no trace context. ``base_url`` is not an
+      address the platform gave.
+
     ``session`` is any object with ``request(method, url, json=..., params=...,
-    headers=...)`` returning a response with ``status_code`` and ``json()``: an
-    ``httpx.Client`` with ``timeout`` by default, or FastAPI's ``TestClient`` in
-    tests. The client never builds or forwards identity itself; the platform
-    authenticates the release token or session it sends.
+    headers=...)`` returning a response with ``status_code``, ``headers`` and ``json()``:
+    an ``httpx.Client`` with ``timeout`` by default, or FastAPI's ``TestClient`` in tests.
+    A release call also passes ``timeout=``. The client never builds or forwards identity
+    itself; the platform authenticates the release token or session it sends.
     """
 
     def __init__(
         self,
-        base_url: str,
+        base_url: str | None = None,
         *,
+        release_uid: str | None = None,
         headers: Callable[[bool], Mapping[str, str]] | None = None,
         session: Any | None = None,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
-        self.base_url = str(base_url).rstrip("/")
+        if (base_url is None) == (release_uid is None):
+            raise ValueError("MarketsClient needs either base_url or release_uid.")
+        if release_uid is not None and headers is not None:
+            raise ValueError("A release's headers come from ResourceRelease.call; pass no headers.")
+        self.base_url = None if base_url is None else str(base_url).rstrip("/")
+        self.release_uid = None if release_uid is None else str(release_uid)
+        self._release: Any | None = None
         self._headers = headers or (lambda _force: {})
         self._session = session
         self._session_lock = threading.Lock()
@@ -72,6 +91,8 @@ class MarketsClient:
         """Discover the Environment's Markets API, or use ``MARKETS_API_URL``."""
 
         endpoint: MarketsApiEndpoint = resolve_markets_api_endpoint()
+        if endpoint.release_uid is not None:
+            return cls(release_uid=endpoint.release_uid, timeout=timeout)
         return cls(endpoint.url, headers=endpoint.headers, timeout=timeout)
 
     @property
@@ -90,10 +111,10 @@ class MarketsClient:
     ) -> Any:
         """Send one request; re-raise failures as the row API's exceptions."""
 
-        url = f"{self.base_url}{path}"
-        response = self._send(method, url, json=json, params=params, force=False)
-        if response.status_code == 401:
-            response = self._send(method, url, json=json, params=params, force=True)
+        if self.release_uid is not None:
+            response = self._send_to_release(method, path, json=json, params=params)
+        else:
+            response = self._send_to_url(method, path, json=json, params=params)
         if response.status_code >= 400:
             detail, error_type = _error_detail(response)
             raise_for_error(response.status_code, detail, error_type)
@@ -509,9 +530,49 @@ class MarketsClient:
         )
         return PortfolioBulkDeleteResponse.model_validate(payload)
 
+    def _send_to_release(self, method: str, path: str, *, json: Any, params: Any) -> Any:
+        """Send one call to the release, and once more after a 401 to the kept token.
+
+        A 401 to the token this process kept means the platform refused it before the
+        Markets API ran, so the call is sent once more for every method, writes included.
+        The new block asks the platform for a new token. A 401 to a new token is the answer.
+        """
+
+        response, reused_access = self._release_call(method, path, json=json, params=params)
+        if response.status_code == 401 and reused_access:
+            response, _ = self._release_call(method, path, json=json, params=params)
+        return response
+
+    def _release_call(self, method: str, path: str, *, json: Any, params: Any) -> tuple[Any, bool]:
+        with self._resource_release().call(method, path, timeout=self.timeout) as call:
+            response = self._client().request(
+                method,
+                call.url,
+                json=json,
+                params=params,
+                headers=call.headers,
+                timeout=call.timeout,
+            )
+            call.record(response)
+        return response, call.reused_access
+
+    def _send_to_url(self, method: str, path: str, *, json: Any, params: Any) -> Any:
+        url = f"{self.base_url}{path}"
+        response = self._send(method, url, json=json, params=params, force=False)
+        if response.status_code == 401:
+            response = self._send(method, url, json=json, params=params, force=True)
+        return response
+
     def _send(self, method: str, url: str, *, json: Any, params: Any, force: bool) -> Any:
         headers = dict(self._headers(force))
         return self._client().request(method, url, json=json, params=params, headers=headers)
+
+    def _resource_release(self) -> Any:
+        if self._release is None:
+            from mainsequence.client import ResourceRelease
+
+            self._release = ResourceRelease.by_uid(self.release_uid)
+        return self._release
 
     def _client(self) -> Any:
         if self._session is None:

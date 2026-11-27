@@ -33,7 +33,9 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("9.0.19") not in requirement.specifier
     # 9.0.25/26 raise on `team_uids`, 9.0.29 brought access policies, MetaTables
     # 0.1.60 and later need 9.0.31, the first SDK whose `Agent` parses platform Agent reads,
-    # and 9.0.43 is the first release that includes the platform's telemetry.
+    # 9.0.43 is the first release that includes the platform's telemetry, and 9.0.45 the first
+    # whose `ResourceRelease.call` makes a call the client sends itself a span in the caller's
+    # trace.
     assert Version("9.0.25") not in requirement.specifier
     assert Version("9.0.26") not in requirement.specifier
     assert Version("9.0.28") not in requirement.specifier
@@ -41,7 +43,8 @@ def test_package_metadata_enforces_sdk_9_floor_without_exact_patch_pin() -> None
     assert Version("9.0.30") not in requirement.specifier
     assert Version("9.0.31") not in requirement.specifier
     assert Version("9.0.42") not in requirement.specifier
-    assert Version("9.0.43") in requirement.specifier
+    assert Version("9.0.44") not in requirement.specifier
+    assert Version("9.0.45") in requirement.specifier
     assert Version("9.99.0") in requirement.specifier
     assert Version("10.0.0") not in requirement.specifier
     assert all(specifier.operator != "==" for specifier in requirement.specifier)

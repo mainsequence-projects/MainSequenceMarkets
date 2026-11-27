@@ -167,7 +167,9 @@ Split the distribution along the ADR 0008 seam:
 Add `msm.client`, the package the README already names. It is a typed HTTP
 client over the `apps/v1` OpenAPI document that returns `msm.api` row models.
 It discovers the `markets-api` release in the caller's Environment and
-authenticates exactly as `metatables.endpoint` does for MetaTables. The row
+authenticates exactly as `metatables.endpoint` does for MetaTables. (Since 6.4.0 each call
+goes through the SDK's `ResourceRelease.call` instead; see the 2026-11-27 implementation
+note.) The row
 classes get a pluggable backend: `runtime`, the current compiled-SQL path, for
 the Markets deployment and producers; `remote`, the client, for every other
 application. `Portfolio.get_by_uid()` is the same call under both.
@@ -529,6 +531,29 @@ application still installs `ms-markets`. Deviations and refinements:
   rows refuse `delete` under the runtime backend as well (ADR 0049).
 - Registry writes through these routes run through `registry_write`, like the
   service routes.
+
+### 2026-11-27: `msm.client` calls the release through `ResourceRelease.call`
+
+Issue #160. `MarketsClient` resolved the release's address and token with
+`resolve_runtime_access`, waited in a loop of its own, kept both until a 401, and sent
+with its own `httpx.Client`. Its calls carried no `traceparent` or `baggage` and wrote no
+`dependency.call.*` line, so each Markets API request started a new trace. They also
+ignored the caller's deadline. Since mainsequence 9.0.45, which added the primitive for
+this case (mainsequence-sdk#263, #265), and ms-markets 6.4.0:
+
+- Discovery only names the release: `MarketsApiEndpoint` holds `release_uid`, or `url`
+  and `headers` for the `MARKETS_API_URL` override.
+- Each call is sent inside `ResourceRelease.call`. It reuses the access this process
+  keeps, or waits while the release starts. It bounds the call by the caller's deadline
+  and passes the deadline on, and makes the call a span of the caller's trace. The
+  client keeps its `httpx.Client`, and with it the connection pool and the `TestClient`
+  seam.
+- A 401 to the kept token sends the call once more with a new token, for every method:
+  the platform refused the token before the Markets API ran. A 401 to a new token is
+  the answer.
+- The SDK's `ReleaseCallError` exceptions reach the caller unchanged.
+- The `MARKETS_API_URL` override is not an address the platform gave. Its calls carry
+  no trace context, as the SDK sends that context only to platform addresses.
 
 ### 2026-10-25: step 1, missing routes
 

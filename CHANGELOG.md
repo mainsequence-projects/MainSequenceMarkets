@@ -7,6 +7,39 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Markets API calls are spans of the caller's trace**
+  ([#160](https://github.com/mainsequence-projects/MainSequenceMarkets/issues/160)).
+  `MarketsClient` sends each call to the Markets API release through the SDK's
+  `ResourceRelease.call` (mainsequence 9.0.45), with its own `httpx.Client`, so its
+  connections are still reused. A call carries a `traceparent` that names its own span and
+  the current `baggage`. The Markets API's request lines continue the caller's trace, and
+  the caller's logs get one `dependency.call.completed` or `dependency.call.failed` line.
+  Before, every Markets API request started a new trace, the caller context never reached
+  the Markets API, and the caller's logs had no line for the call. The call is also bounded
+  by the time the current request's caller will still wait, and passes it on in
+  `Mainsequence-Request-Timeout-Ms`. The process reuses the release's address and token
+  while the release is warm, and asks the platform again after its idle window.
+- **A 401 to the kept token sends the call once more with a new token**, for every method,
+  writes included: the platform refused the token before the Markets API ran. A 401 to a
+  new token raises `MarketsAccessError`. Before, the client sent any call again after any
+  401.
+- **When the release cannot be called, the SDK's errors reach the caller.** They are raised on
+  the first call, not by `MarketsClient.from_environment()`: `ReleaseReadinessTimeoutError`,
+  `ReleaseUnavailableError` and `ReleaseDeadlineTooShortError`, all `ReleaseCallError`.
+  Nothing is sent. `MarketsApiResolutionError` now means only that discovery found no
+  Markets API, or more than one.
+- **Discovery names the release only.** `MarketsApiEndpoint` holds `release_uid`, or `url`
+  and `headers` for the `MARKETS_API_URL` override, and both are keyword fields.
+  `resolve_markets_api_endpoint()` no longer takes `timeout` and no longer asks for runtime
+  access. `MarketsClient` takes `base_url` or `release_uid`; `from_environment()` passes
+  the discovered release. The `MARKETS_API_URL` override is not a platform address, so its
+  calls carry no trace context.
+- **Requires `mainsequence` 9.0.45** (`mainsequence>=9.0.45,<10`), the first release with
+  `ResourceRelease.call`. `uv.lock` and `requirements.txt` select it, and the vendored SDK
+  skills are copied from it.
+
 ## [6.3.1] - 2026-11-27
 
 Patch release 6.3.1. ms-markets requires `mainsequence` 9.0.43 and `mainsequence-metatable`
