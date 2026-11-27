@@ -8,6 +8,7 @@ guard, and only its locks say which tables MetaTables rebuilds statistics for.
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 import pytest
 import sqlalchemy as sa
@@ -59,6 +60,47 @@ def test_a_target_write_reads_back_and_a_refused_one_changes_nothing(postgresql_
         write()
     with engine.connect() as connection:
         assert connection.execute(sa.select(allocation)).all() == before
+
+
+def test_a_portfolio_exposure_creates_its_fund_under_the_stored_allocation(
+    postgresql_markets,
+) -> None:
+    """Issue 157: the fund the target write creates names its target allocation."""
+
+    from msm.models import VirtualFundTable
+
+    engine, context, _operations = postgresql_markets
+    account = seed_account_snapshots(engine, held=1)
+    portfolio = uuid.uuid4()
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO ms_markets__portfolio "
+            "SELECT (jsonb_populate_record(p, jsonb_build_object("
+            "'uid', %s::text, 'unique_identifier', 'unfunded'))).* FROM ms_markets__portfolio p",
+            (str(portfolio),),
+        )
+
+    add_account_target_positions_snapshot_response(
+        context,
+        account_uid=str(account),
+        target_positions_date=WHEN + dt.timedelta(days=1),
+        positions=[
+            {"target_type": "portfolio", "portfolio_uid": str(portfolio), "weight_notional_exposure": 0.5}
+        ],
+    )
+
+    funds = VirtualFundTable.__table__
+    allocation = AccountTargetAllocationTable.__table__
+    with engine.connect() as connection:
+        stored = connection.execute(
+            sa.select(allocation.c.uid).where(allocation.c.unique_identifier == str(account))
+        ).scalar_one()
+        created = connection.execute(
+            sa.select(funds.c.account_target_allocation_uid).where(
+                funds.c.target_portfolio_uid == portfolio
+            )
+        ).scalar_one()
+    assert created == stored
 
 
 def test_the_read_back_does_not_count_as_a_write_of_the_tables_it_reads(

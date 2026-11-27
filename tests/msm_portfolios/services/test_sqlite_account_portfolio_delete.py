@@ -53,6 +53,7 @@ from tests.support.sqlite_markets import (
     _insert,
     _portfolio,
     _portfolio_position,
+    _target_allocation,
     _write_holdings,
     _write_target,
     table_reads,
@@ -247,7 +248,14 @@ def test_a_portfolio_another_account_uses_stays_with_its_data(sqlite_markets, re
         assert _write_target(sqlite_markets, other, [_portfolio_position(shared)])["rows"]
         reason = "1 target-position row of other accounts names it."
     else:
-        _insert(engine, "ms_markets__virtualfund", unique_identifier="other-fund", account_uid=other.hex, target_portfolio_uid=shared.hex)
+        _insert(
+            engine,
+            "ms_markets__virtualfund",
+            unique_identifier="other-fund",
+            account_uid=other.hex,
+            account_target_allocation_uid=_target_allocation(engine, other),
+            target_portfolio_uid=shared.hex,
+        )
         reason = "1 virtual fund of other accounts targets it."
 
     preflight = preflight_account_delete_with_portfolios(sqlite_markets.context, uid=account)

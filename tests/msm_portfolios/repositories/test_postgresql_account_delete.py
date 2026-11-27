@@ -88,10 +88,11 @@ def _account(engine, context, *portfolios: uuid.UUID) -> uuid.UUID:
     """An account whose target rows name each portfolio, with a virtual fund on the first."""
 
     account = _insert(engine, "ms_markets__account", is_paper=True, account_is_active=True)
+    allocation = uuid.uuid4()
     written = replace_account_target_positions_snapshot(
         context,
         account_allocation_model_uid=uuid.uuid4(),
-        account_target_allocation_uid=uuid.uuid4(),
+        account_target_allocation_uid=allocation,
         position_set_uid=uuid.uuid4(),
         account_uid=account["uid"],
         account_name="PostgreSQL account",
@@ -113,6 +114,7 @@ def _account(engine, context, *portfolios: uuid.UUID) -> uuid.UUID:
         engine,
         "ms_markets__virtualfund",
         account_uid=account["uid"],
+        account_target_allocation_uid=allocation,
         target_portfolio_uid=portfolios[0],
     )
     return account["uid"]

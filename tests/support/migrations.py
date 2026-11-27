@@ -12,6 +12,9 @@ import sqlalchemy as sa
 from alembic import command
 
 from metatables.migrations import alembic_config_for_provider
+from msm.services.accounts.account_virtual_allocations import (
+    virtual_fund_unique_identifier_for_target,
+)
 from msm_migrations import migration
 
 
@@ -70,6 +73,18 @@ def _seed_every_table(connection, *, expected_tables: int = 62):
                        asset_uid=rows["ms_markets__asset"]["uid"], single_asset_quantity=123.5)
         connection.execute(table.insert(), row)
         rows[table.name] = row
+    fund, allocation = rows["ms_markets__virtualfund"], rows["ms_markets__accounttargetallocation"]
+    # The fund's key names its account's allocation, as every fund's does (revision 0040).
+    funds = metadata.tables["ms_markets__virtualfund"]
+    connection.execute(
+        funds.update().values(
+            unique_identifier=virtual_fund_unique_identifier_for_target(
+                account_uid=fund["account_uid"],
+                target_portfolio_uid=fund["target_portfolio_uid"],
+                account_target_allocation_uid=allocation["uid"],
+            )
+        )
+    )
     connection.commit()
     assert len(rows) == expected_tables
 

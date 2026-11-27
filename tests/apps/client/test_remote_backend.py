@@ -932,3 +932,42 @@ def test_composite_batches_and_holdings_snapshots_run_remotely(monkeypatch, remo
     assert [(spot.uid, spot.base_currency_uid) for spot in spots] == [(pair, base)]
     assert history[0]["holdings_set_uid"] == "s" and seen["limit"] == 3
     assert recording.calls == [("currency-spot", "filter"), ("account-holdings", "get_many")]
+
+
+def test_an_accounts_funds_for_its_portfolios_are_one_markets_request(monkeypatch, remote) -> None:
+    """Issue 157: the read runs on the Markets runtime as one row operation."""
+
+    from msm.api.virtual_funds import VirtualFund
+
+    account, allocation, portfolios = uuid.uuid4(), uuid.uuid4(), [uuid.uuid4(), uuid.uuid4()]
+    seen: dict[str, Any] = {}
+
+    def read(context, *, account_uid, target_portfolio_uids):
+        seen.update(
+            account_uid=uuid.UUID(str(account_uid)),
+            target_portfolio_uids=[uuid.UUID(str(uid)) for uid in target_portfolio_uids],
+        )
+        rows = [
+            {
+                "uid": str(uuid.uuid4()),
+                "unique_identifier": f"fund-{index}",
+                "account_uid": str(account),
+                "account_target_allocation_uid": str(allocation),
+                "target_portfolio_uid": str(portfolio),
+            }
+            for index, portfolio in enumerate(portfolios)
+        ]
+        return {"rows": rows, "row_count": len(rows)}
+
+    monkeypatch.setattr("msm.repositories.virtual_funds.read_account_target_virtual_funds", read)
+    recording = _Recording(remote.client.backend)
+    use_remote_backend(recording)
+
+    funds = VirtualFund.filter_by_account_target(account, portfolios)
+
+    assert recording.calls == [("virtual-fund", "filter_by_account_target")]
+    assert seen == {"account_uid": account, "target_portfolio_uids": portfolios}
+    assert all(isinstance(fund, VirtualFund) for fund in funds)
+    assert [(fund.target_portfolio_uid, fund.account_target_allocation_uid) for fund in funds] == [
+        (portfolio, allocation) for portfolio in portfolios
+    ]

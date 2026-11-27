@@ -171,6 +171,7 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
         "0037_an_order_has_its_own_row.py",
         "0038_every_portfolio_keeps_a_ledger.py",
         "0039_markets_index_values_per_cadence.py",
+        "0040_virtual_fund_names_its_target_allocation.py",
     ]
     revision = importlib.import_module(
         "msm_migrations.versions.mainsequence_markets.0018_initial_schema"
@@ -284,6 +285,11 @@ def test_history_keeps_initial_schema_and_appends_ledger_fix() -> None:
     )
     assert index_values.revision == "0039"
     assert index_values.down_revision == "0038"
+    fund_allocation = importlib.import_module(
+        "msm_migrations.versions.mainsequence_markets.0040_virtual_fund_names_its_target_allocation"
+    )
+    assert fund_allocation.revision == "0040"
+    assert fund_allocation.down_revision == "0039"
 
 
 def test_migration_provider_filters_unrelated_tables() -> None:

@@ -127,12 +127,18 @@ def _virtual_fund(engine, account, source, portfolio, unique_identifier: str) ->
 
     fund = uuid.uuid4()
     holdings_set = uuid.uuid4()
+    (allocation,) = _rows(
+        engine,
+        "SELECT uid FROM ms_markets__accounttargetallocation WHERE account_uid = :account",
+        account=account.hex,
+    )
     _insert(
         engine,
         "ms_markets__virtualfund",
         uid=fund.hex,
         unique_identifier=unique_identifier,
         account_uid=account.hex,
+        account_target_allocation_uid=allocation["uid"],
         target_portfolio_uid=portfolio.hex,
     )
     _insert(

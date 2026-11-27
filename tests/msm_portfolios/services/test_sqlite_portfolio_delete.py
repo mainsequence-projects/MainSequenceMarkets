@@ -50,6 +50,7 @@ from tests.support.sqlite_markets import (
     _insert,
     _portfolio,
     _portfolio_position,
+    _target_allocation,
     _write_target,
     table_reads,
 )
@@ -82,11 +83,13 @@ def markets(sqlite_markets, monkeypatch):
 
 
 def _virtual_fund(engine, portfolio: uuid.UUID) -> None:
+    account = _account(engine)
     _insert(
         engine,
         "ms_markets__virtualfund",
         unique_identifier=f"fund-{uuid.uuid4().hex[:8]}",
-        account_uid=_account(engine).hex,
+        account_uid=account.hex,
+        account_target_allocation_uid=_target_allocation(engine, account),
         target_portfolio_uid=portfolio.hex,
     )
 

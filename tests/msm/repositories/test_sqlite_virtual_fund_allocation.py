@@ -38,6 +38,10 @@ FUND_TABLES = (
     "ms_markets__virtualfundholdingsts",
     "ms_markets__accountallocationlinests",
 )
+FUND_INSERT = (
+    "INSERT INTO ms_markets__virtualfund (uid, unique_identifier, account_uid, "
+    "account_target_allocation_uid, target_portfolio_uid)"
+)
 LINES_SQL = (
     "SELECT owner_type, owner_uid, virtual_fund_uid, asset_identifier, target_quantity, "
     "target_direction, assigned_quantity, assigned_direction, allocation_strategy, "
@@ -181,9 +185,17 @@ def test_apply_writes_the_funds_their_sets_and_their_rows(sqlite_markets) -> Non
     result = apply_account_virtual_fund_allocation_plan_in_context(sqlite_markets.context, plan)
 
     assert (result.applied, result.already_applied) == (True, False)
-    funds = _rows(engine, "SELECT uid, unique_identifier, account_uid, target_portfolio_uid FROM ms_markets__virtualfund")
+    funds = _rows(
+        engine,
+        "SELECT uid, unique_identifier, account_uid, account_target_allocation_uid, "
+        "target_portfolio_uid FROM ms_markets__virtualfund",
+    )
     assert {row["target_portfolio_uid"] for row in funds} == {case["fund_a"].hex, case["fund_b"].hex}
     assert {row["account_uid"] for row in funds} == {case["account"].hex}
+    # Each fund names the target allocation of the plan's PositionSet (issue 157).
+    (allocation,) = _rows(engine, "SELECT uid FROM ms_markets__accounttargetallocation")
+    assert plan.account_target_allocation_uid == str(uuid.UUID(allocation["uid"]))
+    assert {row["account_target_allocation_uid"] for row in funds} == {allocation["uid"]}
     assert _count(engine, "ms_markets__virtualfundholdingsset") == 2
     by_portfolio = {row["target_portfolio_uid"]: row["uid"] for row in funds}
     fund_a, fund_b = by_portfolio[case["fund_a"].hex], by_portfolio[case["fund_b"].hex]
@@ -600,11 +612,13 @@ def test_the_postgresql_writes_compile_with_the_funds_and_the_lines(
         ],
     ).statement.sql
     assert "created_virtual_funds AS" in target_sql
+    assert FUND_INSERT in target_sql
     assert "ON CONFLICT (unique_identifier) DO NOTHING" in target_sql
     assert "JOIN position_set ON true JOIN account_target_allocation ON true" in target_sql
 
     fund = {
         "unique_identifier": "account-virtual-fund-x",
+        "account_target_allocation_uid": str(allocation),
         "target_portfolio_uid": str(portfolio),
         "virtual_fund_uid": str(uuid.uuid4()),
         "holdings_set_uid": str(uuid.uuid4()),
@@ -653,6 +667,7 @@ def test_the_postgresql_writes_compile_with_the_funds_and_the_lines(
     # The lines are the statement; the funds, sets and holdings are CTEs it runs.
     assert f"INSERT INTO {lines_table}" in with_funds
     assert "upserted_funds AS" in with_funds
+    assert FUND_INSERT in with_funds
     assert "holdings_sets AS" in with_funds
     assert "inserted_holdings AS" in with_funds
     assert "LEFT OUTER JOIN upserted_funds" in with_funds

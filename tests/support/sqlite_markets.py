@@ -301,6 +301,18 @@ def _asset(engine, unique_identifier: str) -> uuid.UUID:
     return asset
 
 
+def _target_allocation(engine, account: uuid.UUID) -> str:
+    """A new target allocation of ``account``, as its stored uid: every fund belongs to one."""
+
+    model = _insert(engine, "ms_markets__accountallocationmodel")
+    return _insert(
+        engine,
+        "ms_markets__accounttargetallocation",
+        account_uid=account.hex,
+        account_allocation_model_uid=model["uid"],
+    )["uid"]
+
+
 def _portfolio(engine, *, retired: bool = False) -> uuid.UUID:
     calendar = _insert(engine, "ms_markets__calendar")
     portfolio = uuid.uuid4()
