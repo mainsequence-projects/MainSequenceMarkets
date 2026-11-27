@@ -801,7 +801,7 @@ wheels = [
 
 [[package]]
 name = "mainsequence"
-version = "9.0.41"
+version = "9.0.43"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -824,9 +824,9 @@ dependencies = [
     { name = "typer" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/3c/b5156f632f11fefe5e09ede05d9d2be6dd934ced72435e4438699ae6af60/mainsequence-9.0.41.tar.gz", hash = "sha256:870bbb7c24eac0e5583aae9b8b3f86ac9208ddb0cff79c437dee9ce4d6887a07", size = 433714, upload-time = "2026-11-24T13:25:39.712Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/6a/80fa300a4243f878c0e578cb08f727df27cc82ddf4d17b1149ace256c505/mainsequence-9.0.43.tar.gz", hash = "sha256:902bb5d8fca41a074e971ae65ca5f358b0810773bca44d329ad65a64ed392898", size = 442263, upload-time = "2026-11-27T10:48:36.163Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/ed/b04818b424e273485d14a99caae3134911b30118b94df056d7172dc1c9c5/mainsequence-9.0.41-py3-none-any.whl", hash = "sha256:eb089a633e13ba2056f96433b9d4dce3915f2cba14537db1ad2e3ddb15972f7c", size = 341228, upload-time = "2026-11-24T13:25:38.27Z" },
+    { url = "https://files.pythonhosted.org/packages/91/da/c46dc079d3874160d60da197d548ea4db88e2b4ebf6fa0938e8c25f482cf/mainsequence-9.0.43-py3-none-any.whl", hash = "sha256:e852655fdfa4e43c822e1046654eb8603dbc92a5069eef19cc6476cd4472541c", size = 344353, upload-time = "2026-11-27T10:48:34.099Z" },
 ]
 
 [package.optional-dependencies]
@@ -836,7 +836,7 @@ mcp = [
 
 [[package]]
 name = "mainsequence-metatable"
-version = "0.1.85"
+version = "0.1.86"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -869,9 +869,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/b3/dd21db0d660c21aa48c72fdd4d65311a4f01d041efc05f00f96dffef6913/mainsequence_metatable-0.1.85.tar.gz", hash = "sha256:330562ceb0e964e2fe7e32200e868034a0156ea3f383d871e01ee7d3d6a7f22c", size = 1585291, upload-time = "2026-11-26T12:12:46.194Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/1e/46ae3661f03fd34934f0af68661a5106615ced2f76b80a4f5b980b36875e/mainsequence_metatable-0.1.86.tar.gz", hash = "sha256:bc35a08753277b96a0ea371f6b0bdbf42477f204611ff847b4a199aaa44d246d", size = 1586508, upload-time = "2026-11-26T16:48:02.29Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/d9/23e7ddb4a22c5244868c39f806b9c61d36bc419669bab99b3718583fb71c/mainsequence_metatable-0.1.85-py3-none-any.whl", hash = "sha256:30d963ca57586c740753381f2fa1620a8d6b24f9d64bae31d830f610a27299bf", size = 782368, upload-time = "2026-11-26T12:12:44.687Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/fe/acdfc84f2fee353aa1bbaabd6fb60b0b39a7b5afcee5ef35f4a8316ed9cb/mainsequence_metatable-0.1.86-py3-none-any.whl", hash = "sha256:302670bbffff3940a11ea4e58463aacb6038289cab8e9cb6ede1b4b3725ebd00", size = 782585, upload-time = "2026-11-26T16:48:00.765Z" },
 ]
 
 [[package]]
@@ -1281,8 +1281,8 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.136.3" },
     { name = "fastapi", marker = "extra == 'public-api'", specifier = ">=0.136.3" },
     { name = "joblib", marker = "extra == 'portfolios'" },
-    { name = "mainsequence", specifier = ">=9.0.31,<10" },
-    { name = "mainsequence-metatable", specifier = ">=0.1.85,<0.2" },
+    { name = "mainsequence", specifier = ">=9.0.43,<10" },
+    { name = "mainsequence-metatable", specifier = ">=0.1.86,<0.2" },
     { name = "matplotlib", marker = "extra == 'pricing'" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
