@@ -7,6 +7,14 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.3.0] - 2026-11-27
+
+Minor release 6.3.0. A virtual fund stores the target allocation it belongs to, and
+`VirtualFund.filter_by_account_target` finds an account's funds for some portfolios in one
+read, where a caller made two dependent reads per fund before. Migration `0040` adds and
+fills the column. `VirtualFund.create` and `upsert` now require it, which breaks a caller
+that creates funds directly. The fund key formula and the dependencies are unchanged.
+
 ### Added
 
 - **An account's virtual funds for some portfolios are one read**
