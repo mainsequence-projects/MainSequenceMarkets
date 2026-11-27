@@ -7,6 +7,11 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.3.1] - 2026-11-27
+
+Patch release 6.3.1. ms-markets requires `mainsequence` 9.0.43 and `mainsequence-metatable`
+0.1.86, the releases that include the platform's telemetry. No code or schema changes.
+
 ### Changed
 
 - **Requires `mainsequence` 9.0.43 and `mainsequence-metatable` 0.1.86**
