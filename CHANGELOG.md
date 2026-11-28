@@ -29,7 +29,9 @@ and this project follows versioned releases.
   the first call, not by `MarketsClient.from_environment()`: `ReleaseReadinessTimeoutError`,
   `ReleaseUnavailableError` and `ReleaseDeadlineTooShortError`, all `ReleaseCallError`.
   Nothing is sent. `MarketsApiResolutionError` now means only that discovery found no
-  Markets API, or more than one.
+  Markets API, or more than one. `execute_asset_pricing_operation` lets them through too: its
+  dependency clause turned `ReleaseUnavailableError`, a `RuntimeError`, raised by a remote
+  pricing read into `AssetPricingDependencyError`.
 - **Discovery names the release only.** `MarketsApiEndpoint` holds `release_uid`, or `url`
   and `headers` for the `MARKETS_API_URL` override, and both are keyword fields.
   `resolve_markets_api_endpoint()` no longer takes `timeout` and no longer asks for runtime

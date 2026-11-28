@@ -11,7 +11,12 @@ from types import SimpleNamespace
 
 import pytest
 from mainsequence import logconf
-from mainsequence.client import ReleaseUnavailableError, ResourceRelease, release_runtime_cache
+from mainsequence.client import (
+    ReleaseReadinessTimeoutError,
+    ReleaseUnavailableError,
+    ResourceRelease,
+    release_runtime_cache,
+)
 from opentelemetry import trace
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
@@ -26,14 +31,25 @@ CALLER_SPAN_ID = 0x00F067AA0BA902B7
 
 @pytest.fixture
 def platform(monkeypatch):
-    """The platform's answers about the release: admitted, each with a new token."""
+    """The platform's answers about the release: admitted, each with a new token.
+
+    ``state["waking"]`` answers that many asks ``waking``, with a retry hint, first.
+    """
 
     release_runtime_cache.clear()
     asked: list[str] = []
-    state = {"admitted": True}
+    state = {"admitted": True, "waking": 0}
 
     def resolve_runtime_access(self, *, static_site_release_uid=None, timeout=None):
         asked.append(str(self.uid))
+        if state["waking"]:
+            state["waking"] -= 1
+            return SimpleNamespace(
+                runtime_access=SimpleNamespace(state="waking", can_request=False, retry_after_ms=10),
+                runtime_presence=None,
+                scaling=None,
+                access=None,
+            )
         if not state["admitted"]:
             return SimpleNamespace(
                 runtime_access=SimpleNamespace(state="unavailable", can_request=False, retry_after_ms=None),
@@ -161,6 +177,29 @@ def test_a_401_to_a_new_token_is_the_answer(platform) -> None:
 
     assert len(session.sent) == 1
     assert platform.asked == [RELEASE_UID]
+
+
+def test_a_starting_release_is_called_once_it_is_ready(platform) -> None:
+    platform.state["waking"] = 2
+    session = Session()
+    client = MarketsClient(release_uid=RELEASE_UID, session=session)
+
+    assert _row_call(client) == "ok"
+
+    assert platform.asked == [RELEASE_UID] * 3
+    assert len(session.sent) == 1
+
+
+def test_a_release_still_starting_raises_the_sdks_error_and_sends_nothing(platform, monkeypatch) -> None:
+    monkeypatch.setenv("MAINSEQUENCE_RELEASE_READY_TIMEOUT_SECONDS", "0.2")
+    platform.state["waking"] = 10_000
+    session = Session()
+    client = MarketsClient(release_uid=RELEASE_UID, session=session)
+
+    with pytest.raises(ReleaseReadinessTimeoutError):
+        _row_call(client)
+
+    assert session.sent == []
 
 
 def test_an_unavailable_release_raises_the_sdks_error_and_sends_nothing(platform) -> None:

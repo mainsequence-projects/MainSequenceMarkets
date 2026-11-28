@@ -5,8 +5,10 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from mainsequence.client import ReleaseUnavailableError
 
 from msm_pricing.api.asset_pricing_operations import (
+    AssetPricingDependencyError,
     UnsupportedAssetPricingOperationError,
     build_asset_pricing_support,
     execute_asset_pricing_operation,
@@ -189,6 +191,45 @@ def test_execute_price_delegates_to_instrument_price(monkeypatch) -> None:
         ("set_valuation_date", valuation_date),
         ("price", {"market_data_set": "eod", "with_yield": 0.05}),
     ]
+
+
+def _bond_that_cannot_price(error: Exception) -> FixedRateBond:
+    bond = FixedRateBond()
+
+    def price(**kwargs):
+        raise error
+
+    bond.price = price
+    return bond
+
+
+def test_a_missing_market_data_dependency_is_a_dependency_error(monkeypatch) -> None:
+    asset_uid = _patch_loaders(monkeypatch, _bond_that_cannot_price(LookupError("no discount curve")))
+
+    with pytest.raises(AssetPricingDependencyError, match="no discount curve"):
+        execute_asset_pricing_operation(
+            asset_uid=asset_uid,
+            operation="price",
+            valuation_date=dt.datetime(2026, 6, 9, tzinfo=dt.UTC),
+            market_data_set="eod",
+        )
+
+
+def test_a_release_call_error_reaches_the_caller_unchanged(monkeypatch) -> None:
+    # Under the remote backend the pricing reads call the Markets API release. Its
+    # ReleaseUnavailableError is a RuntimeError, which the dependency clause also catches.
+    unavailable = ReleaseUnavailableError("Release r cannot take requests.", resource_release_uid="r")
+    asset_uid = _patch_loaders(monkeypatch, _bond_that_cannot_price(unavailable))
+
+    with pytest.raises(ReleaseUnavailableError) as raised:
+        execute_asset_pricing_operation(
+            asset_uid=asset_uid,
+            operation="price",
+            valuation_date=dt.datetime(2026, 6, 9, tzinfo=dt.UTC),
+            market_data_set="eod",
+        )
+
+    assert raised.value is unavailable
 
 
 def test_execute_z_spread_forwards_benchmark_curve_selection(monkeypatch) -> None:
