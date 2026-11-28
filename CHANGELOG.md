@@ -7,6 +7,15 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.4.0] - 2026-11-28
+
+Minor release 6.4.0. `MarketsClient` sends each call to the Markets API release through the
+SDK's `ResourceRelease.call`. A call is now a span of the caller's trace, keeps to the
+caller's deadline, and reuses the process's release access (#160). It breaks code that builds
+`MarketsApiEndpoint` or `MarketsClient` itself, or that catches `MarketsApiResolutionError`
+for a release that cannot be called. Requires `mainsequence` 9.0.47 and
+`mainsequence-metatable` 0.1.88. No schema changes.
+
 ### Changed (breaking)
 
 - **Markets API calls are spans of the caller's trace**
