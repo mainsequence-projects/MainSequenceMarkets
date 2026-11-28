@@ -20,7 +20,6 @@ it deploys.
 
 from __future__ import annotations
 
-import contextlib
 import functools
 import logging
 import threading
@@ -185,20 +184,18 @@ def caller_principal(uid: str) -> str:
         cached = _caller_principals.get(uid)
     if cached is not None:
         return cached
-    from mainsequence.server.fastapi import reads_as_caller
-
-    with contextlib.ExitStack() as reading:
-        try:
-            reading.enter_context(reads_as_caller())
-        except RequestIdentityError:
-            # reads_as_caller() also refuses outside a request and on a requester-bound
-            # one; get_requester() raises in the first case and names the requester in
-            # the second, so only a missing assertion is answered here. Not cached: the
-            # answer belongs to the request, not to the User.
-            if User.get_requester() is not None:
-                raise
-            return principal("user", uid)
-        user = _DirectoryUser.get_by_uid(uid)
+    try:
+        user = _DirectoryUser.get_by_uid(uid, as_caller=True)
+    except RequestIdentityError:
+        # as_caller=True refuses before anything is sent: outside a request, on a
+        # requester-bound one, and without a caller assertion. Its other two refusals
+        # cannot happen here: this runs inside the request, so it has not ended, and a get
+        # reads the platform's own address. get_requester() raises in the first case and
+        # names the requester in the second, so only a missing assertion is answered
+        # here. Not cached: the answer belongs to the request, not to the User.
+        if User.get_requester() is not None:
+            raise
+        return principal("user", uid)
     branch = (
         getattr(user, "code_repository_branch_uid", None)
         if getattr(user, "identity_type", None) == "workload"

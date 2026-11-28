@@ -25,7 +25,7 @@ def clean_environment(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
-def _platform(monkeypatch, *, releases, branches, repositories, access=None):
+def _platform(monkeypatch, *, releases, branches, repositories):
     import mainsequence.client as client_module
     import mainsequence.code_repository_context as context_module
 
@@ -41,12 +41,7 @@ def _platform(monkeypatch, *, releases, branches, repositories, access=None):
 
         def resolve_runtime_access(self, timeout):
             access_calls.append(self.uid)
-            token = f"token-{len(access_calls)}"
-            return SimpleNamespace(
-                runtime_access=SimpleNamespace(state="ready", can_request=True, retry_after_ms=None),
-                routing=SimpleNamespace(state="routable"),
-                access=access or {"mode": "token", "rpc_url": f"https://{self.uid}.example", "token": token},
-            )
+            raise AssertionError("discovery names the release; it asks for no runtime access")
 
     monkeypatch.setattr(client_module, "ResourceRelease", FakeRelease)
     monkeypatch.setattr(
@@ -80,6 +75,7 @@ def test_explicit_url_and_token(monkeypatch) -> None:
     endpoint = discovery.resolve_markets_api_endpoint()
 
     assert endpoint.url == "http://127.0.0.1:8000"
+    assert endpoint.release_uid is None
     assert endpoint.headers(False) == {"Authorization": "Bearer local-token"}
 
 
@@ -114,9 +110,8 @@ def test_discovers_the_markets_release_of_the_callers_environment(monkeypatch) -
 
     endpoint = discovery.resolve_markets_api_endpoint()
 
-    assert endpoint.url == "https://markets-env-1.example"
-    assert endpoint.release_uid == "markets-env-1"
-    assert calls == ["markets-env-1"]
+    assert endpoint == discovery.MarketsApiEndpoint(release_uid="markets-env-1")
+    assert calls == []
 
 
 def test_no_visible_markets_api_names_the_workflow_grant(monkeypatch) -> None:
@@ -147,25 +142,28 @@ def test_a_pinned_release_skips_the_search(monkeypatch) -> None:
     monkeypatch.setenv(discovery.MARKETS_API_RELEASE_UID_ENV, "pinned")
     _platform(monkeypatch, releases=[], branches=[], repositories={})
 
-    assert discovery.resolve_markets_api_endpoint().url == "https://pinned.example"
+    assert discovery.resolve_markets_api_endpoint().release_uid == "pinned"
 
 
-def test_a_401_refreshes_the_release_token_once(monkeypatch) -> None:
+def test_a_client_from_the_environment_calls_the_release(monkeypatch) -> None:
     monkeypatch.setenv(discovery.MARKETS_API_RELEASE_UID_ENV, "pinned")
-    _platform(monkeypatch, releases=[], branches=[], repositories={})
-    endpoint = discovery.resolve_markets_api_endpoint()
-    sent: list[str] = []
+    calls = _platform(monkeypatch, releases=[], branches=[], repositories={})
 
-    class Session:
-        def request(self, method, url, *, json=None, params=None, headers=None):
-            sent.append(headers["Authorization"])
-            status = 401 if len(sent) == 1 else 200
-            return SimpleNamespace(status_code=status, json=lambda: {"result": "ok"})
+    client = MarketsClient.from_environment()
 
-    client = MarketsClient(endpoint.url, headers=endpoint.headers, session=Session())
+    assert client.release_uid == "pinned"
+    assert client.base_url is None
+    assert calls == []
 
-    assert client.run_row_operation("asset", "get_by_uid", {"uid": "x"}) == "ok"
-    assert sent == ["Bearer token-1", "Bearer token-2"]
+
+def test_an_explicit_url_overrides_the_release(monkeypatch) -> None:
+    monkeypatch.setenv(discovery.MARKETS_API_URL_ENV, "http://127.0.0.1:8000/")
+    monkeypatch.setenv(discovery.MARKETS_API_RELEASE_UID_ENV, "pinned")
+
+    client = MarketsClient.from_environment()
+
+    assert client.base_url == "http://127.0.0.1:8000"
+    assert client.release_uid is None
 
 
 def test_lazy_backend_finds_the_api_on_its_first_call_only() -> None:

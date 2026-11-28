@@ -256,3 +256,9 @@ Sequence API and has no Artifact or temporary-URL dependency.
 A 429 `transfer_capacity_exceeded` or 503 `database_connections_busy` means the
 API was at capacity and nothing ran. Retry after `Retry-After`, including SQL and
 writes; it is not an uncertain outcome.
+
+To see where a slow or failed call went, read its `dependency.call.completed` or
+`dependency.call.failed` line in the caller's logs, then search the API release's logs
+for that line's `trace_id`: the request's `http.request.completed` line has the API's
+database and phase timings under `data`. See
+[Follow a call into the API](https://potential-doodle-wn39mnm.pages.github.io/operations/recovery-and-observability/#follow-a-call-into-the-api).

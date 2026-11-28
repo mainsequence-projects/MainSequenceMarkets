@@ -387,13 +387,17 @@ def test_a_person_caller_manages_as_itself(monkeypatch) -> None:
 
     users = {CALLER_UID: Person(), OTHER_UID: Workload()}
     monkeypatch.setattr(identity, "_caller_principals", {})
-    monkeypatch.setattr(
-        identity._DirectoryUser, "get_by_uid", classmethod(lambda cls, uid: users[uid])
-    )
-    monkeypatch.setattr("mainsequence.server.fastapi.reads_as_caller", _no_op_context)
+    reads: list[dict] = []
+
+    def get_by_uid(cls, uid, **options):
+        reads.append(options)
+        return users[uid]
+
+    monkeypatch.setattr(identity._DirectoryUser, "get_by_uid", classmethod(get_by_uid))
 
     assert identity.caller_principal(CALLER_UID) == f"user:{CALLER_UID}"
     assert identity.caller_principal(OTHER_UID) == f"branch:{BRANCH}"
+    assert reads == [{"as_caller": True}, {"as_caller": True}]
     requester = identity.ActingIdentity(uid=OTHER_UID, kind="requester", is_organization_admin=True)
     assert identity.acting_manager_of(requester).principal == f"user:{OTHER_UID}"
     assert identity.acting_manager_of(requester).is_organization_admin is True
@@ -440,11 +444,3 @@ def test_a_local_caller_manages_as_itself(markets, monkeypatch) -> None:
 
     assert portfolio.managed_by == f"user:{CALLER_UID}"
     assert published.written == 1
-
-
-class _no_op_context:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_exc):
-        return False

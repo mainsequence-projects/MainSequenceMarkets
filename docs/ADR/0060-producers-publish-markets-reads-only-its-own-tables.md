@@ -544,7 +544,8 @@ Both default to a dry run.
 - Settled, with a caveat: Markets names a workload caller's application by its code
   repository branch, as MetaTables does (`metatables.api.backend.integrations.
   platform_principals.workload_branch`). `apps/v1/identity.caller_principal` reads the
-  caller's User with `User.get_by_uid` inside `reads_as_caller()`, through a subclass that
+  caller's User with `User.get_by_uid(uid, as_caller=True)` (mainsequence 9.0.47 removed
+  `reads_as_caller()`), through a subclass that
   declares `code_repository_branch_uid`; the SDK's `User` (mainsequence 9.0.40) does not
   declare that field, so this relies on the platform returning it on workload rows, as
   MetaTables does. A person, or a workload without a branch, is `user:<uid>`; a requester

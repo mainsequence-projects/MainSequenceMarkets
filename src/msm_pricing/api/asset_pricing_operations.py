@@ -6,6 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from mainsequence.client import ReleaseCallError
+
 from msm.api.assets import Asset
 from msm.api.http import CORE_TABULAR_FRAME_CONTRACT
 from msm_pricing import Instrument
@@ -146,6 +148,11 @@ def execute_asset_pricing_operation(
 
     try:
         result = definition.executor(instrument, market_data_set, validated_parameters)
+    except ReleaseCallError:
+        # Under the remote backend the executor's reads call the Markets API release. Its
+        # errors say whether anything was sent; ReleaseUnavailableError is a RuntimeError,
+        # so the clause below would replace it.
+        raise
     except (LookupError, RuntimeError, ValueError) as exc:
         raise AssetPricingDependencyError(str(exc)) from exc
 

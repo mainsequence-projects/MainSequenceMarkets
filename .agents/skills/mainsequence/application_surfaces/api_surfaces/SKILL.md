@@ -148,11 +148,12 @@ person, read `User.get_by_uid(uid)`: a workload identity has `identity_type`
 endpoint's application policy using the verified user UID.
 
 To list the people, Teams and workloads the caller can see, for example to
-offer access candidates, read inside `reads_as_caller()` from
-`mainsequence.server.fastapi`: `User.filter`, `User.get_by_uid`, `Team.filter`
-and `Team.get_by_uid` then answer with the caller's visibility, and workload
-rows carry `managed_by_caller`. Outside a signed HTTP request it raises
-`RequestIdentityError`; it never reads as the application instead.
+offer access candidates, pass `as_caller=True` to `User.filter`,
+`User.get_by_uid`, `Team.filter` or `Team.get_by_uid`: that one read answers
+with the caller's visibility, and workload rows carry `managed_by_caller`.
+Other reads, including a library's, still read as the application. Outside a
+signed HTTP request the read raises `RequestIdentityError`; it never reads as
+the application instead.
 
 WebSockets retain the platform's gateway ticket/header contract rather than
 the HTTP Bearer/assertion flow; the getter is available while the authenticated
@@ -246,6 +247,11 @@ def acting_identity() -> RequestUserIdentity:
     return User.get_requester() or User.get_logged_user()
 ```
 
+- The caller of a requester-bound call is an Agent, or another FastAPI
+  application that called with `act_for_requester=True` while serving the
+  person's own request. Authorize the same way for both; directory reads still
+  answer as this application unless they pass `as_caller=True`, which a
+  requester-bound call refuses.
 - Authorize against one identity: the person on a requester-bound call, the
   caller on any other. Never combine the caller's grants with the person's,
   and never fall back to the caller's rights when the person may not.
@@ -257,7 +263,7 @@ def acting_identity() -> RequestUserIdentity:
   name whom it acts for. Anyone can write a UID there. Only the signed
   assertion names the requester, and the SDK has verified that it is addressed
   to this release; an invalid one is rejected with 401 before any handler runs.
-- Inside a requester-bound call, `reads_as_caller()` raises
+- Inside a requester-bound call, a read with `as_caller=True` raises
   `RequestIdentityError`: a receiving application cannot forward its inbound
   requester-bearing assertion to the directory endpoints. Platform-authorized
   Agent delegation is separate and keeps the original person and request time.
@@ -349,6 +355,39 @@ Clients list the skills with `skills/list` and read them with `skills/get`
 and `resources/read` on the release's `/mcp`, behind the same authentication
 as tools. Do not register your own `skill://` resources. See
 [Skills](https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/fastapi/#skills).
+
+### Bound a handler's work by its caller's time
+
+`install_request_identity(app)` turns a verified caller's
+`Mainsequence-Request-Timeout-Ms` into the request's deadline. Release and
+Agent calls the SDK makes inside the handler already respect it. Work the
+handler does itself, such as a database query or a long computation, does not
+unless the handler bounds it with the public functions from
+`mainsequence.client`:
+
+```python
+from mainsequence.client import remaining_request_seconds, request_deadline
+
+
+@app.post("/v1/report")
+def report(body: ReportRequest):
+    with request_deadline(60):  # this API's own limit, cut by the caller's
+        remaining = remaining_request_seconds()  # never None inside the block
+        if remaining <= 0:
+            raise HTTPException(status_code=504, detail="The caller stopped waiting.")
+        rows = database.execute(body.sql, timeout=min(15, remaining))
+    return rows
+```
+
+- Without `request_deadline`, `remaining_request_seconds()` is `None` when the
+  caller set no limit; keep your own limit then.
+- `request_deadline` only shortens, and SDK calls inside it see the shorter
+  limit.
+- Do not import `mainsequence._request_deadline`; it is private.
+- Work started in a plain `threading.Thread` or a `concurrent.futures`
+  executor reads `None`; run it with `contextvars.copy_context().run(...)`.
+
+See [Bounding your own work](https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/fastapi/#bounding-your-own-work).
 
 ### Public provider callbacks and webhooks
 
@@ -494,7 +533,7 @@ Verify that:
 - Django resolved and built the exact image for the workflow event
 - the resulting release kind is `fastapi`
 - any declared `public_ingress` pair matches a mounted FastAPI handler
-- compute and spot settings are intentional
+- compute settings are intentional
 
 Enable automatic deployment in the repository workflow when the route paths,
 resource path, and frontend contracts are stable enough for future repository
