@@ -162,6 +162,32 @@ message and not its other fields. An operation is one execute-operation or
 execute-transaction call, whatever its statements, counted when it is sent. Reads of
 the MetaTables catalog and calls to the platform are not counted.
 
+## Tracing A Request
+
+A request to the Markets API is a hop in its caller's trace (SDK ADR 0042):
+
+- **The request's own lines.** When the caller sends a `traceparent`, the platform's
+  gateway and launcher write the request's lines in that trace. `install_request_identity`
+  makes the request's span the current one. Every line the API writes through the SDK's
+  logger while it handles the request carries the request's `trace_id` and `span_id`, the
+  `MetaTables operations=` line included.
+- **Its MetaTables calls.** Each call the API sends to the hosted MetaTables API is a
+  child span (MetaTables 0.1.88):
+  - it carries `traceparent` and the request's `baggage`;
+  - it writes one `dependency.call.completed` or `dependency.call.failed` line, with
+    `dependency_type` `release` and `dependency_name` the MetaTables release's uid;
+  - MetaTables' own request lines continue the trace.
+
+  A local development MetaTables API gets no trace context.
+- **Its callers.** A caller that uses `MarketsClient` sends that context itself; see
+  [Finding the Markets API](../../knowledge/msm/client/index.md#finding-the-markets-api).
+
+To follow one request, read the log rows of its `trace_id` with the SDK's
+`search_logs(trace_id=...)`, or a release's `get_logs(trace_id=...)`. Build the tree from
+`parent_span_id`. A row of a call to MetaTables names it in `dependency_name`. You see only
+the rows you may already read. See
+[Reading a trace](https://mainsequence-sdk.github.io/mainsequence-sdk/knowledge/infrastructure/owner_observability/#reading-a-trace).
+
 ## Design Decisions (ADRs)
 
 These FastAPI v1 decisions live in the single
