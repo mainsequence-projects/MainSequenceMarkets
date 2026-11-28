@@ -108,6 +108,20 @@ print(run.weights, run.values, run.first_rebalance)
 history = recipes.portfolio_history(run.portfolio.unique_identifier)
 ```
 
+**Markets API calls and your trace.** Each call `MarketsClient` sends to the Markets API
+release:
+
+- is a span of your trace: it carries `traceparent` and your `baggage`, and writes one
+  `dependency.call.*` line in your logs;
+- keeps to the time your caller will still wait.
+
+None of this needs code of yours. When the release cannot be called, `MarketsClient`
+raises the SDK's `ReleaseCallError` (`ReleaseReadinessTimeoutError`,
+`ReleaseUnavailableError` or `ReleaseDeadlineTooShortError`) with nothing sent. Let it
+reach your caller unchanged, and put `except ReleaseCallError: raise` before any broad
+`except` around Markets calls, as the SDK's `release_calls` skill says. The
+`MARKETS_API_URL` override, for a local Markets API, carries no trace context.
+
 `ApplicationWeights.publish(observations)` is the same as `publish_signal_weights` for
 that signal. It is no node: the rebalance reads it from Markets.
 

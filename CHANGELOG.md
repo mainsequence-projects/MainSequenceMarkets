@@ -7,6 +7,23 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.4.1] - 2026-11-28
+
+Patch release 6.4.1. Documentation only: how a Markets API request and its client calls join
+one trace, and what a producer does with the SDK's release-call errors. No code or schema
+changes.
+
+### Documentation
+
+- **Tracing a Markets API request.** A new section of the FastAPI v1 guide covers how a
+  request's own lines, its MetaTables calls and its callers join one trace (SDK ADR 0042,
+  MetaTables 0.1.88). It shows how to read that trace with the SDK's
+  `search_logs(trace_id=...)`.
+- **The producer boundary skill** (`platform/producer_boundary`, shipped in the wheel)
+  says that `MarketsClient` calls are spans of the caller's trace and keep to its deadline.
+  It also says that the SDK's `ReleaseCallError` should reach the caller unchanged, and
+  that the `MARKETS_API_URL` override carries no trace context.
+
 ## [6.4.0] - 2026-11-28
 
 Minor release 6.4.0. `MarketsClient` sends each call to the Markets API release through the
