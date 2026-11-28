@@ -38,9 +38,13 @@ and this project follows versioned releases.
   access. `MarketsClient` takes `base_url` or `release_uid`; `from_environment()` passes
   the discovered release. The `MARKETS_API_URL` override is not a platform address, so its
   calls carry no trace context.
-- **Requires `mainsequence` 9.0.45** (`mainsequence>=9.0.45,<10`), the first release with
-  `ResourceRelease.call`. `uv.lock` and `requirements.txt` select it, and the vendored SDK
-  skills are copied from it.
+- **Requires `mainsequence` 9.0.47 and `mainsequence-metatable` 0.1.88**
+  (`mainsequence>=9.0.47,<10`, `mainsequence-metatable>=0.1.88,<0.2`). 9.0.45 added
+  `ResourceRelease.call`. 9.0.47 removed `reads_as_caller()`, so the Markets API now reads a
+  caller's directory row with `User.get_by_uid(uid, as_caller=True)`; which principal manages a
+  caller's rows is unchanged. MetaTables 0.1.88 is the first release that imports with 9.0.47
+  (MetaTables#172). `uv.lock` and `requirements.txt` select both, and the vendored SDK and
+  MetaTables skills are copied from them.
 
 ## [6.3.1] - 2026-11-27
 

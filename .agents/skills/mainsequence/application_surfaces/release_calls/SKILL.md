@@ -1,6 +1,6 @@
 ---
 name: mainsequence-release-calls
-description: Call one Main Sequence release (FastAPI API, MCP application or Agent-backing release) from another with the SDK's cold-start-aware routine. Use when an application, Job or Agent tool makes HTTP requests to another release, when choosing timeouts for such calls, when a call times out and the target may have been scaled to zero, when a chain of releases (API to API to Agent) needs deadlines, prewarming or a "starting" state, or when a client library sends its own requests to a release (its own requests or httpx client) with ResourceRelease.call, so they keep the caller's trace, deadline and the process's release access.
+description: Call one Main Sequence release (FastAPI API, MCP application or Agent-backing release) from another with the SDK's cold-start-aware routine. Use when an application, Job or Agent tool makes HTTP requests to another release, when choosing timeouts for such calls, when a call times out and the target may have been scaled to zero, when a chain of releases (API to API to Agent) needs deadlines, prewarming or a "starting" state, or when a client library sends its own requests to a release (its own requests or httpx client) with ResourceRelease.call, so they keep the caller's trace, deadline and the process's release access, or when deciding what code or a library does with a ReleaseCallError.
 ---
 
 # Calls Between Main Sequence Releases
@@ -93,6 +93,29 @@ The target sees the call as coming from your application's own identity.
   target deduplicates it.
 - **Do not catch and retry timeouts yourself.** The errors below say what
   happened; a blind retry can run the target's work twice.
+- **Let `ReleaseCallError` through.** Code that calls a release, with
+  `request` or `release.call`, lets the errors below reach its caller
+  unchanged. Never catch one to raise an error of your own, and never fold
+  them into a library's error class: the error says whether anything was
+  sent, carries the release's UID and phase, and the timeout ones are
+  `TimeoutError`, and a replacement loses all of that. Your own errors are
+  for your own failures and for the target's answers, such as mapping its
+  `404` or `409`. Broader clauses catch them too: `except Exception` and
+  `except ApiError` catch all five (a `ReleaseCallError` is an `ApiError`),
+  `except TimeoutError` and `except OSError` the timeout ones, and
+  `except RuntimeError` `ReleaseUnavailableError`, so put
+  `except ReleaseCallError: raise` before such a clause. To say what the call
+  was for, add a note and re-raise the same exception:
+
+  ```python
+  from mainsequence.client import ReleaseCallError
+
+  try:
+      response = prices.request("GET", "/v1/prices", timeout=30)
+  except ReleaseCallError as error:
+      error.add_note("reading prices for the risk report")
+      raise
+  ```
 
 ## Errors
 
@@ -102,7 +125,9 @@ ones are also `TimeoutError`.
 | Error | Meaning | What to do |
 | --- | --- | --- |
 | `ReleaseReadinessTimeoutError` | The release was still starting when the readiness limit ended. Nothing was sent. | Report "starting, try again". Check the release's deployment if it repeats. |
-| `ReleaseUnavailableError` | The platform says the release cannot take requests. Nothing was sent. | Report it. Do not retry in a loop. |
+| `ReleaseUnavailableError` | The platform says the release cannot take requests and gave no retry hint. Nothing was sent. | Report it. Do not retry in a loop. |
+| `ReleaseNotDeployedError` | A `ReleaseUnavailableError`: the release has no active revision yet. Nothing was sent. | Report "not deployed yet". It needs a deployment, not a retry. |
+| `ReleaseRequesterError` | A call with `act_for_requester=True` was refused for the person (`expired` is `False`), or the person's assertion ran out first (`True`). Nothing was sent. | Never retry as the application. Refused: the caller is not a person, or may not use the target. Expired: the work outlived the person's request. |
 | `ReleaseDeadlineTooShortError` | Your own caller will not wait long enough for the target to start. Nothing was sent. | The outermost caller's limit is too short for this chain, or the work should be submit-and-poll. |
 | `ReleaseColdStartTimeoutError` | The request was sent and timed out while the target was starting. | Safe to repeat only for an idempotent call. |
 | `ReleaseRequestTimeoutError` | The request was sent and timed out on a running target. | The target is slow or hung. Read its logs. |
@@ -111,6 +136,28 @@ Each carries `resource_release_uid`, `phase` (`readiness` or `request`),
 `timeout_seconds` and, when known, `runtime_phase`.
 
 An HTTP error status is not an exception: the response is returned.
+
+## Calling for the person a request serves
+
+On a route people call, pass `act_for_requester=True` to `request`,
+`arequest` or `call` when the target must act for that person, for example
+to apply the person's own access:
+
+```python
+response = billing.request("GET", "/v1/invoices", timeout=30, act_for_requester=True)
+```
+
+- The target sees the person in `User.get_requester()` and your application in
+  `User.get_logged_user()`.
+- Only inside a person's direct request: it raises `RequestIdentityError`
+  outside an authenticated request, in local mode, on a WebSocket and in a
+  requester-bound request, and the platform refuses a workload caller with
+  `ReleaseRequesterError`. Do not use it on routes workloads call, or for
+  background work: the person's assertion lasts at most 300 seconds.
+- Per call, never a block: the option goes on each call that should act for the
+  person, so no other call, and no library's call, does so by accident.
+- The person's token is kept only for the rest of the request, never for the
+  process.
 
 ## A client library with its own HTTP client
 
@@ -169,6 +216,11 @@ Rules for the block:
 - **One send, one block.** Leave the block after the body is read; with
   `httpx`, read a streamed response inside it. A request sent again is a new
   block. `async with release.call(...)` works in asynchronous code.
+- **Let the SDK's errors through, and keep "sent" apart from "not sent".**
+  Entering the block raises only the three errors that mean nothing was
+  sent; let them reach your caller unchanged. An exception your client raises
+  inside the block means the request may have been sent: never map it to an
+  error that says nothing was sent, and do not repeat a write after it.
 - **Resend after a refused token yourself.** When the answer is `401` and
   `call.reused_access` is `True`, a request that is safe to repeat may be sent
   once more, in a new block, which asks the platform for a new token.
@@ -228,9 +280,28 @@ request too when the request will reach several releases one after another.
 ## Deadlines across a chain
 
 An application with `install_request_identity(app)` reads how long its own
-caller will still wait. Calls made with `request` inside that handler are
-bounded by it, and what remains is sent on to the next release. Nothing is
-needed in application code.
+caller will still wait. Calls made with `request` or `release.call` inside that
+handler are bounded by it, and what remains is sent on to the next release.
+Nothing is needed in application code for those calls.
+
+The application's own work is bounded only if it asks. Use the public
+functions from `mainsequence.client`, never `mainsequence._request_deadline`:
+
+```python
+from mainsequence.client import remaining_request_seconds, request_deadline
+
+with request_deadline(60):  # the API's own limit, cut by its caller's
+    remaining = remaining_request_seconds()  # never None inside the block
+    rows = database.execute(sql, timeout=min(15, remaining))
+    response = prices.request("POST", "/v1/enrich", timeout=30, json=rows)
+```
+
+- `remaining_request_seconds()` is `None` when no caller set a limit, and zero
+  or less once the time has passed: stop then, the caller no longer waits.
+- `request_deadline(seconds)` only shortens; the release calls inside it see
+  the shorter limit and send it on.
+- A plain `threading.Thread` or `concurrent.futures` executor does not carry
+  the deadline; run such work with `contextvars.copy_context().run(...)`.
 
 The limit travels in the `Mainsequence-Request-Timeout-Ms` header. A hop that
 does not receive the header is bounded only by its own `timeout`, so do not
@@ -256,11 +327,16 @@ pass a few minutes, or when `ReleaseDeadlineTooShortError` or
 - A test calls the code with the target answering `waking` and then `ready`,
   and asserts the request is sent once, after readiness.
 - A test with the target answering `waking` past `ready_timeout` asserts
-  `ReleaseReadinessTimeoutError` and that nothing was sent.
+  that the code's caller receives `ReleaseReadinessTimeoutError` itself, not
+  an error of the library's, and that nothing was sent.
 - No module imports `requests` or `httpx` to reach a release, except a client
   library's single send method, and that method sends inside
   `release.call(...)`.
 - No module stores a release's `rpc_url` or token.
+- No module catches a `ReleaseCallError` to raise a different exception, and
+  every broad `except` around a release call (`Exception`, `ApiError`,
+  `TimeoutError`, `OSError`, `RuntimeError`) is preceded by
+  `except ReleaseCallError: raise`.
 - For a client library: a test sends calls to a local server inside a known
   span and a caller deadline, and asserts the received `traceparent` has that
   span's trace id and a new span id, the received

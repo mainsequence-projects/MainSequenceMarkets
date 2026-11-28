@@ -259,6 +259,12 @@ Do not claim a scheduling/release workflow from producer tests. If a published
 contract decision remains unknown, resolve that decision while continuing any
 independent authorized work.
 
+To find what started a run, read its `trace_id`, the platform trace of the request, Job
+run or Agent turn that started it. Its `execution_uid` is the runner's id, shared by
+every node of one execution, and a node Job run receives it as `--execution-uid`.
+`GET /table-update-runs/?trace_id=...` lists the runs of one trace. See
+[The trace that started a run](https://potential-doodle-wn39mnm.pages.github.io/operations/run-history/#the-trace-that-started-a-run).
+
 ## Bounded transfers and recovery
 
 Read [Bounded reads, uploads, and recovery](https://potential-doodle-wn39mnm.pages.github.io/client/bounded-transfers/) for transfer contract v1. Prefer

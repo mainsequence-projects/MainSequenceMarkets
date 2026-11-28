@@ -129,7 +129,8 @@ backends.
 
 When the Markets API release cannot be called, the SDK's errors reach the caller unchanged,
 and nothing is sent. `ReleaseReadinessTimeoutError` means it was still starting when the
-wait ended. `ReleaseUnavailableError` means the platform says it cannot take requests.
+wait ended. `ReleaseUnavailableError` means the platform says it cannot take requests;
+its subclass `ReleaseNotDeployedError` means the release has not been deployed yet.
 `ReleaseDeadlineTooShortError` means the current request's caller will not wait long
 enough. All three are `ReleaseCallError`, importable from `mainsequence.client`.
 
