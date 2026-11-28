@@ -7,6 +7,12 @@ and this project follows versioned releases.
 
 ## [Unreleased]
 
+## [6.4.1] - 2026-11-28
+
+Patch release 6.4.1. Documentation only: how a Markets API request and its client calls join
+one trace, and what a producer does with the SDK's release-call errors. No code or schema
+changes.
+
 ### Documentation
 
 - **Tracing a Markets API request.** A new section of the FastAPI v1 guide covers how a
